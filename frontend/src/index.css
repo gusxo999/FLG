@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* Factorio Layout Generator - global styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #1a1a2e;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Shared toolbar button style used throughout the app */
+.toolbar-btn {
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  background-color: #374151;
+  color: #d1d5db;
+  border: 1px solid #4b5563;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  background-color: #4b5563;
+  color: #f9fafb;
+}
+
+/* Toast fade in/out */
+@keyframes toast-in-out {
+  0%   { opacity: 0; transform: translateY(-8px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.animate-toast {
+  animation: toast-in-out 2s ease-out forwards;
+}
