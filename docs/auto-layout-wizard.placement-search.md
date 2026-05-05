@@ -1,276 +1,283 @@
-# 배치 탐색 알고리즘 — 목적함수 기반 설계
+# 배치 탐색 알고리즘 — 컨테이너 모델
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 >
-> **상태:** §3 M1 (둘레 슬롯 단일 머신 모델) + 머신 두 개 가로 배치 + Lee BFS 라우팅의 코드는 작성되어 있다
-> ([slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts),
-> [runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts)).
-> **단, 두 머신 직렬 시나리오의 실측 동작은 검증되지 않았으며, 사용자 보고에 따르면 정상 동작하지 않는 케이스가 있다.**
-> 외부 루프 (T1 + O1, area 단조 탐색) 와 회전 / 백트랙 / 지하 변형 / fluid 는 미구현.
+> **상태:** **모델 재설계 단계 — 본 문서는 새 모델 (컨테이너 모델) 의 정의서다.**
+> 현재 코드 ([slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts), [runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts), [router.ts](../frontend/src/utils/autoLayout/router.ts)) 는 *구 둘레 슬롯 모델* 의 부분 구현이며, 새 모델로 교체 예정. 코드는 다음 커밋들에서 단계적으로 (타입 → 모듈 스켈레톤 → 구현) 들어온다.
 
 ---
 
-## 2. 문제 정의
+## 1. 한 줄 요약
 
-### 입력
-
-- 트리에서 펼친 비-외부 노드별 머신 인스턴스 집합 **M** = {m₁, …, mₙ}.
-  - 각 머신: footprint (wᵢ, hᵢ), 4-방향 회전 가능, 레시피의 ingredient/product (item / fluid 둘 다).
-  - fluid I/O 가 있는 머신은 [`entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 가 회전별 fluid 입출력 셀 좌표를 정의 — 머신 origin 에 더해 절대 좌표가 된다.
-- 머신 사이의 운반 요구 집합 **E** = { (p, c, content, kind) }.
-  - producer p 의 product 가 consumer c 의 ingredient 로 전달되어야 함.
-  - **kind ∈ {`belt`, `pipe`}** — content 가 item 이면 belt, fluid 면 pipe. content 는 item 이름 또는 fluid 이름.
-- 사용 가능한 인서터·벨트·파이프 종류 (위저드 3·4·5단계 입력).
-- (선택) 사용자 지정 최대 영역 — 그 안에 들어가지 못하면 실패.
-
-### 결정 변수
-
-- 각 머신 mᵢ 의 좌상단 좌표 (xᵢ, yᵢ) ∈ ℤ² 와 회전 rᵢ ∈ {0, 4, 8, 12}.
-- 각 *고체 운반* 머신 측면에 붙는 입력/출력 인서터의 좌표 + 방향.
-- 각 운반 요구의 경로 (셀 직렬). belt 는 direction 이 진행 방향, pipe 는 direction 무관 (펌프 미지원).
-
-> fluid I/O 셀은 머신·회전이 정해지면 *결정 변수가 아니라 파생값* 이다 ( fluid_boxes positions 가 고정). 인서터처럼 따로 결정하지 않는다.
-
-### 출력
-
-- 결정 변수 전체에 대한 한 배치 P.
-- P 의 bounding rectangle (W, H, area = W·H).
+머신과 무한상자·무한파이프를 단일 추상 *컨테이너* 로 묶고, 컨테이너끼리의 입출력을 *벨트(가변길이) + 투입기 페어* (item) 또는 *파이프 + 지하파이프* (fluid) 로 라우팅한다. 자식 머신을 부모와 인접하게 배치하는 **A↔B 사이클** 을 하향식으로 반복하며, 자식 형제 순서와 자식 위치 (오른쪽 / 아래쪽) 를 **완전 탐색** 해 모든 후보 블루프린트를 사용자에게 노출한다.
 
 ---
 
-## 3. 조건 등록부 (확장 가능)
+## 2. 컨테이너
 
-본 알고리즘은 **여기 명시적으로 등록된 조건만** 본문 알고리즘에 영향을 준다. 새 조건을 추가할 때는 반드시 본 절에 항목을 등록하고, "제약(C) / 목적(O) / 모델(M) / 종료(T)" 중 어디에 속하는지 표시한다. 등록부 외 자리에 적힌 추측은 채택하지 않는다 ([feedback_no_speculative_absorption](../C:/Users/HyeonTaeJang/.claude/projects/f--CodeStep-factorio-LayoutGenerator/memory/feedback_no_speculative_absorption.md) 정책).
+### 2.1 정의
 
-### C1 — 한 사각형 그리드 안에 충돌 없이 배치된다
+세 종류의 게임 엔티티를 하나의 추상 *컨테이너* 로 묶는다.
 
-모든 엔티티(머신·인서터·belt stub·라우팅 belt)의 footprint 가 한 축정렬 사각형 R 안에 들어가야 하며, 두 footprint 가 한 셀이라도 겹치면 안 된다.
+| 컨테이너 종류 | 게임 엔티티 | 용도 |
+|---|---|---|
+| 머신 (machine) | assembling-machine, furnace, rocket-silo 등 | 레시피 처리 |
+| 무한상자 (infinity chest) | `infinity-container` (base game: `infinity-chest`, 1×1) | 외부 item I/O |
+| 무한파이프 (infinity pipe) | `infinity-pipe` (base game: `infinity-pipe`, 1×1) | 외부 fluid I/O |
 
-### C2 — 모든 운반 요구가 라우팅 가능하다
+각 컨테이너의 footprint 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다 — 두 필드는 머신·무한파이프 양쪽이 공유하는 유일한 명시적 공통 필드다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
 
-E 의 모든 (p, c, content, kind) 에 대해 p 의 출력 측 셀에서 c 의 입력 측 셀까지 R 안에 경로가 존재해야 한다.
+### 2.2 ports
 
-- kind = `belt`: 다른 머신·인서터·belt-fixed stub 과 충돌하지 않아야 함. 같은 또는 다른 item 의 belt-route 위는 통과 가능 (벨트는 mixing 허용).
-- kind = `pipe`: 다른 머신·인서터·belt·pipe-fixed stub (=다른 fluid) 과 충돌하지 않아야 함. 같은 fluid 의 pipe-route 위만 통과 가능 (C3 으로 분리).
+각 컨테이너는 외부와 통하는 셀 집합 = **port 집합** 을 노출한다.
+
+| port 종류 | 좌표 출처 | 머신 | 무한상자 | 무한파이프 |
+|---|---|---|---|---|
+| item port | footprint 둘레 셀 (`2(w + h)` 개) | ✓ | ✓ | — |
+| fluid port (특정 fluid) | `fluid_boxes[].connections[].positions` (회전 0 기준 고정) | ✓ (해당 머신만) | — | ✓ |
+
+`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다.
+
+> 회전은 미고려 ([§13.1](#131-비-목표-항목)). prototype 의 기본 회전에서의 positions 만 사용한다.
+
+---
+
+## 3. 영역 — 외부 영역 / 내부 영역
+
+두 영역은 **별도 좌표계** 에서 진행한다.
+
+| 영역 | 한국어 | 구성 | 좌표 기준점 |
+|---|---|---|---|
+| internal area | 내부 영역 | 머신 + 내부 라우팅 (벨트·파이프·투입기) | 최상위 머신을 (5, 5) 에 두고 시작 |
+| external area | 외부 영역 | 무한상자·무한파이프 | 첫 외부 컨테이너를 (0, 0) 에 두고 1×1 단위로 줄지어 |
+
+모든 머신 배치 + 내부 라우팅이 끝난 **마지막 단계** 에서 외부 영역이 내부 영역의 bbox 둘레에 통합된다. 통합 직전에 사용자가 외부 포트 위치와 무한상자 위치를 드래그로 조정할 수 있다.
+
+---
+
+## 4. 라우팅 형식
+
+라우팅 = 두 컨테이너의 (producer port, consumer port) 사이를 잇는 운반체 체인.
+
+| kind | 체인 형식 | 메모 |
+|---|---|---|
+| item | `컨테이너 — 투입기 — 벨트(가변길이 ≥ 1) — 투입기 — 컨테이너` | 벨트 길이 0 자체는 발생 불가. 너무 가까워서 벨트가 안 들어가면 *다른 port 셀* 로 우회 ([§7.4](#74-fallback)) |
+| fluid | `컨테이너 — 파이프 + 지하파이프 — 컨테이너` | 투입기 없음. 지하파이프 사용은 [O2](#o2--지하-변형-우선) 에 따름 |
+
+**원칙:** 라우팅 1개 = 컨테이너 1개. 한 라우팅이 처리량을 못 채우면 *컨테이너 수* 를 늘려 별도 라우팅으로 분할한다 ([§5 모듈 3b](#5-모듈-구성)).
+
+---
+
+## 5. 모듈 구성
+
+본 알고리즘은 다음 5개 모듈 + 1개 오케스트레이터로 분리된다.
+
+| 모듈 | 책임 | 입력 | 출력 |
+|---|---|---|---|
+| **3a. port 유추** | 컨테이너 + 상대 컨테이너 위치 → 어느 port 를 입력/출력으로 쓸지 그리디 결정 | (container, neighbor-direction, kind) | port (= 좌표 + 면 방향) |
+| **3b. 슬롯 수 계산** | 레시피 throughput → 필요 컨테이너 수 (= 라우팅 수) | (recipe, belt/pipe 처리량) | `inputContainers` / `outputContainers` |
+| **A. 머신 배치** | 내부 좌표계에서 머신 footprint 를 부모와 인접하게 배치 (하향식) | (parent-machine, child-machine, dir) | (x, y) |
+| **B. 외부 컨테이너 배치** | 외부 좌표계에서 무한상자/무한파이프를 (0,0) 부터 1×1 단위로 줄지어 배치 | 컨테이너 목록 | 좌표 배열 |
+| **4. 라우팅** | (from-port, to-port, kind) → 운반체 체인 생성. item/fluid 분기, BFS, 지하 변형 | port 페어 + occupancy | placed cells (벨트/투입기/파이프) |
+| **오케스트레이터** | A↔B 사이클, 완전 탐색, 실패 처리, 진행 UI 알림 | WizardInput | 후보 트리 |
+
+> 모듈 3a 와 3b 는 *분리된 두 함수* 다 ([부록 Q14](#부록--설계-결정-요약) 결정).
+
+---
+
+## 6. 조건 등록부
+
+### C1 — 충돌 없는 배치
+모든 컨테이너 footprint, 라우팅 점유 셀, 인서터 셀이 한 셀이라도 겹치지 않는다.
+
+### C2 — 라우팅 가능
+모든 (producer, consumer, content, kind) 페어에 대해 §4 형식의 라우팅이 존재한다.
 
 ### C3 — 액체 mixing 방지
+한 fluid-route 셀은 단 하나의 fluid 만 운반. 두 라우팅의 fluid 가 서로 다르면 점유 셀이 겹치면 안 된다.
 
-한 pipe-route 셀은 **단 하나의 fluid 만** 운반한다. 두 운반 요구의 fluid 가 서로 다르면 그 두 라우팅의 점유 셀 (entrance/exit + route) 이 한 셀이라도 겹치면 안 된다. 이는 Factorio 의 fluid mixing contamination 규칙을 그대로 옮긴 제약 — 위반 시 머신이 동작 정지한다.
+### O1 — 내부 영역 bbox 가 정사각형에 가까울수록 우선
+완전 탐색의 후보 정렬에 사용. `|W − H|` 가 작을수록 더 나은 후보. 외부 영역은 평가에서 제외 — 정사각형 평가는 *내부 영역만* 의 bbox 기준.
 
-> belt-route 는 본 제약을 받지 않는다. 벨트는 한 셀에 여러 item 이 흘러도 게임 룰 위반이 아니므로, splitter / 정확한 throughput 보장은 별도 항목 ([.known-limits §4](auto-layout-wizard.known-limits.md)) 으로 분리.
+### O2 — 지하 변형 우선
+지상 (transport-belt / pipe) 으로 점유될 셀을 지하 변형 (`underground-belt` / `pipe-to-ground`) 페어로 비울 수 있으면 그쪽을 우선. 비교 정책은 사전식 O1 → O2 순.
 
-**C2.1 (보류) — 한 belt-route 셀은 서로 다른 item 이름 ≤ 2 종류.** 벨트의 두 lane 으로 환원되는 물리적 상한. 현재는 등록부 자리만 비워두고 router 는 belt-route 통과 정책에서 종류 카운팅을 하지 않는다. **라우팅이 안정적으로 동작한 후**, 실측 시나리오에서 3종류 합류가 실제로 발생하는지 확인하고 정의.
+### M1 — 컨테이너 추상화
+§2 의 정의를 사용. 구 둘레 슬롯 번호 모델 (`ceil(재료/2)`, `2(w+h)` 한계, 슬롯 1..2(w+h) 번호 부여) 은 **폐기**.
 
-### O1 — 사각형 넓이 최소화
-
-두 feasible 배치 P₁, P₂ 에 대해 area(R(P₁)) < area(R(P₂)) 이면 P₁ 이 더 나은 배치다.
-
-### M1 — 단일 머신 둘레 슬롯 모델 (외부 입출력 케이스, 컨텍스트-프리)
-
-**적용 범위:** 한 머신을 *고립* 시켜 보았을 때 — 즉 인접 머신이 없거나 (전후 문맥 부재), 모든 재료가 외부 공급일 때 — 머신 둘레에 깔리는 인서터·벨트 stub 의 자리.
-
-**모델:** w×h footprint 머신의 둘레 `2(w + h)` 셀에 *슬롯 위치* 를 다음 순서로 부여한다.
-
-- 상단 좌→우: `1 .. w`
-- 좌측 위→아래: `w+1 .. w+h`
-- 우측 위→아래: `w+h+1 .. w+2h`
-- 하단 좌→우: `w+2h+1 .. 2(w+h)`
-
-> 3×3 머신 → 12 슬롯, 3×2 보일러 → 10 슬롯, 9×9 로켓사일로 → 36 슬롯. "12-슬롯" 은 3×3 의 인스턴스 이름일 뿐 모델 정의가 아니다. 다음 다이어그램은 3×3 예시.
-
-```
-        1  2  3
-      ┌─────────┐
-   4  │         │  7
-   5  │  M M M  │  8
-   6  │  M M M  │  9
-      │  M M M  │
-      └─────────┘
-       10 11 12
-```
-
-이 번호 부여는 **외부에서 들어오고 나가는 입출력 벨트가 서로 교차하지 않도록 상단·좌·우·하단 면을 각각 한 줄로 흐르게 만드는** 사전 정렬이다 — 임의로 매긴 것이 아니라 *외부 라인이 꼬이지 않게* 보존하기 위한 순서.
-
-> 현재 구현은 footprint 를 3×3 으로 *고정* 하고 있다 — 모델 자체와는 별개의 구현 한계. 자세히는 [.known-limits §2](auto-layout-wizard.known-limits.md).
-
-**입력/출력 분배 규칙 (외부 입력 + 외부 출력 가정):**
-
-- 필요한 입력 슬롯 수 = `ceil(레시피 재료 가짓수 / 2)` — 벨트가 내부적으로 두 줄(lane) 이라 한 슬롯 한 벨트가 서로 다른 두 재료를 운반할 수 있음.
-- 필요한 출력 슬롯 수 = `ceil(recipe_output_throughput / min(belt_throughput, inserter_throughput))`.
-- 입력은 *낮은 번호부터*, 출력은 *높은 번호부터* 채운다. 빈 슬롯은 비워두며 한 면을 다 쓰지 않아도 무방 (한 면 사용 패턴은 본 모델의 제약이 아님).
-- 합 (입력 + 출력) > `2(w+h)` → 본 모델로는 단일 머신 케이스 수용 불가. 별도 보고.
-
-**O3 (보류) — 인접 머신 슬롯 공유로 인접 거리 단축.** 두 머신 사이의 출력 슬롯과 입력 슬롯이 *물리적으로 같은 셀* 을 공유하면 머신 간격이 4칸에서 1칸으로 줄어들고 사이의 인서터·belt-route 가 차감된다. 단일 머신 모델은 이 흡수가 없는 경우의 *베이스라인*. **라우팅이 안정적으로 동작한 후** 다중 머신 시나리오에서 정의 + 회전 호환 매트릭스와 함께 등록부에 본격 항목으로 승격.
-
-### O2 — 운반체가 내부 공간을 비울 수 있을 때 지하 변형을 우선 사용
-
-벨트 / 파이프 라우팅에서 한 구간을 **지상 (transport-belt / pipe) 으로 깔면 그 셀들이 점유되어 다른 운반체·머신 통로로 못 쓰지만**, 지하 변형 (`underground-belt` / `pipe-to-ground`) 페어로 동등한 연결이 가능하면 사이 셀이 자유 공간으로 남는다. 이때 지하 변형이 더 나은 선택이다.
-
-비교 우선순위 (낮을수록 우선):
-
-```
-지하 변형으로 비워진 내부 셀 수에 패널티가 더 작은 라우팅
-< 같은 거리의 지상 라우팅
-```
-
-즉 같은 from→to 를 잇는 두 라우팅 R₁ (일부를 지하로 우회) 와 R₂ (전구간 지상) 이 모두 feasible 일 때, 두 라우팅의 *지상 점유 셀 수* 가 더 작은 쪽이 더 나은 라우팅이다. 거리 자체의 동일성은 요구하지 않으며 — 지하 사용으로 인해 약간의 우회가 생겨도 비워지는 셀이 그 이상이면 채택.
-
-**O1 과의 관계 — 충돌 아니라 정렬:** 같은 from→to 를 잇는 지상 후보와 지하 후보는 시작점-끝점 spread 가 같으므로 used bbox 에 미치는 영향이 같다. 지하의 점유 셀 집합은 지상의 점유 셀 집합의 subset (entrance·exit 2 셀, 사이 셀 비점유). 따라서 **O2 를 따르면 O1 도 같거나 더 좋아지며**, 두 목적이 충돌하는 후보 쌍은 본 알고리즘의 라우팅에서 자연스럽게 만들어지지 않는다.
-
-방어선 차원에서 비교 정책은 **사전식 O1 → O2** 로 둔다 — area 가 더 작은 후보를 항상 우선, 같은 area 안에서 O2 의 지상 점유 셀 수가 더 작은 라우팅을 선택. 이 사전식 순서는 *발생하지 않는 충돌* 에 대한 방어가 아니라, 향후 다른 조건이 추가되어 라우팅이 spread 가 다른 후보를 만들기 시작하면 그때 O1 우위를 유지하기 위한 사전 명시이다.
-
-> 신규 항목은 사용자가 지정한 시점에 본 절에 추가한다. *예고된 자리는 비워두지 않는다* — 미등록 조건은 알고리즘에 들어오지 않는다.
+### M2 — A↔B 사이클 + 하향식 + 완전 탐색
+- 사이클 단위: (A) 머신 1개 배치 → (B) 그 머신의 *모든* 입력 라우팅 (외부 입력 + 부모와의 연결).
+- 진행: 상위 머신부터, DFS 방식으로 자식 → 손자 ... .
+- 자식 형제 순서 (n!) × 자식 위치 (오른쪽/아래쪽 = 2 가지) 를 모두 후보로 탐색.
 
 ---
 
-## 4. 알고리즘 구조
-
-본 절은 **현재 코드** ([runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts), [slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts), [router.ts](../frontend/src/utils/autoLayout/router.ts)) 의 구조를 서술. 외부 area 단조 탐색 / 휴리스틱 / 백트랙 / 회전 후보 / 지하 변형 / fluid 라우팅은 모두 미구현.
-
-### 단일 패스 골격
+## 7. 알고리즘 흐름
 
 ```
-runSlotAutoLayoutWizard(input)
-├─ 1. 레시피 트리 펼침 (expandRecipeTree)
-├─ 2. 머신 수 산정 (assignMinimumCounts / assignProportionalCounts)
-├─ 3. 트리 평탄화 + 머신 매핑 (flattenTree + pickMachineForRecipe)
-│      └─ fluid 레시피 검사 → warning, 머신만 배치
-├─ 4. primary 인서터 / 벨트 선택 (pickPrimary)
-├─ 5. 슬롯 배치 (packUnitsBySlot)
-│      └─ region 안에 머신을 가로로 한 줄 펴기
-└─ 6. 라우팅 (collectSlotRoutes + routeBelt)
-       └─ producer / consumer itemName 첫 매칭, 단일 BFS
+runWizard(input)
+├─ 1. 트리 펼침 (recipeTree.expandRecipeTree)
+├─ 2. 머신 수 산정 (assignMinimumCounts / Proportional)
+├─ 3. 슬롯 수 계산 — 모듈 3b
+│      └─ 머신별 inputContainers / outputContainers
+└─ 4. 완전 탐색 — 오케스트레이터
+       └─ DFS over (자식 형제 순서 perm × 자식 위치 dir)
+           ├─ (A) 부모 머신 배치 (내부 영역 (5,5))
+           ├─ (B) 부모 외부 입력 라우팅 (외부 영역)
+           ├─ for each child c in perm:
+           │   ├─ (A) c 를 부모 옆 (dir) 인접 배치
+           │   └─ (B) c 의 외부 입력 + 부모와의 연결 라우팅
+           ├─ §7.4 fallback (port 다른 셀 시도)
+           └─ §7.5 종결 (성공 → 후보 저장 / 실패 → 마킹 후 다음 perm·dir)
 ```
 
-§3 조건 등록부와의 대응:
+### 7.1 사이클 단위
+"한 사이클" = (A 머신 1개) + (B 그 머신의 모든 입력 라우팅). 외부·내부 입력을 한 묶음으로 처리한다.
 
-| 항목 | 현재 처리 |
+### 7.2 하향식 (top-down)
+상위 머신을 (5, 5) 에 두고 시작. 자식은 부모와 *벨트 길이 ≥ 1* 만 확보하도록 인접 배치. 자식의 자식 (= 손자) 도 같은 규칙을 자식 기준으로 재귀 적용.
+
+### 7.3 완전 탐색
+- 자식 형제 순서: `n!` 가지 (자식이 n 명일 때).
+- 자식 위치: 부모 기준 *오른쪽* 또는 *아래쪽* — 2 가지.
+- 후보 수 상한 없음. 진행 UI 에 후보 수 + 트리 깊이/형제 진행률 표시.
+- 사용자 Esc → 중단 + 알림. 그때까지 생성된 후보는 *모두 유지* 한다.
+
+### 7.4 fallback
+한 라우팅이 실패하면:
+1. **다른 port 셀** 시도 — 컨테이너 둘레의 다른 셀로 producer/consumer port 를 바꿔 재시도.
+2. 모든 port 조합 실패 → 후보 자체를 *실패* 로 마킹하고 다음 perm·dir 후보로 이동.
+
+### 7.5 종결
+- 성공: 후보 트리에 leaf 로 저장.
+- 실패: 트리에 회색 취소선 노드로 저장 (사용자 토글로 보기/숨기기).
+
+---
+
+## 8. 사용자 인터페이스
+
+### 8.1 진행 UI
+실시간 표시:
+- 생성된 후보 수 (예: "12 블루프린트 생성됨")
+- 트리 깊이 / 형제 순서 진행률 (예: "depth 3/5, 형제 2/6")
+- Esc → 중단 + 알림
+
+### 8.2 결과 트리 로그
+A 노드 (머신 배치 1회) 안에 *분기점 노드* (자식 형제 순서 / 자식 위치) 가 중첩되는 트리 구조.
+
+- **실패 가지** — 토글로 보기/숨기기. 보일 때는 회색·취소선.
+- **노드 클릭** — 중간 노드는 *그 시점까지의 부분 블루프린트* 미리보기, leaf 는 *완성된 블루프린트*.
+
+### 8.3 사용자 드래그
+
+| 대상 | 동작 | 충돌 처리 |
+|---|---|---|
+| 자식 머신 | 자식 + 자손 머신 + 라우팅 경로를 *통째* 이동 | 충돌 위치는 스냅 거부 (드롭 자체 막기) |
+| 외부 포트 | 코어 bbox 둘레 셀 단위 자유 위치. default = 좌상단 | 드래그 시 라우팅 + 포트 재계산 |
+| 무한상자 | 외부 영역 안 좌표 조정. 마지막 통합 직전에 가능 | 외부 영역끼리 충돌하면 스냅 거부 |
+
+자식 머신 드래그 시 *자식의 라우팅 재계산* 은 1차 구현에서 미포함 — 드래그한 만큼 라우팅 경로가 평행 이동만 하고, 다른 자식·머신과 충돌하면 스냅 거부.
+
+---
+
+## 9. 입출력 인터페이스
+
+(현행 [WizardInput / WizardResult](../frontend/src/utils/autoLayout/types.ts) 와 호환을 유지하되, 새 모델 도입 시 다음 필드를 확장한다 — 정확한 시그니처는 모듈 스켈레톤 커밋에서 정의.)
+
+| 필드 (예정) | 의미 |
 |---|---|
-| C1 (충돌 없음) | packer 가 슬롯 좌표를 직접 계산해 충돌 없는 위치만 emit. 백트랙 없이 한 번에 결정 |
-| C2 (라우팅 가능) | §4-C 의 BFS. 실패 시 `route-failed` warning |
-| C3 (액체 mixing 방지) | 미구현. fluid 등장 시 §4-A 단계에서 warning 만 |
-| O1 (area 최소화) | 미구현. 사용자 region 안에 들어가는지 단순 시도 |
-| O2 (지하 변형 우선) | 미구현. BFS 는 4-방향 인접만 |
-| O3 (인접 슬롯 공유) | 미구현 |
-| T1 (첫 feasible 종료) | 단일 패스라 자동 만족 — 후보가 하나뿐 |
-
-### 4-A. 머신 매핑 (runSlotWizard 단계 1~4)
-
-1. `expandRecipeTree(targetRecipe, recipeMap, itemToRecipe, externalIngredients)` — 타깃에서 BFS 로 트리 펼침. cycle 은 silently external leaf.
-2. 머신 수: `min` 모드는 비-external 노드별 1대, 비례 모드는 `assignProportionalCounts(tree, perTarget, ...)`.
-3. `flattenTree(tree)` 의 각 비-external recipe 노드에 대해 `pickMachineForRecipe` 로 카테고리 매칭 머신 선택. fluid 가 한 번이라도 등장하면 `fluid-recipe-not-supported` warning 1회 발행. `node.machineCount` 만큼 unit 객체 push (한 unit = (노드, 머신)).
-4. `pickPrimary` 로 인서터 1개 + 벨트 1개 선택 (사용자 primary 또는 selected 첫 번째).
-
-### 4-B. 슬롯 배치 (slotPlacer.packUnitsBySlot)
-
-상수 (현재 구현):
-- `MACHINE_W = 3` — footprint 3×3 가정 ([known-limits §2](auto-layout-wizard.known-limits.md))
-- `SLOT_PAD = 2` — 좌측·상단 슬롯 stub 공간
-- `STEP_X = MACHINE_W + SLOT_PAD = 5` — 두 머신 origin 사이 거리
-
-처리:
-1. `curX = region.x + SLOT_PAD`, `curY = region.y + SLOT_PAD` — 모든 머신이 같은 row 에서 시작.
-2. unit 배열을 *입력 순서대로* (트리 위상 정렬 없음):
-   1. `curX + 5 > region 우측` 또는 `curY + 5 > region 하단` → break (영역 부족, partial-region-overflow warning).
-   2. `computeSlotCountsFromUnit` 로 슬롯 수 계산:
-      - `inputSlots = ceil(node.children.length / 2)`
-      - `outputSlots = max(1, ceil(머신 crafting_speed / min(인서터 throughput, belt lane throughput)))`
-   3. `inputSlots + outputSlots > 12` → `oversizedUnits++` 후 다음 unit 으로.
-   4. 머신 footprint (3×3) 셀 emit. (0,0) 만 isOrigin, recipe 필드 부착.
-   5. `slotCells(curX, curY)` 가 슬롯 1..12 좌표 반환 — 입력 슬롯 = 1..inputSlots, 출력 슬롯 = 12..(13-outputSlots).
-      - 각 슬롯에 인서터 셀 + belt stub 셀 emit. direction 은 슬롯의 면 (N/E/S/W) 으로부터 자동.
-   6. `curX += 5`.
-3. 결과: `placed` (셀 배열), `layouts` (머신별 입출력 stub 좌표), `oversizedUnits`, `usedRegion`.
-
-### 4-C. 라우팅 (runSlotWizard 단계 6 + router.routeBelt)
-
-`pack.layouts.length > 1` 이고 belt 가 선택되어 있을 때만 실행.
-
-1. `buildOccupancy(allCells)` — 모든 placed 셀을 occupancy 맵으로 변환. 4종 분류:
-
-| Kind | 분류 기준 | 통과 (중간) | endpoint |
-|---|---|---|---|
-| `machine` | 인서터·벨트 외 모든 footprint | ✕ | ✕ |
-| `inserter` | `EntityType.Inserter` | ✕ | ✕ |
-| `belt-fixed` | `EntityType.Belt` (slotPlacer 가 깐 stub) | ✕ | ✓ |
-| `belt-route` | router 가 깐 transport-belt | ✓ | ✓ |
-
-같은 좌표 중복 시 우선순위: `machine > inserter > belt-fixed > belt-route`.
-
-2. `collectSlotRoutes(layouts)` — 한 itemName 마다 *처음 매칭* 된 producer 의 output stub 1개만 사용. 그 좌표 → consumer 의 input stub 좌표 페어 생성. self-route skip.
-3. 각 route 마다 `routeBelt({from, to, itemName, beltName}, region, occ)`:
-   - 4-방향 BFS (Lee algorithm), 모든 통과 가능 셀 비용 1 (균일).
-   - region 박스 안에서만 탐색.
-   - `from` / `to` 가 `belt-fixed` 이므로 endpoint 통과 허용.
-   - 중간 셀 통과 정책: 빈 셀 OR `belt-route` 만. `machine` / `inserter` / `belt-fixed` 는 중간 통과 불가.
-   - 처음 도착 시 BFS 종료. `came` map 으로 경로 복원 후 reverse.
-   - 경로 셀마다 transport-belt emit. direction = "이 셀에서 다음 셀로" 의 진행 방향. 마지막 셀은 직전 방향 유지.
-   - 이미 belt-fixed/belt-route 인 셀은 reused 카운트만 증가.
-   - 경로 미발견 → 해당 route 만 fail, `route-failed` warning.
-
-### 4-D. §3 등록 항목 중 미구현
-
-- **C3** fluid mixing 방지
-- **O1** area 최소화 외부 루프
-- **O2** 지하 변형 우선 — belt / pipe 양쪽
-- **O3** 인접 머신 슬롯 공유
-- **회전 후보 + 백트랙**
-- **휴리스틱 점수화**
-- **pipe kind 라우팅** + occupancy `pipe-fixed` / `pipe-route`
-- **다중 producer 합류 / splitter 분기** ([known-limits §4](auto-layout-wizard.known-limits.md))
-- **보일러 / 스팀엔진 / 펌프 등 비-crafting fluid 머신** — 레시피 트리 BFS 에 들어오지 않으므로 별도 확장 필요
+| `WizardResult.candidateTree` | 후보 트리 (A 노드 + 분기점 노드 + 실패 마킹) |
+| `WizardResult.candidates` | 성공 leaf 들의 평탄화된 블루프린트 배열 |
+| `WizardResult.partial` | Esc 중단 시 부분 결과 여부 |
+| `WizardInput.externalPortsDefault` | 외부 포트 default 위치 (= 좌상단) |
+| `onProgress(depth, siblingIndex, candidatesGenerated)` | 진행 UI 콜백 |
+| `signal: AbortSignal` | Esc 중단 신호 |
 
 ---
 
-## 5. 휴리스틱 (보류)
+## 10. 결정성 · 종료 · 완전성
 
-내부 루프의 후보 정렬용 — 회전 후보 / 백트랙이 도입되는 시점에 본격 도입. 현재 구현은 머신을
-*가로로 나란히 배치* 하는 단순 규칙만 사용 (회전 없음, 백트랙 없음, 휴리스틱 점수 없음).
-
-향후 도입 시 후보:
-- **인접 보너스**: 운반 요구로 연결된 머신과의 Manhattan 거리 합이 작을수록 우선.
-- **bbox 유지 보너스**: 현재까지 배치된 머신들의 bounding box 를 *더 늘리지 않는* 위치를 우선.
-- **그리드 정렬 보너스**: 같은 row 또는 column 에 이미 머신이 있는 위치 우선.
-- **회전 후보**: 4-방향 모두 시도. rᵢ 에 따라 인서터·belt stub 이 머신의 어느 면에 붙는지가 결정된다.
-- **지하 점프 비용** (O2 반영): 라우팅 BFS 의 cost 함수를 "셀 점유 1 / 지하 페어 2 (사이 셀은 0)" 로 둠.
-
-도입 시점에 가중치 결합 방식과 동점 처리 (좌→우, 상→하) 를 본 절에 명시한다.
+| 속성 | 보장 |
+|---|---|
+| 결정성 (= 동일 입력 → 동일 후보 집합) | ✓ 난수 미사용. 후보 정렬은 안정 정렬 |
+| 완전성 (= 모든 perm × dir 후보 탐색) | ✓ 상한 없음 |
+| 종료 | ✓ 자연 종료 또는 Esc |
+| 최적성 (= 이론적 최소 area) | △ 후보 집합 안에서 O1 우선 정렬, 사용자가 후보 중 선택 |
 
 ---
 
-## 6. 입출력 인터페이스
+## 11. 새 조건 처리 절차
 
-[WizardInput / WizardResult](../frontend/src/utils/autoLayout/types.ts).
-
-| 필드 | 의미 |
-|------|------|
-| `WizardInput.region` | 배치 가능 영역 (현재는 그 안에 가로로 머신을 늘어놓는 용량 상한) |
-| `WizardInput.inserterOverrides` | 인서터별 처리량/묶음 갯수 사용자 보정 ([inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts)) |
-| `WizardInput.selectedUndergroundPipes` | 현재 라우팅에서 미사용 — pipe kind 도입 시 (M7) 점프 edge 활성화 결정 |
-| `WizardResult.usedRegion` | 배치된 영역의 bounding rectangle |
-| `WizardResult.placedWithCoords` | 그리드에 적용할 (x, y, GridCell) 페어 |
-| `WizardWarning.code` `fluid-recipe-not-supported` | 본 모델은 fluid 미지원 — 머신만 배치, 사용자에게 알림. fluid 라우팅 (pipe kind + C3) 도입 시 삭제 |
-
----
-
-## 8. 단조성 · 결정성 · 종료 · 최적성
-
-| 속성 | 보장 정도 | 근거 |
-|------|-----------|------|
-| 결정성 (같은 입력 → 같은 출력) | ✓ | 난수 미사용. 후보 정렬은 안정 정렬, 동점 규칙 명시 |
-| area 단조성 (큰 R 이면 더 쉬움) | 약함 (휴리스틱) | 후보 집합은 superset 이지만 같은 시간 한도에서 fail 가능 |
-| 종료 | ✓ | 외부 루프가 area_max 도달 시 강제 종료. T1 으로 첫 ok 즉시 종료 |
-| 최적성 (= 이론적 최소 area) | ✗ | 휴리스틱이 작은 area 를 풀지 못해도 다음 area 로 넘어감. T1 의 정의상 "발견 가능한 최소" 이지 "이론적 최소" 아님 |
-
-> 이론적 최소를 보장하려면 같은 area 안에서 모든 (W,H) × 모든 후보를 소진해야 한다. T1 은 그 비용을 명시적으로 거부한다.
-
----
-
-## 9. 새 조건이 들어올 때의 처리 절차
-
-1. §3 조건 등록부에 항목 번호 (C3 / O2 / T2 또는 dotted 확장 C2.1 등) 와 한 줄 정의 추가.
-2. 그 조건이 **외부 루프 / 내부 루프 / 라우팅** 중 어느 단계에 들어가는지 §4 에 명시.
-3. 휴리스틱이 새 조건을 반영해야 하면 §5 갱신.
+1. §6 조건 등록부에 항목 번호 (C/O/M 또는 dotted 확장) 와 한 줄 정의 추가.
+2. 그 조건이 §5 의 어느 모듈에 반영되는지 명시.
+3. UI 영향이 있으면 §8 갱신.
 4. 등록부 외 자리에서 *암묵적으로 가정되는* 조건은 채택하지 않는다.
 
+---
+
+## 12. 신규 모델로 흡수된 / 폐기된 항목
+
+| 구 항목 | 처리 |
+|---|---|
+| 둘레 슬롯 번호 (1..2(w+h)) | **폐기** — 새 모델은 둘레 셀 자체가 port 후보. 번호 부여 없음 |
+| `inputSlots = ceil(재료/2)` (lane=2 가정) | **폐기** — 새 모델은 컨테이너 1개 = 라우팅 1개. lane 가정 미사용 |
+| `outputSlots = ceil(throughput / min(belt, inserter))` | **흡수** — 모듈 3b 의 `ceil(throughput / belt_throughput)` (item) / `ceil(throughput / pipe_throughput)` (fluid) |
+| 입력 낮은 번호 / 출력 높은 번호 분배 정책 | **폐기** — 새 모델은 자식 위치 방향에 따라 port 가 자동 결정 (모듈 3a 그리디) |
+| O3 — 인접 머신 슬롯 공유 | **흡수** — 새 모델의 M2 가 *부모-자식 인접 배치* 를 기본으로 함. 별도 항목 불필요 |
+| 슬롯 한계 `inputSlots + outputSlots > 2(w+h)` | **폐기** — 컨테이너 수를 늘리는 정책 (모듈 3b) 으로 우회 |
+
+---
+
+## 13. 명시적 비-목표
+
+### 13.1 비-목표 항목
+- **머신 회전** — N 방향 고정. 4방향 후보 미사용.
+- **공유 자식** — 한 product 가 여러 부모 입력으로 공급되는 케이스는 *고려하지 않는다*. 트리 펼침 시 발견 여부 자체를 검사하지 않으며, 발견되어도 별도 처리 없음.
+- **머신 1대 단위의 multiple 합류 / splitter 분기** — 컨테이너 분할 (모듈 3b) 로 우회. splitter 사용 안 함.
+- **외부 포트 default 외 자동 최적화** — 외부 포트 위치는 default 좌상단 + 사용자 드래그만. 알고리즘이 자동으로 더 나은 면을 선택하지 않음.
+
+### 13.2 보류 항목 (재검토 가능)
+- **자식 머신 드래그 시 라우팅 재계산** — 1차 미구현. 통째 이동만.
+- **하이브리드 모드 (공유 자식이 허브로 먼저 고정)** — 13.1 의 공유 자식 비-목표가 깨질 때 도입 검토.
+- **회전 4방향 후보** — fluid_box 위치가 회전마다 달라지는 머신에서 *배치 가능성* 자체를 늘리고 싶을 때 도입 검토.
+
+---
+
+## 부록 — 설계 결정 요약
+
+새 모델 설계 시점의 31개 결정 항목. 본문에 흩어진 결정의 출처 추적용.
+
+| # | 항목 | 결정 |
+|---|---|---|
+| Q1 | 좌표계 | 별도 (내부/외부), 마지막에 통합 |
+| Q2 | 무한상자 나열 방향 종속 | 철회 |
+| Q3 | 무한상자→머신 라우팅 | 컨테이너-투입기-벨트(가변)-투입기-컨테이너 |
+| Q4 | 무한파이프→머신 라우팅 | 컨테이너-파이프+지하파이프-컨테이너 |
+| Q5 | 외부 출력 라우팅 | 동일 형식 |
+| Q6 | 자식 머신 단계 | 부모와 인접 배치 + 재귀 |
+| Q7 | 사이 빈 공간 | 라우팅 점유 공간 (다른 머신 못 들어옴) |
+| Q8 | 영역 명명 | 외부/내부 영역 (external/internal area) |
+| Q9 | 다이렉트 연결 | 별도 의미 없음 — 항상 §4 형식 |
+| Q10 | 정사각형 판정 | 두 후보 모두 완전 탐색, 사용자 드래그 가능 |
+| Q11 | A↔B 단위 | 머신 1개 + 그 모든 입력 |
+| Q12 | 슬롯 수 계산식 | `ceil(throughput / belt or pipe)` |
+| Q13 | 컨테이너에 인서터 포함 | 미포함 (라우팅 함수 책임) |
+| Q14 | 모듈 3 분리 | 3a port 유추 + 3b 슬롯 수 — 두 함수 |
+| Q15 | 회전 | 미고려 |
+| Q16 | 공유 자식 | 미고려 |
+| Q17 | 형제 순서 | 완전 탐색 |
+| Q18 | 너무 가까운 라우팅 | 다른 port 셀 시도 |
+| Q19 | throughput 부족 | 컨테이너 수 늘림 |
+| Q20 | 후보 수 상한 | 없음, Esc 중단 + 알림 |
+| Q21 | 슬롯 매칭 우선순위 | 그리디 (자식 방향 자동) → fallback |
+| Q22 | 자식 드래그 | 통째 이동, 라우팅 재계산 미구현 |
+| Q23 | 외부 포트 드래그 단위 | 셀 단위 자유 위치 |
+| Q24 | 좌표계 통합 시점 | 마지막 일괄, 직전 사용자 드래그 가능 |
+| Q25 | 자식 드래그 충돌 | 스냅 거부 |
+| Q26 | 모든 port 조합 실패 | 그 후보 실패 마킹 후 다음 perm·dir |
+| Q27 | 진행 UI 단위 | 후보 수 + 트리 깊이/형제 진행률 |
+| Q28 | Esc 중단 시 | 부분 결과 모두 유지 (트리 로그) |
+| Q29 | 트리 노드 단위 | A 노드 안에 분기점 노드 중첩 |
+| Q30 | 실패 가지 표시 | 토글 보기/숨기기 |
+| Q31 | 노드 클릭 | 중간 = 부분, leaf = 완성 |

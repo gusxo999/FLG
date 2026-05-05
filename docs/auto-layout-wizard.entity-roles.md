@@ -4,10 +4,12 @@
 > **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.known-limits](auto-layout-wizard.known-limits.md)
 
 자동완성 위저드가 그리드에 깔아내는 엔티티는 작동 방식 측면에서 **4가지 역할**로 나뉜다.
-이 4가지는 placer / router 가 머신 둘레 슬롯에 채워야 할 자리를 결정하는 골격이며,
+이 4가지는 placer / router 가 채워야 할 자리를 결정하는 골격이며,
 **이 4가지에 속하지 않는 엔티티(heat-pipe / electric-pole / rail / beacon 등) 는 자동완성의 관심사 바깥**이다 —
 수동으로 코드/문서를 확장해 5번째 역할을 명시하기 전까지 위저드는 후보로도 노출하지 않고
 placer 입력으로도 받지 않는다.
+
+> ⚠ **모델 재설계 진행 중** — 본 문서의 "둘레 슬롯" 어휘는 *구 둘레 슬롯 모델* 시점의 표현. 새 컨테이너 모델 ([.placement-search](auto-layout-wizard.placement-search.md)) 에서는 *컨테이너 port* 로 명명이 바뀌고, **무한상자·무한파이프** 가 컨테이너의 일종으로 추가된다 (외부 영역 I/O). 본 문서는 새 모델 도입이 끝나면 용어를 일괄 정렬한다.
 
 ---
 

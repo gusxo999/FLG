@@ -1,17 +1,16 @@
 # 레이아웃 자동완성 — 위저드 인터페이스 (parent)
 
-**상태:** UI 골격 + 둘레 슬롯 모델 기반 배치 알고리즘 (코드 작성, **동작 미검증** — 사용자 보고에 따르면 두 머신 직렬도 정상 동작하지 않는 케이스 존재).
-현재 구현은 3×3 footprint 고정. Fluid 라인 / 회전 머신 / 다중 합류 / 모듈·신호기는 미구현.
+**상태:** UI 골격 + *구 둘레 슬롯 모델* 기반 배치 알고리즘 코드가 부분 작성되어 있으나 **모델 재설계 진행 중**. 새 모델 = **컨테이너 모델** ([auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)). 현재 코드는 새 모델로 단계적 (타입 → 모듈 스켈레톤 → 구현) 교체 예정.
 
 이 문서는 **자동완성 위저드 기능의 부모 문서**다. 위저드는 여러 하위 기능(트리 펼침, 머신 수 산정,
-둘레 슬롯 배치, 라우팅 등)이 단일 UI 흐름 안에 합쳐진 복합 기능이며, 각 하위 기능의 상세는 하위
+컨테이너 배치, 라우팅 등)이 단일 UI 흐름 안에 합쳐진 복합 기능이며, 각 하위 기능의 상세는 하위
 문서로 분리되어 있다.
 
 ## 관련 문서 (이 위저드의 하위)
 
 | 문서 | 주제 |
 |------|------|
-| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **알고리즘 단일 출처** — 둘레 슬롯 모델 기반 배치 + 조건 등록부 (C/O/T/M 항목) |
+| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **알고리즘 단일 출처** — 컨테이너 모델 + 조건 등록부 (C/O/M 항목) |
 | [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
@@ -81,7 +80,7 @@
 
 ## 알고리즘
 
-알고리즘 본문 (둘레 슬롯 모델, 조건 등록부, 라우팅, 마일스톤) 은
+알고리즘 본문 (컨테이너 모델, 조건 등록부, 라우팅, 모듈 구성) 은
 [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
 
@@ -109,18 +108,16 @@
 
 ### 현재 구현 범위
 
-- ✅ 레시피 트리 펼치기 (`expandRecipeTree`)
-- ✅ 최소 / 처리량 모드 머신 수 계산
-- ✅ 카테고리별 호환 머신 선택 (`pickMachineForRecipe`)
-- ✅ 둘레 슬롯 모델 placer (`packUnitsBySlot`) — 입력 ceil(N/2) / 출력 처리량 기반 (현재 구현은 3×3 머신만)
-- ✅ 인서터 처리량 사용자 override (`inserterThroughput`)
-- ✅ I/O 라우팅 (Lee BFS, 부모 ingredient ↔ 자식 product 첫 매칭만 연결)
-- ⏳ 다중 자식 합류 / splitter 분기 — TODO ([known-limits §4](auto-layout-wizard.known-limits.md))
-- ⏳ underground belt / pipe 자동 사용 — placement-search M6
-- ⏳ 파이프(액체) 라인 — placement-search M7
-- ⏳ 슬롯 공유로 인접 머신 거리 단축 — placement-search §3 O3 (보류)
+레거시 (구 둘레 슬롯 모델 기반, 새 모델로 교체 예정):
 
-자세한 한계 목록과 우선순위는 [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) 참조.
+- ✅ 레시피 트리 펼치기 (`expandRecipeTree`) — *유지, 새 모델에서도 동일하게 사용*
+- ✅ 최소 / 처리량 모드 머신 수 계산 — *유지*
+- ✅ 카테고리별 호환 머신 선택 (`pickMachineForRecipe`) — *유지*
+- ✅ 인서터 처리량 사용자 override (`inserterThroughput`) — *유지*
+- ⚠ 둘레 슬롯 모델 placer (`packUnitsBySlot`) — **폐기 예정**. 새 모델의 모듈 A·B 로 교체
+- ⚠ I/O 라우팅 (Lee BFS, 부모 ingredient ↔ 자식 product 첫 매칭만 연결) — **재작성 예정**. 새 모듈 4 로 교체
+
+새 모델 (컨테이너 모델) 의 도입 단계는 [.placement-search](auto-layout-wizard.placement-search.md) 참조. [.known-limits](auto-layout-wizard.known-limits.md) 의 한계 항목 다수가 새 모델에서 자동 해소되거나 비-목표로 재분류된다 (자세한 처리는 .placement-search §12 / §13).
 
 ### 구현 위치
 
@@ -128,8 +125,8 @@
 - [frontend/src/utils/autoLayout/recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
 - [frontend/src/utils/autoLayout/techGroup.ts](../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
 - [frontend/src/utils/autoLayout/inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [frontend/src/utils/autoLayout/slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts) — 둘레 슬롯 모델 배치
+- [frontend/src/utils/autoLayout/slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts) — *(legacy)* 둘레 슬롯 모델 배치 — 새 모델의 모듈 A·B 로 교체 예정
 - [frontend/src/utils/autoLayout/placedCell.ts](../frontend/src/utils/autoLayout/placedCell.ts) — 공용 PlacedCell 타입 + recipeHasFluid
-- [frontend/src/utils/autoLayout/router.ts](../frontend/src/utils/autoLayout/router.ts) — Lee BFS belt 라우팅 + occupancy
-- [frontend/src/utils/autoLayout/runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts) — 단계 합성 진입점
+- [frontend/src/utils/autoLayout/router.ts](../frontend/src/utils/autoLayout/router.ts) — *(legacy)* Lee BFS belt 라우팅 — 새 모듈 4 (item/fluid 통합) 로 교체 예정
+- [frontend/src/utils/autoLayout/runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts) — *(legacy)* 단계 합성 진입점 — 새 오케스트레이터로 교체 예정
 - [frontend/src/components/AutoLayoutModal.tsx](../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI
