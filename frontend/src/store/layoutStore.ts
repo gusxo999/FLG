@@ -28,7 +28,7 @@ import { nanoid } from './nanoid';
 function canOverwrite(selected: EntityType, existing: EntityType): boolean {
   if (selected === EntityType.Belt && existing === EntityType.Belt) return true;
   const isPipeFamily = (t: EntityType) =>
-    t === EntityType.Pipe || t === EntityType.PipeUnderground;
+    t === EntityType.Pipe || t === EntityType.PipeUnderground || t === EntityType.InfinityPipe;
   if (isPipeFamily(selected) && isPipeFamily(existing)) return true;
   return false;
 }

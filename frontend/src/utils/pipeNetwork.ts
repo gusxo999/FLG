@@ -88,7 +88,7 @@ function pipeFamilyOf(entityType: EntityType, fType: string | undefined): PipeFa
   if (fType === 'heat-pipe') return 'heat';
   if (fType === 'pipe' || fType === 'pipe-to-ground' || fType === 'infinity-pipe') return 'fluid';
   // gameData 로드 전이면 일단 fluid 로 가정
-  if (entityType === EntityType.Pipe || entityType === EntityType.PipeUnderground) return 'fluid';
+  if (entityType === EntityType.Pipe || entityType === EntityType.PipeUnderground || entityType === EntityType.InfinityPipe) return 'fluid';
   return null;
 }
 

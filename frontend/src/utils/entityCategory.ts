@@ -70,6 +70,8 @@ const TYPE_TO_ENTITYTYPE: Record<string, EntityType> = {
   'container': EntityType.Chest,
   'logistic-container': EntityType.Chest,
   'linked-container': EntityType.Chest,
+  'infinity-container': EntityType.InfinityChest,
+  'infinity-pipe': EntityType.InfinityPipe,
   'radar': EntityType.Radar,
   'lamp': EntityType.Chest,
   'arithmetic-combinator': EntityType.Chest,

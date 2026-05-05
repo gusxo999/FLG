@@ -25,6 +25,8 @@ export const EntityType = {
   Inserter:        'Inserter',
   LongInserter:    'LongInserter',
   Chest:           'Chest',
+  InfinityChest:   'InfinityChest',   // infinity-container — 자동완성 위저드 외부 영역 IO
+  InfinityPipe:    'InfinityPipe',    // infinity-pipe      — 자동완성 위저드 외부 영역 fluid IO
   Roboport:        'Roboport',
   Lab:             'Lab',
   Radar:           'Radar',
@@ -121,6 +123,8 @@ export const ENTITY_SIZES: Partial<Record<EntityType, EntitySize>> = {
   [EntityType.SteamEngine]:{ width: 5, height: 3 },
   [EntityType.MiningDrill]:{ width: 3, height: 3 },
   [EntityType.Splitter]:   { width: 2, height: 1 },
+  [EntityType.InfinityChest]: { width: 1, height: 1 },
+  [EntityType.InfinityPipe]:  { width: 1, height: 1 },
 };
 
 export interface LayoutGrid {

@@ -347,7 +347,7 @@ const COLOR_BELT_FLOW  = 0xf5f5ff; // 벨트 진행 방향 (밝은 white)
 function isOverwriteAllowed(selected: EntityType, existing: EntityType): boolean {
   if (selected === EntityType.Belt && existing === EntityType.Belt) return true;
   const isPipeFamily = (t: EntityType) =>
-    t === EntityType.Pipe || t === EntityType.PipeUnderground;
+    t === EntityType.Pipe || t === EntityType.PipeUnderground || t === EntityType.InfinityPipe;
   if (isPipeFamily(selected) && isPipeFamily(existing)) return true;
   return false;
 }
