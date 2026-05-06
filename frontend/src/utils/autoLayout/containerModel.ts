@@ -38,10 +38,16 @@ export interface Container {
   size: { w: number; h: number };
   /**
    * 머신 컨테이너에 부속된 레시피. 무한상자/무한파이프는 undefined.
-   * 외부 입력/출력 무한상자/파이프는 별도 `content` (item/fluid 이름) 으로
-   * 의미를 갖지만 이는 port 의 kind 에 인코딩된다.
    */
   recipeName?: string;
+  /**
+   * 무한상자/무한파이프가 운반하는 내용물 (item 이름 또는 fluid 이름).
+   * 머신은 undefined.
+   *
+   * 라우팅 시 port.kind 와 일치 여부 검사에 사용되고, 블루프린트 export 시
+   * `infinity_settings.filters` (또는 fluid 필터) 의 값으로 들어간다.
+   */
+  content?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

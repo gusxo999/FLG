@@ -12,32 +12,81 @@
  * (placement-search §8.3, Q24 b).
  */
 
+import { EntityType, createEmptyCell } from '../../types/layout';
+import type { Direction, GridCell } from '../../types/layout';
 import type {
   Area,
   Container,
+  ContainerKind,
   PlaceExternalContainer,
+  PlacedCell,
 } from './containerModel';
 
 /**
  * 외부 컨테이너 1개를 외부 영역의 다음 빈 셀에 배치.
  *
- * spec.content 는 무한상자/무한파이프가 흘릴 *내용물* (item 이름 또는 fluid 이름).
- * 라우팅 시점에 port 의 PortKind 와 일치 여부를 검사하는 데 쓰인다.
+ * 좌표 부여: 이미 placed 된 외부 컨테이너 수를 n 이라 할 때 다음 위치 = (n, 0).
+ * 사용자 드래그가 통합 직전에 일어나면 본 함수의 좌표는 덮어써진다 (Q24 b).
+ *
+ * spec.content 는 컨테이너의 `content` 필드에 저장되어 후속 라우팅·블루프린트
+ * export 단계에서 port.kind 매칭 / `infinity_settings.filters` 작성에 쓰인다.
+ *
+ * id 는 외부에서 주입할 수 있도록 spec.id 받지 않고 본 함수가 생성 — 다른
+ * 모듈과 동일한 패턴 (ContainerWizard 가 unique id 를 발급할 때 본 함수도
+ * 이를 호출 시 id-prefix 로 받게 하려면 시그니처 확장 필요).
  */
 export const placeExternalContainer: PlaceExternalContainer = (
-  _spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
-  _external: Area,
+  spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
+  external: Area,
 ): Container => {
-  // TODO(placement-search §3 외부 영역 / Q23 a):
-  //  1. _external.containers 의 길이 n 으로부터 다음 좌표 = (n, 0).
-  //  2. Container 객체 생성 (kind = _spec.kind, entityName = _spec.entityName,
-  //     origin = (n, 0), size = { w: 1, h: 1 }).
-  //  3. _external.containers 에 push, _external.placed 에 1×1 셀 emit.
-  //  4. _external.bbox 갱신 (= max bounding rectangle).
-  //  5. _spec.content 는 컨테이너 자체에 인코딩하지 않고, 이후 라우팅에서
-  //     port.kind 를 통해 흘림 — 단, 최종 블루프린트의 infinity_settings 에
-  //     content 가 들어가야 하므로 `Container` 가 아닌 별도 메타 (예: 외부 영역
-  //     별도 map) 로 보존. 1차 구현은 `recipeName` 필드를 재활용하거나
-  //     별도 contentByContainerId 맵을 만들지 결정.
-  throw new Error('externalPlacer.placeExternalContainer: not implemented');
+  const n = external.containers.length;
+  const container: Container = {
+    id: nextExternalId(spec.kind, n),
+    kind: spec.kind,
+    entityName: spec.entityName,
+    origin: { x: n, y: 0 },
+    size: { w: 1, h: 1 },
+    content: spec.content,
+  };
+
+  external.containers.push(container);
+  external.placed.push(makeExternalCell(container));
+  external.bbox = expandBbox(external.bbox, container.origin.x, container.origin.y, 1, 1);
+  return container;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 내부 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+function nextExternalId(kind: ContainerKind, n: number): string {
+  return `ext-${kind === 'infinity-chest' ? 'chest' : 'pipe'}-${n}`;
+}
+
+function makeExternalCell(c: Container): PlacedCell {
+  const cell: GridCell = {
+    ...createEmptyCell(),
+    entityId: c.id,
+    entityName: c.entityName,
+    entityType: c.kind === 'infinity-chest' ? EntityType.InfinityChest : EntityType.InfinityPipe,
+    direction: 0 satisfies Direction,
+    tileOffset: { x: 0, y: 0 },
+    isOrigin: true,
+  };
+  return { x: c.origin.x, y: c.origin.y, cell };
+}
+
+function expandBbox(
+  bbox: Area['bbox'],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): NonNullable<Area['bbox']> {
+  if (!bbox) return { x, y, w, h };
+  const minX = Math.min(bbox.x, x);
+  const minY = Math.min(bbox.y, y);
+  const maxX = Math.max(bbox.x + bbox.w, x + w);
+  const maxY = Math.max(bbox.y + bbox.h, y + h);
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
