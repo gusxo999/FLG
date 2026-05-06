@@ -6,24 +6,27 @@
  * 컨테이너 모델 v2 의 진입점. 새 위저드 입력 (`ContainerWizardInput`) 을
  * 받아 후보 트리 (`CandidateTree`) 를 생성한다.
  *
- * **1차 구현 범위:**
- *   - depth 0 (root 만) — 후보 1개 생성.
- *   - depth 1 (root + 직접 자식) — 자식 형제 순서 n! × 방향 2 = 2n! 후보.
+ * **현재 동작 범위:**
+ *   - 임의 깊이의 레시피 트리 — DFS 재귀로 모든 비-external 노드를 배치.
+ *   - 자식 형제 순서 (n!) × 자식 위치 ('right' | 'down') = **루트 레벨에서 완전 탐색**.
+ *   - 내부 레벨에서는 *first-success 커밋* — 자식의 (perm × dir) 도 enumerate 하지만
+ *     첫 성공한 조합만 후보 상태로 commit.
+ *   - 외부 영역 IO — 무한상자/무한파이프 1×1 줄 자동 배치 (외부 입력 + 루트 출력).
  *
- * **이번 커밋의 미구현 (follow-up):**
- *   - depth ≥ 2 손자 재귀 — 현재는 손자가 있는 노드를 만나면 *external* 처럼
- *     처리 (= 그 자식을 leaf 로 두고 라우팅 안 함).
- *   - 외부 영역 IO (무한상자/파이프) 배치 + 통합.
- *   - 라우팅 fallback (다른 port 셀 시도).
- *   - 완전 탐색 진행 중 후보 깊이/형제 진행률 정확 계산 (현재는 단순 카운터).
+ * **follow-up (별도 커밋):**
+ *   - 내부 레벨까지 *완전한 cross-product 후보* 생성 (현재는 first-success)
+ *   - 외부 → 내부 라우팅 (현재는 외부 영역에 무한상자만 두고 라우팅 없음)
+ *   - 라우팅 fallback (다른 port 셀 시도) — Q21 / §7.4
+ *   - fluid 라우팅 — containerRouting.ts 가 처리할 자리
  */
 
 import { useGameDataStore } from '../../store/gameDataStore';
-import { computeContainerCounts } from './containerCounts';
+import type { Recipe } from '../../store/gameDataStore';
 import type {
   Area,
   BranchNode,
   CandidateLeaf,
+  CandidateNode,
   CandidateTree,
   Container,
   ContainerWizardInput,
@@ -35,6 +38,7 @@ import type {
   RunContainerWizard,
 } from './containerModel';
 import { commitRouting, routePorts } from './containerRouting';
+import { placeExternalContainer } from './externalPlacer';
 import { placeMachine, placeRootMachine } from './machinePlacer';
 import { resolvePortPair } from './portInference';
 import {
@@ -49,9 +53,10 @@ const nextNodeId = (prefix: string): string => {
   return `${prefix}-${nodeIdCounter}`;
 };
 
-/**
- * 새 위저드의 단일 진입점.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// 진입점
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const runContainerWizard: RunContainerWizard = async (
   input: ContainerWizardInput,
   hooks?: {
@@ -61,26 +66,89 @@ export const runContainerWizard: RunContainerWizard = async (
 ): Promise<ContainerWizardResult> => {
   const { recipeMap, itemToRecipe } = useGameDataStore.getState();
 
-  // 1. 트리 펼침 + 머신 수 산정 (1차는 minimum 모드 고정).
+  // 1. 레시피 트리 펼침 + 머신 수 산정 (1차는 minimum 모드 고정).
   const tree = assignMinimumCounts(
     expandRecipeTree(input.targetRecipe, recipeMap, itemToRecipe, input.externalIngredients),
   );
 
-  // 2. 머신 매핑.
+  if (!tree.recipeName) {
+    return failureResult('no-machine-match', 'target recipe not found');
+  }
+
   const pickMachine = makeMachinePicker(input);
-  const rootMachineEntity = tree.recipeName ? pickMachine(tree.recipeName) : undefined;
-  if (!tree.recipeName || !rootMachineEntity) {
-    return failureResult(tree, 'no-machine-match');
+  const rootMachineEntity = pickMachine(tree.recipeName);
+  if (!rootMachineEntity) {
+    return failureResult('no-machine-match', `${tree.recipeName} 카테고리 머신 없음`);
   }
 
-  // 3. 자식 enumerate — 비-external 만이 머신으로 배치됨.
-  const children = tree.children.filter((c) => !c.external && c.recipeName);
+  const rootContainer = makeMachineContainer(tree, rootMachineEntity.name);
+  const rootNode = makeMachineNode(rootContainer, [], labelFor(rootContainer));
 
-  // 4. depth 0 / depth 1 분기.
-  if (children.length === 0) {
-    return runDepthZero(tree, rootMachineEntity, input, hooks);
+  const directChildren = tree.children.filter((c) => !c.external && c.recipeName);
+
+  let candidatesGenerated = 0;
+  let failuresGenerated = 0;
+  let aborted = false;
+
+  if (directChildren.length === 0) {
+    // depth 0 — root 만.
+    const candidateOrFailure = buildSingleAttempt(tree, rootContainer, [], 'right', pickMachine, hooks?.signal);
+    if (candidateOrFailure.kind === 'candidate') {
+      rootNode.children.push(candidateOrFailure);
+      candidatesGenerated += 1;
+    } else {
+      rootNode.children.push(candidateOrFailure);
+      failuresGenerated += 1;
+    }
+    hooks?.onProgress?.({
+      depth: 0,
+      siblingIndex: 1,
+      siblingTotal: 1,
+      candidatesGenerated,
+      failuresGenerated,
+    });
+  } else {
+    // depth ≥ 1 — 루트 레벨에서 완전 탐색.
+    const perms = permutations(directChildren);
+    const dirs: Array<'right' | 'down'> = ['right', 'down'];
+    const totalBranches = perms.length * dirs.length;
+    let branchIdx = 0;
+
+    outer: for (const perm of perms) {
+      for (const dir of dirs) {
+        branchIdx += 1;
+        if (hooks?.signal?.aborted) {
+          aborted = true;
+          break outer;
+        }
+
+        const branch = makeBranchNode(perm, dir);
+        rootNode.children.push(branch);
+
+        const result = buildSingleAttempt(tree, rootContainer, perm, dir, pickMachine, hooks?.signal);
+        if (result.kind === 'candidate') {
+          // 자식 머신 노드들도 트리에 표시 — 디버깅용.
+          for (const c of result.children) branch.children.push(c);
+          result.children = []; // 후보 leaf 자체는 children 비움 (UI 가 leaf 로 인식)
+          branch.children.push(result);
+          candidatesGenerated += 1;
+        } else {
+          branch.children.push(result);
+          failuresGenerated += 1;
+        }
+
+        hooks?.onProgress?.({
+          depth: 1,
+          siblingIndex: branchIdx,
+          siblingTotal: totalBranches,
+          candidatesGenerated,
+          failuresGenerated,
+        });
+      }
+    }
   }
-  return runDepthOne(tree, rootMachineEntity, children, pickMachine, input, hooks);
+
+  return wrapResult(rootNode, aborted);
 };
 
 /**
@@ -89,7 +157,7 @@ export const runContainerWizard: RunContainerWizard = async (
  */
 export function flattenCandidates(tree: CandidateTree): CandidateLeaf[] {
   const out: CandidateLeaf[] = [];
-  const walk = (node: MachineNode | BranchNode | CandidateLeaf | FailureLeaf): void => {
+  const walk = (node: CandidateNode): void => {
     if (node.kind === 'candidate') {
       out.push(node);
       return;
@@ -103,167 +171,249 @@ export function flattenCandidates(tree: CandidateTree): CandidateLeaf[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// depth 0 — root 머신 1개만
+// 한 (perm × dir) 시도 — 루트 배치 → 자식 재귀 → 외부 IO 채우기
 // ─────────────────────────────────────────────────────────────────────────────
-
-function runDepthZero(
-  tree: RecipeTreeNode,
-  rootEntity: { name: string },
-  _input: ContainerWizardInput,
-  hooks: { onProgress?: ProgressReporter; signal?: AbortSignal } | undefined,
-): ContainerWizardResult {
-  const aborted = !!hooks?.signal?.aborted;
-  const internal = makeEmptyArea('internal');
-  const external = makeEmptyArea('external');
-
-  const rootContainer = makeMachineContainer(tree, rootEntity.name);
-  const placed = placeRootMachine(rootContainer, internal);
-
-  let rootNode: MachineNode;
-  if (!placed) {
-    rootNode = makeMachineNode(rootContainer, [], `${rootEntity.name} placement failed`);
-    rootNode.children.push(makeFailureLeaf('no-routing', 'root placement collision'));
-  } else {
-    rootNode = makeMachineNode(placed, [], labelFor(placed));
-    const candidate = makeCandidateLeaf(internal, external, [], 'depth-0 candidate');
-    rootNode.children.push(candidate);
-  }
-
-  hooks?.onProgress?.({
-    depth: 0,
-    siblingIndex: 0,
-    siblingTotal: 1,
-    candidatesGenerated: rootNode.children.some((c) => c.kind === 'candidate') ? 1 : 0,
-    failuresGenerated: rootNode.children.some((c) => c.kind === 'failure') ? 1 : 0,
-  });
-
-  return wrapResult(rootNode, aborted);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// depth 1 — root + 직접 자식들 (자식 형제 순서 perm × 자식 위치 dir 완전 탐색)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function runDepthOne(
-  tree: RecipeTreeNode,
-  rootEntity: { name: string },
-  children: RecipeTreeNode[],
-  pickMachine: (recipeName: string) => { name: string } | undefined,
-  _input: ContainerWizardInput,
-  hooks: { onProgress?: ProgressReporter; signal?: AbortSignal } | undefined,
-): ContainerWizardResult {
-  // root 노드는 *모든* (perm × dir) 후보의 부모이므로 한 번만 만든다.
-  const rootContainer = makeMachineContainer(tree, rootEntity.name);
-  const rootNode = makeMachineNode(rootContainer, [], labelFor(rootContainer));
-
-  let candidatesGenerated = 0;
-  let failuresGenerated = 0;
-  let aborted = false;
-
-  const perms = permutations(children);
-  const dirs: Array<'right' | 'down'> = ['right', 'down'];
-  const totalBranches = perms.length * dirs.length;
-  let branchIdx = 0;
-
-  for (const perm of perms) {
-    for (const dir of dirs) {
-      branchIdx += 1;
-      if (hooks?.signal?.aborted) {
-        aborted = true;
-        break;
-      }
-
-      const branch = makeBranchNode(perm, dir);
-      rootNode.children.push(branch);
-
-      const result = tryDepthOneBranch(rootContainer, perm, dir, pickMachine);
-      if (result.kind === 'candidate') {
-        branch.children.push(result);
-        candidatesGenerated += 1;
-      } else {
-        branch.children.push(result);
-        failuresGenerated += 1;
-      }
-
-      hooks?.onProgress?.({
-        depth: 1,
-        siblingIndex: branchIdx,
-        siblingTotal: totalBranches,
-        candidatesGenerated,
-        failuresGenerated,
-      });
-    }
-    if (aborted) break;
-  }
-
-  return wrapResult(rootNode, aborted);
-}
 
 /**
- * 한 (perm × dir) 후보 가지의 시도. 성공이면 CandidateLeaf, 실패면 FailureLeaf.
+ * 한 (root perm × root dir) 후보 시도. 후보 leaf 는 자식들의 MachineNode 를
+ * `children` 으로 일시 보관 — 호출자가 분기 노드 children 으로 옮기고 leaf 의
+ * children 은 비운다 (UI 의 leaf 식별).
  */
-function tryDepthOneBranch(
+function buildSingleAttempt(
+  tree: RecipeTreeNode,
   rootContainer: Container,
-  perm: RecipeTreeNode[],
-  dir: 'right' | 'down',
+  rootPerm: RecipeTreeNode[],
+  rootDir: 'right' | 'down',
   pickMachine: (recipeName: string) => { name: string } | undefined,
-): CandidateLeaf | FailureLeaf {
-  const internal = makeEmptyArea('internal');
-  const external = makeEmptyArea('external');
+  signal: AbortSignal | undefined,
+): (CandidateLeaf & { children: CandidateNode[] }) | FailureLeaf {
+  const internal: Area = makeEmptyArea('internal');
+  const external: Area = makeEmptyArea('external');
+  const containerByRecipe = new Map<string, Container>();
 
-  // root 배치
-  const root = placeRootMachine({ ...rootContainer }, internal);
-  if (!root) {
-    return makeFailureLeaf('no-routing', 'root collision');
+  // 1. 루트 배치
+  const placedRoot = placeRootMachine({ ...rootContainer }, internal);
+  if (!placedRoot) {
+    return makeFailureLeaf('no-routing', 'root placement collision');
   }
+  if (tree.recipeName) containerByRecipe.set(tree.recipeName, placedRoot);
 
+  // 2. 자식 DFS 재귀
+  const childMachineNodes: CandidateNode[] = [];
+  let lastParent = placedRoot;
   const allRoutings: Routing[] = [];
-
-  // 자식 순회
-  let parent: Container = root;
-  for (const childNode of perm) {
-    if (!childNode.recipeName) {
-      return makeFailureLeaf('no-machine-match', `${childNode.itemName} 의 레시피 없음`);
+  for (const child of rootPerm) {
+    if (signal?.aborted) {
+      return makeFailureLeaf('aborted', 'user cancelled');
     }
-    const childEntity = pickMachine(childNode.recipeName);
-    if (!childEntity) {
-      return makeFailureLeaf('no-machine-match', `${childNode.recipeName} 매칭 머신 없음`);
+    const childResult = recurseMachine(
+      child, lastParent, rootDir, internal, external, containerByRecipe, pickMachine, signal,
+    );
+    childMachineNodes.push(childResult);
+    if (childResult.kind === 'failure') {
+      // 부분 트리만 반환 — 위에서 FailureLeaf 로 마킹.
+      const failure = makeFailureLeaf(
+        childResult.reason,
+        `${child.recipeName ?? child.itemName} 처리 중 실패: ${childResult.label}`,
+      );
+      return failure;
     }
-    const childContainer = makeMachineContainer(childNode, childEntity.name);
-    const placedChild = placeMachine(parent, childContainer, dir, internal);
-    if (!placedChild) {
-      return makeFailureLeaf('no-routing', `${childNode.recipeName} 충돌`);
-    }
-    // 자식 → 부모 (= root) 라우팅 — 자식이 만든 product 를 root 의 ingredient 로.
-    const itemName = childNode.itemName;
-    const pair = resolvePortPair(placedChild, root, 'item');
-    if (!pair) {
-      return makeFailureLeaf('no-routing', `${itemName} port 매칭 실패`);
-    }
-    const attempt = routePorts(pair, internal, {
-      beltEntityName: 'transport-belt',
-      inserterEntityName: 'inserter',
-      pipeEntityName: 'pipe',
-      preferUnderground: false,
-    });
-    if (!attempt.ok) {
-      return makeFailureLeaf('no-routing', `${itemName} 라우팅 실패: ${attempt.reason}`);
-    }
-    commitRouting(attempt.routing, internal);
-    allRoutings.push(attempt.routing);
-
-    // 다음 자식은 *방금 배치된 자식* 옆에 (= 직렬). 이는 1차 배치 정책이며,
-    // 다른 정책 (예: 모든 자식이 부모 옆에 직접) 은 follow-up 에서 후보로 추가.
-    parent = placedChild;
+    collectRoutingsFromTree(childResult, allRoutings);
+    lastParent = childResult.machine;
   }
 
-  return makeCandidateLeaf(internal, external, allRoutings, `perm=[${perm
-    .map((n) => n.itemName)
-    .join(', ')}] dir=${dir}`);
+  // 3. 외부 IO 채우기 (모든 머신 배치 후)
+  populateExternalIO(tree, containerByRecipe, external);
+
+  // 4. 후보 leaf
+  const leaf = makeCandidateLeaf(
+    internal,
+    external,
+    allRoutings,
+    rootPerm.length === 0
+      ? 'depth-0 candidate'
+      : `perm=[${rootPerm.map((n) => n.itemName).join(', ')}] dir=${rootDir}`,
+  );
+  // 자식 노드들을 일시 보관 (호출자가 옮긴다).
+  leaf.children = childMachineNodes;
+  return leaf;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 후보 트리 / 노드 생성 헬퍼
+// 머신 재귀 — 임의 깊이
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 비-external 레시피 노드를 부모 옆에 배치 + 그 자식 (= 손자, 증손자 ...) 도
+ * 재귀적으로 배치한다.
+ *
+ * 자식 레벨 (`children of treeNode`) 에서 (perm × dir) enumerate 하되, 첫 성공한
+ * 조합만 commit (= 트리에는 모든 시도가 BranchNode 로 기록되지만 상태에는
+ * first-success 만 반영). 더 강한 cross-product enumeration 은 follow-up.
+ */
+function recurseMachine(
+  treeNode: RecipeTreeNode,
+  parent: Container,
+  dir: 'right' | 'down',
+  internal: Area,
+  external: Area,
+  containerByRecipe: Map<string, Container>,
+  pickMachine: (recipeName: string) => { name: string } | undefined,
+  signal: AbortSignal | undefined,
+): MachineNode | FailureLeaf {
+  if (!treeNode.recipeName) {
+    return makeFailureLeaf('no-machine-match', `${treeNode.itemName} 의 레시피 없음`);
+  }
+  const machineEntity = pickMachine(treeNode.recipeName);
+  if (!machineEntity) {
+    return makeFailureLeaf('no-machine-match', `${treeNode.recipeName} 머신 매칭 실패`);
+  }
+
+  const machineContainer = makeMachineContainer(treeNode, machineEntity.name);
+  const placed = placeMachine(parent, machineContainer, dir, internal);
+  if (!placed) {
+    return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`);
+  }
+
+  // Route this → parent
+  const routings: Routing[] = [];
+  const pair = resolvePortPair(placed, parent, 'item');
+  if (!pair) {
+    return makeFailureLeaf('no-routing', `${treeNode.itemName} port 매칭 실패`);
+  }
+  const attempt = routePorts(pair, internal, {
+    beltEntityName: 'transport-belt',
+    inserterEntityName: 'inserter',
+    pipeEntityName: 'pipe',
+    preferUnderground: false,
+  });
+  if (!attempt.ok) {
+    return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패: ${attempt.reason}`);
+  }
+  commitRouting(attempt.routing, internal);
+  routings.push(attempt.routing);
+
+  containerByRecipe.set(treeNode.recipeName, placed);
+  const thisMN = makeMachineNode(placed, routings, labelFor(placed));
+
+  // 손자 처리 — 비-external 자식들 enumerate
+  const grandchildren = treeNode.children.filter((c) => !c.external && c.recipeName);
+  if (grandchildren.length === 0) return thisMN;
+
+  let committed = false;
+  for (const perm of permutations(grandchildren)) {
+    if (signal?.aborted) break;
+    for (const childDir of ['right', 'down'] as const) {
+      if (signal?.aborted) break;
+
+      const branch = makeBranchNode(perm, childDir);
+      thisMN.children.push(branch);
+
+      // 시도 — 상태 클론
+      const internalAttempt = cloneArea(internal);
+      const externalAttempt = cloneArea(external);
+      const containerByRecipeAttempt = new Map(containerByRecipe);
+
+      let lastParent = placed;
+      let allOk = true;
+      for (const grandchild of perm) {
+        const childResult = recurseMachine(
+          grandchild, lastParent, childDir,
+          internalAttempt, externalAttempt, containerByRecipeAttempt,
+          pickMachine, signal,
+        );
+        branch.children.push(childResult);
+        if (childResult.kind === 'failure') {
+          allOk = false;
+          break;
+        }
+        lastParent = childResult.machine;
+      }
+
+      if (allOk && !committed) {
+        // First-success commit — 시도의 mutation 을 caller 의 state 로 반영.
+        commitAreaInPlace(internal, internalAttempt);
+        commitAreaInPlace(external, externalAttempt);
+        for (const [k, v] of containerByRecipeAttempt) containerByRecipe.set(k, v);
+        // 부모 라우팅 외에 손자 라우팅도 thisMN.routings 에 누적.
+        const subRoutings: Routing[] = [];
+        for (const branchChild of branch.children) {
+          if (branchChild.kind === 'machine') collectRoutingsFromTree(branchChild, subRoutings);
+        }
+        for (const r of subRoutings) thisMN.routings.push(r);
+        committed = true;
+      }
+    }
+  }
+
+  return thisMN;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 외부 IO 채우기 — 비-external 노드의 외부 ingredient + 루트 product
+// ─────────────────────────────────────────────────────────────────────────────
+
+function populateExternalIO(
+  tree: RecipeTreeNode,
+  containerByRecipe: Map<string, Container>,
+  external: Area,
+): void {
+  const recipeMap = useGameDataStore.getState().recipeMap;
+
+  const seen = new Set<string>(); // 중복 (예: 같은 ingredient 이름이 여러 머신에 들어가는 경우) 방지
+
+  const walk = (node: RecipeTreeNode): void => {
+    if (node.external || !node.recipeName) return;
+    const recipe: Recipe | undefined = recipeMap.get(node.recipeName);
+    if (recipe) {
+      for (const ing of recipe.ingredients) {
+        const childForIng = node.children.find((c) => c.itemName === ing.name);
+        // external 로 판정되는 조건: 자식이 없거나, 자식이 external 표시되었거나, 자식에 recipeName 이 없음.
+        const isExternal = !childForIng || childForIng.external || !childForIng.recipeName;
+        if (!isExternal) continue;
+        const key = `in:${ing.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        placeExternalContainer(
+          {
+            kind: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+            entityName: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+            content: ing.name,
+          },
+          external,
+        );
+      }
+    }
+    for (const c of node.children) walk(c);
+  };
+  walk(tree);
+
+  // 루트 product 출력
+  if (tree.recipeName) {
+    const rootRecipe = recipeMap.get(tree.recipeName);
+    if (rootRecipe) {
+      for (const prod of rootRecipe.products) {
+        const key = `out:${prod.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        placeExternalContainer(
+          {
+            kind: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+            entityName: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+            content: prod.name,
+          },
+          external,
+        );
+      }
+    }
+  }
+
+  // containerByRecipe 미사용 — 후속 외부→내부 라우팅에서 활용.
+  void containerByRecipe;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 노드 생성 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeMachineNode(
@@ -326,16 +476,19 @@ function makeFailureLeaf(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 기타 유틸
+// 컨테이너 / 영역 / 라우팅 유틸
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeMachineContainer(node: RecipeTreeNode, entityName: string): Container {
+  const entity = useGameDataStore.getState().entityMap.get(entityName);
+  const w = entity?.tile_width ?? 3;
+  const h = entity?.tile_height ?? 3;
   return {
     id: `m-${node.recipeName ?? node.itemName}-${nextNodeId('id')}`,
     kind: 'machine',
     entityName,
     origin: { x: 0, y: 0 }, // placeRootMachine / placeMachine 이 덮어쓴다
-    size: { w: 3, h: 3 }, // TODO: gameData 에서 entity.tile_width × tile_height 조회
+    size: { w, h },
     recipeName: node.recipeName,
   };
 }
@@ -344,9 +497,33 @@ function makeEmptyArea(kind: Area['kind']): Area {
   return { kind, containers: [], placed: [] };
 }
 
+function cloneArea(a: Area): Area {
+  const cloned: Area = {
+    kind: a.kind,
+    containers: a.containers.map((c) => ({ ...c, origin: { ...c.origin }, size: { ...c.size } })),
+    placed: a.placed.map((p) => ({ x: p.x, y: p.y, cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } } })),
+    bbox: a.bbox ? { ...a.bbox } : undefined,
+  };
+  return cloned;
+}
+
+function commitAreaInPlace(target: Area, source: Area): void {
+  target.containers.length = 0;
+  for (const c of source.containers) target.containers.push(c);
+  target.placed.length = 0;
+  for (const p of source.placed) target.placed.push(p);
+  target.bbox = source.bbox ? { ...source.bbox } : undefined;
+}
+
+function collectRoutingsFromTree(node: CandidateNode, out: Routing[]): void {
+  if (node.kind === 'failure' || node.kind === 'candidate') return;
+  if (node.kind === 'machine') {
+    for (const r of node.routings) out.push(r);
+  }
+  for (const child of node.children) collectRoutingsFromTree(child, out);
+}
+
 function makeMachinePicker(input: ContainerWizardInput): (recipeName: string) => { name: string } | undefined {
-  // 매우 단순한 매칭: 첫 selected 머신 중 해당 레시피 카테고리를 처리할 수 있는 것.
-  // legacy `pickMachineForRecipe` 와 동일 의도이지만 deps 로 받지 않고 store 에서 직접 조회.
   return (recipeName: string) => {
     const state = useGameDataStore.getState();
     const recipe = state.recipeMap.get(recipeName);
@@ -379,7 +556,7 @@ function wrapResult(rootNode: MachineNode, aborted: boolean): ContainerWizardRes
   let candidates = 0;
   let failures = 0;
   let deepest = 0;
-  const walk = (node: MachineNode | BranchNode | CandidateLeaf | FailureLeaf, depth: number): void => {
+  const walk = (node: CandidateNode, depth: number): void => {
     deepest = Math.max(deepest, depth);
     if (node.kind === 'candidate') candidates += 1;
     if (node.kind === 'failure') failures += 1;
@@ -401,15 +578,16 @@ function wrapResult(rootNode: MachineNode, aborted: boolean): ContainerWizardRes
   return { ok: candidates > 0, tree, partial: aborted };
 }
 
-function failureResult(_tree: RecipeTreeNode, reason: FailureLeaf['reason']): ContainerWizardResult {
-  const dummyContainer: Container = {
+function failureResult(reason: FailureLeaf['reason'], detail: string): ContainerWizardResult {
+  const dummy: Container = {
     id: 'm-failure',
     kind: 'machine',
     entityName: 'unknown',
     origin: { x: 0, y: 0 },
     size: { w: 1, h: 1 },
   };
-  const root = makeMachineNode(dummyContainer, [], 'no recipe / no machine');
-  root.children.push(makeFailureLeaf(reason, 'tree expansion failed'));
+  const root = makeMachineNode(dummy, [], 'no recipe / no machine');
+  root.children.push(makeFailureLeaf(reason, detail));
   return wrapResult(root, false);
 }
+
