@@ -24,6 +24,7 @@ import { useGameDataStore } from '../../store/gameDataStore';
 import type { Recipe } from '../../store/gameDataStore';
 import type {
   Area,
+  AreaSnapshot,
   BranchNode,
   CandidateLeaf,
   CandidateNode,
@@ -198,7 +199,7 @@ function buildSingleAttempt(
   // 1. 루트 배치
   const placedRoot = placeRootMachine({ ...rootContainer }, internal);
   if (!placedRoot) {
-    return makeFailureLeaf('no-routing', 'root placement collision');
+    return makeFailureLeaf('no-routing', 'root placement collision', captureSnapshot(internal, external));
   }
   if (tree.recipeName) containerByRecipe.set(tree.recipeName, placedRoot);
 
@@ -208,7 +209,7 @@ function buildSingleAttempt(
   const allRoutings: Routing[] = [];
   for (const child of rootPerm) {
     if (signal?.aborted) {
-      return makeFailureLeaf('aborted', 'user cancelled');
+      return makeFailureLeaf('aborted', 'user cancelled', captureSnapshot(internal, external));
     }
     const childResult = recurseMachine(
       child, lastParent, rootDir, internal, external, containerByRecipe, pickMachine, signal,
@@ -219,6 +220,7 @@ function buildSingleAttempt(
       const failure = makeFailureLeaf(
         childResult.reason,
         `${child.recipeName ?? child.itemName} 처리 중 실패: ${childResult.label}`,
+        captureSnapshot(internal, external),
       );
       return failure;
     }
@@ -266,17 +268,17 @@ function recurseMachine(
   signal: AbortSignal | undefined,
 ): MachineNode | FailureLeaf {
   if (!treeNode.recipeName) {
-    return makeFailureLeaf('no-machine-match', `${treeNode.itemName} 의 레시피 없음`);
+    return makeFailureLeaf('no-machine-match', `${treeNode.itemName} 의 레시피 없음`, captureSnapshot(internal, external));
   }
   const machineEntity = pickMachine(treeNode.recipeName);
   if (!machineEntity) {
-    return makeFailureLeaf('no-machine-match', `${treeNode.recipeName} 머신 매칭 실패`);
+    return makeFailureLeaf('no-machine-match', `${treeNode.recipeName} 머신 매칭 실패`, captureSnapshot(internal, external));
   }
 
   const machineContainer = makeMachineContainer(treeNode, machineEntity.name);
   const placed = placeMachine(parent, machineContainer, dir, internal);
   if (!placed) {
-    return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`);
+    return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`, captureSnapshot(internal, external));
   }
 
   // Route this → parent — kind 는 흐르는 content (item/fluid) 에서 결정.
@@ -287,13 +289,13 @@ function recurseMachine(
   const routings: Routing[] = [];
   const routeResult = routeWithFallback(placed, parent, routeKind, internal);
   if (!routeResult.ok) {
-    return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`);
+    return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`, captureSnapshot(internal, external));
   }
   commitRouting(routeResult.routing, internal);
   routings.push(routeResult.routing);
 
   containerByRecipe.set(treeNode.recipeName, placed);
-  const thisMN = makeMachineNode(placed, routings, labelFor(placed));
+  const thisMN = makeMachineNode(placed, routings, labelFor(placed), captureSnapshot(internal, external));
 
   // 손자 처리 — 비-external 자식들 enumerate
   const grandchildren = treeNode.children.filter((c) => !c.external && c.recipeName);
@@ -305,7 +307,7 @@ function recurseMachine(
     for (const childDir of ['right', 'down'] as const) {
       if (signal?.aborted) break;
 
-      const branch = makeBranchNode(perm, childDir);
+      const branch = makeBranchNode(perm, childDir, captureSnapshot(internal, external));
       thisMN.children.push(branch);
 
       // 시도 — 상태 클론
@@ -494,6 +496,7 @@ function makeMachineNode(
   machine: Container,
   routings: Routing[],
   label: string,
+  snapshot?: AreaSnapshot,
 ): MachineNode {
   return {
     id: nextNodeId('m'),
@@ -502,10 +505,15 @@ function makeMachineNode(
     routings,
     children: [],
     label,
+    snapshot,
   };
 }
 
-function makeBranchNode(perm: RecipeTreeNode[], dir: 'right' | 'down'): BranchNode {
+function makeBranchNode(
+  perm: RecipeTreeNode[],
+  dir: 'right' | 'down',
+  snapshot?: AreaSnapshot,
+): BranchNode {
   return {
     id: nextNodeId('b'),
     kind: 'branch',
@@ -513,6 +521,7 @@ function makeBranchNode(perm: RecipeTreeNode[], dir: 'right' | 'down'): BranchNo
     dir,
     children: [],
     label: `perm=[${perm.map((n) => n.itemName).join(', ')}] dir=${dir}`,
+    snapshot,
   };
 }
 
@@ -539,6 +548,7 @@ function makeCandidateLeaf(
 function makeFailureLeaf(
   reason: FailureLeaf['reason'],
   detail: string,
+  snapshot?: AreaSnapshot,
 ): FailureLeaf {
   return {
     id: nextNodeId('f'),
@@ -546,7 +556,16 @@ function makeFailureLeaf(
     reason,
     children: [],
     label: `${reason}: ${detail}`,
+    snapshot,
   };
+}
+
+/**
+ * 현재 영역 상태를 deep-clone 해 snapshot 으로 보존.
+ * 후보 트리의 각 노드가 hover preview 시 이 시점까지 배치된 셀을 그릴 때 사용.
+ */
+function captureSnapshot(internal: Area, external: Area): AreaSnapshot {
+  return { internal: cloneArea(internal), external: cloneArea(external) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

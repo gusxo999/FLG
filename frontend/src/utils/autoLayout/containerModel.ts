@@ -201,6 +201,21 @@ export interface CandidateNodeBase {
   children: CandidateNode[];
   /** UI 라벨 (예: "조립기-2 [기어휠] @ (5,5)", "perm=[톱니, 철판] dir=right") */
   label: string;
+  /**
+   * 이 노드 생성 시점의 영역 상태 스냅샷.
+   * UI 의 hover preview 에서 *그 시점까지* 배치된 셀들을 그리는 데 사용된다.
+   * - MachineNode: 머신 + 부모-자식 라우팅까지 commit 된 직후
+   * - BranchNode: (perm × dir) 시도 직전 (= 부모 MachineNode 상태)
+   * - FailureLeaf: 실패 발생 시점의 부분 상태 (있을 수도, 없을 수도)
+   * - CandidateLeaf: 본인의 internal/external 필드와 별도로 두지 않음 (중복 방지)
+   */
+  snapshot?: AreaSnapshot;
+}
+
+/** Area 스냅샷 — internal + external 의 얕은 복제본 (placed/containers/bbox) */
+export interface AreaSnapshot {
+  internal: Area;
+  external: Area;
 }
 
 /** A 노드 — 한 머신 배치 + 그 입력 라우팅. */
