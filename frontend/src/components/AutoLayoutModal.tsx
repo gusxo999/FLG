@@ -14,6 +14,7 @@ import {
 import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
 import { runSlotAutoLayoutWizard } from '../utils/autoLayout/runSlotWizard';
 import type { RecipeTreeNode, WizardResult } from '../utils/autoLayout/types';
+import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
 import {
   inserterThroughput,
   defaultInserterThroughput,
@@ -413,26 +414,37 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
           )}
 
           {step === 'review' && (
-            <ReviewStep
-              targetRecipe={targetRecipe}
-              tree={previewTree}
-              totalMachines={totalMachines}
-              internalRecipes={internalRecipes}
-              selectedMachines={effectiveMachines}
-              selectedInserters={effectiveInserters}
-              selectedBelts={effectiveBelts}
-              regionX={regionX}
-              regionY={regionY}
-              regionW={regionW}
-              regionH={regionH}
-              setRegionX={setRegionX}
-              setRegionY={setRegionY}
-              setRegionW={setRegionW}
-              setRegionH={setRegionH}
-              result={result}
-              onRun={handleRun}
-              t={t}
-            />
+            <>
+              <ReviewStep
+                targetRecipe={targetRecipe}
+                tree={previewTree}
+                totalMachines={totalMachines}
+                internalRecipes={internalRecipes}
+                selectedMachines={effectiveMachines}
+                selectedInserters={effectiveInserters}
+                selectedBelts={effectiveBelts}
+                regionX={regionX}
+                regionY={regionY}
+                regionW={regionW}
+                regionH={regionH}
+                setRegionX={setRegionX}
+                setRegionY={setRegionY}
+                setRegionW={setRegionW}
+                setRegionH={setRegionH}
+                result={result}
+                onRun={handleRun}
+                t={t}
+              />
+              <AutoLayoutContainerPanel
+                targetRecipe={targetRecipe}
+                externalIngredients={externalIngredients}
+                selectedMachines={effectiveMachines}
+                selectedInserters={effectiveInserters}
+                selectedBelts={effectiveBelts}
+                selectedUndergroundPipes={effectivePipes}
+                onClose={handleClose}
+              />
+            </>
           )}
         </div>
 
