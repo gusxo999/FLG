@@ -314,13 +314,19 @@ export type ComputeContainerCounts = (
  *
  * 부모 머신과 자식 머신의 상대 위치 (오른쪽 / 아래쪽) 를 받아 자식의 origin
  * 좌표를 결정. 부모와 *벨트 길이 ≥ 1* 만 확보하도록 인접 배치한다.
+ *
+ * 충돌 (다른 머신/라우팅 셀과 겹침) 발생 시 null 반환. 오케스트레이터가
+ * 후보를 'no-routing' 등으로 마킹하고 다음 perm·dir 후보로 진행 (§7.4 ~ §7.5).
+ *
+ * 성공 시 `internal` 을 mutate 한다 (containers / placed / bbox 업데이트).
+ * 실패 시 mutate 하지 않으므로 호출자는 롤백을 신경 쓸 필요가 없다.
  */
 export type PlaceMachine = (
   parent: Container,
   child: Container,
   dir: 'right' | 'down',
   internal: Area,
-) => Container;
+) => Container | null;
 
 /**
  * 모듈 B — 외부 컨테이너 배치 (외부 영역).
