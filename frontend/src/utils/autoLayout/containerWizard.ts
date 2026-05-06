@@ -279,9 +279,13 @@ function recurseMachine(
     return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`);
   }
 
-  // Route this → parent — 그리디 → fallback (다른 port 셀 시도)
+  // Route this → parent — kind 는 흐르는 content (item/fluid) 에서 결정.
+  // treeNode.itemName 은 부모로 흘러 들어가는 자식의 product 이름.
+  const flowKind = lookupProductKind(treeNode.recipeName, treeNode.itemName);
+  const routeKind: PortKind = flowKind === 'fluid' ? { fluid: treeNode.itemName } : 'item';
+
   const routings: Routing[] = [];
-  const routeResult = routeWithFallback(placed, parent, 'item', internal);
+  const routeResult = routeWithFallback(placed, parent, routeKind, internal);
   if (!routeResult.ok) {
     return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`);
   }
@@ -405,6 +409,18 @@ function routeWithFallback(
 
 function samePort(a: ContainerPort, b: ContainerPort): boolean {
   return a.cell.x === b.cell.x && a.cell.y === b.cell.y;
+}
+
+/**
+ * 한 레시피의 product 가운데 itemName 의 type (item / fluid) 을 조회.
+ * 자식 노드가 부모로 흘려보내는 content 의 종류를 결정 — fluid 면 라우팅 kind
+ * 가 fluid 가 되어 파이프 라우팅으로 전환된다.
+ */
+function lookupProductKind(recipeName: string, itemName: string): 'item' | 'fluid' {
+  const recipe = useGameDataStore.getState().recipeMap.get(recipeName);
+  if (!recipe) return 'item';
+  const prod = recipe.products.find((p) => p.name === itemName);
+  return prod?.type ?? 'item';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

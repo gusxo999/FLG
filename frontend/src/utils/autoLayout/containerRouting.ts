@@ -49,12 +49,9 @@ export const routePorts: RoutePorts = (
   if (!kind) {
     return { ok: false, reason: 'no-port-pair', tried: [pair] };
   }
-
-  // 1차 구현: item 만. fluid 는 follow-up.
   if (kind === 'fluid') {
-    return { ok: false, reason: 'no-path', tried: [pair] };
+    return routeFluid(pair, area, options);
   }
-
   return routeItem(pair, area, options);
 };
 
@@ -177,6 +174,77 @@ function routeItem(
     area: area.kind,
   };
   return { ok: true, routing };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fluid 라우팅
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * fluid 라우팅 — 컨테이너—파이프—컨테이너.
+ *
+ * 형식: producer port cell 부터 consumer port cell 까지 인접 4-방향 경로의
+ * 모든 셀에 파이프 1칸 emit. 인서터 없음.
+ *
+ * 1차 구현 한계:
+ *  - 지하파이프 변형 (placement-search O2) 미구현 — preferUnderground 무시.
+ *  - C3 (다른 fluid 라우팅과의 셀 공유 금지) 는 occupancy 가 단순히 모두
+ *    blocked 으로 처리되므로 자연스럽게 만족 (= 다른 라우팅 셀 위로 못 지남).
+ *    같은 fluid 끼리의 셀 reuse 는 후속 belt-route / pipe-route 분류 도입 시.
+ */
+function routeFluid(
+  pair: PortPair,
+  area: Area,
+  options: { pipeEntityName: string },
+): RoutingAttempt {
+  const occupancy = buildOccupancy(area);
+
+  // 두 port cell 자체가 점유되어 있으면 즉시 실패.
+  if (occupancy.has(cellKey(pair.producer.cell.x, pair.producer.cell.y))) {
+    return { ok: false, reason: 'no-path', tried: [pair] };
+  }
+  if (occupancy.has(cellKey(pair.consumer.cell.x, pair.consumer.cell.y))) {
+    return { ok: false, reason: 'no-path', tried: [pair] };
+  }
+
+  // BFS — producer port 부터 consumer port 까지 (양 끝 모두 path 에 포함).
+  const path = bfs(pair.producer.cell, pair.consumer.cell, occupancy);
+  if (!path) {
+    return { ok: false, reason: 'no-path', tried: [pair] };
+  }
+
+  // 각 셀에 pipe emit.
+  const placed: PlacedCell[] = [];
+  for (const cell of path) {
+    placed.push(makePipeCell(cell, options.pipeEntityName, pair));
+  }
+
+  const routing: Routing = {
+    id: nextRoutingId(),
+    kind: 'fluid',
+    from: pair.producer,
+    to: pair.consumer,
+    placed,
+    area: area.kind,
+  };
+  return { ok: true, routing };
+}
+
+function makePipeCell(
+  cell: { x: number; y: number },
+  pipeEntityName: string,
+  pair: PortPair,
+): PlacedCell {
+  const grid: GridCell = {
+    ...createEmptyCell(),
+    entityId: `r-pipe-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
+    entityName: pipeEntityName,
+    entityType: EntityType.Pipe,
+    direction: 0,
+    tileOffset: { x: 0, y: 0 },
+    isOrigin: true,
+  };
+  return { x: cell.x, y: cell.y, cell: grid };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
