@@ -29,18 +29,22 @@ import type {
   CandidateNode,
   CandidateTree,
   Container,
+  ContainerPort,
   ContainerWizardInput,
   ContainerWizardResult,
   FailureLeaf,
   MachineNode,
+  PortKind,
+  PortPair,
   ProgressReporter,
   Routing,
+  RoutingAttempt,
   RunContainerWizard,
 } from './containerModel';
 import { commitRouting, routePorts } from './containerRouting';
 import { placeExternalContainer } from './externalPlacer';
 import { placeMachine, placeRootMachine } from './machinePlacer';
-import { resolvePortPair } from './portInference';
+import { enumerateContainerPorts, resolvePortPair } from './portInference';
 import {
   expandRecipeTree,
   assignMinimumCounts,
@@ -275,23 +279,14 @@ function recurseMachine(
     return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`);
   }
 
-  // Route this → parent
+  // Route this → parent — 그리디 → fallback (다른 port 셀 시도)
   const routings: Routing[] = [];
-  const pair = resolvePortPair(placed, parent, 'item');
-  if (!pair) {
-    return makeFailureLeaf('no-routing', `${treeNode.itemName} port 매칭 실패`);
+  const routeResult = routeWithFallback(placed, parent, 'item', internal);
+  if (!routeResult.ok) {
+    return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`);
   }
-  const attempt = routePorts(pair, internal, {
-    beltEntityName: 'transport-belt',
-    inserterEntityName: 'inserter',
-    pipeEntityName: 'pipe',
-    preferUnderground: false,
-  });
-  if (!attempt.ok) {
-    return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패: ${attempt.reason}`);
-  }
-  commitRouting(attempt.routing, internal);
-  routings.push(attempt.routing);
+  commitRouting(routeResult.routing, internal);
+  routings.push(routeResult.routing);
 
   containerByRecipe.set(treeNode.recipeName, placed);
   const thisMN = makeMachineNode(placed, routings, labelFor(placed));
@@ -347,6 +342,69 @@ function recurseMachine(
   }
 
   return thisMN;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 라우팅 fallback — 그리디 실패 시 다른 port 셀 시도 (placement-search §7.4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ROUTING_OPTIONS = {
+  beltEntityName: 'transport-belt',
+  inserterEntityName: 'inserter',
+  pipeEntityName: 'pipe',
+  preferUnderground: false,
+} as const;
+
+/**
+ * 그리디 매칭 → 실패 시 모든 port 조합을 manhattan 거리 오름차순으로 시도.
+ * 어느 조합이라도 라우팅 성공하면 그 라우팅 반환. 모두 실패면 ok=false + 시도 목록.
+ *
+ * routePorts 자체는 area 를 mutate 하지 않으므로 (commitRouting 이 따로) 시도 중에
+ * 영역 상태를 더럽히지 않는다.
+ */
+function routeWithFallback(
+  producer: Container,
+  consumer: Container,
+  kind: PortKind,
+  internal: Area,
+): RoutingAttempt {
+  // 1. 그리디 시도
+  const greedy = resolvePortPair(producer, consumer, kind);
+  if (greedy) {
+    const attempt = routePorts(greedy, internal, ROUTING_OPTIONS);
+    if (attempt.ok) return attempt;
+  }
+
+  // 2. 모든 port 조합 enumerate, 그리디 페어는 제외
+  const producerPorts = enumerateContainerPorts(producer, kind);
+  const consumerPorts = enumerateContainerPorts(consumer, kind);
+  if (producerPorts.length === 0 || consumerPorts.length === 0) {
+    return { ok: false, reason: 'no-port-pair', tried: greedy ? [greedy] : [] };
+  }
+
+  type Cand = { pair: PortPair; dist: number };
+  const candidates: Cand[] = [];
+  for (const p of producerPorts) {
+    for (const c of consumerPorts) {
+      if (greedy && samePort(p, greedy.producer) && samePort(c, greedy.consumer)) continue;
+      const dist = Math.abs(p.cell.x - c.cell.x) + Math.abs(p.cell.y - c.cell.y);
+      candidates.push({ pair: { producer: p, consumer: c }, dist });
+    }
+  }
+  candidates.sort((a, b) => a.dist - b.dist);
+
+  const tried: PortPair[] = greedy ? [greedy] : [];
+  for (const cand of candidates) {
+    tried.push(cand.pair);
+    const attempt = routePorts(cand.pair, internal, ROUTING_OPTIONS);
+    if (attempt.ok) return attempt;
+  }
+
+  return { ok: false, reason: 'no-path', tried };
+}
+
+function samePort(a: ContainerPort, b: ContainerPort): boolean {
+  return a.cell.x === b.cell.x && a.cell.y === b.cell.y;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
