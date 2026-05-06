@@ -298,9 +298,13 @@ export type ResolvePortPair = (
  *
  * 한 머신에 필요한 입력/출력 컨테이너 수를 처리량으로 산정.
  * `ceil(throughput / belt 또는 pipe 처리량)`. (placement-search §4 / §12)
+ *
+ * `machineEntityName` 으로부터 `crafting_speed` 를 읽어 per-second 처리량을
+ * 계산. 모듈/신호기 효과는 1차 구현에서 미반영 (base crafting_speed 만).
  */
 export type ComputeContainerCounts = (
   recipeName: string,
+  machineEntityName: string,
   beltThroughputPerSecond: number,
   pipeThroughputPerSecond: number,
 ) => ContainerCounts;

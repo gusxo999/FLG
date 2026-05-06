@@ -13,26 +13,53 @@
  * **폐기** 하고, 입력도 출력과 동일한 throughput-기반 식을 쓴다.
  */
 
+import { useGameDataStore } from '../../store/gameDataStore';
 import type { ComputeContainerCounts, ContainerCounts } from './containerModel';
 
 /**
- * `ceil(throughput / belt 또는 pipe 처리량)`.
- * fluid 인지 item 인지는 게임데이터의 ingredient/product 메타에서 판정.
+ * `ceil(per_second / belt 또는 pipe 처리량)`. 최소 1.
+ *
+ * per_second = `amount × crafting_speed / energy_required`. 모듈/신호기 효과는
+ * 1차 구현에서 미반영 — base crafting_speed 만 사용.
+ *
+ * 알 수 없는 레시피·머신·잘못된 처리량 (≤ 0) 은 빈 결과 반환 (오케스트레이터에서
+ * warning 으로 처리할 수 있게).
  */
 export const computeContainerCounts: ComputeContainerCounts = (
-  _recipeName: string,
-  _beltThroughputPerSecond: number,
-  _pipeThroughputPerSecond: number,
+  recipeName: string,
+  machineEntityName: string,
+  beltThroughputPerSecond: number,
+  pipeThroughputPerSecond: number,
 ): ContainerCounts => {
-  // TODO(placement-search §5 모듈 3b):
-  //  1. recipeName 으로 gameDataStore 에서 Recipe 를 조회.
-  //  2. recipe.ingredients 각각에 대해:
-  //      - item ingredient: count = ceil(amount × crafting_speed / energy / belt-throughput)
-  //      - fluid ingredient: count = ceil(amount × crafting_speed / energy / pipe-throughput)
-  //  3. recipe.products 도 동일하게 계산.
-  //  4. 결과를 inputContainers / outputContainers 에 ingredient/product 이름 키로 채워 반환.
-  //
-  //  주의: throughput 식의 정확한 단위 (per craft / per second 변환) 는 인서터
-  //  처리량 모델 (inserterThroughput.ts) 과 정합되어야 한다.
-  throw new Error('containerCounts.computeContainerCounts: not implemented');
+  const empty: ContainerCounts = { inputContainers: {}, outputContainers: {} };
+  if (beltThroughputPerSecond <= 0 || pipeThroughputPerSecond <= 0) return empty;
+
+  const state = useGameDataStore.getState();
+  const recipe = state.recipeMap.get(recipeName);
+  const machine = state.entityMap.get(machineEntityName);
+  if (!recipe || !machine) return empty;
+
+  const craftingSpeed = machine.crafting_speed ?? 1;
+  const energy = recipe.energy_required;
+  if (!Number.isFinite(craftingSpeed) || craftingSpeed <= 0) return empty;
+  if (!Number.isFinite(energy) || energy <= 0) return empty;
+
+  const out: ContainerCounts = { inputContainers: {}, outputContainers: {} };
+  const ratePerSecond = (amount: number) => (amount * craftingSpeed) / energy;
+  const containersFor = (amount: number, type: 'item' | 'fluid'): number => {
+    const perSec = ratePerSecond(amount);
+    const throughput = type === 'fluid' ? pipeThroughputPerSecond : beltThroughputPerSecond;
+    return Math.max(1, Math.ceil(perSec / throughput));
+  };
+
+  for (const ing of recipe.ingredients) {
+    out.inputContainers[ing.name] = containersFor(ing.amount, ing.type);
+  }
+  for (const prod of recipe.products) {
+    // probability 는 average yield 로 환산. 없으면 1 (확정).
+    const expected = prod.amount * (prod.probability ?? 1);
+    if (expected <= 0) continue;
+    out.outputContainers[prod.name] = containersFor(expected, prod.type);
+  }
+  return out;
 };
