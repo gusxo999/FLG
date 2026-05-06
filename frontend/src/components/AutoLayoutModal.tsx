@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { useGameDataStore } from '../store/gameDataStore';
 import type { Entity } from '../store/gameDataStore';
-import { useLayoutStore } from '../store/layoutStore';
 import { useT } from '../i18n';
-import { useToastStore } from '../store/toastStore';
 import {
   expandRecipeTree,
   flattenTree,
@@ -12,8 +10,7 @@ import {
   assignMinimumCounts,
 } from '../utils/autoLayout/recipeTree';
 import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
-import { runSlotAutoLayoutWizard } from '../utils/autoLayout/runSlotWizard';
-import type { RecipeTreeNode, WizardResult } from '../utils/autoLayout/types';
+import type { RecipeTreeNode } from '../utils/autoLayout/types';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
 import {
   inserterThroughput,
@@ -38,14 +35,12 @@ const STEPS: Step[] = ['recipe', 'machine', 'inserter', 'belt', 'pipe', 'review'
 
 export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps) {
   const t = useT();
-  const showToast = useToastStore((s) => s.show);
 
   const {
     recipes,
     recipeMap,
     itemToRecipe,
     entityMap,
-    machines,
     techMap,
     loaded,
     getMachinesForCategory,
@@ -57,7 +52,6 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
       recipeMap: s.recipeMap,
       itemToRecipe: s.itemToRecipe,
       entityMap: s.entityMap,
-      machines: s.machines,
       techMap: s.techMap,
       loaded: s.loaded,
       getMachinesForCategory: s.getMachinesForCategory,
@@ -65,8 +59,6 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
       resolvePrerequisites: s.resolvePrerequisites,
     })),
   );
-
-  const applyPlacedCells = useLayoutStore((s) => s.applyPlacedCells);
 
   const [step, setStep] = useState<Step>('recipe');
 
@@ -86,14 +78,6 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
   const [inserterOverrides, setInserterOverrides] = useState<
     Record<string, InserterOverrideEntry>
   >({});
-
-  // Region (review step)
-  const [regionX, setRegionX] = useState(0);
-  const [regionY, setRegionY] = useState(0);
-  const [regionW, setRegionW] = useState(40);
-  const [regionH, setRegionH] = useState(40);
-
-  const [result, setResult] = useState<WizardResult | null>(null);
 
   const recipeOptions = useMemo(
     () =>
@@ -239,41 +223,8 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     setStep('recipe');
   }
 
-  function handleRun() {
-    if (!targetRecipe) return;
-    const wizardResult = runSlotAutoLayoutWizard(
-      {
-        targetRecipe,
-        countMode: countMode === 'min' ? 'min' : { perTarget },
-        externalIngredients,
-        selectedMachines: Array.from(effectiveMachines),
-        selectedInserters: Array.from(effectiveInserters),
-        selectedBelts: Array.from(effectiveBelts),
-        selectedUndergroundPipes: Array.from(effectivePipes),
-        inserterOverrides,
-        region: { x: regionX, y: regionY, w: regionW, h: regionH },
-      },
-      {
-        recipeMap,
-        itemToRecipe,
-        entityMap,
-        pickMachineForRecipe: (recipeName: string, selected: ReadonlyArray<string>) =>
-          pickMachineForRecipe(recipeName, selected, machines, recipeMap),
-      },
-    );
-    setResult(wizardResult);
-  }
-
-  function handleApply() {
-    if (!result || !result.placedWithCoords) return;
-    applyPlacedCells(result.placedWithCoords);
-    showToast(t('autoLayoutModal.appliedToast', { count: result.machinesPlaced }), 'success');
-    handleClose();
-  }
-
   function handleClose() {
     setStep('recipe');
-    setResult(null);
     onClose();
   }
 
@@ -417,22 +368,11 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
             <>
               <ReviewStep
                 targetRecipe={targetRecipe}
-                tree={previewTree}
                 totalMachines={totalMachines}
                 internalRecipes={internalRecipes}
                 selectedMachines={effectiveMachines}
                 selectedInserters={effectiveInserters}
                 selectedBelts={effectiveBelts}
-                regionX={regionX}
-                regionY={regionY}
-                regionW={regionW}
-                regionH={regionH}
-                setRegionX={setRegionX}
-                setRegionY={setRegionY}
-                setRegionW={setRegionW}
-                setRegionH={setRegionH}
-                result={result}
-                onRun={handleRun}
                 t={t}
               />
               <AutoLayoutContainerPanel
@@ -465,28 +405,13 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
                 {t('autoLayoutModal.prev')}
               </button>
             )}
-            {step !== 'review' ? (
+            {step !== 'review' && (
               <button
                 onClick={nextStep}
                 disabled={step === 'recipe' && !targetRecipe}
                 className="bg-orange-500 hover:bg-orange-400 disabled:bg-orange-700 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-1.5 rounded-lg transition-colors"
               >
                 {t('autoLayoutModal.next')}
-              </button>
-            ) : result?.ok ? (
-              <button
-                onClick={handleApply}
-                className="bg-green-600 hover:bg-green-500 text-white text-sm font-semibold px-5 py-1.5 rounded-lg transition-colors"
-              >
-                {t('autoLayoutModal.apply')}
-              </button>
-            ) : (
-              <button
-                onClick={handleRun}
-                disabled={!targetRecipe}
-                className="bg-orange-500 hover:bg-orange-400 disabled:bg-orange-700 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-1.5 rounded-lg transition-colors"
-              >
-                {t('autoLayoutModal.run')}
               </button>
             )}
           </div>
@@ -1107,22 +1032,11 @@ function InserterThroughputOverrides({
 
 interface ReviewStepProps {
   targetRecipe: string;
-  tree: RecipeTreeNode | null;
   totalMachines: number;
   internalRecipes: Set<string>;
   selectedMachines: Set<string>;
   selectedInserters: Set<string>;
   selectedBelts: Set<string>;
-  regionX: number;
-  regionY: number;
-  regionW: number;
-  regionH: number;
-  setRegionX: (v: number) => void;
-  setRegionY: (v: number) => void;
-  setRegionW: (v: number) => void;
-  setRegionH: (v: number) => void;
-  result: WizardResult | null;
-  onRun: () => void;
   t: (k: string, p?: Record<string, string | number>) => string;
 }
 
@@ -1134,16 +1048,6 @@ function ReviewStep(props: ReviewStepProps) {
     selectedMachines,
     selectedInserters,
     selectedBelts,
-    regionX,
-    regionY,
-    regionW,
-    regionH,
-    setRegionX,
-    setRegionY,
-    setRegionW,
-    setRegionH,
-    result,
-    onRun,
     t,
   } = props;
 
@@ -1172,57 +1076,6 @@ function ReviewStep(props: ReviewStepProps) {
           value={String(selectedBelts.size)}
         />
       </div>
-
-      <div>
-        <label className="text-xs uppercase tracking-wider text-gray-400 block mb-1">
-          {t('autoLayoutModal.region')}
-        </label>
-        <div className="grid grid-cols-4 gap-2">
-          <NumberField label="x" value={regionX} onChange={setRegionX} />
-          <NumberField label="y" value={regionY} onChange={setRegionY} />
-          <NumberField label="w" value={regionW} onChange={setRegionW} min={5} />
-          <NumberField label="h" value={regionH} onChange={setRegionH} min={7} />
-        </div>
-        <p className="text-[10px] text-gray-500 mt-1">{t('autoLayoutModal.regionHint')}</p>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onRun}
-          disabled={!targetRecipe}
-          className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors"
-        >
-          {t('autoLayoutModal.run')}
-        </button>
-      </div>
-
-      {result && (
-        <div className="space-y-2">
-          <div
-            className={`text-xs font-semibold ${
-              result.ok ? 'text-green-300' : 'text-yellow-300'
-            }`}
-          >
-            {result.ok
-              ? t('autoLayoutModal.runOk', {
-                  placed: result.machinesPlaced,
-                  required: result.machinesRequired,
-                })
-              : t('autoLayoutModal.runPartial', {
-                  placed: result.machinesPlaced,
-                  required: result.machinesRequired,
-                })}
-          </div>
-          {result.warnings.length > 0 && (
-            <ul className="text-[11px] text-amber-200/90 list-disc list-inside space-y-0.5">
-              {result.warnings.map((w, i) => (
-                <li key={i}>{w.message}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
     </div>
   );
 }
@@ -1232,31 +1085,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between bg-gray-800/40 border border-gray-700 rounded px-2 py-1">
       <span className="text-gray-500">{label}</span>
       <span className="text-gray-100 font-mono">{value}</span>
-    </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  min,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  min?: number;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <label className="text-[10px] uppercase tracking-wider text-gray-500">{label}</label>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-orange-500"
-      />
     </div>
   );
 }
@@ -1271,24 +1099,4 @@ function sumMachineCounts(node: RecipeTreeNode): number {
     total += n.machineCount;
   }
   return total;
-}
-
-/**
- * 레시피의 category 를 처리할 수 있고 사용자가 2단계에서 체크한 머신 중 첫 매칭을 반환.
- * 매칭이 없으면 undefined.
- */
-function pickMachineForRecipe(
-  recipeName: string,
-  selected: ReadonlyArray<string>,
-  machines: ReadonlyArray<{ name: string; crafting_categories: string[] }>,
-  recipeMap: Map<string, { category: string }>,
-): Entity | undefined {
-  const recipe = recipeMap.get(recipeName);
-  if (!recipe) return undefined;
-  const selectedSet = new Set(selected);
-  for (const m of machines) {
-    if (!selectedSet.has(m.name)) continue;
-    if (m.crafting_categories.includes(recipe.category)) return m as Entity;
-  }
-  return undefined;
 }

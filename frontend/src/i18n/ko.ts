@@ -81,10 +81,6 @@ export const ko = {
 
     noCandidates: '{what} 후보가 없습니다',
 
-    region: '배치 영역',
-    regionHint:
-      '좌상단 (x, y) 와 너비/높이 (w/h). 단위 셀 5×7이 행/열 격자로 배치됩니다.',
-
     summary: {
       target: '타깃 레시피',
       machinesRequired: '필요 머신 수',
@@ -94,15 +90,9 @@ export const ko = {
       selectedBelts: '선택된 벨트 종류',
     },
 
-    run: '배치 시뮬레이션',
-    runOk: '✓ 모든 머신 배치 가능 — {placed}/{required}',
-    runPartial: '⚠ 부분 배치 — {placed}/{required} ({required}-{placed}개 미배치)',
-
     prev: '이전',
     next: '다음',
     cancel: '취소',
-    apply: '레이아웃에 적용',
-    appliedToast: '{count}개 머신을 그리드에 적용했습니다',
   },
 
 

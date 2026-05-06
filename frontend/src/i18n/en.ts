@@ -84,10 +84,6 @@ export const en: Translations = {
 
     noCandidates: 'No candidates available for {what}',
 
-    region: 'Region',
-    regionHint:
-      'Top-left (x, y) and size (w, h). Unit cells of 5×7 are laid out in a row/column grid.',
-
     summary: {
       target: 'Target recipe',
       machinesRequired: 'Machines required',
@@ -97,15 +93,9 @@ export const en: Translations = {
       selectedBelts: 'Selected belt types',
     },
 
-    run: 'Simulate placement',
-    runOk: '✓ All machines placed — {placed}/{required}',
-    runPartial: '⚠ Partial — {placed}/{required} (region too small)',
-
     prev: 'Back',
     next: 'Next',
     cancel: 'Cancel',
-    apply: 'Apply to layout',
-    appliedToast: 'Applied {count} machines to the grid',
   },
 
 
