@@ -259,24 +259,26 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
           </button>
         </div>
 
-        {/* Stepper */}
+        {/* Stepper — 칸 클릭 시 해당 단계로 즉시 이동 (skip 단계도 클릭 가능) */}
         <div className="flex items-center gap-2 px-6 pt-3 pb-1 text-[11px] overflow-x-auto">
           {STEPS.map((s, i) => {
             const skip = shouldSkip(s);
             const active = step === s;
             return (
               <div key={s} className="flex items-center gap-1 shrink-0">
-                <span
-                  className={`px-2 py-0.5 rounded ${
+                <button
+                  type="button"
+                  onClick={() => setStep(s)}
+                  className={`px-2 py-0.5 rounded transition-colors cursor-pointer ${
                     active
                       ? 'bg-orange-500 text-white'
                       : skip
-                      ? 'bg-gray-800 text-gray-600 line-through'
-                      : 'bg-gray-800 text-gray-300'
+                      ? 'bg-gray-800 text-gray-600 line-through hover:bg-gray-700 hover:text-gray-400'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
                   }`}
                 >
                   {i + 1}. {t(`autoLayoutModal.steps.${s}`)}
-                </span>
+                </button>
                 {i < STEPS.length - 1 && <span className="text-gray-600">›</span>}
               </div>
             );
