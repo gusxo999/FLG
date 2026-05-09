@@ -11,17 +11,20 @@
  *   - 자식 형제 순서 (n!) × 자식 위치 ('right' | 'down') = **루트 레벨에서 완전 탐색**.
  *   - 내부 레벨에서는 *first-success 커밋* — 자식의 (perm × dir) 도 enumerate 하지만
  *     첫 성공한 조합만 후보 상태로 commit.
- *   - 외부 영역 IO — 무한상자/무한파이프 1×1 줄 자동 배치 (외부 입력 + 루트 출력).
+ *   - 외부 입력 IO — 사이클 안에서 처리 (placement-search §7.1). 한 머신의
+ *     외부 ingredient 마다 무한상자/파이프 1개씩 (= ingredient × consumer 분리,
+ *     placement-search §4 Q19 / Q3 결정) 추가하고 그 머신과 라우팅.
+ *   - 외부 출력 IO — 루트 머신의 모든 product 마다 무한상자/파이프 1개씩,
+ *     루트 → 무한상자 라우팅.
  *
  * **follow-up (별도 커밋):**
  *   - 내부 레벨까지 *완전한 cross-product 후보* 생성 (현재는 first-success)
- *   - 외부 → 내부 라우팅 (현재는 외부 영역에 무한상자만 두고 라우팅 없음)
- *   - 라우팅 fallback (다른 port 셀 시도) — Q21 / §7.4
- *   - fluid 라우팅 — containerRouting.ts 가 처리할 자리
+ *   - 사용자 드래그 후 외부 컨테이너 위치 변경 + 라우팅 재계산
+ *   - 라우팅 fallback 의 다른 port 셀 시도는 이미 routeWithFallback 가 처리
+ *   - 처리량 기반 컨테이너 분할 (`computeContainerCounts` 활용)
  */
 
 import { useGameDataStore } from '../../store/gameDataStore';
-import type { Recipe } from '../../store/gameDataStore';
 import type {
   Area,
   AreaSnapshot,
@@ -30,22 +33,19 @@ import type {
   CandidateNode,
   CandidateTree,
   Container,
-  ContainerPort,
   ContainerWizardInput,
   ContainerWizardResult,
   FailureLeaf,
   MachineNode,
   PortKind,
-  PortPair,
   ProgressReporter,
   Routing,
-  RoutingAttempt,
   RunContainerWizard,
 } from './containerModel';
-import { commitRouting, routePorts } from './containerRouting';
+import { commitRouting } from './containerRouting';
 import { placeExternalContainer } from './externalPlacer';
 import { placeMachine, placeRootMachine } from './machinePlacer';
-import { enumerateContainerPorts, resolvePortPair } from './portInference';
+import { routeWithFallback, type RouteOptions } from './routeFallback';
 import {
   expandRecipeTree,
   assignMinimumCounts,
@@ -195,6 +195,7 @@ function buildSingleAttempt(
   const internal: Area = makeEmptyArea('internal');
   const external: Area = makeEmptyArea('external');
   const containerByRecipe = new Map<string, Container>();
+  const allRoutings: Routing[] = [];
 
   // 1. 루트 배치
   const placedRoot = placeRootMachine({ ...rootContainer }, internal);
@@ -203,10 +204,16 @@ function buildSingleAttempt(
   }
   if (tree.recipeName) containerByRecipe.set(tree.recipeName, placedRoot);
 
+  // 1a. 루트의 외부 입력 라우팅 (placement-search §7.1 — 사이클의 B 단계)
+  const rootInputs = attachExternalInputs(placedRoot, tree, internal, external);
+  if (!rootInputs.ok) {
+    return makeFailureLeaf(rootInputs.reason, rootInputs.detail, captureSnapshot(internal, external));
+  }
+  for (const r of rootInputs.routings) allRoutings.push(r);
+
   // 2. 자식 DFS 재귀
   const childMachineNodes: CandidateNode[] = [];
   let lastParent = placedRoot;
-  const allRoutings: Routing[] = [];
   for (const child of rootPerm) {
     if (signal?.aborted) {
       return makeFailureLeaf('aborted', 'user cancelled', captureSnapshot(internal, external));
@@ -228,8 +235,12 @@ function buildSingleAttempt(
     lastParent = childResult.machine;
   }
 
-  // 3. 외부 IO 채우기 (모든 머신 배치 후)
-  populateExternalIO(tree, containerByRecipe, external);
+  // 3. 루트 product 출력 라우팅 — root 머신 → 외부 무한상자/파이프
+  const rootOutputs = attachRootOutput(placedRoot, tree, internal, external);
+  if (!rootOutputs.ok) {
+    return makeFailureLeaf(rootOutputs.reason, rootOutputs.detail, captureSnapshot(internal, external));
+  }
+  for (const r of rootOutputs.routings) allRoutings.push(r);
 
   // 4. 후보 leaf
   const leaf = makeCandidateLeaf(
@@ -287,12 +298,22 @@ function recurseMachine(
   const routeKind: PortKind = flowKind === 'fluid' ? { fluid: treeNode.itemName } : 'item';
 
   const routings: Routing[] = [];
-  const routeResult = routeWithFallback(placed, parent, routeKind, internal);
+  const routeResult = routeWithFallback(placed, parent, routeKind, internal, ROUTING_OPTIONS);
   if (!routeResult.ok) {
     return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`, captureSnapshot(internal, external));
   }
   commitRouting(routeResult.routing, internal);
   routings.push(routeResult.routing);
+
+  // 이 머신의 외부 입력 라우팅 — placement-search §7.1 의 B 단계.
+  // 자식 ingredient (= 자체 생산) 가 아닌 ingredient 마다 무한상자/파이프 1개
+  // 추가하고 이 머신과 라우팅. 한 ingredient 가 여러 머신에 들어가면 머신마다
+  // 별도 컨테이너 (Q19 / Q3 결정 — splitter 미사용).
+  const extInputs = attachExternalInputs(placed, treeNode, internal, external);
+  if (!extInputs.ok) {
+    return makeFailureLeaf(extInputs.reason, extInputs.detail, captureSnapshot(internal, external));
+  }
+  for (const r of extInputs.routings) routings.push(r);
 
   containerByRecipe.set(treeNode.recipeName, placed);
   const thisMN = makeMachineNode(placed, routings, labelFor(placed), captureSnapshot(internal, external));
@@ -351,67 +372,16 @@ function recurseMachine(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 라우팅 fallback — 그리디 실패 시 다른 port 셀 시도 (placement-search §7.4)
+// 라우팅 옵션 — 본 위저드의 default 설정. fallback 본체는 routeFallback.ts 로
+// 추출되어 통합 단계 (`areaUnification.dragExternalContainer`) 와 공유.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ROUTING_OPTIONS = {
+export const ROUTING_OPTIONS: RouteOptions = {
   beltEntityName: 'transport-belt',
   inserterEntityName: 'inserter',
   pipeEntityName: 'pipe',
   preferUnderground: false,
-} as const;
-
-/**
- * 그리디 매칭 → 실패 시 모든 port 조합을 manhattan 거리 오름차순으로 시도.
- * 어느 조합이라도 라우팅 성공하면 그 라우팅 반환. 모두 실패면 ok=false + 시도 목록.
- *
- * routePorts 자체는 area 를 mutate 하지 않으므로 (commitRouting 이 따로) 시도 중에
- * 영역 상태를 더럽히지 않는다.
- */
-function routeWithFallback(
-  producer: Container,
-  consumer: Container,
-  kind: PortKind,
-  internal: Area,
-): RoutingAttempt {
-  // 1. 그리디 시도
-  const greedy = resolvePortPair(producer, consumer, kind);
-  if (greedy) {
-    const attempt = routePorts(greedy, internal, ROUTING_OPTIONS);
-    if (attempt.ok) return attempt;
-  }
-
-  // 2. 모든 port 조합 enumerate, 그리디 페어는 제외
-  const producerPorts = enumerateContainerPorts(producer, kind);
-  const consumerPorts = enumerateContainerPorts(consumer, kind);
-  if (producerPorts.length === 0 || consumerPorts.length === 0) {
-    return { ok: false, reason: 'no-port-pair', tried: greedy ? [greedy] : [] };
-  }
-
-  type Cand = { pair: PortPair; dist: number };
-  const candidates: Cand[] = [];
-  for (const p of producerPorts) {
-    for (const c of consumerPorts) {
-      if (greedy && samePort(p, greedy.producer) && samePort(c, greedy.consumer)) continue;
-      const dist = Math.abs(p.cell.x - c.cell.x) + Math.abs(p.cell.y - c.cell.y);
-      candidates.push({ pair: { producer: p, consumer: c }, dist });
-    }
-  }
-  candidates.sort((a, b) => a.dist - b.dist);
-
-  const tried: PortPair[] = greedy ? [greedy] : [];
-  for (const cand of candidates) {
-    tried.push(cand.pair);
-    const attempt = routePorts(cand.pair, internal, ROUTING_OPTIONS);
-    if (attempt.ok) return attempt;
-  }
-
-  return { ok: false, reason: 'no-path', tried };
-}
-
-function samePort(a: ContainerPort, b: ContainerPort): boolean {
-  return a.cell.x === b.cell.x && a.cell.y === b.cell.y;
-}
+};
 
 /**
  * 한 레시피의 product 가운데 itemName 의 type (item / fluid) 을 조회.
@@ -426,66 +396,108 @@ function lookupProductKind(recipeName: string, itemName: string): 'item' | 'flui
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 외부 IO 채우기 — 비-external 노드의 외부 ingredient + 루트 product
+// 외부 입력 라우팅 — 한 머신의 외부 ingredient 마다 무한상자/파이프 + 라우팅
 // ─────────────────────────────────────────────────────────────────────────────
 
-function populateExternalIO(
-  tree: RecipeTreeNode,
-  containerByRecipe: Map<string, Container>,
+type AttachResult =
+  | { ok: true; routings: Routing[] }
+  | { ok: false; reason: FailureLeaf['reason']; detail: string };
+
+/**
+ * 한 머신의 외부 ingredient (= treeNode 의 자식 중 external 표시이거나, 자식
+ * 노드 자체가 없는 ingredient) 별로 무한상자/파이프 1개씩 두고, 이 머신과
+ * 라우팅한다.
+ *
+ * placement-search §7.1: A↔B 사이클의 B 단계 = 그 머신의 *모든 입력 라우팅
+ * (외부 + 부모와의 연결)*. 부모 라우팅은 호출자 (recurseMachine) 가 따로 처리.
+ *
+ * 같은 ingredient 라도 여러 머신이 소비하면 머신마다 별도 컨테이너 (Q19 a /
+ * Q3 결정 — splitter 미사용).
+ */
+function attachExternalInputs(
+  machine: Container,
+  treeNode: RecipeTreeNode,
+  internal: Area,
   external: Area,
-): void {
-  const recipeMap = useGameDataStore.getState().recipeMap;
+): AttachResult {
+  if (!treeNode.recipeName) return { ok: true, routings: [] };
+  const recipe = useGameDataStore.getState().recipeMap.get(treeNode.recipeName);
+  if (!recipe) return { ok: true, routings: [] };
 
-  const seen = new Set<string>(); // 중복 (예: 같은 ingredient 이름이 여러 머신에 들어가는 경우) 방지
+  const routings: Routing[] = [];
+  for (const ing of recipe.ingredients) {
+    const childForIng = treeNode.children.find((c) => c.itemName === ing.name);
+    const isExternal = !childForIng || childForIng.external || !childForIng.recipeName;
+    if (!isExternal) continue;
 
-  const walk = (node: RecipeTreeNode): void => {
-    if (node.external || !node.recipeName) return;
-    const recipe: Recipe | undefined = recipeMap.get(node.recipeName);
-    if (recipe) {
-      for (const ing of recipe.ingredients) {
-        const childForIng = node.children.find((c) => c.itemName === ing.name);
-        // external 로 판정되는 조건: 자식이 없거나, 자식이 external 표시되었거나, 자식에 recipeName 이 없음.
-        const isExternal = !childForIng || childForIng.external || !childForIng.recipeName;
-        if (!isExternal) continue;
-        const key = `in:${ing.name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        placeExternalContainer(
-          {
-            kind: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
-            entityName: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
-            content: ing.name,
-          },
-          external,
-        );
-      }
+    const chest = placeExternalContainer(
+      {
+        kind: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+        entityName: ing.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+        content: ing.name,
+      },
+      external,
+      internal,
+      machine,
+    );
+
+    const portKind: PortKind = ing.type === 'fluid' ? { fluid: ing.name } : 'item';
+    const attempt = routeWithFallback(chest, machine, portKind, internal, ROUTING_OPTIONS);
+    if (!attempt.ok) {
+      return {
+        ok: false,
+        reason: 'no-routing',
+        detail: `외부 ${ing.name} → ${treeNode.recipeName} 라우팅 실패 (${attempt.tried.length} port 조합 시도)`,
+      };
     }
-    for (const c of node.children) walk(c);
-  };
-  walk(tree);
-
-  // 루트 product 출력
-  if (tree.recipeName) {
-    const rootRecipe = recipeMap.get(tree.recipeName);
-    if (rootRecipe) {
-      for (const prod of rootRecipe.products) {
-        const key = `out:${prod.name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        placeExternalContainer(
-          {
-            kind: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
-            entityName: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
-            content: prod.name,
-          },
-          external,
-        );
-      }
-    }
+    commitRouting(attempt.routing, internal);
+    routings.push(attempt.routing);
   }
 
-  // containerByRecipe 미사용 — 후속 외부→내부 라우팅에서 활용.
-  void containerByRecipe;
+  return { ok: true, routings };
+}
+
+/**
+ * 루트 머신의 모든 product 마다 외부 무한상자/파이프 1개씩 두고, 루트 → 무한상자
+ * 라우팅. 루트 product 가 여러 개여도 각각 컨테이너 1개씩.
+ */
+function attachRootOutput(
+  rootContainer: Container,
+  tree: RecipeTreeNode,
+  internal: Area,
+  external: Area,
+): AttachResult {
+  if (!tree.recipeName) return { ok: true, routings: [] };
+  const recipe = useGameDataStore.getState().recipeMap.get(tree.recipeName);
+  if (!recipe) return { ok: true, routings: [] };
+
+  const routings: Routing[] = [];
+  for (const prod of recipe.products) {
+    const chest = placeExternalContainer(
+      {
+        kind: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+        entityName: prod.type === 'fluid' ? 'infinity-pipe' : 'infinity-chest',
+        content: prod.name,
+      },
+      external,
+      internal,
+      rootContainer,
+    );
+
+    const portKind: PortKind = prod.type === 'fluid' ? { fluid: prod.name } : 'item';
+    const attempt = routeWithFallback(rootContainer, chest, portKind, internal, ROUTING_OPTIONS);
+    if (!attempt.ok) {
+      return {
+        ok: false,
+        reason: 'no-routing',
+        detail: `루트 ${prod.name} 출력 라우팅 실패 (${attempt.tried.length} port 조합 시도)`,
+      };
+    }
+    commitRouting(attempt.routing, internal);
+    routings.push(attempt.routing);
+  }
+
+  return { ok: true, routings };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -593,7 +605,12 @@ function makeEmptyArea(kind: Area['kind']): Area {
 function cloneArea(a: Area): Area {
   const cloned: Area = {
     kind: a.kind,
-    containers: a.containers.map((c) => ({ ...c, origin: { ...c.origin }, size: { ...c.size } })),
+    containers: a.containers.map((c) => ({
+      ...c,
+      origin: { ...c.origin },
+      size: { ...c.size },
+      externalOrigin: c.externalOrigin ? { ...c.externalOrigin } : undefined,
+    })),
     placed: a.placed.map((p) => ({ x: p.x, y: p.y, cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } } })),
     bbox: a.bbox ? { ...a.bbox } : undefined,
   };

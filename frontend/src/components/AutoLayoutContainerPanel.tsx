@@ -29,6 +29,7 @@ import { createPortal } from 'react-dom';
 import { useLayoutStore } from '../store/layoutStore';
 import { useToastStore } from '../store/toastStore';
 import { runContainerWizard } from '../utils/autoLayout/containerWizard';
+import { unifyAreas } from '../utils/autoLayout/areaUnification';
 import type {
   AreaSnapshot,
   CandidateLeaf,
@@ -113,10 +114,11 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
   }
 
   function handleApplyCandidate(leaf: CandidateLeaf) {
-    const cells = [
-      ...leaf.internal.placed.map((p) => ({ x: p.x, y: p.y, cell: p.cell })),
-      ...leaf.external.placed.map((p) => ({ x: p.x, y: p.y, cell: p.cell })),
-    ];
+    // CG2: 두 영역을 통합 좌표계로 평탄화. external.placed 는 외부 좌표계라
+    // 직접 합치면 안 되며, unifyAreas 가 통합 좌표계로 평탄화한 PlacedCell[]
+    // 을 반환한다 (1차 구현은 internal.placed 가 이미 통합 좌표라 그대로 복제).
+    const { placed } = unifyAreas(leaf.internal, leaf.external);
+    const cells = placed.map((p) => ({ x: p.x, y: p.y, cell: p.cell }));
     if (cells.length === 0) {
       showToast('빈 후보 — 적용할 셀 없음', 'warning');
       return;
@@ -345,14 +347,18 @@ function HoverPreviewPortal({ node }: { node: CandidateNode }) {
   return createPortal(popup, document.body);
 }
 
-/** 노드 종류별로 보여줄 placed cells 추출. snapshot 이 있으면 그것을, 후보 leaf 면 본 필드. */
+/**
+ * 노드 종류별로 보여줄 placed cells 추출. snapshot 이 있으면 그것을, 후보
+ * leaf 면 본 필드. CG2: external.placed 는 외부 좌표계라 직접 합치면 안 되고
+ * `unifyAreas` 가 통합 좌표계로 평탄화한 셀을 반환.
+ */
 function extractCellsForNode(node: CandidateNode): PlacedCell[] {
   if (node.kind === 'candidate') {
-    return [...node.internal.placed, ...node.external.placed];
+    return unifyAreas(node.internal, node.external).placed;
   }
   const snap: AreaSnapshot | undefined = node.snapshot;
   if (!snap) return [];
-  return [...snap.internal.placed, ...snap.external.placed];
+  return unifyAreas(snap.internal, snap.external).placed;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

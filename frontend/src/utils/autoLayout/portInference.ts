@@ -114,13 +114,17 @@ function itemPorts(c: Container): ContainerPort[] {
 }
 
 function fluidPorts(c: Container, fluidName: string): ContainerPort[] {
+  // infinity-pipe 는 1×1 일반 파이프와 동등 — 4면 모두 fluid port.
+  // 게임데이터에 prototype 자체가 export 되지 않을 수 있어 (export-gamedata.lua
+  // 의 ALL_TYPES 에 미포함) `entity.fluid_boxes` 에 의존할 수 없다.
+  if (c.kind === 'infinity-pipe') {
+    return synthesizeCardinalFluidPorts(c, fluidName);
+  }
+
   const entity: Entity | undefined = useGameDataStore.getState().entityMap.get(c.entityName);
   if (!entity?.fluid_boxes) return [];
 
-  // 엔티티 중심 (tile coords). 3×3 origin (0,0) → center (1.5, 1.5).
-  const center = containerCenter(c);
   const ports: ContainerPort[] = [];
-
   for (const fb of entity.fluid_boxes) {
     // fb.filter 가 명시되어 있으면 fluid 이름 일치만 후보. 없으면 통과 — 어떤
     // fluid 든 들어올 수 있는 box (assembler/refinery 의 generic fluid_box).
@@ -128,18 +132,59 @@ function fluidPorts(c: Container, fluidName: string): ContainerPort[] {
     for (const conn of fb.connections) {
       const pos = conn.positions?.[0];
       if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-      // positions 는 entity center 기준 *tile-center 좌표 offset*.
-      // 셀 (정수 top-left) 로 환산: floor(center + offset).
-      const cell = {
-        x: Math.floor(center.x + pos.x),
-        y: Math.floor(center.y + pos.y),
-      };
-      const face = inferFace(c, cell);
-      if (!face) continue; // 컨테이너 내부 셀은 port 가 아님 — 방어.
-      ports.push({ containerId: c.id, cell, face, kind: { fluid: fluidName } });
+      const port = portFromFluidBoxPosition(c, pos, fluidName);
+      if (port) ports.push(port);
     }
   }
   return ports;
+}
+
+/**
+ * fluid_box position 을 컨테이너 외부 셀 + face 로 변환.
+ *
+ * **Factorio 의 fluid_box.connections[].positions** 는 entity center 기준의
+ * *boundary 좌표* (= 0.5 타일 단위) 다. 단순히 `floor(center + pos)` 하면
+ * entity 의 *내부 셀* 로 떨어지는 경우가 흔하다 (예: chemical-plant 의 코너
+ * 입력). 따라서 **pos 의 부호** 로 어느 면인지 먼저 결정하고, 그 면 외부의
+ * 적절한 셀로 매핑한다:
+ *
+ *  - `|pos.y| ≥ |pos.x|` : N (pos.y < 0) 또는 S (pos.y > 0). 셀 x 는 center +
+ *    pos.x 가 가리키는 footprint 안의 한 칸으로 결정 (corner 케이스 포함).
+ *  - 그 외             : W (pos.x < 0) 또는 E (pos.x > 0). 셀 y 는 center +
+ *    pos.y 가 가리키는 footprint 안의 한 칸.
+ *
+ * 결과 셀은 항상 footprint *바로 바깥* 에 있고 face 와 일치.
+ */
+function portFromFluidBoxPosition(
+  c: Container,
+  pos: { x: number; y: number },
+  fluidName: string,
+): ContainerPort | null {
+  const { x: ox, y: oy } = c.origin;
+  const { w, h } = c.size;
+  const portKind: PortKind = { fluid: fluidName };
+
+  if (Math.abs(pos.y) >= Math.abs(pos.x)) {
+    // N / S 면 — pos.y 의 부호로 결정.
+    const localX = clamp(Math.floor(w / 2 + pos.x), 0, w - 1);
+    if (pos.y < 0) {
+      return { containerId: c.id, cell: { x: ox + localX, y: oy - 1 }, face: 'N', kind: portKind };
+    }
+    if (pos.y > 0) {
+      return { containerId: c.id, cell: { x: ox + localX, y: oy + h }, face: 'S', kind: portKind };
+    }
+    return null; // pos.y === 0 && |pos.x| ≤ |pos.y| === 0 → 중앙. 일반 fluid_box 에서 발생하지 않음.
+  }
+  // W / E 면 — pos.x 의 부호로 결정.
+  const localY = clamp(Math.floor(h / 2 + pos.y), 0, h - 1);
+  if (pos.x < 0) {
+    return { containerId: c.id, cell: { x: ox - 1, y: oy + localY }, face: 'W', kind: portKind };
+  }
+  return { containerId: c.id, cell: { x: ox + w, y: oy + localY }, face: 'E', kind: portKind };
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
 function containerCenter(c: Container): { x: number; y: number } {
@@ -147,18 +192,18 @@ function containerCenter(c: Container): { x: number; y: number } {
 }
 
 /**
- * 셀 좌표가 컨테이너의 *어느 면 바깥* 인지 판정. 컨테이너 내부면 null.
- *
- * 코너 셀 (예: 좌상단 대각) 은 인접한 두 면 중 우선 N/S 를 우선 (수직 우선).
+ * infinity-pipe (1×1) 의 4면 fluid port 를 합성. fb.filter 미적용 — 어떤 fluid 든
+ * 흐를 수 있는 일반 파이프 가정 (실제 Factorio 의 infinity-pipe 도 동일).
  */
-function inferFace(c: Container, cell: { x: number; y: number }): PortFace | null {
+function synthesizeCardinalFluidPorts(c: Container, fluidName: string): ContainerPort[] {
   const { x: ox, y: oy } = c.origin;
-  const { w, h } = c.size;
-  if (cell.y < oy) return 'N';
-  if (cell.y >= oy + h) return 'S';
-  if (cell.x < ox) return 'W';
-  if (cell.x >= ox + w) return 'E';
-  return null;
+  const portKind: PortKind = { fluid: fluidName };
+  return [
+    { containerId: c.id, cell: { x: ox,     y: oy - 1 }, face: 'N', kind: portKind },
+    { containerId: c.id, cell: { x: ox,     y: oy + 1 }, face: 'S', kind: portKind },
+    { containerId: c.id, cell: { x: ox - 1, y: oy     }, face: 'W', kind: portKind },
+    { containerId: c.id, cell: { x: ox + 1, y: oy     }, face: 'E', kind: portKind },
+  ];
 }
 
 /** 두 컨테이너 중심을 잇는 벡터에서 가장 가까운 face — 우세 축으로 결정. */

@@ -142,8 +142,17 @@ function routeItem(
   // 운반체 체인 emit.
   const placed: PlacedCell[] = [];
 
-  // 1) producer 측 인서터 — 컨테이너에서 벨트 방향 (= face 외측) 으로 향함.
-  placed.push(makeInserterCell(pair.producer.cell, producerOut, options.inserterEntityName, pair));
+  // 1) producer 측 인서터 — 컨테이너에서 집어 벨트로 놓음.
+  //    Factorio 규약: 인서터의 `direction` = *픽업 방향*.
+  //    producer 측 픽업 = 컨테이너 쪽 (= face 내측 = `-producerOut`).
+  placed.push(
+    makeInserterCell(
+      pair.producer.cell,
+      { x: -producerOut.x, y: -producerOut.y },
+      options.inserterEntityName,
+      pair,
+    ),
+  );
 
   // 2) 벨트 셀들 — 각 셀의 direction 은 *다음 셀로의 진행 방향*.
   for (let i = 0; i < path.length; i++) {
@@ -155,11 +164,12 @@ function routeItem(
     placed.push(makeBeltCell(here, dir, options.beltEntityName, pair));
   }
 
-  // 3) consumer 측 인서터 — 벨트에서 컨테이너 방향 (= face 내측) 으로 향함.
+  // 3) consumer 측 인서터 — 벨트에서 집어 컨테이너로 놓음.
+  //    consumer 측 픽업 = 벨트 쪽 (= face 외측 = `+consumerOut`).
   placed.push(
     makeInserterCell(
       pair.consumer.cell,
-      { x: -consumerOut.x, y: -consumerOut.y },
+      consumerOut,
       options.inserterEntityName,
       pair,
     ),
@@ -302,9 +312,17 @@ function bfs(
 // 셀 / 방향 유틸
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 인서터 1셀 emit. `pickupVec` = 인서터의 *픽업 방향* 단위벡터 (= 손 뻗는 쪽).
+ * Factorio 규약: `LuaEntity.direction` = 픽업 방향. prototype 의
+ * `inserter_pickup_position` 을 그대로 direction 만큼 회전한 위치가 픽업 셀.
+ *
+ * 예: direction=0 (N) → 북쪽에서 집고 남쪽에 놓는다.
+ *     direction=4 (E) → 동쪽에서 집고 서쪽에 놓는다.
+ */
 function makeInserterCell(
   cell: { x: number; y: number },
-  facingVec: { x: number; y: number },
+  pickupVec: { x: number; y: number },
   inserterEntityName: string,
   pair: PortPair,
 ): PlacedCell {
@@ -313,7 +331,7 @@ function makeInserterCell(
     entityId: `r-ins-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
     entityName: inserterEntityName,
     entityType: EntityType.Inserter,
-    direction: vectorToDirection(facingVec.x, facingVec.y),
+    direction: vectorToDirection(pickupVec.x, pickupVec.y),
     tileOffset: { x: 0, y: 0 },
     isOrigin: true,
   };

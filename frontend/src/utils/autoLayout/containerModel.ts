@@ -32,7 +32,13 @@ export interface Container {
   kind: ContainerKind;
   /** 게임데이터 entity name (e.g. "assembling-machine-2", "infinity-chest", "infinity-pipe") */
   entityName: string;
-  /** 좌상단 좌표 (해당 영역 좌표계) */
+  /**
+   * 좌상단 좌표 — *통합 좌표계 (= 내부 영역)* 기준.
+   *
+   * 머신은 내부 영역에서 직접 배치된 좌표. 무한상자/무한파이프는 *통합 후* 의
+   * 좌표 — 즉 "이 외부 컨테이너가 최종 블루프린트에서 차지할 자리". 라우팅 BFS
+   * 와 블루프린트 export 가 이 좌표를 진실의 근원으로 사용한다.
+   */
   origin: { x: number; y: number };
   /** footprint 폭/높이 (Entity.tile_width × tile_height) */
   size: { w: number; h: number };
@@ -48,6 +54,15 @@ export interface Container {
    * `infinity_settings.filters` (또는 fluid 필터) 의 값으로 들어간다.
    */
   content?: string;
+  /**
+   * *외부 좌표계* 의 좌상단 좌표. 무한상자/무한파이프만 가지며 머신은 undefined.
+   *
+   * 외부 영역 자체 좌표계 — 첫 외부 컨테이너가 (0, 0) 부터 1×1 줄짓기로 자라남
+   * (placement-search §3). `origin` (통합 좌표) 와 `externalOrigin` (외부 좌표)
+   * 의 차이가 곧 *통합 평행이동* 이다 — 사용자 드래그 시 둘이 같은 delta 로
+   * 함께 이동해 invariant 가 유지된다.
+   */
+  externalOrigin?: { x: number; y: number };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,14 +365,23 @@ export type PlaceMachine = (
 ) => Container | null;
 
 /**
- * 모듈 B — 외부 컨테이너 배치 (외부 영역).
+ * 모듈 B — 외부 컨테이너 배치.
  *
- * 외부 입력/출력 무한상자/파이프를 외부 좌표계 (0,0) 부터 1×1 단위로 줄지어
- * 배치. 사용자 드래그가 통합 직전에 일어나면 그 결과로 위치가 덮어써진다.
+ * 외부 입력/출력 무한상자/파이프를 두 영역에 *모두 실제 배치* 한다:
+ *  - 외부 영역 — `external.placed` 에 외부 좌표 (= `externalOrigin`) 로 셀 push.
+ *    첫 외부 컨테이너가 (0,0) 부터 1×1 줄짓기로 자라남. external.bbox 갱신.
+ *  - 내부 영역 — `internal.placed` 에 통합 좌표 (= `origin`) 로 셀 push.
+ *    Default 위치 = `near` 머신의 N면 좌상단부터 줄짓기 (없으면 내부 bbox
+ *    좌상단). 라우팅 BFS 가 이 셀을 occupancy 로 인식해 충돌 회피.
+ *
+ * 두 좌표계의 차이 (`origin - externalOrigin`) = *통합 평행이동* — 사용자
+ * 드래그 시 둘이 같은 delta 로 함께 이동해 invariant 가 유지된다.
  */
 export type PlaceExternalContainer = (
   spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
   external: Area,
+  internal: Area,
+  near?: Container,
 ) => Container;
 
 /**
@@ -419,3 +443,67 @@ export interface ContainerWizardResult {
   /** 부분 결과 여부 — Esc 중단으로 일부만 생성된 경우 true */
   partial: boolean;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §9. 영역 통합 (placement-search §3 / §8.3 / Q24)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 후보의 영역 통합 결과.
+ *
+ * `placed` = 두 영역을 단일 좌표계 (= 통합/내부 좌표) 로 합친 셀 배열. 블루프린트
+ * export · 그리드 적용에 그대로 사용 가능. 외부 영역의 `external.placed` 는
+ * *외부 좌표계* 라 export 에는 직접 못 쓰며, 본 함수가 통합 좌표로 평탄화한다.
+ *
+ * `translations` = 컨테이너 id → (외부 좌표 → 통합 좌표) 평행이동 벡터.
+ * 사용자 드래그 시 외부 좌표 변경분을 그대로 통합 좌표에 반영하기 위한 키.
+ */
+export interface UnifyResult {
+  /** 통합 좌표계의 단일 PlacedCell 배열 (export · 그리드 적용 입력) */
+  placed: PlacedCell[];
+  /** 외부 컨테이너별 평행이동 — `origin - externalOrigin` */
+  translations: Map<string, { dx: number; dy: number }>;
+}
+
+/**
+ * 두 영역을 단일 좌표계로 합쳐 final placed cell 배열을 반환한다.
+ *
+ * 1차 CG2 구현: chest 가 이미 `internal.placed` 에 통합 좌표로 존재하므로
+ * `placed` = `internal.placed` 그대로. `external.placed` 는 외부 좌표 셀이라
+ * export 에는 포함하지 않고, *외부 영역 UI 패널 표시 + 사용자 드래그 hook* 의
+ * 입력으로만 사용된다.
+ */
+export type UnifyAreas = (internal: Area, external: Area) => UnifyResult;
+
+/**
+ * 외부 컨테이너를 새 외부 좌표로 옮기고, 그 컨테이너를 끝점으로 가진 모든
+ * 라우팅을 재시도한다. invariant: 외부 좌표가 delta 만큼 움직이면 통합 좌표도
+ * 같은 delta 만큼 움직인다 (= 평행이동 보존).
+ *
+ * 동작:
+ *  1. 새 외부 좌표 → 통합 좌표 delta 계산
+ *  2. 컨테이너 셀을 두 영역에서 모두 새 자리로 이동 (placed cell + bbox 재계산)
+ *  3. 그 컨테이너를 from/to 로 가진 라우팅을 internal.placed 에서 uncommit
+ *  4. 각 라우팅 재시도 (`routeWithFallback` 와 동일한 fallback 정책)
+ *  5. 모두 성공: commit, ok=true 반환
+ *     하나라도 실패: 모든 mutation rollback, ok=false 반환 (이전 후보 유지)
+ *
+ * 실패 시 *후보 자체* 는 망가지지 않는다 — 사용자에게는 "그 자리에는 못 옮겨"
+ * 라는 신호만 주고 원위치를 그대로 보존.
+ */
+export type DragExternalContainer = (
+  containerId: string,
+  newExternalOrigin: { x: number; y: number },
+  internal: Area,
+  external: Area,
+  routings: Routing[],
+  options: {
+    beltEntityName: string;
+    inserterEntityName: string;
+    pipeEntityName: string;
+    undergroundPipeEntityName?: string;
+    preferUnderground: boolean;
+  },
+) =>
+  | { ok: true; rerouted: Routing[] }
+  | { ok: false; reason: 'no-port-pair' | 'no-path' | 'collision'; failedRouting?: string };
