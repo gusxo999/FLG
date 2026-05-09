@@ -16,6 +16,7 @@
 
 import type {
   Area,
+  CandidateLeaf,
   Container,
   PortKind,
   Routing,
@@ -300,4 +301,75 @@ function recomputeBbox(area: Area): void {
     bbox = expandBbox(bbox, p.x, p.y, 1, 1);
   }
   area.bbox = bbox;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 클론 — UI 가 드래그를 시도하는 동안 원본 후보를 보호하기 위한 deep-clone.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 영역을 deep-clone. `dragExternalContainer` 가 mutate 해도 원본이 그대로
+ * 보존되도록 containers / placed / bbox 모두 복제. 같은 컨테이너 객체가 두
+ * 영역에 공유돼있던 경우도 cloneArea 결과는 영역마다 별개의 Container 사본
+ * 이며, drag 함수는 두 사본을 모두 동기화한다.
+ */
+export function cloneArea(a: Area): Area {
+  return {
+    kind: a.kind,
+    containers: a.containers.map((c) => ({
+      ...c,
+      origin: { ...c.origin },
+      size: { ...c.size },
+      externalOrigin: c.externalOrigin ? { ...c.externalOrigin } : undefined,
+    })),
+    placed: a.placed.map((p) => ({
+      x: p.x,
+      y: p.y,
+      cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } },
+    })),
+    bbox: a.bbox ? { ...a.bbox } : undefined,
+  };
+}
+
+/**
+ * 한 라우팅을 deep-clone. `dragExternalContainer` 가 routings 배열 자체를
+ * mutate (length=0 + push) 하므로 사본이 필요. placed cells 까지 복제.
+ */
+export function cloneRouting(r: Routing): Routing {
+  return {
+    id: r.id,
+    kind: r.kind,
+    from: { ...r.from, cell: { ...r.from.cell }, kind: cloneKind(r.from.kind) },
+    to: { ...r.to, cell: { ...r.to.cell }, kind: cloneKind(r.to.kind) },
+    placed: r.placed.map((p) => ({
+      x: p.x,
+      y: p.y,
+      cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } },
+    })),
+    area: r.area,
+  };
+}
+
+function cloneKind(k: PortKind): PortKind {
+  return typeof k === 'object' ? { fluid: k.fluid } : k;
+}
+
+/**
+ * 한 후보 leaf 를 drag 작업용으로 clone.
+ *
+ * 외부 영역 편집기는 이 사본 위에서 drag 를 시도하고, 사용자가 "반영" 을
+ * 누르면 원본 트리의 후보를 사본으로 교체한다. "취소" 면 사본을 버린다.
+ *
+ * `children` 은 트리 구조 (디버깅용 노드들) 라 복제하지 않고 ref 그대로
+ * 가져간다 — drag 는 children 을 건드리지 않는다.
+ */
+export function cloneCandidate(c: CandidateLeaf): CandidateLeaf {
+  return {
+    ...c,
+    internal: cloneArea(c.internal),
+    external: cloneArea(c.external),
+    routings: c.routings.map(cloneRouting),
+    children: c.children,
+    snapshot: c.snapshot,
+  };
 }
