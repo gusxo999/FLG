@@ -33,11 +33,11 @@ export interface Container {
   /** 게임데이터 entity name (e.g. "assembling-machine-2", "infinity-chest", "infinity-pipe") */
   entityName: string;
   /**
-   * 좌상단 좌표 — *통합 좌표계 (= 내부 영역)* 기준.
+   * 좌상단 좌표 — *통합 좌표계* (단일 좌표계, 곧 최종 블루프린트 좌표).
    *
-   * 머신은 내부 영역에서 직접 배치된 좌표. 무한상자/무한파이프는 *통합 후* 의
-   * 좌표 — 즉 "이 외부 컨테이너가 최종 블루프린트에서 차지할 자리". 라우팅 BFS
-   * 와 블루프린트 export 가 이 좌표를 진실의 근원으로 사용한다.
+   * 머신은 내부 영역 안. 무한상자/무한파이프는 머신+내부 라우팅 bbox 의
+   * **perimeter ring** (1셀 두께) 위. 라우팅 BFS 와 블루프린트 export 가 이
+   * 좌표를 진실의 근원으로 사용한다.
    */
   origin: { x: number; y: number };
   /** footprint 폭/높이 (Entity.tile_width × tile_height) */
@@ -54,15 +54,6 @@ export interface Container {
    * `infinity_settings.filters` (또는 fluid 필터) 의 값으로 들어간다.
    */
   content?: string;
-  /**
-   * *외부 좌표계* 의 좌상단 좌표. 무한상자/무한파이프만 가지며 머신은 undefined.
-   *
-   * 외부 영역 자체 좌표계 — 첫 외부 컨테이너가 (0, 0) 부터 1×1 줄짓기로 자라남
-   * (placement-search §3). `origin` (통합 좌표) 와 `externalOrigin` (외부 좌표)
-   * 의 차이가 곧 *통합 평행이동* 이다 — 사용자 드래그 시 둘이 같은 delta 로
-   * 함께 이동해 invariant 가 유지된다.
-   */
-  externalOrigin?: { x: number; y: number };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,25 +96,28 @@ export interface ContainerPort {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 좌표계 식별자.
- *  - `internal` — 머신 + 내부 라우팅 (벨트/파이프/투입기) 이 사는 좌표계
- *  - `external` — 무한상자/무한파이프 + 외부 라우팅이 사는 좌표계
+ * 영역 식별자 — 통합 좌표계 안에서의 *역할 분류*. 좌표계는 단일이며 두
+ * 영역이 같은 좌표를 공유한다.
  *
- * 두 좌표계는 *별도* 로 진행되며, 알고리즘 마지막 단계에서 사용자 드래그를
- * 거쳐 통합된다.
+ *  - `internal` — 머신 + 내부 라우팅 (벨트/파이프/투입기). bbox 가 곧
+ *    perimeter 의 기준이 된다.
+ *  - `external` — 무한상자/무한파이프. internal bbox 의 1-cell perimeter
+ *    ring 위에 배치된다.
  */
 export type AreaKind = 'internal' | 'external';
 
 /**
- * 한 영역의 상태 — 컨테이너 + placed cells + bbox.
+ * 한 영역의 상태 — 컨테이너 + placed cells + bbox. 좌표는 통합 좌표계.
  *
- * `placed` 는 그리드 적용 직전의 cell-array 이며, 라우팅이 추가됨에 따라
- * incremental 로 자라난다. bbox 는 packed cells 의 최소 외접 사각형.
+ * `internal` 영역은 머신 + 라우팅 + chest ghost cells 까지 포함 (chest 는
+ * routing occupancy 를 위해 ghost-place 된다).
+ * `external` 영역은 chest 컨테이너 메타데이터만 보존 — `placed` 와 `bbox` 는
+ * 비어있다 (chest 셀의 진실의 근원은 internal.placed 임).
  */
 export interface Area {
   kind: AreaKind;
   containers: Container[];
-  /** 이 영역에 깔린 그리드 셀 (좌표는 영역 좌표계 절대 좌표) */
+  /** 이 영역에 깔린 그리드 셀 (좌표는 통합 좌표계 절대 좌표) */
   placed: PlacedCell[];
   /** 점유 셀의 최소 외접 사각형. 비어있으면 undefined */
   bbox?: { x: number; y: number; w: number; h: number };
@@ -367,15 +361,14 @@ export type PlaceMachine = (
 /**
  * 모듈 B — 외부 컨테이너 배치.
  *
- * 외부 입력/출력 무한상자/파이프를 두 영역에 *모두 실제 배치* 한다:
- *  - 외부 영역 — `external.placed` 에 외부 좌표 (= `externalOrigin`) 로 셀 push.
- *    첫 외부 컨테이너가 (0,0) 부터 1×1 줄짓기로 자라남. external.bbox 갱신.
- *  - 내부 영역 — `internal.placed` 에 통합 좌표 (= `origin`) 로 셀 push.
- *    Default 위치 = `near` 머신의 N면 좌상단부터 줄짓기 (없으면 내부 bbox
- *    좌상단). 라우팅 BFS 가 이 셀을 occupancy 로 인식해 충돌 회피.
+ * 무한상자/무한파이프를 통합 좌표계에 *임시* 배치한다 — `near` 머신의 N면
+ * 좌상단부터 줄짓기로 빈 셀을 잡아 `origin` 으로 설정. 라우팅 BFS 가 이 셀을
+ * occupancy 로 인식해 충돌 회피.
  *
- * 두 좌표계의 차이 (`origin - externalOrigin`) = *통합 평행이동* — 사용자
- * 드래그 시 둘이 같은 delta 로 함께 이동해 invariant 가 유지된다.
+ * 이 함수의 결과는 *임시* 위치 — 모든 머신 배치가 끝나면 후처리 단계가
+ * chest 들을 internal bbox 의 perimeter ring 위로 재배치한다 (placement-search
+ * §3 의 "통합 단계"). 본 함수는 ghost cell 만 internal 에 push 하고, external
+ * 영역에는 컨테이너 메타데이터만 push (placed/bbox 는 internal 이 진실의 근원).
  */
 export type PlaceExternalContainer = (
   spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
@@ -445,55 +438,47 @@ export interface ContainerWizardResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §9. 영역 통합 (placement-search §3 / §8.3 / Q24)
+// §9. 영역 통합 (placement-search §3 / §8.3)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 한 후보의 영역 통합 결과.
  *
- * `placed` = 두 영역을 단일 좌표계 (= 통합/내부 좌표) 로 합친 셀 배열. 블루프린트
- * export · 그리드 적용에 그대로 사용 가능. 외부 영역의 `external.placed` 는
- * *외부 좌표계* 라 export 에는 직접 못 쓰며, 본 함수가 통합 좌표로 평탄화한다.
+ * `placed` = 두 영역을 단일 좌표계 (= 통합 좌표) 로 합친 셀 배열. 블루프린트
+ * export · 그리드 적용에 그대로 사용 가능.
  *
- * `translations` = 컨테이너 id → (외부 좌표 → 통합 좌표) 평행이동 벡터.
- * 사용자 드래그 시 외부 좌표 변경분을 그대로 통합 좌표에 반영하기 위한 키.
+ * 좌표계가 이미 단일 (perimeter 모델) 이라 평행이동 벡터 같은 부가 정보는 없다.
+ * 본 함수는 사실상 `internal.placed` 의 얕은 복제.
  */
 export interface UnifyResult {
   /** 통합 좌표계의 단일 PlacedCell 배열 (export · 그리드 적용 입력) */
   placed: PlacedCell[];
-  /** 외부 컨테이너별 평행이동 — `origin - externalOrigin` */
-  translations: Map<string, { dx: number; dy: number }>;
 }
 
 /**
- * 두 영역을 단일 좌표계로 합쳐 final placed cell 배열을 반환한다.
- *
- * 1차 CG2 구현: chest 가 이미 `internal.placed` 에 통합 좌표로 존재하므로
- * `placed` = `internal.placed` 그대로. `external.placed` 는 외부 좌표 셀이라
- * export 에는 포함하지 않고, *외부 영역 UI 패널 표시 + 사용자 드래그 hook* 의
- * 입력으로만 사용된다.
+ * 두 영역을 단일 좌표계로 합쳐 final placed cell 배열을 반환한다. chest 는
+ * 이미 internal 에 ghost-place 되어 통합 좌표 안에 있으므로 internal.placed
+ * 가 그대로 결과가 된다.
  */
 export type UnifyAreas = (internal: Area, external: Area) => UnifyResult;
 
 /**
- * 외부 컨테이너를 새 외부 좌표로 옮기고, 그 컨테이너를 끝점으로 가진 모든
- * 라우팅을 재시도한다. invariant: 외부 좌표가 delta 만큼 움직이면 통합 좌표도
- * 같은 delta 만큼 움직인다 (= 평행이동 보존).
+ * 외부 컨테이너를 새 통합 좌표로 옮기고, 그 컨테이너를 끝점으로 가진 모든
+ * 라우팅을 재시도한다.
  *
  * 동작:
- *  1. 새 외부 좌표 → 통합 좌표 delta 계산
- *  2. 컨테이너 셀을 두 영역에서 모두 새 자리로 이동 (placed cell + bbox 재계산)
- *  3. 그 컨테이너를 from/to 로 가진 라우팅을 internal.placed 에서 uncommit
- *  4. 각 라우팅 재시도 (`routeWithFallback` 와 동일한 fallback 정책)
- *  5. 모두 성공: commit, ok=true 반환
- *     하나라도 실패: 모든 mutation rollback, ok=false 반환 (이전 후보 유지)
+ *  1. 두 영역의 컨테이너 객체를 새 origin 으로 이동 (placed cell + bbox 갱신)
+ *  2. 그 컨테이너를 from/to 로 가진 라우팅을 internal.placed 에서 uncommit
+ *  3. 각 라우팅 재시도 (`routeWithFallback` 와 동일한 fallback 정책)
+ *  4. 모두 성공: commit, ok=true 반환
+ *     하나라도 실패: 모든 mutation rollback, ok=false 반환
  *
  * 실패 시 *후보 자체* 는 망가지지 않는다 — 사용자에게는 "그 자리에는 못 옮겨"
  * 라는 신호만 주고 원위치를 그대로 보존.
  */
 export type DragExternalContainer = (
   containerId: string,
-  newExternalOrigin: { x: number; y: number },
+  newOrigin: { x: number; y: number },
   internal: Area,
   external: Area,
   routings: Routing[],

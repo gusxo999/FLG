@@ -35,7 +35,10 @@ import { useToastStore } from '../store/toastStore';
 import { ROUTING_OPTIONS, runContainerWizard } from '../utils/autoLayout/containerWizard';
 import {
   cloneCandidate,
+  computeMachineRoutingBbox,
   dragExternalContainer,
+  enumeratePerimeterCells,
+  isOnPerimeter,
   unifyAreas,
 } from '../utils/autoLayout/areaUnification';
 import type {
@@ -516,23 +519,26 @@ function GridPreview({ cells, size }: { cells: PlacedCell[]; size: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 외부 영역 편집기 — chest 드래그 + 라우팅 재시도
+// 외부 영역 편집기 — chest 드래그 (perimeter ring 제한) + 라우팅 재시도
 // ─────────────────────────────────────────────────────────────────────────────
 
-const EDITOR_CELL_SIZE = 32;     // 한 셀의 픽셀 크기
-const EDITOR_VIEWPORT_PAD = 4;   // 외부 bbox 둘레 여유 셀 (드래그 destination 가능 범위)
+const EDITOR_CELL_SIZE = 24;     // 한 셀의 픽셀 크기 (perimeter 도 다 보이게 약간 작게)
+const EDITOR_VIEWPORT_PAD = 2;   // machine bbox 둘레 여유 셀 (perimeter ring + 약간)
 
 /**
- * 외부 영역 편집기.
+ * 외부 영역 편집기 (perimeter 모델).
  *
  * `candidate` 는 *클론* 이며 본 컴포넌트가 dragExternalContainer 로 직접
  * mutate 한다. drag 가 실패하면 dragExternalContainer 의 rollback 으로
  * 클론은 원상 복구된다.
  *
  * UX:
- *  - 좌측 = 외부 영역 그리드 (chest 드래그 가능)
- *  - 우측 = 통합 좌표계 미리보기 (드래그 결과가 라우팅 변경으로 즉시 반영)
- *  - 하단 = 상태 라인 (마지막 시도 결과) + 버튼
+ *  - 좌측 = 통합 좌표계 그리드. machine + 라우팅 셀이 *흐릿한 배경* 으로 보이고,
+ *    *머신+라우팅 bbox 의 1셀 두께 perimeter ring* 이 강조 표시. chest 는
+ *    perimeter 위에서 드래그 가능, *비-perimeter 셀에는 drop 거부* (셀이
+ *    유효 destination 이 아님을 시각적으로 알림).
+ *  - 우측 = 통합 좌표계 미리보기 (drag 결과가 라우팅 변경으로 즉시 반영).
+ *  - 하단 = 상태 라인 (마지막 시도 결과) + 버튼.
  */
 function ExternalAreaEditor({
   candidate,
@@ -554,11 +560,47 @@ function ExternalAreaEditor({
   const [lastResult, setLastResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 드래그 viewport bbox — 외부 영역 bbox + padding. drag 가 외곽으로 가도
-  // 그 자리가 viewport 안에 들어와야 시각적으로 확인 가능.
-  const viewBbox = useMemo(() => computeEditorViewBbox(candidate.external.bbox), [candidate, version]);
+  // machine + routing bbox + perimeter 셀 — chest ghost 는 제외하고 계산.
+  const machineBbox = useMemo(
+    () => computeMachineRoutingBbox(candidate.internal, candidate.external),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [candidate, version],
+  );
+  const perimeterCells = useMemo(
+    () => (machineBbox ? enumeratePerimeterCells(machineBbox) : []),
+    [machineBbox],
+  );
+  const perimeterKeySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of perimeterCells) s.add(`${c.x},${c.y}`);
+    return s;
+  }, [perimeterCells]);
 
-  const chests = candidate.external.containers.filter((c) => c.externalOrigin);
+  // viewport — machineBbox + perimeter ring + padding.
+  const viewBbox = useMemo(
+    () => computeEditorViewBbox(machineBbox),
+    [machineBbox],
+  );
+
+  const chests = candidate.external.containers;
+  // background cells = internal.placed 중 chest 가 *아닌* 것 (= 머신·라우팅).
+  const externalIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of chests) s.add(c.id);
+    return s;
+  }, [chests]);
+  const backgroundCells = useMemo(
+    () =>
+      candidate.internal.placed.filter(
+        (p) => !p.cell.entityId || !externalIds.has(p.cell.entityId),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [candidate, version],
+  );
+  const backgroundEntityNames = useMemo(
+    () => collectPlacedEntityNames(backgroundCells.map((c) => c.cell)),
+    [backgroundCells],
+  );
 
   // contentName → color (chest 종류별로 시각 구분)
   const sortedContents = useMemo(() => {
@@ -582,14 +624,10 @@ function ExternalAreaEditor({
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
-    // 의도적으로 drag.chestId 만 deps. drag 객체 자체가 매 mousemove 마다 새로
-    // 만들어지면 effect 가 매번 재구독되어 이벤트가 깜빡거림. chestId 가 같으면
-    // 같은 drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag?.chestId]);
 
   function handleStartDrag(chest: Container, e: React.MouseEvent) {
-    if (!chest.externalOrigin) return;
     e.preventDefault();
     setDrag({
       chestId: chest.id,
@@ -597,8 +635,8 @@ function ExternalAreaEditor({
       startMouseY: e.clientY,
       mouseX: e.clientX,
       mouseY: e.clientY,
-      startCellX: chest.externalOrigin.x,
-      startCellY: chest.externalOrigin.y,
+      startCellX: chest.origin.x,
+      startCellY: chest.origin.y,
     });
   }
 
@@ -609,6 +647,12 @@ function ExternalAreaEditor({
     const target = clientToCell(clientX, clientY, containerRef.current, viewBbox);
     if (!target || (target.x === d.startCellX && target.y === d.startCellY)) {
       return; // 같은 자리 / viewport 밖 — no-op
+    }
+    // CG2-perimeter: drop 위치는 perimeter ring 안이어야 함.
+    if (!perimeterKeySet.has(`${target.x},${target.y}`)) {
+      setLastResult({ ok: false, msg: `→ (${target.x},${target.y}) — perimeter 밖` });
+      onToast('chest 는 perimeter 셀에만 놓을 수 있습니다', 'warning');
+      return;
     }
     const result = dragExternalContainer(
       d.chestId,
@@ -623,7 +667,10 @@ function ExternalAreaEditor({
       setLastResult({ ok: true, msg: `→ (${target.x},${target.y}) · 라우팅 ${result.rerouted.length}개 재시도` });
       onToast('드래그 성공 — 라우팅 재시도 완료', 'success');
     } else {
-      const reason = result.reason === 'collision' ? '셀 충돌' : result.reason === 'no-port-pair' ? '포트 매칭 실패' : '경로 없음';
+      const reason =
+        result.reason === 'collision' ? '셀 충돌'
+        : result.reason === 'no-port-pair' ? '포트 매칭 실패'
+        : '경로 없음';
       setLastResult({ ok: false, msg: `→ (${target.x},${target.y}) — ${reason}` });
       onToast(`드래그 실패 — ${reason}`, 'warning');
     }
@@ -643,7 +690,7 @@ function ExternalAreaEditor({
     <div className="mt-2 border border-purple-700/60 bg-purple-950/20 rounded p-2 space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-[11px] text-purple-200">
-          📦 외부 영역 편집 — 무한상자를 드래그해서 위치를 바꿀 수 있습니다 (라우팅 자동 재시도)
+          📦 외부 영역 편집 — chest 를 perimeter ring (강조 셀) 위로만 드래그
         </div>
         <div className="flex gap-1">
           <button
@@ -669,16 +716,28 @@ function ExternalAreaEditor({
       </div>
 
       <div className="flex gap-3 items-start">
-        {/* 외부 영역 그리드 */}
+        {/* 통합 좌표계 그리드 (편집 가능) */}
         <div className="flex-shrink-0">
-          <div className="text-[10px] text-gray-400 mb-1">외부 좌표계 (드래그)</div>
+          <div className="text-[10px] text-gray-400 mb-1">통합 좌표 — perimeter 강조 / chest 드래그 가능</div>
           <div
             ref={containerRef}
             className="relative bg-gray-900 border border-gray-700 rounded overflow-hidden select-none"
             style={{ width: gridW, height: gridH }}
           >
-            {/* grid lines */}
+            {/* perimeter ring 셀 강조 */}
             <svg className="absolute inset-0 pointer-events-none" width={gridW} height={gridH}>
+              {perimeterCells.map((p) => (
+                <rect
+                  key={`peri-${p.x}-${p.y}`}
+                  x={(p.x - viewBbox.x) * EDITOR_CELL_SIZE}
+                  y={(p.y - viewBbox.y) * EDITOR_CELL_SIZE}
+                  width={EDITOR_CELL_SIZE}
+                  height={EDITOR_CELL_SIZE}
+                  fill="#5b21b6"
+                  fillOpacity={0.18}
+                />
+              ))}
+              {/* grid lines */}
               {Array.from({ length: viewBbox.w + 1 }).map((_, i) => (
                 <line
                   key={`v${i}`}
@@ -701,33 +760,51 @@ function ExternalAreaEditor({
                   strokeWidth={1}
                 />
               ))}
-              {/* 좌표 (0,0) 강조 */}
-              {0 - viewBbox.x >= 0 && 0 - viewBbox.x < viewBbox.w && 0 - viewBbox.y >= 0 && 0 - viewBbox.y < viewBbox.h && (
+              {/* machine + routing 배경 셀 (read-only, 흐릿하게) */}
+              {backgroundCells.map((p, i) => {
+                const color = getDynamicEntityColor(p.cell.entityName, backgroundEntityNames);
+                return (
+                  <rect
+                    key={`bg-${i}-${p.x}-${p.y}`}
+                    x={(p.x - viewBbox.x) * EDITOR_CELL_SIZE}
+                    y={(p.y - viewBbox.y) * EDITOR_CELL_SIZE}
+                    width={EDITOR_CELL_SIZE}
+                    height={EDITOR_CELL_SIZE}
+                    fill={`#${color.toString(16).padStart(6, '0')}`}
+                    fillOpacity={0.55}
+                  />
+                );
+              })}
+              {/* machine bbox 외곽 강조선 */}
+              {machineBbox && (
                 <rect
-                  x={(0 - viewBbox.x) * EDITOR_CELL_SIZE}
-                  y={(0 - viewBbox.y) * EDITOR_CELL_SIZE}
-                  width={EDITOR_CELL_SIZE}
-                  height={EDITOR_CELL_SIZE}
-                  fill="#3b1456"
-                  fillOpacity={0.4}
+                  x={(machineBbox.x - viewBbox.x) * EDITOR_CELL_SIZE}
+                  y={(machineBbox.y - viewBbox.y) * EDITOR_CELL_SIZE}
+                  width={machineBbox.w * EDITOR_CELL_SIZE}
+                  height={machineBbox.h * EDITOR_CELL_SIZE}
+                  fill="none"
+                  stroke="#a78bfa"
+                  strokeWidth={1.5}
+                  strokeDasharray="3 2"
                 />
               )}
             </svg>
 
-            {/* chests */}
+            {/* chests — 드래그 가능 */}
             {chests.map((c) => {
               const isDragging = drag?.chestId === c.id;
-              const baseX = (c.externalOrigin!.x - viewBbox.x) * EDITOR_CELL_SIZE;
-              const baseY = (c.externalOrigin!.y - viewBbox.y) * EDITOR_CELL_SIZE;
+              const baseX = (c.origin.x - viewBbox.x) * EDITOR_CELL_SIZE;
+              const baseY = (c.origin.y - viewBbox.y) * EDITOR_CELL_SIZE;
               const offX = isDragging ? drag.mouseX - drag.startMouseX : 0;
               const offY = isDragging ? drag.mouseY - drag.startMouseY : 0;
-              const color = c.content ? getContentColor(c.content, sortedContents) : 0x556677;
+              const color = c.content ? getDynamicEntityColor(c.content, sortedContents) : 0x556677;
               const isPipe = c.kind === 'infinity-pipe';
+              const onPerimeter = machineBbox ? isOnPerimeter(c.origin, machineBbox) : true;
               return (
                 <div
                   key={c.id}
                   onMouseDown={(e) => handleStartDrag(c, e)}
-                  className={`absolute ${isDragging ? 'cursor-grabbing z-50 shadow-lg ring-2 ring-purple-300' : 'cursor-grab z-10'} ${isPipe ? 'rounded-full' : 'rounded-sm'} flex items-center justify-center text-[8px] text-black/80 font-mono`}
+                  className={`absolute ${isDragging ? 'cursor-grabbing z-50 shadow-lg ring-2 ring-purple-300' : 'cursor-grab z-10'} ${isPipe ? 'rounded-full' : 'rounded-sm'} flex items-center justify-center text-[8px] text-black/80 font-mono ${onPerimeter ? '' : 'ring-1 ring-amber-400'}`}
                   style={{
                     left: baseX + offX,
                     top: baseY + offY,
@@ -735,9 +812,9 @@ function ExternalAreaEditor({
                     height: EDITOR_CELL_SIZE - 2,
                     margin: 1,
                     backgroundColor: `#${color.toString(16).padStart(6, '0')}`,
-                    transition: isDragging ? 'none' : 'left 0.1s, top 0.1s',
+                    transition: isDragging ? 'none' : 'left 0.08s, top 0.08s',
                   }}
-                  title={`${c.id} · ${c.content ?? ''} · 외부(${c.externalOrigin!.x},${c.externalOrigin!.y}) · 통합(${c.origin.x},${c.origin.y})`}
+                  title={`${c.id} · ${c.content ?? ''} · (${c.origin.x},${c.origin.y})${onPerimeter ? '' : ' — perimeter 밖 (post-pass 실패)'}`}
                 >
                   {abbreviateContent(c.content)}
                 </div>
@@ -760,7 +837,9 @@ function ExternalAreaEditor({
             마지막 시도: {lastResult.ok ? '✓' : '✗'} {lastResult.msg}
           </span>
         ) : (
-          <span className="text-gray-500">아직 드래그 시도가 없습니다 — chest 를 끌어서 새 자리에 놓으세요.</span>
+          <span className="text-gray-500">
+            chest 를 perimeter (보라색 강조) 위로 드래그하세요. 비-perimeter 셀에는 놓을 수 없습니다.
+          </span>
         )}
       </div>
     </div>
@@ -779,15 +858,19 @@ interface DragState {
 
 interface ViewBbox { x: number; y: number; w: number; h: number }
 
-function computeEditorViewBbox(bbox: { x: number; y: number; w: number; h: number } | undefined): ViewBbox {
-  if (!bbox) {
-    return { x: -EDITOR_VIEWPORT_PAD, y: -EDITOR_VIEWPORT_PAD, w: EDITOR_VIEWPORT_PAD * 2 + 1, h: EDITOR_VIEWPORT_PAD * 2 + 1 };
+function computeEditorViewBbox(
+  machineBbox: { x: number; y: number; w: number; h: number } | undefined,
+): ViewBbox {
+  if (!machineBbox) {
+    return { x: 0, y: 0, w: EDITOR_VIEWPORT_PAD * 2 + 3, h: EDITOR_VIEWPORT_PAD * 2 + 3 };
   }
+  // perimeter ring 이 1셀 두께 + 추가 padding
+  const ring = 1;
   return {
-    x: bbox.x - EDITOR_VIEWPORT_PAD,
-    y: bbox.y - EDITOR_VIEWPORT_PAD,
-    w: bbox.w + EDITOR_VIEWPORT_PAD * 2,
-    h: bbox.h + EDITOR_VIEWPORT_PAD * 2,
+    x: machineBbox.x - ring - EDITOR_VIEWPORT_PAD,
+    y: machineBbox.y - ring - EDITOR_VIEWPORT_PAD,
+    w: machineBbox.w + (ring + EDITOR_VIEWPORT_PAD) * 2,
+    h: machineBbox.h + (ring + EDITOR_VIEWPORT_PAD) * 2,
   };
 }
 
@@ -806,10 +889,6 @@ function clientToCell(
   const cellX = Math.floor(relX / EDITOR_CELL_SIZE) + viewBbox.x;
   const cellY = Math.floor(relY / EDITOR_CELL_SIZE) + viewBbox.y;
   return { x: cellX, y: cellY };
-}
-
-function getContentColor(content: string, sortedContents: string[]): number {
-  return getDynamicEntityColor(content, sortedContents);
 }
 
 function abbreviateContent(content: string | undefined): string {

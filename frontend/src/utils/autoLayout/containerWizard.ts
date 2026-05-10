@@ -42,6 +42,7 @@ import type {
   Routing,
   RunContainerWizard,
 } from './containerModel';
+import { wrapExternalsAroundPerimeter } from './areaUnification';
 import { commitRouting } from './containerRouting';
 import { placeExternalContainer } from './externalPlacer';
 import { placeMachine, placeRootMachine } from './machinePlacer';
@@ -242,7 +243,11 @@ function buildSingleAttempt(
   }
   for (const r of rootOutputs.routings) allRoutings.push(r);
 
-  // 4. 후보 leaf
+  // 4. 후처리 — chest 들을 internal bbox 의 perimeter ring 위로 재배치
+  //    (placement-search §3 의 "통합 단계"). 실패한 chest 는 임시 자리 유지.
+  wrapExternalsAroundPerimeter(internal, external, allRoutings, ROUTING_OPTIONS);
+
+  // 5. 후보 leaf
   const leaf = makeCandidateLeaf(
     internal,
     external,
@@ -609,7 +614,6 @@ function cloneArea(a: Area): Area {
       ...c,
       origin: { ...c.origin },
       size: { ...c.size },
-      externalOrigin: c.externalOrigin ? { ...c.externalOrigin } : undefined,
     })),
     placed: a.placed.map((p) => ({ x: p.x, y: p.y, cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } } })),
     bbox: a.bbox ? { ...a.bbox } : undefined,
