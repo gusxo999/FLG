@@ -42,6 +42,7 @@ export const en: Translations = {
       belt: 'Belt',
       pipe: 'Underground Pipe',
       review: 'Review & Run',
+      debug: 'Debug',
     },
 
     targetRecipe: 'Recipe to make',

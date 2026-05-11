@@ -39,6 +39,7 @@ export const ko = {
       belt: '벨트',
       pipe: '지하파이프',
       review: '검토 및 실행',
+      debug: '디버그',
     },
 
     targetRecipe: '만들 레시피',

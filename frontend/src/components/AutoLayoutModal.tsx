@@ -11,7 +11,18 @@ import {
 } from '../utils/autoLayout/recipeTree';
 import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
 import type { RecipeTreeNode } from '../utils/autoLayout/types';
+import type { ContainerPort } from '../utils/autoLayout/containerModel';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
+import AutoLayoutDebugTab, {
+  DebugGridPanel,
+  DebugHistoryPanel,
+  emptyPlayground,
+  clonePlayground,
+  HISTORY_CAP,
+  type Playground,
+  type HistoryEntry,
+  type RunResult,
+} from './AutoLayoutDebugTab';
 import {
   inserterThroughput,
   defaultInserterThroughput,
@@ -24,14 +35,14 @@ interface InserterOverrideEntry {
   stackSize?: number;
 }
 
-type Step = 'recipe' | 'machine' | 'inserter' | 'belt' | 'pipe' | 'review';
+type Step = 'recipe' | 'machine' | 'inserter' | 'belt' | 'pipe' | 'review' | 'debug';
 
 interface AutoLayoutModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const STEPS: Step[] = ['recipe', 'machine', 'inserter', 'belt', 'pipe', 'review'];
+const STEPS: Step[] = ['recipe', 'machine', 'inserter', 'belt', 'pipe', 'review', 'debug'];
 
 export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps) {
   const t = useT();
@@ -78,6 +89,52 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
   const [inserterOverrides, setInserterOverrides] = useState<
     Record<string, InserterOverrideEntry>
   >({});
+
+  // 디버그 탭 — DebugTab/GridPanel/HistoryPanel 셋이 공유하는 state 는 여기서 보관
+  const [debugPlayground, setDebugPlayground] = useState<Playground>(() => emptyPlayground());
+  const [debugHighlight, setDebugHighlight] = useState<Set<string>>(new Set());
+  const [debugPortOverlay, setDebugPortOverlay] = useState<ContainerPort[]>([]);
+  const [debugResults, setDebugResults] = useState<Record<string, RunResult>>({});
+  const [debugHistory, setDebugHistory] = useState<HistoryEntry[]>([]);
+  const debugHistorySeqRef = useRef(0);
+
+  /** 실행 직전 호출 — 현재 상태 스냅샷을 히스토리에 push (cap 초과시 가장 오래된 entry drop). */
+  function debugPushHistory(label: string) {
+    debugHistorySeqRef.current += 1;
+    const entry: HistoryEntry = {
+      id: debugHistorySeqRef.current,
+      label,
+      playground: clonePlayground(debugPlayground),
+      highlightCells: new Set(debugHighlight),
+      results: { ...debugResults },
+      portOverlay: [...debugPortOverlay],
+    };
+    setDebugHistory((prev) => {
+      const next = [...prev, entry];
+      if (next.length > HISTORY_CAP) next.shift();
+      return next;
+    });
+  }
+
+  /** 마지막 스냅샷 pop → 4개 상태 복원. */
+  function debugUndo() {
+    if (debugHistory.length === 0) return;
+    const last = debugHistory[debugHistory.length - 1];
+    setDebugPlayground(last.playground);
+    setDebugHighlight(last.highlightCells);
+    setDebugResults(last.results);
+    setDebugPortOverlay(last.portOverlay);
+    setDebugHistory((prev) => prev.slice(0, -1));
+  }
+
+  /** 디버그 세션 전체 초기화 — playground / results / highlight / portOverlay / history 모두 비움. */
+  function debugResetAll() {
+    setDebugPlayground(emptyPlayground());
+    setDebugHighlight(new Set());
+    setDebugPortOverlay([]);
+    setDebugResults({});
+    setDebugHistory([]);
+  }
 
   const recipeOptions = useMemo(
     () =>
@@ -137,6 +194,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     if (s === 'inserter') return inserterCandidates.length <= 1;
     if (s === 'belt') return beltCandidates.length <= 1;
     if (s === 'pipe') return undergroundPipeCandidates.length <= 1;
+    if (s === 'debug') return true; // next/prev 흐름에서는 건너뜀 — stepper 직접 클릭으로만 진입
     return false;
   }
 
@@ -235,7 +293,8 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col">
+      <div className="flex flex-row items-stretch gap-3 px-4 max-w-full">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[48rem] max-w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between px-6 pt-5 pb-3 border-b border-gray-800">
           <div className="flex flex-col gap-1">
@@ -388,6 +447,25 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
               />
             </>
           )}
+
+          {step === 'debug' && (
+            <AutoLayoutDebugTab
+              targetRecipe={targetRecipe}
+              externalIngredients={externalIngredients}
+              selectedMachines={effectiveMachines}
+              selectedInserters={effectiveInserters}
+              selectedBelts={effectiveBelts}
+              selectedUndergroundPipes={effectivePipes}
+              playground={debugPlayground}
+              setPlayground={setDebugPlayground}
+              setHighlightCells={setDebugHighlight}
+              setPortOverlay={setDebugPortOverlay}
+              results={debugResults}
+              setResults={setDebugResults}
+              pushHistory={debugPushHistory}
+              resetAll={debugResetAll}
+            />
+          )}
         </div>
 
         {/* Footer */}
@@ -407,7 +485,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
                 {t('autoLayoutModal.prev')}
               </button>
             )}
-            {step !== 'review' && (
+            {step !== 'review' && step !== 'debug' && (
               <button
                 onClick={nextStep}
                 disabled={step === 'recipe' && !targetRecipe}
@@ -418,6 +496,17 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
             )}
           </div>
         </div>
+      </div>
+      {step === 'debug' && (
+        <DebugGridPanel
+          playground={debugPlayground}
+          highlightCells={debugHighlight}
+          portOverlay={debugPortOverlay}
+        />
+      )}
+      {step === 'debug' && (
+        <DebugHistoryPanel history={debugHistory} onUndo={debugUndo} />
+      )}
       </div>
     </div>
   );
