@@ -61,6 +61,8 @@ export default function Toolbar() {
           direction: cell.direction,
           ...(cell.recipe ? { recipe: cell.recipe } : {}),
           ...(insertPlans ? { items: insertPlans } : {}),
+          // underground-belt 의 input/output 구분 (Factorio blueprint format).
+          ...(cell.undergroundType ? { type: cell.undergroundType } : {}),
           // Phase 1 passthrough
           ...(cell.quality ? { quality: cell.quality } : {}),
           ...(cell.mirror ? { mirror: cell.mirror } : {}),
@@ -197,6 +199,12 @@ export default function Toolbar() {
           for (let dx = 0; dx < rw; dx++) {
             const idx = (y + dy) * w + (x + dx);
             const isOrigin = dx === 0 && dy === 0;
+            // underground-belt 의 input/output 구분만 보존. pipe-to-ground 등
+            // 다른 entity 의 'input-output' / 누락된 type 은 무시.
+            const undergroundType =
+              isOrigin && proto?.type === 'underground-belt' && (e.type === 'input' || e.type === 'output')
+                ? e.type
+                : undefined;
             cells[idx] = {
               entityId: entityIdStr,
               entityName: e.name,
@@ -207,6 +215,7 @@ export default function Toolbar() {
               ...(isOrigin && e.recipe ? { recipe: e.recipe } : {}),
               ...(isOrigin && modules ? { modules } : {}),
               ...(isOrigin && e.quality ? { quality: e.quality } : {}),
+              ...(undergroundType ? { undergroundType } : {}),
               ...(isOrigin && e.mirror ? { mirror: e.mirror } : {}),
               ...(isOrigin && e.tags ? { tags: e.tags } : {}),
             };

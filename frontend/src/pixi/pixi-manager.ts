@@ -402,8 +402,13 @@ function drawInteractionPoints(
   }
 
   // === 인서터 pickup / drop (화살표) ===
-  // pickup: 인서터 중심 → pickup 위치 (어디서 집어오는지)
-  // drop:   인서터 중심 → drop 위치 (어디로 놓는지)
+  // Factorio 규약: 인서터의 `direction` = *픽업 방향* (= 인서터가 손을 뻗는
+  // 쪽). prototype 의 `inserter_pickup_position={0,-1}` 을 direction 으로 그대로
+  // 회전한 위치가 실제 픽업 셀이며, 드롭은 그 반대편 (`inserter_drop_position
+  // ={0,1.2}` 회전).
+  //
+  // 예: direction=0 (N) → 픽업 북쪽, 드롭 남쪽.
+  //     direction=4 (E) → 픽업 동쪽, 드롭 서쪽.
   if (isValidVec(entity?.inserter_pickup_position)) {
     const rot = rotateVector(entity!.inserter_pickup_position!, direction);
     const { px, py } = tileToPx(centerTileX + rot.x, centerTileY + rot.y);

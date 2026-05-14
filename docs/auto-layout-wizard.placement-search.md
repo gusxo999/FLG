@@ -67,10 +67,23 @@
 
 | kind | 체인 형식 | 메모 |
 |---|---|---|
-| item | `컨테이너 — 투입기 — 벨트(가변길이 ≥ 1) — 투입기 — 컨테이너` | 벨트 길이 0 자체는 발생 불가. 너무 가까워서 벨트가 안 들어가면 *다른 port 셀* 로 우회 ([§7.4](#74-fallback)) |
-| fluid | `컨테이너 — 파이프 + 지하파이프 — 컨테이너` | 투입기 없음. 지하파이프 사용은 [O2](#o2--지하-변형-우선) 에 따름 |
+| item | `컨테이너 — 투입기 — 벨트(+지하벨트) — 투입기 — 컨테이너` | 벨트 길이 0 자체는 발생 불가. 너무 가까워서 벨트가 안 들어가면 *다른 port 셀* 로 우회 ([§7.4](#74-fallback)). 지상 벨트 사이에 *지하벨트 페어* 가 들어갈 수 있음. |
+| fluid | `컨테이너 — 파이프(+지하파이프) — 컨테이너` | 투입기 없음. 지상 파이프 사이에 *지하파이프 페어* 가 들어갈 수 있음. |
 
 **원칙:** 라우팅 1개 = 컨테이너 1개. 한 라우팅이 처리량을 못 채우면 *컨테이너 수* 를 늘려 별도 라우팅으로 분할한다 ([§5 모듈 3b](#5-모듈-구성)).
+
+### 4.1 지하 변형 (underground-belt / pipe-to-ground)
+
+라우팅 BFS 는 *Dijkstra* 로 — 지상 인접 edge (cost 1) + 지하 점프 페어 edge (cost 2). 점프 edge 는 한 축 방향으로 `k ∈ [1, max_underground_distance]` 떨어진 셀을 입출구 페어로 emit. 사이 통과 셀 = `k − 1` 칸. 통과 셀 위로 *다른 지상 파이프/벨트* 는 자유롭게 지날 수 있다 (지하라 분리).
+
+**차단 규칙 (Factorio 게임 동작 기준):**
+
+| 종류 | 같은 직선 위 다른 페어 차단 조건 |
+|---|---|
+| `pipe-to-ground` | **무조건** — entity prototype 이 달라도 (예: 바닐라 ↔ kr-steel ↔ se-space) 서로 차단. 단일 `blockGroup = "pipe-to-ground"` 로 묶어 검사. |
+| `underground-belt` | **같은 prototype 만** — 다른 티어 (`underground-belt` ↔ `fast-underground-belt` 등) 는 독립. `blockGroup = entityName`. |
+
+수직(다른 축) corridor 끼리는 어떤 group 이든 간섭 없음. 한 라우팅 내 두 jump 가 *연속* (= 같은 셀이 jump 출구이자 jump 입구) 인 케이스는 같은 셀에 entity 2 개가 겹치므로 Dijkstra 상태 `(x, y, arrivedViaJump)` 로 금지.
 
 ---
 
@@ -106,7 +119,7 @@
 완전 탐색의 후보 정렬에 사용. `|W − H|` 가 작을수록 더 나은 후보. 외부 영역은 평가에서 제외 — 정사각형 평가는 *내부 영역만* 의 bbox 기준.
 
 ### O2 — 지하 변형 우선
-지상 (transport-belt / pipe) 으로 점유될 셀을 지하 변형 (`underground-belt` / `pipe-to-ground`) 페어로 비울 수 있으면 그쪽을 우선. 비교 정책은 사전식 O1 → O2 순.
+지상 (transport-belt / pipe) 으로 점유될 셀을 지하 변형 (`underground-belt` / `pipe-to-ground`) 페어로 비울 수 있으면 그쪽을 우선. 라우팅 모듈 4 의 Dijkstra cost (지상 1 / 점프 2) 가 자연스럽게 짧은 우회 시 지상, 막힌 길에서 지하를 선택. 비교 정책은 사전식 O1 → O2 순. 상세는 [§4.1](#41-지하-변형-underground-belt--pipe-to-ground).
 
 ### M1 — 컨테이너 추상화
 §2 의 정의를 사용. 구 둘레 슬롯 번호 모델 (`ceil(재료/2)`, `2(w+h)` 한계, 슬롯 1..2(w+h) 번호 부여) 은 **폐기**.

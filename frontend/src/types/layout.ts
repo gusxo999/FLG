@@ -97,6 +97,15 @@ export interface GridCell {
   modules?: Array<ModuleSlot | null>;
   /** Space Age 엔티티 quality (normal/uncommon/rare/epic/legendary). 미지정 시 normal */
   quality?: string;
+  /**
+   * underground-belt / pipe-to-ground 의 `type` 필드 (Factorio 2.0 blueprint format).
+   *
+   * - `underground-belt`: `'input'` (지하 입구) / `'output'` (지하 출구). 두 셀의
+   *   `direction` 은 동일 (= 벨트 흐름 방향) 이며 `type` 만 차이.
+   * - `pipe-to-ground`: 게임 자체는 type 필드가 없지만 (방향만으로 결정됨), 일부
+   *   blueprint 도구가 채우는 경우가 있어 round-trip 위해 보존.
+   */
+  undergroundType?: 'input' | 'output';
   /** import 시 보존만 — round-trip 위해 */
   mirror?: boolean;
   /** import 시 보존만 — round-trip 위해 */

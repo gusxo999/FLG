@@ -346,6 +346,10 @@ export function cloneArea(a: Area): Area {
       cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } },
     })),
     bbox: a.bbox ? { ...a.bbox } : undefined,
+    undergroundCorridors: a.undergroundCorridors.map((c) => ({
+      ...c,
+      range: [c.range[0], c.range[1]],
+    })),
   };
 }
 
@@ -360,6 +364,7 @@ export function cloneRouting(r: Routing): Routing {
       y: p.y,
       cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } },
     })),
+    corridors: r.corridors.map((c) => ({ ...c, range: [c.range[0], c.range[1]] })),
     area: r.area,
   };
 }

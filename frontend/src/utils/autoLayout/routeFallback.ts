@@ -30,6 +30,11 @@ export interface RouteOptions {
   inserterEntityName: string;
   pipeEntityName: string;
   undergroundPipeEntityName?: string;
+  undergroundBeltEntityName?: string;
+  /** 지하파이프 입출구 좌표 차이 한계. undefined / 0 이면 점프 비활성. */
+  pipeMaxUndergroundDistance?: number;
+  /** 지하벨트 입출구 좌표 차이 한계. undefined / 0 이면 점프 비활성. */
+  beltMaxUndergroundDistance?: number;
   preferUnderground: boolean;
 }
 

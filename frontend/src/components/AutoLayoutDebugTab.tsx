@@ -107,8 +107,8 @@ const nextContainerSeq = () => {
 
 export function emptyPlayground(): Playground {
   return {
-    internal: { kind: 'internal', containers: [], placed: [] },
-    external: { kind: 'external', containers: [], placed: [] },
+    internal: { kind: 'internal', containers: [], placed: [], undergroundCorridors: [] },
+    external: { kind: 'external', containers: [], placed: [], undergroundCorridors: [] },
     routings: [],
     pendingRoutings: [],
   };

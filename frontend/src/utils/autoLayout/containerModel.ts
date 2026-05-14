@@ -121,6 +121,40 @@ export interface Area {
   placed: PlacedCell[];
   /** 점유 셀의 최소 외접 사각형. 비어있으면 undefined */
   bbox?: { x: number; y: number; w: number; h: number };
+  /**
+   * 이 영역에 깔린 지하 변형 페어 (지하파이프 / 지하벨트) 의 사이드 인덱스.
+   *
+   * 라우팅 Dijkstra 의 점프 edge 검증에 사용된다. 동일 `blockGroup` 의
+   * 기존 corridor 와의 충돌만 검사 — pipe 는 모든 pipe-to-ground prototype 이
+   * 단일 그룹(`"pipe-to-ground"`) 으로 묶이며, belt 는 prototype `entityName`
+   * 자체가 그룹이라 다른 티어의 underground-belt 와는 독립.
+   *
+   * (placement-search §4 / §6 O2 — 지하 변형 우선 규칙의 검증 자료구조.)
+   */
+  undergroundCorridors: UndergroundCorridor[];
+}
+
+/**
+ * 한 지하 변형 페어 (입구·출구 두 셀 + 사이 통과 셀들).
+ *
+ * - `axis === 'h'` → 수평 corridor. 모든 셀이 `y = line`. x ∈ `range`.
+ * - `axis === 'v'` → 수직 corridor. 모든 셀이 `x = line`. y ∈ `range`.
+ * - `range` 는 입구·출구의 좌표를 *포함* 한다 (`[min, max]`, `min ≤ max`).
+ *   사이 통과 셀 = `range` 의 *열린 구간*.
+ *
+ * 차단 규칙 (Factorio 게임 동작 기준):
+ *  - **pipe-to-ground**: prototype 무관 무조건 차단 → `blockGroup = "pipe-to-ground"` 고정.
+ *  - **underground-belt**: 같은 prototype 만 차단 → `blockGroup = entityName`.
+ *
+ * 다른 `blockGroup` 의 corridor 끼리는 같은 직선 위에 있어도 간섭 없음.
+ * 수직(다른 축) corridor 끼리는 어떤 group 이든 간섭 없음.
+ */
+export interface UndergroundCorridor {
+  axis: 'h' | 'v';
+  line: number;
+  range: [number, number];
+  blockGroup: string;
+  kind: 'pipe' | 'belt';
 }
 
 /** 한 셀 = (좌표, GridCell). 영역의 placed 배열의 원소. */
@@ -157,6 +191,11 @@ export interface Routing {
   to: ContainerPort;
   /** 라우팅이 깐 셀들 (벨트·투입기·파이프·지하파이프). occupancy 갱신용 */
   placed: PlacedCell[];
+  /**
+   * 이 라우팅이 깐 지하 변형 페어들. `commitRouting` 이 area 의
+   * `undergroundCorridors` 인덱스로 옮긴다. 점프가 없는 라우팅은 빈 배열.
+   */
+  corridors: UndergroundCorridor[];
   /** 어느 영역의 라우팅인지 — 영역 통합 후에는 'internal' 로 흡수됨 */
   area: AreaKind;
 }
@@ -290,13 +329,20 @@ export interface CandidateTree {
 // §8. 사용자 인터페이스 후크
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 진행 UI 콜백 — 오케스트레이터가 후보 1개 생성/실패할 때마다 호출 */
+/**
+ * 진행 UI 콜백 — 오케스트레이터가 phase 진입/완료 시점마다 호출.
+ * `currentFunction` / `attempts` 는 새 모델 v2 의 phase-level 추적용 (선택).
+ */
 export type ProgressReporter = (snapshot: {
   depth: number;
   siblingIndex: number;
   siblingTotal: number;
   candidatesGenerated: number;
   failuresGenerated: number;
+  /** 지금 실행 중인 wizard phase / 함수 이름 — UI 의 "처리 중" 표시 */
+  currentFunction?: string;
+  /** 누적 시도 횟수 — root branch + 손자 (perm × dir) attempt 의 합 */
+  attempts?: number;
 }) => void;
 
 /**
@@ -391,6 +437,17 @@ export type RoutePorts = (
     inserterEntityName: string;
     pipeEntityName: string;
     undergroundPipeEntityName?: string;
+    undergroundBeltEntityName?: string;
+    /**
+     * 지하파이프의 입출구 좌표 차이 한계 (= prototype `max_underground_distance`).
+     * 사이 통과 셀 = `pipeMaxUndergroundDistance − 1`. undefined / 0 이면 점프 비활성.
+     */
+    pipeMaxUndergroundDistance?: number;
+    /**
+     * 지하벨트의 입출구 좌표 차이 한계 (= prototype `max_underground_distance`).
+     * 사이 통과 셀 = `beltMaxUndergroundDistance − 1`. undefined / 0 이면 점프 비활성.
+     */
+    beltMaxUndergroundDistance?: number;
     /** placement-search O2 — 지하 변형으로 사이 셀 비울 수 있으면 우선 */
     preferUnderground: boolean;
   },
@@ -422,6 +479,7 @@ export interface ContainerWizardInput {
   selectedInserters: ReadonlyArray<string>;
   selectedBelts: ReadonlyArray<string>;
   selectedUndergroundPipes: ReadonlyArray<string>;
+  selectedUndergroundBelts: ReadonlyArray<string>;
   primaryInserter?: string;
   primaryBelt?: string;
   inserterOverrides?: Record<string, { throughput?: number; stackSize?: number }>;
@@ -487,6 +545,9 @@ export type DragExternalContainer = (
     inserterEntityName: string;
     pipeEntityName: string;
     undergroundPipeEntityName?: string;
+    undergroundBeltEntityName?: string;
+    pipeMaxUndergroundDistance?: number;
+    beltMaxUndergroundDistance?: number;
     preferUnderground: boolean;
   },
 ) =>

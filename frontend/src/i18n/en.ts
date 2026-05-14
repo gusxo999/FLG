@@ -40,6 +40,7 @@ export const en: Translations = {
       machine: 'Assembler',
       inserter: 'Inserter',
       belt: 'Belt',
+      undergroundBelt: 'Underground Belt',
       pipe: 'Underground Pipe',
       review: 'Review & Run',
       debug: 'Debug',
@@ -79,6 +80,8 @@ export const en: Translations = {
       'Pick the inserters you want. Selecting a late-game inserter auto-checks its prerequisite chain.',
     beltHelp:
       'Pick the belts you want. Selecting a late-game belt auto-checks its prerequisite chain.',
+    undergroundBeltHelp:
+      'Pick the underground belts you want (optional). Used to bypass when normal belts cannot route through tight spaces.',
     pipeHelp: 'Pick the underground pipes you want (optional).',
     autoCheckHint:
       '※ Checking one candidate also checks same-type candidates unlocked along its prerequisite chain.',

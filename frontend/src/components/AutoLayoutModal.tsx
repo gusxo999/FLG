@@ -83,6 +83,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
   const [selectedMachines, setSelectedMachines] = useState<Set<string>>(new Set());
   const [selectedInserters, setSelectedInserters] = useState<Set<string>>(new Set());
   const [selectedBelts, setSelectedBelts] = useState<Set<string>>(new Set());
+  const [selectedUndergroundBelts, setSelectedUndergroundBelts] = useState<Set<string>>(new Set());
   const [selectedPipes, setSelectedPipes] = useState<Set<string>>(new Set());
 
   // 인서터 처리량 override (인서터 entityName → { throughput? | stackSize? })
@@ -140,8 +141,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     () =>
       recipes
         .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, 1000),
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [recipes],
   );
 
@@ -188,6 +188,11 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     [entityMap],
   );
 
+  const undergroundBeltCandidates: Entity[] = useMemo(
+    () => Array.from(entityMap.values()).filter((e) => e.type === 'underground-belt'),
+    [entityMap],
+  );
+
   // 후보 1개뿐인 단계는 자동 선택 + 다음 단계로 점프 시 스킵
   function shouldSkip(s: Step): boolean {
     if (s === 'machine') return machineCandidates.length <= 1;
@@ -226,6 +231,13 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
         ? new Set([undergroundPipeCandidates[0].name])
         : selectedPipes,
     [selectedPipes, undergroundPipeCandidates],
+  );
+  const effectiveUndergroundBelts = useMemo(
+    () =>
+      selectedUndergroundBelts.size === 0 && undergroundBeltCandidates.length === 1
+        ? new Set([undergroundBeltCandidates[0].name])
+        : selectedUndergroundBelts,
+    [selectedUndergroundBelts, undergroundBeltCandidates],
   );
 
   function toggle(set: Set<string>, name: string, setter: (s: Set<string>) => void) {
@@ -398,17 +410,37 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
           )}
 
           {step === 'belt' && (
-            <CheckboxStep
-              title={t('autoLayoutModal.steps.belt')}
-              description={t('autoLayoutModal.beltHelp')}
-              candidates={beltCandidates}
-              selected={effectiveBelts}
-              onToggle={(name) =>
-                toggleWithPrereq(selectedBelts, name, beltCandidates, setSelectedBelts)
-              }
-              autoCheckedHint={t('autoLayoutModal.autoCheckHint')}
-              t={t}
-            />
+            <>
+              <CheckboxStep
+                title={t('autoLayoutModal.steps.belt')}
+                description={t('autoLayoutModal.beltHelp')}
+                candidates={beltCandidates}
+                selected={effectiveBelts}
+                onToggle={(name) =>
+                  toggleWithPrereq(selectedBelts, name, beltCandidates, setSelectedBelts)
+                }
+                autoCheckedHint={t('autoLayoutModal.autoCheckHint')}
+                t={t}
+              />
+              {undergroundBeltCandidates.length > 0 && (
+                <CheckboxStep
+                  title={t('autoLayoutModal.steps.undergroundBelt')}
+                  description={t('autoLayoutModal.undergroundBeltHelp')}
+                  candidates={undergroundBeltCandidates}
+                  selected={effectiveUndergroundBelts}
+                  onToggle={(name) =>
+                    toggleWithPrereq(
+                      selectedUndergroundBelts,
+                      name,
+                      undergroundBeltCandidates,
+                      setSelectedUndergroundBelts,
+                    )
+                  }
+                  autoCheckedHint={t('autoLayoutModal.autoCheckHint')}
+                  t={t}
+                />
+              )}
+            </>
           )}
 
           {step === 'pipe' && (
@@ -443,6 +475,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
                 selectedInserters={effectiveInserters}
                 selectedBelts={effectiveBelts}
                 selectedUndergroundPipes={effectivePipes}
+                selectedUndergroundBelts={effectiveUndergroundBelts}
                 onClose={handleClose}
               />
             </>

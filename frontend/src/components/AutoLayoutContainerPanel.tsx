@@ -63,6 +63,7 @@ interface AutoLayoutContainerPanelProps {
   selectedInserters: ReadonlySet<string>;
   selectedBelts: ReadonlySet<string>;
   selectedUndergroundPipes: ReadonlySet<string>;
+  selectedUndergroundBelts: ReadonlySet<string>;
   onClose: () => void;
 }
 
@@ -72,6 +73,10 @@ interface ProgressSnapshot {
   siblingTotal: number;
   candidatesGenerated: number;
   failuresGenerated: number;
+  /** wizard 가 현재 실행 중인 phase / 함수 이름 (실시간) */
+  currentFunction?: string;
+  /** 누적 시도 횟수 */
+  attempts?: number;
 }
 
 export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanelProps) {
@@ -105,6 +110,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       selectedInserters: Array.from(props.selectedInserters),
       selectedBelts: Array.from(props.selectedBelts),
       selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
+      selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
       externalPortsDefault: 'top-left',
     };
 
@@ -141,6 +147,28 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     }
     applyPlacedCells(cells);
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');
+    props.onClose();
+  }
+
+  /**
+   * 탐색 트리의 임의 노드를 클릭했을 때 — 그 시점의 스냅샷을 실제 그리드에 적용.
+   * candidate 는 본 internal/external 사용, 그 외 (branch/machine/failure) 는
+   * 노드에 캡처된 snapshot 사용. snapshot 이 비어있거나 셀이 0 이면 경고.
+   */
+  function handleApplyNode(node: CandidateNode) {
+    const placed = extractCellsForNode(node);
+    const cells = placed.map((p) => ({ x: p.x, y: p.y, cell: p.cell }));
+    if (cells.length === 0) {
+      showToast('이 시점에는 배치된 셀이 없습니다', 'warning');
+      return;
+    }
+    applyPlacedCells(cells);
+    const kindLabel =
+      node.kind === 'candidate' ? '✓ 후보' :
+      node.kind === 'failure' ? '✗ 실패 시점' :
+      node.kind === 'machine' ? 'M 머신 처리 시점' :
+      'B 시도 직전 시점';
+    showToast(`${kindLabel} 적용됨 (${cells.length} 셀)`, 'success');
     props.onClose();
   }
 
@@ -181,7 +209,8 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
         새 알고리즘. 머신과 무한상자/무한파이프를 단일 추상으로 다루며 내부/외부
         영역 분리, 자식 형제 순서 × 자식 위치 (오른쪽/아래쪽) 완전 탐색,
         Esc 중단 가능. 후보를 클릭하면 그리드에 적용. 트리 노드에 마우스를 올리면
-        그 시점까지 배치된 형태가 미리보기 그리드로 떠오릅니다 (성공/실패 모두).
+        그 시점까지 배치된 형태가 미리보기 그리드로 떠오르고, 클릭하면 그 시점의
+        배치가 실제 그리드에 적용됩니다 (성공/실패/중간 시점 모두).
       </p>
 
       <div className="flex items-center gap-2">
@@ -202,13 +231,26 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
           </button>
         )}
         {progress && (
-          <span className="text-[11px] text-gray-400 font-mono">
-            depth {progress.depth} · 형제 {progress.siblingIndex}/{progress.siblingTotal} ·
-            {' '}
-            <span className="text-green-300">{progress.candidatesGenerated} 후보</span>
-            {' / '}
-            <span className="text-amber-300">{progress.failuresGenerated} 실패</span>
-          </span>
+          <div className="text-[11px] text-gray-400 font-mono space-y-0.5 min-w-0 flex-1">
+            <div>
+              depth {progress.depth} · 형제 {progress.siblingIndex}/{progress.siblingTotal}
+              {progress.attempts !== undefined && (
+                <>
+                  {' · '}
+                  <span className="text-cyan-300">시도 {progress.attempts}</span>
+                </>
+              )}
+              {' · '}
+              <span className="text-green-300">{progress.candidatesGenerated} 후보</span>
+              {' / '}
+              <span className="text-amber-300">{progress.failuresGenerated} 실패</span>
+            </div>
+            {progress.currentFunction && (
+              <div className="text-purple-300 truncate" title={progress.currentFunction}>
+                ▶ {progress.currentFunction}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -222,6 +264,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
         <ResultPanel
           result={result}
           onApply={handleApplyCandidate}
+          onApplyNode={handleApplyNode}
           onHover={setHoverNode}
           onEdit={handleStartEdit}
           editingId={editing?.originalId ?? null}
@@ -250,12 +293,14 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
 function ResultPanel({
   result,
   onApply,
+  onApplyNode,
   onHover,
   onEdit,
   editingId,
 }: {
   result: ContainerWizardResult;
   onApply: (leaf: CandidateLeaf) => void;
+  onApplyNode: (node: CandidateNode) => void;
   onHover: (node: CandidateNode | null) => void;
   onEdit: (leaf: CandidateLeaf) => void;
   editingId: string | null;
@@ -319,7 +364,7 @@ function ResultPanel({
         </div>
       )}
 
-      <TreeLog tree={tree} onHover={onHover} />
+      <TreeLog tree={tree} onHover={onHover} onApplyNode={onApplyNode} />
     </div>
   );
 }
@@ -331,9 +376,11 @@ function ResultPanel({
 function TreeLog({
   tree,
   onHover,
+  onApplyNode,
 }: {
   tree: CandidateTree;
   onHover: (node: CandidateNode | null) => void;
+  onApplyNode: (node: CandidateNode) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -343,10 +390,10 @@ function TreeLog({
       className="text-[10px] text-gray-500 bg-gray-900/40 border border-gray-800 rounded px-2 py-1"
     >
       <summary className="cursor-pointer text-gray-400">
-        탐색 트리 로그 (실패 가지 포함, hover 시 미리보기)
+        탐색 트리 로그 (실패 가지 포함, hover 미리보기 / 클릭 시 그 시점 그리드 적용)
       </summary>
       <div className="mt-1 leading-tight font-mono whitespace-nowrap overflow-x-auto max-h-64">
-        <TreeNodeRow node={tree.root} depth={0} onHover={onHover} />
+        <TreeNodeRow node={tree.root} depth={0} onHover={onHover} onApplyNode={onApplyNode} />
       </div>
     </details>
   );
@@ -356,10 +403,12 @@ function TreeNodeRow({
   node,
   depth,
   onHover,
+  onApplyNode,
 }: {
   node: CandidateNode;
   depth: number;
   onHover: (node: CandidateNode | null) => void;
+  onApplyNode: (node: CandidateNode) => void;
 }) {
   const indent = '  '.repeat(depth);
   const prefix =
@@ -378,14 +427,16 @@ function TreeNodeRow({
       <div
         onMouseEnter={() => onHover(node)}
         onMouseLeave={() => onHover(null)}
-        className={`${colorClass} ${lineThrough} hover:bg-purple-900/30 cursor-help px-1`}
+        onClick={() => onApplyNode(node)}
+        title="클릭 시 이 시점의 배치를 그리드에 적용"
+        className={`${colorClass} ${lineThrough} hover:bg-purple-900/30 cursor-pointer px-1`}
       >
         <span className="text-gray-600 select-none">{indent}</span>
         <span className="font-bold mr-1">{prefix}</span>
         <span>{node.label}</span>
       </div>
       {node.children.map((c) => (
-        <TreeNodeRow key={c.id} node={c} depth={depth + 1} onHover={onHover} />
+        <TreeNodeRow key={c.id} node={c} depth={depth + 1} onHover={onHover} onApplyNode={onApplyNode} />
       ))}
     </>
   );

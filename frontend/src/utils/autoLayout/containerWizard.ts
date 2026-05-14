@@ -24,7 +24,7 @@
  *   - 처리량 기반 컨테이너 분할 (`computeContainerCounts` 활용)
  */
 
-import { useGameDataStore } from '../../store/gameDataStore';
+import { useGameDataStore, type Entity } from '../../store/gameDataStore';
 import type {
   Area,
   AreaSnapshot,
@@ -60,6 +60,64 @@ const nextNodeId = (prefix: string): string => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 진행 상태 (모듈 스코프) — wizard 한 인스턴스 = 한 진행 상태 전제.
+// nodeIdCounter 가 이미 모듈 스코프인 것과 같은 가정. UI 가 phase 별 진입을
+// 실시간 표시할 수 있도록 emit + maybeYield (16ms throttle) 를 함께 제공.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const wizardProgress = {
+  depth: 0,
+  siblingIndex: 1,
+  siblingTotal: 1,
+  candidatesGenerated: 0,
+  failuresGenerated: 0,
+  attempts: 0,
+  callback: null as ProgressReporter | null,
+  lastYieldAt: 0,
+};
+
+function resetProgress(cb: ProgressReporter | undefined): void {
+  wizardProgress.depth = 0;
+  wizardProgress.siblingIndex = 1;
+  wizardProgress.siblingTotal = 1;
+  wizardProgress.candidatesGenerated = 0;
+  wizardProgress.failuresGenerated = 0;
+  wizardProgress.attempts = 0;
+  wizardProgress.callback = cb ?? null;
+  wizardProgress.lastYieldAt = 0;
+}
+
+function emitProgress(currentFunction: string): void {
+  wizardProgress.callback?.({
+    depth: wizardProgress.depth,
+    siblingIndex: wizardProgress.siblingIndex,
+    siblingTotal: wizardProgress.siblingTotal,
+    candidatesGenerated: wizardProgress.candidatesGenerated,
+    failuresGenerated: wizardProgress.failuresGenerated,
+    currentFunction,
+    attempts: wizardProgress.attempts,
+  });
+}
+
+/**
+ * macrotask 양보 — React batch flush + paint 를 위해 setTimeout 0.
+ * 16ms throttle 로 알고리즘 비용 최소화 (~60fps).
+ */
+async function maybeYield(): Promise<void> {
+  const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (now - wizardProgress.lastYieldAt >= 16) {
+    wizardProgress.lastYieldAt = now;
+    await new Promise<void>((r) => setTimeout(r, 0));
+  }
+}
+
+/** emit + maybeYield 한 번에 — phase 진입 지점에서 호출. */
+async function reportFn(name: string): Promise<void> {
+  emitProgress(name);
+  await maybeYield();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 진입점
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,9 +128,15 @@ export const runContainerWizard: RunContainerWizard = async (
     signal?: AbortSignal;
   },
 ): Promise<ContainerWizardResult> => {
+  resetProgress(hooks?.onProgress);
   const { recipeMap, itemToRecipe } = useGameDataStore.getState();
 
+  // 라우팅 옵션 갱신 — 사용자가 선택한 underground entity 들의
+  // max_underground_distance 를 lookup 해 점프 활성 여부를 결정.
+  ROUTING_OPTIONS = buildRoutingOptions(input);
+
   // 1. 레시피 트리 펼침 + 머신 수 산정 (1차는 minimum 모드 고정).
+  await reportFn('expandRecipeTree');
   const tree = assignMinimumCounts(
     expandRecipeTree(input.targetRecipe, recipeMap, itemToRecipe, input.externalIngredients),
   );
@@ -92,27 +156,24 @@ export const runContainerWizard: RunContainerWizard = async (
 
   const directChildren = tree.children.filter((c) => !c.external && c.recipeName);
 
-  let candidatesGenerated = 0;
-  let failuresGenerated = 0;
   let aborted = false;
 
   if (directChildren.length === 0) {
     // depth 0 — root 만.
-    const candidateOrFailure = buildSingleAttempt(tree, rootContainer, [], 'right', pickMachine, hooks?.signal);
+    wizardProgress.depth = 0;
+    wizardProgress.siblingIndex = 1;
+    wizardProgress.siblingTotal = 1;
+    wizardProgress.attempts += 1;
+    await reportFn('buildSingleAttempt [depth-0]');
+    const candidateOrFailure = await buildSingleAttempt(tree, rootContainer, [], 'right', pickMachine, hooks?.signal);
     if (candidateOrFailure.kind === 'candidate') {
       rootNode.children.push(candidateOrFailure);
-      candidatesGenerated += 1;
+      wizardProgress.candidatesGenerated += 1;
     } else {
       rootNode.children.push(candidateOrFailure);
-      failuresGenerated += 1;
+      wizardProgress.failuresGenerated += 1;
     }
-    hooks?.onProgress?.({
-      depth: 0,
-      siblingIndex: 1,
-      siblingTotal: 1,
-      candidatesGenerated,
-      failuresGenerated,
-    });
+    emitProgress('완료');
   } else {
     // depth ≥ 1 — 루트 레벨에서 완전 탐색.
     const perms = permutations(directChildren);
@@ -128,32 +189,31 @@ export const runContainerWizard: RunContainerWizard = async (
           break outer;
         }
 
+        wizardProgress.depth = 1;
+        wizardProgress.siblingIndex = branchIdx;
+        wizardProgress.siblingTotal = totalBranches;
+        wizardProgress.attempts += 1;
+
         const branch = makeBranchNode(perm, dir);
         rootNode.children.push(branch);
 
-        const result = buildSingleAttempt(tree, rootContainer, perm, dir, pickMachine, hooks?.signal);
+        await reportFn(`buildSingleAttempt [perm=${branchIdx}/${totalBranches} dir=${dir}]`);
+        const result = await buildSingleAttempt(tree, rootContainer, perm, dir, pickMachine, hooks?.signal);
         if (result.kind === 'candidate') {
           // 자식 머신 노드들도 트리에 표시 — 디버깅용.
           for (const c of result.children) branch.children.push(c);
           result.children = []; // 후보 leaf 자체는 children 비움 (UI 가 leaf 로 인식)
           branch.children.push(result);
-          candidatesGenerated += 1;
+          wizardProgress.candidatesGenerated += 1;
         } else {
           branch.children.push(result);
-          failuresGenerated += 1;
+          wizardProgress.failuresGenerated += 1;
         }
-
-        hooks?.onProgress?.({
-          depth: 1,
-          siblingIndex: branchIdx,
-          siblingTotal: totalBranches,
-          candidatesGenerated,
-          failuresGenerated,
-        });
       }
     }
   }
 
+  emitProgress('완료');
   return wrapResult(rootNode, aborted);
 };
 
@@ -185,20 +245,21 @@ export function flattenCandidates(tree: CandidateTree): CandidateLeaf[] {
  * `children` 으로 일시 보관 — 호출자가 분기 노드 children 으로 옮기고 leaf 의
  * children 은 비운다 (UI 의 leaf 식별).
  */
-function buildSingleAttempt(
+async function buildSingleAttempt(
   tree: RecipeTreeNode,
   rootContainer: Container,
   rootPerm: RecipeTreeNode[],
   rootDir: 'right' | 'down',
   pickMachine: (recipeName: string) => { name: string } | undefined,
   signal: AbortSignal | undefined,
-): (CandidateLeaf & { children: CandidateNode[] }) | FailureLeaf {
+): Promise<(CandidateLeaf & { children: CandidateNode[] }) | FailureLeaf> {
   const internal: Area = makeEmptyArea('internal');
   const external: Area = makeEmptyArea('external');
   const containerByRecipe = new Map<string, Container>();
   const allRoutings: Routing[] = [];
 
   // 1. 루트 배치
+  await reportFn('placeRootMachine');
   const placedRoot = placeRootMachine({ ...rootContainer }, internal);
   if (!placedRoot) {
     return makeFailureLeaf('no-routing', 'root placement collision', captureSnapshot(internal, external));
@@ -206,6 +267,7 @@ function buildSingleAttempt(
   if (tree.recipeName) containerByRecipe.set(tree.recipeName, placedRoot);
 
   // 1a. 루트의 외부 입력 라우팅 (placement-search §7.1 — 사이클의 B 단계)
+  await reportFn('attachExternalInputs (루트)');
   const rootInputs = attachExternalInputs(placedRoot, tree, internal, external);
   if (!rootInputs.ok) {
     return makeFailureLeaf(rootInputs.reason, rootInputs.detail, captureSnapshot(internal, external));
@@ -219,7 +281,7 @@ function buildSingleAttempt(
     if (signal?.aborted) {
       return makeFailureLeaf('aborted', 'user cancelled', captureSnapshot(internal, external));
     }
-    const childResult = recurseMachine(
+    const childResult = await recurseMachine(
       child, lastParent, rootDir, internal, external, containerByRecipe, pickMachine, signal,
     );
     childMachineNodes.push(childResult);
@@ -237,6 +299,7 @@ function buildSingleAttempt(
   }
 
   // 3. 루트 product 출력 라우팅 — root 머신 → 외부 무한상자/파이프
+  await reportFn('attachRootOutput');
   const rootOutputs = attachRootOutput(placedRoot, tree, internal, external);
   if (!rootOutputs.ok) {
     return makeFailureLeaf(rootOutputs.reason, rootOutputs.detail, captureSnapshot(internal, external));
@@ -245,6 +308,7 @@ function buildSingleAttempt(
 
   // 4. 후처리 — chest 들을 internal bbox 의 perimeter ring 위로 재배치
   //    (placement-search §3 의 "통합 단계"). 실패한 chest 는 임시 자리 유지.
+  await reportFn('wrapExternalsAroundPerimeter');
   wrapExternalsAroundPerimeter(internal, external, allRoutings, ROUTING_OPTIONS);
 
   // 5. 후보 leaf
@@ -273,7 +337,7 @@ function buildSingleAttempt(
  * 조합만 commit (= 트리에는 모든 시도가 BranchNode 로 기록되지만 상태에는
  * first-success 만 반영). 더 강한 cross-product enumeration 은 follow-up.
  */
-function recurseMachine(
+async function recurseMachine(
   treeNode: RecipeTreeNode,
   parent: Container,
   dir: 'right' | 'down',
@@ -282,7 +346,7 @@ function recurseMachine(
   containerByRecipe: Map<string, Container>,
   pickMachine: (recipeName: string) => { name: string } | undefined,
   signal: AbortSignal | undefined,
-): MachineNode | FailureLeaf {
+): Promise<MachineNode | FailureLeaf> {
   if (!treeNode.recipeName) {
     return makeFailureLeaf('no-machine-match', `${treeNode.itemName} 의 레시피 없음`, captureSnapshot(internal, external));
   }
@@ -292,6 +356,7 @@ function recurseMachine(
   }
 
   const machineContainer = makeMachineContainer(treeNode, machineEntity.name);
+  await reportFn(`placeMachine [${treeNode.recipeName}]`);
   const placed = placeMachine(parent, machineContainer, dir, internal);
   if (!placed) {
     return makeFailureLeaf('no-routing', `${treeNode.recipeName} 배치 충돌`, captureSnapshot(internal, external));
@@ -303,6 +368,7 @@ function recurseMachine(
   const routeKind: PortKind = flowKind === 'fluid' ? { fluid: treeNode.itemName } : 'item';
 
   const routings: Routing[] = [];
+  await reportFn(`routeWithFallback [${treeNode.itemName} → 부모]`);
   const routeResult = routeWithFallback(placed, parent, routeKind, internal, ROUTING_OPTIONS);
   if (!routeResult.ok) {
     return makeFailureLeaf('no-routing', `${treeNode.itemName} 라우팅 실패 — ${routeResult.tried.length} port 조합 시도`, captureSnapshot(internal, external));
@@ -314,6 +380,7 @@ function recurseMachine(
   // 자식 ingredient (= 자체 생산) 가 아닌 ingredient 마다 무한상자/파이프 1개
   // 추가하고 이 머신과 라우팅. 한 ingredient 가 여러 머신에 들어가면 머신마다
   // 별도 컨테이너 (Q19 / Q3 결정 — splitter 미사용).
+  await reportFn(`attachExternalInputs [${treeNode.recipeName}]`);
   const extInputs = attachExternalInputs(placed, treeNode, internal, external);
   if (!extInputs.ok) {
     return makeFailureLeaf(extInputs.reason, extInputs.detail, captureSnapshot(internal, external));
@@ -333,6 +400,11 @@ function recurseMachine(
     for (const childDir of ['right', 'down'] as const) {
       if (signal?.aborted) break;
 
+      wizardProgress.attempts += 1;
+      await reportFn(
+        `recurseMachine 손자 시도 [${perm.map((p) => p.itemName).join(',')}] dir=${childDir}`,
+      );
+
       const branch = makeBranchNode(perm, childDir, captureSnapshot(internal, external));
       thisMN.children.push(branch);
 
@@ -344,7 +416,7 @@ function recurseMachine(
       let lastParent = placed;
       let allOk = true;
       for (const grandchild of perm) {
-        const childResult = recurseMachine(
+        const childResult = await recurseMachine(
           grandchild, lastParent, childDir,
           internalAttempt, externalAttempt, containerByRecipeAttempt,
           pickMachine, signal,
@@ -381,12 +453,74 @@ function recurseMachine(
 // 추출되어 통합 단계 (`areaUnification.dragExternalContainer`) 와 공유.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const ROUTING_OPTIONS: RouteOptions = {
+/**
+ * 라우팅 옵션 — `runContainerWizard` 진입 시 사용자 입력에 맞춰 갱신된다.
+ * 이 모듈 내 모든 라우팅 호출이 이 값을 참조한다.
+ *
+ * 외부 소비자 (드래그 핸들러 등) 는 `buildRoutingOptions(input)` 으로 직접
+ * 빌드해 사용하면 됨 — 이 mutable 상태에 의존하지 말 것.
+ */
+export let ROUTING_OPTIONS: RouteOptions = {
   beltEntityName: 'transport-belt',
   inserterEntityName: 'inserter',
   pipeEntityName: 'pipe',
   preferUnderground: false,
 };
+
+/**
+ * 위저드 입력으로부터 라우팅 옵션을 빌드. 사용자가 선택한 첫 underground
+ * pipe / belt prototype 의 entityName 과 `max_underground_distance` 를
+ * gameDataStore 에서 lookup 한다.
+ *
+ * 점프 비활성 (= maxDistance=0) 조건:
+ *  - 사용자가 underground pipe / belt 를 하나도 선택 안 함, OR
+ *  - 선택한 entity 가 prototype 사전에 없음, OR
+ *  - max_underground_distance 가 0 / 미정.
+ */
+export function buildRoutingOptions(input: ContainerWizardInput): RouteOptions {
+  const { entityMap } = useGameDataStore.getState();
+  const beltEntityName = input.primaryBelt ?? input.selectedBelts[0] ?? 'transport-belt';
+  const inserterEntityName = input.primaryInserter ?? input.selectedInserters[0] ?? 'inserter';
+
+  const undergroundPipeEntityName = input.selectedUndergroundPipes[0];
+  const undergroundBeltEntityName = input.selectedUndergroundBelts[0];
+
+  const pipeMaxUndergroundDistance = undergroundPipeEntityName
+    ? lookupPipeUndergroundDistance(entityMap.get(undergroundPipeEntityName))
+    : 0;
+  const beltMaxUndergroundDistance = undergroundBeltEntityName
+    ? entityMap.get(undergroundBeltEntityName)?.max_underground_distance ?? 0
+    : 0;
+
+  return {
+    beltEntityName,
+    inserterEntityName,
+    pipeEntityName: 'pipe',
+    undergroundPipeEntityName,
+    undergroundBeltEntityName,
+    pipeMaxUndergroundDistance,
+    beltMaxUndergroundDistance,
+    preferUnderground: !!(undergroundPipeEntityName || undergroundBeltEntityName),
+  };
+}
+
+/**
+ * pipe-to-ground 의 underground 거리 추출. Factorio 2.0 prototype API 가
+ * connection 별 거리를 두지만 (`fluid_boxes[].connections[].max_underground_distance`),
+ * 최상위 `Entity.max_underground_distance` 도 호환용으로 채워진다.
+ * connection 우선, 없으면 최상위 fallback.
+ */
+function lookupPipeUndergroundDistance(entity: Entity | undefined): number {
+  if (!entity) return 0;
+  for (const fb of entity.fluid_boxes ?? []) {
+    for (const c of fb.connections ?? []) {
+      if (c.connection_type === 'underground' && c.max_underground_distance) {
+        return c.max_underground_distance;
+      }
+    }
+  }
+  return entity.max_underground_distance ?? 0;
+}
 
 /**
  * 한 레시피의 product 가운데 itemName 의 type (item / fluid) 을 조회.
@@ -604,7 +738,7 @@ function makeMachineContainer(node: RecipeTreeNode, entityName: string): Contain
 }
 
 function makeEmptyArea(kind: Area['kind']): Area {
-  return { kind, containers: [], placed: [] };
+  return { kind, containers: [], placed: [], undergroundCorridors: [] };
 }
 
 function cloneArea(a: Area): Area {
@@ -617,6 +751,10 @@ function cloneArea(a: Area): Area {
     })),
     placed: a.placed.map((p) => ({ x: p.x, y: p.y, cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } } })),
     bbox: a.bbox ? { ...a.bbox } : undefined,
+    undergroundCorridors: a.undergroundCorridors.map((c) => ({
+      ...c,
+      range: [c.range[0], c.range[1]],
+    })),
   };
   return cloned;
 }
@@ -627,6 +765,10 @@ function commitAreaInPlace(target: Area, source: Area): void {
   target.placed.length = 0;
   for (const p of source.placed) target.placed.push(p);
   target.bbox = source.bbox ? { ...source.bbox } : undefined;
+  target.undergroundCorridors.length = 0;
+  for (const c of source.undergroundCorridors) {
+    target.undergroundCorridors.push({ ...c, range: [c.range[0], c.range[1]] });
+  }
 }
 
 function collectRoutingsFromTree(node: CandidateNode, out: Routing[]): void {
