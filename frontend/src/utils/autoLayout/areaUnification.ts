@@ -1,17 +1,12 @@
 /**
  * 영역 통합 — placement-search §3 / §8.3.
  *
- * 좌표계는 단일이며 chest 는 *internal bbox 의 1셀 두께 perimeter ring* 위에
- * 산다. 본 모듈이 제공하는 것:
- *
  *  - `unifyAreas` — 두 영역을 단일 PlacedCell[] 로 평탄화. 좌표계가 이미
  *    단일이라 internal.placed 의 얕은 복제로 끝.
- *  - `wrapExternalsAroundPerimeter` — 모든 머신 + 라우팅 배치가 끝난 뒤,
- *    chest 들을 internal bbox 의 perimeter 위로 재배치하는 후처리. consumer
- *    머신과 가까운 빈 perimeter 셀로 옮기고 라우팅 자동 재시도.
+ *  - `computeMachineRoutingBbox` — 머신+라우팅 셀의 bbox (chest ghost 제외).
+ *    편집기 viewport 계산에 사용.
  *  - `dragExternalContainer` — 사용자가 chest 를 옮긴 결과를 반영. 임의의
  *    유효 셀로 이동 + 라우팅 재시도. 실패 시 모든 mutation rollback.
- *  - 헬퍼: `computeMachineRoutingBbox`, `enumeratePerimeterCells`.
  */
 
 import type {
@@ -67,117 +62,6 @@ export function computeMachineRoutingBbox(
     bbox = expandBbox(bbox, p.x, p.y, 1, 1);
   }
   return bbox;
-}
-
-/**
- * `bbox` 의 1-cell 두께 perimeter ring 셀 좌표 목록.
- *
- * 모서리 4셀 + 위·아래 가로변 + 좌·우 세로변. 시계 방향 N → E → S → W 순으로
- * 나열되어 chest 정렬이 한 면 다 차면 다음 면으로 흐르도록 한다.
- */
-export function enumeratePerimeterCells(
-  bbox: { x: number; y: number; w: number; h: number },
-): { x: number; y: number }[] {
-  const cells: { x: number; y: number }[] = [];
-  const x0 = bbox.x;
-  const y0 = bbox.y;
-  const x1 = bbox.x + bbox.w - 1;
-  const y1 = bbox.y + bbox.h - 1;
-
-  // N 면 (y0 - 1) 좌→우, 좌상 모서리 포함
-  for (let x = x0 - 1; x <= x1 + 1; x++) cells.push({ x, y: y0 - 1 });
-  // E 면 (x1 + 1) 위→아래, 우상 모서리는 위 루프에서 이미 push 됐으므로 y0 부터
-  for (let y = y0; y <= y1; y++) cells.push({ x: x1 + 1, y });
-  // S 면 (y1 + 1) 우→좌, 우하·좌하 모서리 포함
-  for (let x = x1 + 1; x >= x0 - 1; x--) cells.push({ x, y: y1 + 1 });
-  // W 면 (x0 - 1) 아래→위, 좌하 모서리는 위 루프에서 push 됐으므로 y1 부터
-  for (let y = y1; y >= y0; y--) cells.push({ x: x0 - 1, y });
-  return cells;
-}
-
-/** 셀 좌표가 perimeter ring 에 속하는지. */
-export function isOnPerimeter(
-  cell: { x: number; y: number },
-  bbox: { x: number; y: number; w: number; h: number },
-): boolean {
-  const onN = cell.y === bbox.y - 1 && cell.x >= bbox.x - 1 && cell.x <= bbox.x + bbox.w;
-  const onS = cell.y === bbox.y + bbox.h && cell.x >= bbox.x - 1 && cell.x <= bbox.x + bbox.w;
-  const onW = cell.x === bbox.x - 1 && cell.y >= bbox.y - 1 && cell.y <= bbox.y + bbox.h;
-  const onE = cell.x === bbox.x + bbox.w && cell.y >= bbox.y - 1 && cell.y <= bbox.y + bbox.h;
-  return onN || onS || onW || onE;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// wrapExternalsAroundPerimeter — 후처리
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 모든 머신 + 라우팅 배치 후, chest 들을 internal bbox 의 perimeter 위로
- * 재배치한다.
- *
- * 알고리즘:
- *  1. machine + routing bbox 계산
- *  2. perimeter 셀 목록 (시계 방향)
- *  3. 각 chest 에 대해:
- *     a. 이미 perimeter 위에 있으면 skip
- *     b. 아니면 빈 perimeter 셀들 중 *현재 origin 에 manhattan 가장 가까운
- *        셀* 을 선택
- *     c. `dragExternalContainer` 로 이동 시도 (라우팅 자동 재시도)
- *     d. 실패 시 다음 후보 셀 시도
- *     e. 모든 후보 실패 시 chest 는 원위치 유지 (graceful degradation)
- *  4. internal.bbox / external.bbox 재계산
- *
- * 본 함수는 후보 leaf 의 internal/external/routings 를 직접 mutate. 호출자는
- * 보통 wizard 결과 직전에 호출.
- */
-export function wrapExternalsAroundPerimeter(
-  internal: Area,
-  external: Area,
-  routings: Routing[],
-  options: RouteOptions,
-): { relocated: number; skipped: number; failed: number } {
-  const bbox = computeMachineRoutingBbox(internal, external);
-  if (!bbox) return { relocated: 0, skipped: 0, failed: 0 };
-
-  const perimeter = enumeratePerimeterCells(bbox);
-  let relocated = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  // chest 처리 순서: consumer 머신과 가까운 chest 부터 — perimeter 좋은 자리
-  // 를 먼저 점유. (현재는 단순 등록 순서로 순회 — 추후 우선순위 정렬 도입 가능)
-  for (const chest of external.containers) {
-    if (isOnPerimeter(chest.origin, bbox)) {
-      skipped += 1;
-      continue;
-    }
-
-    const sortedTargets = [...perimeter].sort((a, b) => {
-      const da = Math.abs(a.x - chest.origin.x) + Math.abs(a.y - chest.origin.y);
-      const db = Math.abs(b.x - chest.origin.x) + Math.abs(b.y - chest.origin.y);
-      return da - db;
-    });
-
-    let moved = false;
-    for (const target of sortedTargets) {
-      const result = dragExternalContainer(
-        chest.id,
-        target,
-        internal,
-        external,
-        routings,
-        options,
-      );
-      if (result.ok) {
-        moved = true;
-        break;
-      }
-    }
-    if (moved) relocated += 1;
-    else failed += 1;
-  }
-
-  return { relocated, skipped, failed };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -30,7 +30,6 @@ import {
   type RouteOptions,
 } from '../utils/autoLayout/routeFallback';
 import {
-  wrapExternalsAroundPerimeter,
   cloneArea,
   cloneRouting,
 } from '../utils/autoLayout/areaUnification';
@@ -444,25 +443,6 @@ export default function AutoLayoutDebugTab(props: Props) {
     });
   }
 
-  // ── 8) wrapExternalsAroundPerimeter ─────────────────────────────
-  const canWrap = playground.external.containers.length > 0;
-  function runWrap() {
-    if (!canWrap) return;
-    runWithDiff('wrapExternalsAroundPerimeter', (pg) => {
-      const stats = wrapExternalsAroundPerimeter(
-        pg.internal,
-        pg.external,
-        pg.routings,
-        routeOptions,
-      );
-      return {
-        ok: true,
-        summary: `relocated ${stats.relocated}, skipped ${stats.skipped}, failed ${stats.failed}`,
-        detail: stats,
-      };
-    });
-  }
-
   // ── 렌더 ──────────────────────────────────────────────────────────
   const seedReady = !!targetRecipe && selectedMachines.size > 0;
 
@@ -729,24 +709,6 @@ export default function AutoLayoutDebugTab(props: Props) {
           onRun={runPlaceMachine}
         />
 
-        <FunctionCard
-          n={8}
-          name="wrapExternalsAroundPerimeter"
-          desc="후처리 — chest 들을 internal bbox perimeter ring 으로 재배치"
-          can={canWrap}
-          reason={canWrap ? '' : 'external 컨테이너 없음 (4번 먼저 실행)'}
-          expanded={expanded.wrapExternalsAroundPerimeter}
-          onToggle={() => setExpanded((p) => ({ ...p, wrapExternalsAroundPerimeter: !p.wrapExternalsAroundPerimeter }))}
-          result={results.wrapExternalsAroundPerimeter}
-          inputs={
-            <>
-              <Param label="internal containers" value={String(playground.internal.containers.length)} />
-              <Param label="external containers" value={String(playground.external.containers.length)} />
-              <Param label="routings" value={String(playground.routings.length)} />
-            </>
-          }
-          onRun={runWrap}
-        />
       </div>
     </div>
   );
