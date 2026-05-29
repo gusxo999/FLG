@@ -96,7 +96,7 @@ export const ko = {
 
     prev: '이전',
     next: '다음',
-    cancel: '취소',
+    reset: '초기화',
   },
 
 
@@ -293,6 +293,7 @@ export const ko = {
     outOfBounds: '그리드 경계를 벗어날 수 없습니다',
     occupied: '이미 다른 엔티티가 배치되어 있습니다',
     noEntitySelected: '엔티티를 먼저 선택하세요',
+    routingRerouteFailed: '드래그 후 일부 라우팅을 다시 연결하지 못했습니다',
   },
 
   shortcuts: {

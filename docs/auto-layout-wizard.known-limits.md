@@ -9,8 +9,6 @@
 > 우선순위 표기: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그
 > 항목이 해결되면 해당 섹션은 삭제하고 우선순위 표만 갱신한다.
 
-> ⚠ **모델 재설계 진행 중** — 본 문서는 *구 둘레 슬롯 모델* 시점의 한계 목록이다. 다수 항목이 새 컨테이너 모델 ([.placement-search](auto-layout-wizard.placement-search.md)) 에서 자동 해소되거나 *비-목표* 로 재분류된다. 상세 매핑은 .placement-search §12 (흡수/폐기) 와 §13 (비-목표/보류). 새 모델 도입이 끝나면 본 문서는 새 모델 기준으로 전면 갱신된다.
-
 ---
 
 ## 1. 유체(Fluid) 레시피 미지원
@@ -87,14 +85,13 @@ M1 단계의 둘레 슬롯 모델 *자체* 는 임의 footprint 의 머신을 �
 - 예: 강철 라인에서 철판이 코크스용·자체용 두 곳에 필요해도 한 belt 가 그 위치를 지나치며 첫 unit 에서만 받음.
 
 **원인:**
-- `collectRoutes` 가 `producerByItem` 의 첫 매칭만 사용.
-- router 가 belt-route 위 통과는 허용하지만 splitter 삽입 / 분기 인식 없음.
+- 한 itemName 에 대해 producer 첫 매칭만 사용.
+- splitter 삽입 / 분기 인식 없음.
 
 **해결 방향:**
 1. `producerByItem` 을 `producerByItem: Map<itemName, UnitLayout[]>` 로 확장.
 2. 처리량 모드일 때 자식의 product/sec 합 ≥ 부모 ingredient/sec 합 이면 OK, 아니면 throughput 부족 warning.
 3. 한 itemName 의 belt 가 여러 source 에서 합류해야 하면 splitter 자동 삽입 (entityType=Splitter, 2×1).
-4. underground belt: 장애물 회피 시 router 가 `pipe-to-ground` 변형으로 삽입 (다음 항목 참조).
 
 ---
 
@@ -125,13 +122,12 @@ M1 단계의 둘레 슬롯 모델 *자체* 는 임의 footprint 의 머신을 �
 - 사용자에게 경고 없이 데이터 손실.
 
 **원인:**
-- [layoutStore.ts](../frontend/src/store/layoutStore.ts) 의 `applyPlacedCells` 가 단순 인덱스 write.
-- `placeEntity` 의 점유 검사 / 같은 카테고리 덮어쓰기 정책 미적용.
+- 위저드 결과 적용 시 기존 셀 점유 검사 없이 단순 write.
 
 **해결 방향:**
-1. `applyPlacedCells` 에 `mode: 'overwrite' | 'skip-occupied' | 'abort-on-conflict'` 추가, 기본값은 `'skip-occupied'`.
+1. 결과 적용에 `mode: 'overwrite' | 'skip-occupied' | 'abort-on-conflict'` 추가, 기본값은 `'skip-occupied'`.
 2. 위저드의 review 단계에서 "이 영역에 이미 N개 셀이 점유되어 있습니다 — 덮어쓸까요?" 확인 토스트.
-3. `runAutoLayoutWizard` 에 `obstacles: ReadonlySet<string>` 입력 추가 → router/packer 가 점유 셀을 회피.
+3. 위저드 입력에 `obstacles: ReadonlySet<string>` 추가 → 라우팅/배치가 점유 셀을 회피.
 
 ---
 

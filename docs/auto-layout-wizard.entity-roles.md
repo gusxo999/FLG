@@ -9,8 +9,6 @@
 수동으로 코드/문서를 확장해 5번째 역할을 명시하기 전까지 위저드는 후보로도 노출하지 않고
 placer 입력으로도 받지 않는다.
 
-> ⚠ **모델 재설계 진행 중** — 본 문서의 "둘레 슬롯" 어휘는 *구 둘레 슬롯 모델* 시점의 표현. 새 컨테이너 모델 ([.placement-search](auto-layout-wizard.placement-search.md)) 에서는 *컨테이너 port* 로 명명이 바뀌고, **무한상자·무한파이프** 가 컨테이너의 일종으로 추가된다 (외부 영역 I/O). 본 문서는 새 모델 도입이 끝나면 용어를 일괄 정렬한다.
-
 ---
 
 ## 한 장으로 보기
@@ -21,8 +19,6 @@ placer 입력으로도 받지 않는다.
 | **B. 핸드오프** | `inserter` 와 변형, `loader`, `loader-1x1` | 둘레 슬롯 중 입력/출력 슬롯의 *머신 인접 1셀* | `inserter` (통과 불가) | 머신 수 산정에 throughput 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
 | **C. 고체 운반** | `transport-belt`, `underground-belt`, `splitter` | 둘레 슬롯 중 입력/출력 슬롯의 *머신 바깥 1셀* (stub) + router 가 깐 belt-route 경로 | `belt-fixed` (stub), `belt-route` (라우팅) | splitter 자동 분기 ([§4](auto-layout-wizard.known-limits.md)), underground 자동 점프 ([§5](auto-layout-wizard.known-limits.md)) |
 | **D. 액체 운반** | `pipe`, `pipe-to-ground`, `pump` | (M7) 머신 회전별 fluid_boxes positions 에서 파생 | (M7) `pipe-fixed`, `pipe-route` | M7 통과 전까지 emit 없음 ([§1](auto-layout-wizard.known-limits.md)) |
-
-`occupancy` 분류는 router 의 통과 정책 그 자체이며 [router.ts](../frontend/src/utils/autoLayout/router.ts) 에 정의되어 있다.
 
 ---
 
@@ -50,9 +46,6 @@ placer 입력으로도 받지 않는다.
 - **loader / loader-1x1**: 머신/체스트의 한 면에 붙으면 인서터 없이 자동 적재/배출. 인서터 + 짧은 벨트의 융합.
 - throughput 은 `rotation_speed × stack_size` 로 결정. 인서터 처리량 모델은 [inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) 참조 — 사용자 override 우선.
 
-**현재 알고리즘:** 둘레 슬롯 중 사용 슬롯의 머신 인접 셀에 인서터 emit. direction 은 슬롯의 면에 따라
-입력(벨트→머신) / 출력(머신→벨트) 의 두 종류로 자동 결정.
-
 ---
 
 ## C. 고체 운반 (벨트)
@@ -66,11 +59,7 @@ placer 입력으로도 받지 않는다.
 
 **두 lane 의 의미:** 한 belt-route 셀은 서로 다른 두 item 까지 동시 운반 가능. 이는 router 의 belt-route
 통과 정책 (item 종류 무관 통과) 에 반영되며, 둘레 슬롯 모델의 입력 슬롯 수가 `ceil(재료 가짓수 / 2)` 인
-이유이기도 하다. 셀당 ≤ 2 종류 상한은 [.placement-search §3 C2.1](auto-layout-wizard.placement-search.md)
-에 보류 자리로 등록.
-
-**현재 알고리즘:** 둘레 슬롯 중 사용 슬롯의 머신 바깥 셀에 belt stub emit (occupancy `belt-fixed`).
-머신 사이는 router 가 Lee BFS 로 belt-route 를 깐다 (occupancy `belt-route`, 통과 자유).
+이유이기도 하다. 셀당 ≤ 2 종류 상한은 [.placement-search](auto-layout-wizard.placement-search.md) 조건 등록부에 보류 자리로 등록.
 
 ---
 
@@ -83,10 +72,6 @@ placer 입력으로도 받지 않는다.
 - **pump** (1×2): 한 방향으로만 흐름, 압력 boost. 파이프 네트워크의 분리·역류 방지에 사용.
 - **fluid mixing 금지** — 같은 네트워크에 다른 액체가 섞이면 머신 동작 정지.
 - **머신 fluid_box 위치는 회전별 고정** — `entity.fluid_boxes[].connections[].positions` 가 4-방향 회전마다 다른 좌표 정의.
-
-**현재 코드:** emit 없음. `recipeHasFluid` 가 true 인 레시피를 만나면 `fluid-recipe-not-supported`
-warning 만 발행하고 머신만 배치한다. 사용자가 위저드 5단계에서 underground pipe 를 골라도 결과
-placement 에 반영되지 않는다.
 
 **도입 경로 (M7):** [.placement-search M7](auto-layout-wizard.placement-search.md) — 운반 요구 E 에
 `kind ∈ {belt, pipe}` 추가, occupancy `pipe-fixed` / `pipe-route` 분류 + fluid 이름 태깅 (C3 mixing 방지).

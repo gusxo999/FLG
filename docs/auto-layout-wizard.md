@@ -1,7 +1,5 @@
 # 레이아웃 자동완성 — 위저드 인터페이스 (parent)
 
-**상태:** UI 골격 + *구 둘레 슬롯 모델* 기반 배치 알고리즘 코드가 부분 작성되어 있으나 **모델 재설계 진행 중**. 새 모델 = **컨테이너 모델** ([auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)). 현재 코드는 새 모델로 단계적 (타입 → 모듈 스켈레톤 → 구현) 교체 예정.
-
 이 문서는 **자동완성 위저드 기능의 부모 문서**다. 위저드는 여러 하위 기능(트리 펼침, 머신 수 산정,
 컨테이너 배치, 라우팅 등)이 단일 UI 흐름 안에 합쳐진 복합 기능이며, 각 하위 기능의 상세는 하위
 문서로 분리되어 있다.
@@ -108,16 +106,9 @@
 
 ### 현재 구현 범위
 
-레거시 (구 둘레 슬롯 모델 기반, 새 모델로 교체 예정):
-
-- ✅ 레시피 트리 펼치기 (`expandRecipeTree`) — *유지, 새 모델에서도 동일하게 사용*
-- ✅ 최소 / 처리량 모드 머신 수 계산 — *유지*
-- ✅ 카테고리별 호환 머신 선택 (`pickMachineForRecipe`) — *유지*
-- ✅ 인서터 처리량 사용자 override (`inserterThroughput`) — *유지*
-- ⚠ 둘레 슬롯 모델 placer (`packUnitsBySlot`) — **폐기 예정**. 새 모델의 모듈 A·B 로 교체
-- ⚠ I/O 라우팅 (Lee BFS, 부모 ingredient ↔ 자식 product 첫 매칭만 연결) — **재작성 예정**. 새 모듈 4 로 교체
-
-새 모델 (컨테이너 모델) 의 도입 단계는 [.placement-search](auto-layout-wizard.placement-search.md) 참조. [.known-limits](auto-layout-wizard.known-limits.md) 의 한계 항목 다수가 새 모델에서 자동 해소되거나 비-목표로 재분류된다 (자세한 처리는 .placement-search §12 / §13).
+- ✅ 레시피 트리 펼치기 (`expandRecipeTree`)
+- ✅ 최소 / 처리량 모드 머신 수 계산
+- ✅ 인서터 처리량 사용자 override (`inserterThroughput`)
 
 ### 구현 위치
 
@@ -125,8 +116,4 @@
 - [frontend/src/utils/autoLayout/recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
 - [frontend/src/utils/autoLayout/techGroup.ts](../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
 - [frontend/src/utils/autoLayout/inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [frontend/src/utils/autoLayout/slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts) — *(legacy)* 둘레 슬롯 모델 배치 — 새 모델의 모듈 A·B 로 교체 예정
-- [frontend/src/utils/autoLayout/placedCell.ts](../frontend/src/utils/autoLayout/placedCell.ts) — 공용 PlacedCell 타입 + recipeHasFluid
-- [frontend/src/utils/autoLayout/router.ts](../frontend/src/utils/autoLayout/router.ts) — *(legacy)* Lee BFS belt 라우팅 — 새 모듈 4 (item/fluid 통합) 로 교체 예정
-- [frontend/src/utils/autoLayout/runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts) — *(legacy)* 단계 합성 진입점 — 새 오케스트레이터로 교체 예정
 - [frontend/src/components/AutoLayoutModal.tsx](../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI

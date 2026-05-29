@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { useGameDataStore } from '../store/gameDataStore';
 import type { Entity } from '../store/gameDataStore';
@@ -11,41 +11,57 @@ import {
 } from '../utils/autoLayout/recipeTree';
 import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
 import type { RecipeTreeNode } from '../utils/autoLayout/types';
-import type { ContainerPort } from '../utils/autoLayout/containerModel';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
-import AutoLayoutDebugTab, {
-  DebugGridPanel,
-  DebugHistoryPanel,
-  emptyPlayground,
-  clonePlayground,
-  HISTORY_CAP,
-  type Playground,
-  type HistoryEntry,
-  type RunResult,
-} from './AutoLayoutDebugTab';
+import AutoLayoutDebugTab from './AutoLayoutDebugTab';
 import {
   inserterThroughput,
   defaultInserterThroughput,
 } from '../utils/autoLayout/inserterThroughput';
+import {
+  useWizardStore,
+  WIZARD_STEPS,
+  type WizardStep,
+  type InserterOverrideEntry,
+} from '../store/wizardStore';
+import { useSettingsStore } from '../store/settingsStore';
 
-interface InserterOverrideEntry {
-  /** 사용자가 처리량을 직접 입력한 경우. 이 값이 있으면 stack 입력은 비활성. */
-  throughput?: number;
-  /** 사용자가 묶음 갯수를 입력한 경우. throughput 이 없을 때만 적용. */
-  stackSize?: number;
-}
+type Step = WizardStep;
+const STEPS = WIZARD_STEPS;
 
-type Step = 'recipe' | 'machine' | 'inserter' | 'belt' | 'pipe' | 'review' | 'debug';
-
-interface AutoLayoutModalProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-const STEPS: Step[] = ['recipe', 'machine', 'inserter', 'belt', 'pipe', 'review', 'debug'];
-
-export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps) {
+export default function AutoLayoutSidebar() {
   const t = useT();
+
+  const autoLayoutSidebarWidth = useSettingsStore((s) => s.autoLayoutSidebarWidth);
+  const setAutoLayoutSidebarWidth = useSettingsStore((s) => s.setAutoLayoutSidebarWidth);
+  const resizingRef = useRef(false);
+
+  const handleMove = useCallback((e: MouseEvent) => {
+    if (!resizingRef.current) return;
+    setAutoLayoutSidebarWidth(window.innerWidth - e.clientX);
+  }, [setAutoLayoutSidebarWidth]);
+
+  const handleUp = useCallback(() => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [handleMove, handleUp]);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    resizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
 
   const {
     recipes,
@@ -71,71 +87,37 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     })),
   );
 
-  const [step, setStep] = useState<Step>('recipe');
+  // 위저드 선택 상태 — wizardStore (persist) 에서 읽음
+  const step = useWizardStore((s) => s.step);
+  const setStep = useWizardStore((s) => s.setStep);
+  const targetRecipe = useWizardStore((s) => s.targetRecipe);
+  const setTargetRecipe = useWizardStore((s) => s.setTargetRecipe);
+  const countMode = useWizardStore((s) => s.countMode);
+  const setCountMode = useWizardStore((s) => s.setCountMode);
+  const perTarget = useWizardStore((s) => s.perTarget);
+  const setPerTarget = useWizardStore((s) => s.setPerTarget);
+  const inserterOverrides = useWizardStore((s) => s.inserterOverrides);
+  const setInserterOverrides = useWizardStore((s) => s.setInserterOverrides);
 
-  // Step 1
-  const [targetRecipe, setTargetRecipe] = useState('');
-  const [countMode, setCountMode] = useState<'min' | 'manual'>('min');
-  const [perTarget, setPerTarget] = useState(1);
-  const [externalIngredients, setExternalIngredients] = useState<Set<string>>(new Set());
-
-  // Step 2-5
-  const [selectedMachines, setSelectedMachines] = useState<Set<string>>(new Set());
-  const [selectedInserters, setSelectedInserters] = useState<Set<string>>(new Set());
-  const [selectedBelts, setSelectedBelts] = useState<Set<string>>(new Set());
-  const [selectedUndergroundBelts, setSelectedUndergroundBelts] = useState<Set<string>>(new Set());
-  const [selectedPipes, setSelectedPipes] = useState<Set<string>>(new Set());
-
-  // 인서터 처리량 override (인서터 entityName → { throughput? | stackSize? })
-  const [inserterOverrides, setInserterOverrides] = useState<
-    Record<string, InserterOverrideEntry>
-  >({});
-
-  // 디버그 탭 — DebugTab/GridPanel/HistoryPanel 셋이 공유하는 state 는 여기서 보관
-  const [debugPlayground, setDebugPlayground] = useState<Playground>(() => emptyPlayground());
-  const [debugHighlight, setDebugHighlight] = useState<Set<string>>(new Set());
-  const [debugPortOverlay, setDebugPortOverlay] = useState<ContainerPort[]>([]);
-  const [debugResults, setDebugResults] = useState<Record<string, RunResult>>({});
-  const [debugHistory, setDebugHistory] = useState<HistoryEntry[]>([]);
-  const debugHistorySeqRef = useRef(0);
-
-  /** 실행 직전 호출 — 현재 상태 스냅샷을 히스토리에 push (cap 초과시 가장 오래된 entry drop). */
-  function debugPushHistory(label: string) {
-    debugHistorySeqRef.current += 1;
-    const entry: HistoryEntry = {
-      id: debugHistorySeqRef.current,
-      label,
-      playground: clonePlayground(debugPlayground),
-      highlightCells: new Set(debugHighlight),
-      results: { ...debugResults },
-      portOverlay: [...debugPortOverlay],
-    };
-    setDebugHistory((prev) => {
-      const next = [...prev, entry];
-      if (next.length > HISTORY_CAP) next.shift();
-      return next;
-    });
-  }
-
-  /** 마지막 스냅샷 pop → 4개 상태 복원. */
-  function debugUndo() {
-    if (debugHistory.length === 0) return;
-    const last = debugHistory[debugHistory.length - 1];
-    setDebugPlayground(last.playground);
-    setDebugHighlight(last.highlightCells);
-    setDebugResults(last.results);
-    setDebugPortOverlay(last.portOverlay);
-    setDebugHistory((prev) => prev.slice(0, -1));
-  }
-
-  /** 디버그 세션 전체 초기화 — playground / results / highlight / portOverlay / history 모두 비움. */
-  function debugResetAll() {
-    setDebugPlayground(emptyPlayground());
-    setDebugHighlight(new Set());
-    setDebugPortOverlay([]);
-    setDebugResults({});
-    setDebugHistory([]);
-  }
+  // Set 값은 배열로 저장되므로 useMemo 로 변환
+  const _extIngr = useWizardStore((s) => s.externalIngredients);
+  const _selMachines = useWizardStore((s) => s.selectedMachines);
+  const _selInserters = useWizardStore((s) => s.selectedInserters);
+  const _selBelts = useWizardStore((s) => s.selectedBelts);
+  const _selUgBelts = useWizardStore((s) => s.selectedUndergroundBelts);
+  const _selPipes = useWizardStore((s) => s.selectedPipes);
+  const externalIngredients = useMemo(() => new Set(_extIngr), [_extIngr]);
+  const selectedMachines = useMemo(() => new Set(_selMachines), [_selMachines]);
+  const selectedInserters = useMemo(() => new Set(_selInserters), [_selInserters]);
+  const selectedBelts = useMemo(() => new Set(_selBelts), [_selBelts]);
+  const selectedUndergroundBelts = useMemo(() => new Set(_selUgBelts), [_selUgBelts]);
+  const selectedPipes = useMemo(() => new Set(_selPipes), [_selPipes]);
+  const setExternalIngredients = useWizardStore((s) => s.setExternalIngredients);
+  const setSelectedMachines = useWizardStore((s) => s.setSelectedMachines);
+  const setSelectedInserters = useWizardStore((s) => s.setSelectedInserters);
+  const setSelectedBelts = useWizardStore((s) => s.setSelectedBelts);
+  const setSelectedUndergroundBelts = useWizardStore((s) => s.setSelectedUndergroundBelts);
+  const setSelectedPipes = useWizardStore((s) => s.setSelectedPipes);
 
   const recipeOptions = useMemo(
     () =>
@@ -293,45 +275,41 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
     setStep('recipe');
   }
 
-  function handleClose() {
-    setStep('recipe');
-    onClose();
+  function handleReset() {
+    useWizardStore.getState().reset();
   }
-
-  if (!open) return null;
 
   const internalRecipes = previewTree ? collectInternalRecipes(previewTree) : new Set<string>();
   const totalMachines = previewTree ? sumMachineCounts(previewTree) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="flex flex-row items-stretch gap-3 px-4 max-w-full">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[48rem] max-w-full max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-5 pb-3 border-b border-gray-800">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-white font-bold text-base">
-                {t('autoLayoutModal.title')}
-              </h2>
-              <span className="text-[10px] uppercase tracking-wider text-yellow-300 bg-yellow-900/40 border border-yellow-700/50 rounded px-1.5 py-0.5">
-                {t('autoLayoutModal.experimentalBadge')}
-              </span>
-            </div>
-            <p className="text-gray-400 text-xs leading-relaxed max-w-md">
-              {t('autoLayoutModal.subtitle')}
-            </p>
+    <div className="relative shrink-0 border-l border-gray-700 bg-gray-900 flex flex-col h-full overflow-hidden" style={{ width: `${autoLayoutSidebarWidth}px` }}>
+      {/* 리사이저 — 왼쪽 가장자리 드래그로 폭 조절 */}
+      <div
+        onMouseDown={startResize}
+        onDoubleClick={() => setAutoLayoutSidebarWidth(320)}
+        title="드래그하여 폭 조절 / 더블클릭으로 초기화"
+        className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-orange-500/60 active:bg-orange-500 transition-colors z-10"
+      />
+      {/* Header */}
+      <div className="flex items-start justify-between px-4 pt-4 pb-2 border-b border-gray-800 shrink-0">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-white font-bold text-sm">
+              {t('autoLayoutModal.title')}
+            </h2>
+            <span className="text-[10px] uppercase tracking-wider text-yellow-300 bg-yellow-900/40 border border-yellow-700/50 rounded px-1.5 py-0.5">
+              {t('autoLayoutModal.experimentalBadge')}
+            </span>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-gray-500 hover:text-gray-300 text-xl leading-none shrink-0"
-          >
-            ×
-          </button>
+          <p className="text-gray-400 text-[11px] leading-relaxed">
+            {t('autoLayoutModal.subtitle')}
+          </p>
         </div>
+      </div>
 
         {/* Stepper — 칸 클릭 시 해당 단계로 즉시 이동 (skip 단계도 클릭 가능) */}
-        <div className="flex items-center gap-2 px-6 pt-3 pb-1 text-[11px] overflow-x-auto">
+        <div className="flex items-center gap-1 px-4 pt-2 pb-1 text-[10px] overflow-x-auto shrink-0 flex-wrap gap-y-1">
           {STEPS.map((s, i) => {
             const skip = shouldSkip(s);
             const active = step === s;
@@ -357,7 +335,7 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {step === 'recipe' && (
             <RecipeStep
               recipes={recipeOptions}
@@ -476,44 +454,27 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
                 selectedBelts={effectiveBelts}
                 selectedUndergroundPipes={effectivePipes}
                 selectedUndergroundBelts={effectiveUndergroundBelts}
-                onClose={handleClose}
+                onClose={handleReset}
               />
             </>
           )}
 
-          {step === 'debug' && (
-            <AutoLayoutDebugTab
-              targetRecipe={targetRecipe}
-              externalIngredients={externalIngredients}
-              selectedMachines={effectiveMachines}
-              selectedInserters={effectiveInserters}
-              selectedBelts={effectiveBelts}
-              selectedUndergroundPipes={effectivePipes}
-              playground={debugPlayground}
-              setPlayground={setDebugPlayground}
-              setHighlightCells={setDebugHighlight}
-              setPortOverlay={setDebugPortOverlay}
-              results={debugResults}
-              setResults={setDebugResults}
-              pushHistory={debugPushHistory}
-              resetAll={debugResetAll}
-            />
-          )}
+          {step === 'debug' && <AutoLayoutDebugTab />}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 px-6 py-3 border-t border-gray-800">
+        <div className="flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-800 shrink-0">
           <button
-            onClick={handleClose}
-            className="text-sm text-gray-400 hover:text-gray-200 px-4 py-1.5"
+            onClick={handleReset}
+            className="text-xs text-red-500 hover:text-red-300 px-2 py-1"
           >
-            {t('autoLayoutModal.cancel')}
+            {t('autoLayoutModal.reset')}
           </button>
           <div className="flex items-center gap-2">
             {step !== 'recipe' && (
               <button
                 onClick={prevStep}
-                className="text-sm text-gray-300 hover:text-white px-4 py-1.5 border border-gray-700 rounded-lg"
+                className="text-xs text-gray-300 hover:text-white px-3 py-1 border border-gray-700 rounded-lg"
               >
                 {t('autoLayoutModal.prev')}
               </button>
@@ -522,25 +483,14 @@ export default function AutoLayoutModal({ open, onClose }: AutoLayoutModalProps)
               <button
                 onClick={nextStep}
                 disabled={step === 'recipe' && !targetRecipe}
-                className="bg-orange-500 hover:bg-orange-400 disabled:bg-orange-700 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-1.5 rounded-lg transition-colors"
+                className="bg-orange-500 hover:bg-orange-400 disabled:bg-orange-700 disabled:cursor-not-allowed text-white text-xs font-semibold px-4 py-1 rounded-lg transition-colors"
               >
                 {t('autoLayoutModal.next')}
               </button>
             )}
           </div>
         </div>
-      </div>
-      {step === 'debug' && (
-        <DebugGridPanel
-          playground={debugPlayground}
-          highlightCells={debugHighlight}
-          portOverlay={debugPortOverlay}
-        />
-      )}
-      {step === 'debug' && (
-        <DebugHistoryPanel history={debugHistory} onUndo={debugUndo} />
-      )}
-      </div>
+
     </div>
   );
 }

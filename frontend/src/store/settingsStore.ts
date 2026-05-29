@@ -17,6 +17,8 @@ interface Settings {
   showChunkBoundaries: boolean;
   /** Sidebar width in pixels */
   sidebarWidth: number;
+  /** Auto layout sidebar width in pixels */
+  autoLayoutSidebarWidth: number;
 }
 
 interface SettingsState extends Settings {
@@ -28,6 +30,7 @@ interface SettingsState extends Settings {
   toggleSnapToGrid: () => void;
   toggleChunkBoundaries: () => void;
   setSidebarWidth: (px: number) => void;
+  setAutoLayoutSidebarWidth: (px: number) => void;
   resetToDefaults: () => void;
 }
 
@@ -40,10 +43,13 @@ const DEFAULT_SETTINGS: Settings = {
   snapToGrid: true,
   showChunkBoundaries: false,
   sidebarWidth: 256,
+  autoLayoutSidebarWidth: 320,
 };
 
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 600;
+const MIN_AUTO_LAYOUT_SIDEBAR_WIDTH = 240;
+const MAX_AUTO_LAYOUT_SIDEBAR_WIDTH = 700;
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -62,6 +68,8 @@ export const useSettingsStore = create<SettingsState>()(
         set((s) => ({ showChunkBoundaries: !s.showChunkBoundaries })),
       setSidebarWidth: (px) =>
         set({ sidebarWidth: Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, px)) }),
+      setAutoLayoutSidebarWidth: (px) =>
+        set({ autoLayoutSidebarWidth: Math.max(MIN_AUTO_LAYOUT_SIDEBAR_WIDTH, Math.min(MAX_AUTO_LAYOUT_SIDEBAR_WIDTH, px)) }),
       resetToDefaults: () => set(DEFAULT_SETTINGS),
     }),
     {

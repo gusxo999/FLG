@@ -3,8 +3,7 @@
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 >
-> **상태:** **모델 재설계 단계 — 본 문서는 새 모델 (컨테이너 모델) 의 정의서다.**
-> 현재 코드 ([slotPlacer.ts](../frontend/src/utils/autoLayout/slotPlacer.ts), [runSlotWizard.ts](../frontend/src/utils/autoLayout/runSlotWizard.ts), [router.ts](../frontend/src/utils/autoLayout/router.ts)) 는 *구 둘레 슬롯 모델* 의 부분 구현이며, 새 모델로 교체 예정. 코드는 다음 커밋들에서 단계적으로 (타입 → 모듈 스켈레톤 → 구현) 들어온다.
+> **상태:** 본 문서는 컨테이너 모델의 정의서다.
 
 ---
 

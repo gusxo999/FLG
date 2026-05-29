@@ -99,7 +99,7 @@ export const en: Translations = {
 
     prev: 'Back',
     next: 'Next',
-    cancel: 'Cancel',
+    reset: 'Reset',
   },
 
 
@@ -296,6 +296,7 @@ export const en: Translations = {
     outOfBounds: 'Cannot place outside the grid',
     occupied: 'Another entity is already placed here',
     noEntitySelected: 'Select an entity first',
+    routingRerouteFailed: 'Some routings could not be reconnected after the move',
   },
 
   shortcuts: {

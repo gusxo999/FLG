@@ -1,7 +1,7 @@
 # 자동완성 위저드 — ControlBehavior 추적 범위
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.algorithm](auto-layout-wizard.algorithm.md), [.binary-search](auto-layout-wizard.binary-search.md), [.known-limits](auto-layout-wizard.known-limits.md), [.refactor-notes](auto-layout-wizard.refactor-notes.md)
+> **관련 문서:** [.known-limits](auto-layout-wizard.known-limits.md)
 
 **목적:** 위저드가 의미 있는 결과를 내려면 일부 ControlBehavior 필드가 입력으로 필요하다 (예: 인서터 stack size 가 처리량을 좌우). 32개 변종 전부를 다루기보다 **레이아웃 자동완성에 영향이 있는 것만 추적**한다.
 

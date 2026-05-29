@@ -7,8 +7,9 @@
  * 좌표를 결정한다. 부모와 *벨트 길이 ≥ 1* 만 확보하도록 인접 배치 —
  * 즉 자식과 부모 footprint 사이의 거리는 라우팅 형식의 최소 거리에 맞춘다.
  *
- * 하향식: 최상위 머신은 (5, 5) 에 배치하고 (placement-search §3 내부 영역
- * 좌표 기준점), 그 아래 자식·손자가 본 함수의 재귀 호출로 따라온다.
+ * 하향식: 최상위 머신은 Blueprint 좌표계 (0, 0) 에 배치하고, 그 아래
+ * 자식·손자가 본 함수의 재귀 호출로 따라온다. 실제 그리드 적용 시
+ * unifyAreas 의 정규화 오프셋으로 최종 좌표가 결정된다.
  */
 
 import { EntityType, createEmptyCell } from '../../types/layout';
@@ -27,8 +28,8 @@ import type { Area, Container, PlaceMachine, PlacedCell } from './containerModel
  */
 const ROUTING_GAP = 3;
 
-/** 최상위 머신의 좌표 — placement-search §3 내부 영역 좌표 기준점. */
-const ROOT_ORIGIN = { x: 5, y: 5 } as const;
+/** 최상위 머신의 좌표 — Blueprint 좌표계 원점. 실제 그리드 적용 시 정규화 오프셋으로 이동된다. */
+const ROOT_ORIGIN = { x: 0, y: 0 } as const;
 
 /**
  * 자식 머신을 부모 옆에 배치 (오른쪽 또는 아래쪽).
@@ -55,10 +56,10 @@ export const placeMachine: PlaceMachine = (
 };
 
 /**
- * 최상위 머신을 내부 영역 (5, 5) 에 배치. 부모가 없는 경우 (트리 root) 사용.
+ * 최상위 머신을 Blueprint 좌표계 (0, 0) 에 배치. 부모가 없는 경우 (트리 root) 사용.
  *
- * (5, 5) 가 다른 셀과 충돌하면 (= 빈 영역에 root 를 두는 정상 흐름이 아니면)
- * null. 보통 첫 호출이라 충돌은 일어나지 않지만 방어적으로 검사.
+ * (0, 0) 이 다른 셀과 충돌하면 null. 보통 첫 호출이라 충돌은 일어나지 않지만
+ * 방어적으로 검사.
  */
 export function placeRootMachine(
   machine: Container,
@@ -90,7 +91,7 @@ function computeChildOrigin(
   };
 }
 
-function canPlace(c: Container, internal: Area): boolean {
+export function canPlace(c: Container, internal: Area): boolean {
   const occupied = new Set<string>();
   for (const p of internal.placed) {
     occupied.add(cellKey(p.x, p.y));
@@ -104,7 +105,7 @@ function canPlace(c: Container, internal: Area): boolean {
   return true;
 }
 
-function commitContainer(c: Container, internal: Area): void {
+export function commitContainer(c: Container, internal: Area): void {
   internal.containers.push(c);
   for (let dy = 0; dy < c.size.h; dy++) {
     for (let dx = 0; dx < c.size.w; dx++) {

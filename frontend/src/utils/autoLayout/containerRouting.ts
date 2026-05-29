@@ -45,15 +45,16 @@ export const routePorts: RoutePorts = (
     undergroundPipeEntityName?: string;
     preferUnderground: boolean;
   },
+  extra?: Area,
 ): RoutingAttempt => {
   const kind = portKindOf(pair);
   if (!kind) {
     return { ok: false, reason: 'no-port-pair', tried: [pair] };
   }
   if (kind === 'fluid') {
-    return routeFluid(pair, area, options);
+    return routeFluid(pair, area, options, extra);
   }
-  return routeItem(pair, area, options);
+  return routeItem(pair, area, options, extra);
 };
 
 /**
@@ -67,23 +68,31 @@ export const routePorts: RoutePorts = (
  * 1차 구현은 *모든 placed cell 을 통과 불가* 로 단순화 — 라우팅이 라우팅 위를
  * 지나는 케이스는 후속 커밋에서 belt-mixing 정책과 함께 도입.
  */
-export function buildOccupancy(area: Area): Set<string> {
+export function buildOccupancy(area: Area, extra?: Area): Set<string> {
   const blocked = new Set<string>();
   for (const p of area.placed) {
     blocked.add(cellKey(p.x, p.y));
+  }
+  if (extra) {
+    for (const p of extra.placed) {
+      blocked.add(cellKey(p.x, p.y));
+    }
   }
   return blocked;
 }
 
 /**
- * 한 라우팅을 area 에 *적용* — 라우팅의 placed cells 를 area.placed 에 push,
- * area.bbox 갱신. 라우팅이 깐 지하 corridor 도 area.undergroundCorridors 로
- * 옮긴다 (다음 라우팅의 Dijkstra 가 점프 edge 검증에 참조).
+ * 한 라우팅을 area 에 *적용* — 라우팅의 placed cells 를 area.placed 에 push.
+ * 라우팅이 깐 지하 corridor 도 area.undergroundCorridors 로 옮긴다
+ * (다음 라우팅의 Dijkstra 가 점프 edge 검증에 참조).
+ *
+ * area.bbox 는 갱신하지 않는다 — bbox 는 머신 footprint 만 반영한다.
+ * 라우팅 셀이 bbox 를 밀어내면 O1 squareness 점수가 왜곡되고,
+ * chest perimeter 위치도 머신에서 불필요하게 멀어진다.
  */
 export function commitRouting(routing: Routing, area: Area): void {
   for (const cell of routing.placed) {
     area.placed.push(cell);
-    area.bbox = expandBbox(area.bbox, cell.x, cell.y, 1, 1);
   }
   for (const c of routing.corridors) {
     area.undergroundCorridors.push({ ...c, range: [c.range[0], c.range[1]] });
@@ -103,8 +112,9 @@ function routeItem(
     undergroundBeltEntityName?: string;
     beltMaxUndergroundDistance?: number;
   },
+  extra?: Area,
 ): RoutingAttempt {
-  const occupancy = buildOccupancy(area);
+  const occupancy = buildOccupancy(area, extra);
 
   // 인서터는 port cell 에 앉고, 벨트는 port cell + face 외측 방향에서 시작.
   const producerOut = faceVector(pair.producer.face);
@@ -119,6 +129,46 @@ function routeItem(
     y: pair.consumer.cell.y + consumerOut.y,
   };
 
+  // 단일 인서터 모드 — 두 port cell 이 같은 셀에서 만나는 코너 케이스 (= 두
+  // 컨테이너가 1 셀 gap 으로 직선상 배치되어 그 gap 셀이 양쪽 모두의 port cell).
+  // 이 케이스에서는 벨트 없이 인서터 1 개로 양쪽 컨테이너 직결. 따라서 일반 사전
+  // 검사 (beltStart/beltEnd) 를 거치지 않고 *분기 앞* 에서 직접 처리해야 한다 —
+  // 그렇지 않으면 beltStart = producer.cell + producerOut 이 consumer 컨테이너
+  // 점유 셀이라 사전 검사가 fail 시킨다.
+  //  - producer face 와 consumer face 가 opposite (벡터 합 = 0) → 인서터 1 개.
+  //    pickup = producer 쪽, drop = consumer 쪽. 벨트 0.
+  //  - 그 외 (perpendicular / same face) → 인서터 1 개로 처리 불가. fallback.
+  if (
+    pair.producer.cell.x === pair.consumer.cell.x &&
+    pair.producer.cell.y === pair.consumer.cell.y
+  ) {
+    const opposite =
+      producerOut.x + consumerOut.x === 0 && producerOut.y + consumerOut.y === 0;
+    if (!opposite) {
+      return { ok: false, reason: 'no-path', tried: [pair] };
+    }
+    // 인서터 셀 자체가 점유되어 있으면 fail.
+    if (occupancy.has(cellKey(pair.producer.cell.x, pair.producer.cell.y))) {
+      return { ok: false, reason: 'no-path', tried: [pair] };
+    }
+    const routingId = nextRoutingId();
+    const inserter = makeInserterCell(
+      pair.producer.cell,
+      { x: -producerOut.x, y: -producerOut.y },
+      options.inserterEntityName,
+      pair,
+    );
+    const routing: Routing = {
+      id: routingId,
+      kind: 'item',
+      from: pair.producer,
+      to: pair.consumer,
+      placed: [{ ...inserter, cell: { ...inserter.cell, entityId: routingId } }],
+      corridors: [],
+    };
+    return { ok: true, routing };
+  }
+
   // 사전 검사 — 인서터·벨트 끝점 셀이 occupancy 와 부딪히지 않는지 확인.
   if (occupancy.has(cellKey(pair.producer.cell.x, pair.producer.cell.y))) {
     return { ok: false, reason: 'no-path', tried: [pair] };
@@ -129,6 +179,16 @@ function routeItem(
   if (
     occupancy.has(cellKey(beltStart.x, beltStart.y)) ||
     occupancy.has(cellKey(beltEnd.x, beltEnd.y))
+  ) {
+    return { ok: false, reason: 'no-path', tried: [pair] };
+  }
+
+  // 인서터-인서터 인접 충돌 — 한쪽 인서터 셀이 다른 쪽 인서터의 벨트 끝점이면
+  // 한 인서터의 pickup/drop 이 다른 인서터에 박혀 invalid. fallback 이 더 멀리
+  // 떨어진 port 페어를 다시 시도하도록 즉시 fail.
+  if (
+    (pair.producer.cell.x === beltEnd.x && pair.producer.cell.y === beltEnd.y) ||
+    (pair.consumer.cell.x === beltStart.x && pair.consumer.cell.y === beltStart.y)
   ) {
     return { ok: false, reason: 'no-path', tried: [pair] };
   }
@@ -184,14 +244,14 @@ function routeItem(
     ),
   );
 
+  const routingId = nextRoutingId();
   const routing: Routing = {
-    id: nextRoutingId(),
+    id: routingId,
     kind: 'item',
     from: pair.producer,
     to: pair.consumer,
-    placed,
+    placed: placed.map(p => ({ ...p, cell: { ...p.cell, entityId: routingId } })),
     corridors: itemChain.corridors,
-    area: area.kind,
   };
   return { ok: true, routing };
 }
@@ -308,8 +368,9 @@ function routeFluid(
     undergroundPipeEntityName?: string;
     pipeMaxUndergroundDistance?: number;
   },
+  extra?: Area,
 ): RoutingAttempt {
-  const occupancy = buildOccupancy(area);
+  const occupancy = buildOccupancy(area, extra);
 
   // 두 port cell 자체가 점유되어 있으면 즉시 실패.
   if (occupancy.has(cellKey(pair.producer.cell.x, pair.producer.cell.y))) {
@@ -337,14 +398,14 @@ function routeFluid(
 
   const emitted = emitFluidPath(result, pair, options);
 
+  const routingId = nextRoutingId();
   const routing: Routing = {
-    id: nextRoutingId(),
+    id: routingId,
     kind: 'fluid',
     from: pair.producer,
     to: pair.consumer,
-    placed: emitted.placed,
+    placed: emitted.placed.map(p => ({ ...p, cell: { ...p.cell, entityId: routingId } })),
     corridors: emitted.corridors,
-    area: area.kind,
   };
   return { ok: true, routing };
 }
@@ -498,11 +559,13 @@ export interface DijkstraInput {
 /**
  * Dijkstra — 지상 인접 + 지하 점프 페어 통합 탐색.
  *
- * 상태 = `(x, y, arrivedViaJump)`. 한 셀은 *도착 방식* 에 따라 두 상태로
- * 갈라진다. 이유: jump 로 도착한 셀은 underground-exit entity 를 차지하므로,
- * 그 셀에서 *다시 jump* 로 나가면 underground-entrance entity 가 같은 셀에
- * 겹쳐 placement invalid 가 된다 (특히 수직으로 꺾이는 back-to-back jump).
- * → arrivedViaJump=true 인 상태에서는 surface outgoing 만 허용.
+ * 상태 = `(x, y, jumpDir)`. jumpDir = -1(지상/시작 도착) 또는 0..3(점프로 도착한
+ * 방향 = 지하벨트 출구 셀). 한 셀은 도착 방식·방향에 따라 여러 상태로 갈라진다.
+ * 이유 1: jump 로 도착한 셀은 underground-exit entity 를 차지하므로, 그 셀에서
+ *   *다시 jump* 로 나가면 entrance 가 같은 셀에 겹쳐 invalid → 재점프 금지.
+ * 이유 2: 지하 출구는 *진행 방향으로만* 아이템을 토출한다. 따라서 출구 셀에서는
+ *   같은 방향 지상 직진만 허용한다. 출구 직후 꺾으면 다음 벨트와 물리적으로
+ *   연결되지 않는 (끊긴) 경로가 되기 때문 → jumpDir>=0 이면 그 방향 surface 만.
  *
  * 결정성: 동률 cost 시 expand 순서 = 지상 N→E→S→W → 점프 (k 작은 것부터,
  * 축 N→E→S→W). PQ tie-break = (cost, enqueueSeq).
@@ -521,13 +584,16 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
     return { cells: [{ x: start.x, y: start.y }], edges: [], cost: 0 };
   }
 
-  type PQEntry = { x: number; y: number; arrivedViaJump: boolean; cost: number; seq: number };
+  // 상태의 jumpDir: -1 = 지상/시작으로 도착. 0..3 = surfaceDirs[idx] 방향 점프로 도착
+  // (= 지하벨트 출구 셀). 출구는 진행 방향으로만 토출하므로, 그 셀에서는 같은 방향
+  // 지상 직진만 허용하고 재점프는 금지한다 (출구 직후 꺾기 = 물리적으로 끊긴 경로).
+  type PQEntry = { x: number; y: number; jumpDir: number; cost: number; seq: number };
   const pq: PQEntry[] = [];
   let seqCounter = 0;
   const pqLess = (a: PQEntry, b: PQEntry): boolean =>
     a.cost < b.cost || (a.cost === b.cost && a.seq < b.seq);
-  const enqueue = (x: number, y: number, arrivedViaJump: boolean, cost: number): void => {
-    const node: PQEntry = { x, y, arrivedViaJump, cost, seq: seqCounter++ };
+  const enqueue = (x: number, y: number, jumpDir: number, cost: number): void => {
+    const node: PQEntry = { x, y, jumpDir, cost, seq: seqCounter++ };
     pq.push(node);
     let i = pq.length - 1;
     while (i > 0) {
@@ -559,15 +625,15 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
   };
 
   type CameFromEntry = {
-    prev: { x: number; y: number; arrivedViaJump: boolean };
+    prev: { x: number; y: number; jumpDir: number };
     edge: RouteEdge;
   };
-  const stateKey = (x: number, y: number, arrivedViaJump: boolean): string =>
-    `${x},${y},${arrivedViaJump ? 'j' : 's'}`;
+  const stateKey = (x: number, y: number, jumpDir: number): string =>
+    `${x},${y},${jumpDir}`;
   const bestCost = new Map<string, number>();
   const cameFrom = new Map<string, CameFromEntry>();
-  bestCost.set(stateKey(start.x, start.y, false), 0);
-  enqueue(start.x, start.y, false, 0);
+  bestCost.set(stateKey(start.x, start.y, -1), 0);
+  enqueue(start.x, start.y, -1, 0);
 
   // 같은 blockGroup corridor 만 점프 edge 검증 대상.
   const groupCorridors = corridors.filter((c) => c.blockGroup === blockGroup);
@@ -583,7 +649,7 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
   while (true) {
     const cur = dequeue();
     if (!cur) return null;
-    const curKey = stateKey(cur.x, cur.y, cur.arrivedViaJump);
+    const curKey = stateKey(cur.x, cur.y, cur.jumpDir);
     const known = bestCost.get(curKey);
     if (known !== undefined && cur.cost > known) continue;
 
@@ -592,14 +658,14 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
       const edgesRev: RouteEdge[] = [];
       let nx = cur.x;
       let ny = cur.y;
-      let nj = cur.arrivedViaJump;
+      let nj = cur.jumpDir;
       while (true) {
         const entry = cameFrom.get(stateKey(nx, ny, nj));
         if (!entry) break;
         edgesRev.push(entry.edge);
         nx = entry.prev.x;
         ny = entry.prev.y;
-        nj = entry.prev.arrivedViaJump;
+        nj = entry.prev.jumpDir;
         cellsRev.push({ x: nx, y: ny });
       }
       return {
@@ -609,30 +675,35 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
       };
     }
 
-    // 지상 인접 edge (cost 1) — 어느 도착 모드든 허용.
-    for (const d of surfaceDirs) {
+    // 지상 인접 edge (cost 1). 지하 출구(jumpDir>=0)에서는 출구 방향으로만 직진 —
+    // 출구는 진행 방향으로만 토출하므로 꺾으면 다음 벨트와 물리적으로 안 이어진다.
+    for (let di = 0; di < surfaceDirs.length; di++) {
+      if (cur.jumpDir >= 0 && di !== cur.jumpDir) continue;
+      const d = surfaceDirs[di];
       const nx = cur.x + d.dx;
       const ny = cur.y + d.dy;
-      const nk = stateKey(nx, ny, false);
+      const nk = stateKey(nx, ny, -1);
       if (blocked.has(cellKey(nx, ny)) && !(nx === end.x && ny === end.y)) continue;
       const newCost = cur.cost + 1;
       const prev = bestCost.get(nk);
       if (prev !== undefined && prev <= newCost) continue;
       bestCost.set(nk, newCost);
       cameFrom.set(nk, {
-        prev: { x: cur.x, y: cur.y, arrivedViaJump: cur.arrivedViaJump },
+        prev: { x: cur.x, y: cur.y, jumpDir: cur.jumpDir },
         edge: 'surface',
       });
-      enqueue(nx, ny, false, newCost);
+      enqueue(nx, ny, -1, newCost);
     }
 
-    // 지하 점프 edge (cost 2). arrivedViaJump=true 인 셀에서는 점프 outgoing 금지.
-    if (maxJumpDistance > 0 && !cur.arrivedViaJump) {
-      for (const d of surfaceDirs) {
+    // 지하 점프 edge (cost 2). 지하 출구 직후(jumpDir>=0)엔 재점프 금지
+    // (출구 entity 위에 입구 entity 가 겹침 + 직진 토출 규칙).
+    if (maxJumpDistance > 0 && cur.jumpDir === -1) {
+      for (let di = 0; di < surfaceDirs.length; di++) {
+        const d = surfaceDirs[di];
         for (let k = 1; k <= maxJumpDistance; k++) {
           const nx = cur.x + d.dx * k;
           const ny = cur.y + d.dy * k;
-          const nk = stateKey(nx, ny, true);
+          const nk = stateKey(nx, ny, di);
           if (blocked.has(cellKey(nx, ny)) && !(nx === end.x && ny === end.y)) continue;
           if (!isJumpAllowed(cur.x, cur.y, nx, ny, groupCorridors)) continue;
           const newCost = cur.cost + 2;
@@ -640,10 +711,10 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
           if (prev !== undefined && prev <= newCost) continue;
           bestCost.set(nk, newCost);
           cameFrom.set(nk, {
-            prev: { x: cur.x, y: cur.y, arrivedViaJump: cur.arrivedViaJump },
+            prev: { x: cur.x, y: cur.y, jumpDir: cur.jumpDir },
             edge: { dx: d.dx, dy: d.dy, k },
           });
-          enqueue(nx, ny, true, newCost);
+          enqueue(nx, ny, di, newCost);
         }
       }
     }
@@ -774,20 +845,6 @@ function cellKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-function expandBbox(
-  bbox: Area['bbox'],
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): NonNullable<Area['bbox']> {
-  if (!bbox) return { x, y, w, h };
-  const minX = Math.min(bbox.x, x);
-  const minY = Math.min(bbox.y, y);
-  const maxX = Math.max(bbox.x + bbox.w, x + w);
-  const maxY = Math.max(bbox.y + bbox.h, y + h);
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 기타

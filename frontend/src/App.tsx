@@ -5,6 +5,8 @@ import GridCanvas from './components/GridCanvas';
 import Tutorial from './components/Tutorial';
 import ToastContainer from './components/ToastContainer';
 import EntityInfoModal from './components/EntityInfoModal';
+import RoutingConnectionModal from './components/RoutingConnectionModal';
+import AutoLayoutSidebar from './components/AutoLayoutModal';
 import { useInspectStore } from './store/inspectStore';
 import { EntityType } from './types/layout';
 import { useLayoutStore } from './store/layoutStore';
@@ -14,6 +16,9 @@ import { useT } from './i18n';
 export default function App() {
   const t = useT();
   const storageWarning = useGameDataStore((s) => s.storageWarning);
+  const autoLayoutRunning = useLayoutStore((s) => s.autoLayoutRunning);
+  const selectedRoutingId = useLayoutStore((s) => s.selectedRoutingId);
+  const setSelectedRouting = useLayoutStore((s) => s.setSelectedRouting);
   const inspectName = useInspectStore((s) => s.entityName);
   const inspectId = useInspectStore((s) => s.entityId);
   const closeInspect = useInspectStore((s) => s.close);
@@ -61,11 +66,12 @@ export default function App() {
         return;
       }
 
-      // Esc: 엔티티 선택 해제 + 다중 선택 해제 + inspect 닫기
+      // Esc: 엔티티 선택 해제 + 다중 선택 해제 + inspect/routing 닫기
       if (e.key === 'Escape') {
         store.setSelectedEntity(EntityType.Empty, '');
         store.clearMultiSelection();
         useInspectStore.getState().close();
+        store.setSelectedRouting(null);
         return;
       }
 
@@ -88,6 +94,10 @@ export default function App() {
         instanceId={inspectId}
         open={!!inspectName}
         onClose={closeInspect}
+      />
+      <RoutingConnectionModal
+        open={!!selectedRoutingId}
+        onClose={() => setSelectedRouting(null)}
       />
 
       {/* Top toolbar */}
@@ -116,7 +126,18 @@ export default function App() {
             <div>{t('shortcuts.rotateUndo')}</div>
           </div>
         </main>
+
+        {/* Right sidebar — 자동 레이아웃 패널 (항상 표시) */}
+        <AutoLayoutSidebar />
       </div>
+
+      {/* 화면 하단 처리중 인디케이터 */}
+      {autoLayoutRunning && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-gray-950/90 backdrop-blur border border-purple-700/60 text-purple-200 text-sm px-5 py-2.5 rounded-full shadow-2xl pointer-events-none">
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-purple-400 border-t-transparent animate-spin shrink-0" />
+          처리중...
+        </div>
+      )}
     </div>
   );
 }

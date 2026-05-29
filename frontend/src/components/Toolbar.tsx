@@ -10,7 +10,6 @@ import { EntityType } from '../types/layout';
 import type { GridCell, Direction } from '../types/layout';
 import { modulesToInsertPlans, insertPlansToModules } from '../utils/blueprintItemsCodec';
 import { entityTypeFromFactorioType } from '../utils/entityCategory';
-import AutoLayoutModal from './AutoLayoutModal';
 // 빌드타임에 lua export 스크립트를 문자열로 번들 (단일 source-of-truth)
 import luaExportScript from '../../../scripts/export-gamedata.min.lua?raw';
 
@@ -22,7 +21,9 @@ export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gameDataFileRef = useRef<HTMLInputElement>(null);
   const grid = useLayoutStore((s) => s.grid);
-  const { fillGridFromCells, clearGrid, undo, redo } = useLayoutStore.getState();
+  const routingEditMode = useLayoutStore((s) => s.routingEditMode);
+  const routingEditSession = useLayoutStore((s) => s.routingEditSession);
+  const { fillGridFromCells, clearGrid, undo, redo, setRoutingEditMode } = useLayoutStore.getState();
   const gameDataLoaded = useGameDataStore((s) => s.loaded);
   const gameDataRecipeCount = useGameDataStore((s) => s.recipes.length);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -31,20 +32,19 @@ export default function Toolbar() {
   const [gameDataStatus, setGameDataStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [gameDataError, setGameDataError] = useState('');
   const [gameDataErrorModalOpen, setGameDataErrorModalOpen] = useState(false);
-  const [autoLayoutModalOpen, setAutoLayoutModalOpen] = useState(false);
 
   const handleExport = useCallback(() => {
     const entities: BlueprintEntity[] = [];
     let entityNumber = 1;
-    const seen = new Set<string>();
     const entityMap = useGameDataStore.getState().entityMap;
 
+    // 각 isOrigin 셀 = Factorio 엔티티 1개. entityId 는 라우팅 단위의 논리적
+    // 묶음이라 한 라우팅의 인서터/벨트/지하벨트 셀이 같은 id 를 공유한다.
+    // entityId 로 dedup 하면 라우팅당 셀 1개만 남아 벨트 등이 누락된다.
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
         const cell = grid.cells[y * grid.width + x];
         if (!cell || cell.entityId === null || !cell.isOrigin) continue;
-        if (seen.has(cell.entityId)) continue;
-        seen.add(cell.entityId);
 
         // Phase 2: 모듈 → BlueprintInsertPlan[]
         const proto = cell.entityName ? entityMap.get(cell.entityName) : undefined;
@@ -524,23 +524,25 @@ export default function Toolbar() {
         >
           {t('toolbar.clear')}
         </button>
-      </div>
-
-      {/* Auto-layout (experimental) */}
-      <div className="flex items-center gap-1 border-r border-gray-600 pr-3 mr-1">
         <button
-          onClick={() => setAutoLayoutModalOpen(true)}
-          title={t('toolbar.autoLayoutTooltip')}
-          className="toolbar-btn text-purple-300 hover:text-purple-200"
+          onClick={() => routingEditSession && setRoutingEditMode(!routingEditMode)}
+          disabled={!routingEditSession}
+          title={routingEditSession
+            ? '라우팅 수정 모드 — 조립기계를 드래그해 이동. 부모 머신 드래그 시 자손 전체 이동 + 경계 라우팅 재계산.'
+            : '자동 레이아웃을 먼저 적용해야 사용할 수 있습니다.'}
+          className={`toolbar-btn transition-colors ${
+            !routingEditSession
+              ? 'opacity-30 cursor-not-allowed'
+              : routingEditMode
+                ? 'bg-blue-600 text-white border border-blue-400'
+                : 'text-blue-300 hover:text-blue-200'
+          }`}
         >
-          {t('toolbar.autoLayout')}
+          {routingEditMode ? '라우팅편집중' : '라우팅편집'}
         </button>
       </div>
 
-      <AutoLayoutModal
-        open={autoLayoutModalOpen}
-        onClose={() => setAutoLayoutModalOpen(false)}
-      />
+
 
       {/* Status / info */}
       <div className="ml-auto flex items-center gap-3">

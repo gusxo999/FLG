@@ -44,20 +44,41 @@ export function routeWithFallback(
   kind: PortKind,
   area: Area,
   options: RouteOptions,
+  external?: Area,
+  /**
+   * true 면 첫 성공이 아니라 *모든 후보 포트 페어를 시도해 가장 적은 셀(=가장
+   * 단순)한 경로* 를 고른다. 드래그 재라우팅처럼 결과 품질이 중요한 곳에서 사용.
+   * (기본 false — 위저드 초기 배치는 기존처럼 첫 성공 반환, 성능·동작 유지.)
+   */
+  pickBest = false,
 ): RoutingAttempt {
   // 1. 그리디 시도
   const greedy = resolvePortPair(producer, consumer, kind);
+  let best: RoutingAttempt | null = null;
+  const bestLen = (): number =>
+    best && best.ok ? best.routing.placed.length : Infinity;
+  const consider = (attempt: RoutingAttempt): RoutingAttempt | null => {
+    if (!attempt.ok) return null;
+    if (!pickBest) return attempt; // 첫 성공 즉시 반환
+    if (attempt.routing.placed.length < bestLen()) best = attempt;
+    return null; // 계속 탐색
+  };
+
   if (greedy) {
-    const attempt = routePorts(greedy, area, options);
-    if (attempt.ok) return attempt;
+    const r = consider(routePorts(greedy, area, options, external));
+    if (r) return r;
+    // pickBest 이고 단일 인서터(1셀)면 더 나아질 수 없으니 조기 종료.
+    if (bestLen() <= 1) return best!;
   }
 
   // 2. 모든 port 조합 enumerate, 그리디 페어는 제외 후 manhattan 거리 오름차순.
   const producerPorts = enumerateContainerPorts(producer, kind);
   const consumerPorts = enumerateContainerPorts(consumer, kind);
   if (producerPorts.length === 0 || consumerPorts.length === 0) {
+    if (best !== null) return best;
     return { ok: false, reason: 'no-port-pair', tried: greedy ? [greedy] : [] };
   }
+
 
   type Cand = { pair: PortPair; dist: number };
   const candidates: Cand[] = [];
@@ -73,10 +94,12 @@ export function routeWithFallback(
   const tried: PortPair[] = greedy ? [greedy] : [];
   for (const cand of candidates) {
     tried.push(cand.pair);
-    const attempt = routePorts(cand.pair, area, options);
-    if (attempt.ok) return attempt;
+    const r = consider(routePorts(cand.pair, area, options, external));
+    if (r) return r;
+    if (bestLen() <= 1) return best!;
   }
 
+  if (best !== null) return best;
   return { ok: false, reason: 'no-path', tried };
 }
 

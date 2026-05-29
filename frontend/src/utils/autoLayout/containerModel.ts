@@ -20,11 +20,10 @@ import type { GridCell } from '../../types/layout';
 export type ContainerKind = 'machine' | 'infinity-chest' | 'infinity-pipe';
 
 /**
- * 한 컨테이너 인스턴스 — 좌표계 (내부 / 외부) 안에서의 한 점 + 메타.
+ * 한 컨테이너 인스턴스 — 통합 단일 좌표계 안에서의 한 점 + 메타.
  *
- * 좌표는 *해당 영역의 좌표계* 기준 (내부 영역의 머신이면 내부 좌표,
- * 외부 영역의 무한상자라면 외부 좌표). 두 좌표계의 통합은 알고리즘
- * 마지막 단계에서 일어난다 (placement-search §3).
+ * 머신·무한상자·무한파이프 모두 처음부터 같은 좌표계를 공유한다.
+ * `origin` 은 곧 최종 블루프린트 좌표다.
  */
 export interface Container {
   /** 인스턴스 고유 id (ports 와 routings 의 cross-ref 키) */
@@ -109,10 +108,9 @@ export type AreaKind = 'internal' | 'external';
 /**
  * 한 영역의 상태 — 컨테이너 + placed cells + bbox. 좌표는 통합 좌표계.
  *
- * `internal` 영역은 머신 + 라우팅 + chest ghost cells 까지 포함 (chest 는
- * routing occupancy 를 위해 ghost-place 된다).
- * `external` 영역은 chest 컨테이너 메타데이터만 보존 — `placed` 와 `bbox` 는
- * 비어있다 (chest 셀의 진실의 근원은 internal.placed 임).
+ * `internal` 영역: 머신 + 라우팅 셀만. ghost cell 없음.
+ * `external` 영역: 외부 컨테이너(무한상자/무한파이프) 셀. 라우팅 occupancy 계산 시
+ *   `internal` 과 합산된다. `bbox` 는 internal 기준 (perimeter 계산에 사용).
  */
 export interface Area {
   kind: AreaKind;
@@ -196,8 +194,21 @@ export interface Routing {
    * `undergroundCorridors` 인덱스로 옮긴다. 점프가 없는 라우팅은 빈 배열.
    */
   corridors: UndergroundCorridor[];
-  /** 어느 영역의 라우팅인지 — 영역 통합 후에는 'internal' 로 흡수됨 */
-  area: AreaKind;
+}
+
+/**
+ * chest → machine 또는 machine → chest 연결 정보.
+ *
+ * `wrapExternalsAroundPerimeter` 가 최종 perimeter 배치 + 라우팅을 수행할 때
+ * 필요한 "누가 누구와 연결되는가" 기록. 라우팅은 이 시점 이전에는 발생하지 않는다.
+ *
+ *  - 외부 입력 (chest → machine) : producerId = chestId, consumerId = machineId
+ *  - 루트 출력 (machine → chest) : producerId = machineId, consumerId = chestId
+ */
+export interface PendingConnection {
+  producerId: string;
+  consumerId: string;
+  kind: PortKind;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -405,22 +416,16 @@ export type PlaceMachine = (
 ) => Container | null;
 
 /**
- * 모듈 B — 외부 컨테이너 배치.
+ * 모듈 B — 외부 컨테이너 등록 (배치 지연).
  *
- * 무한상자/무한파이프를 통합 좌표계에 *임시* 배치한다 — `near` 머신의 N면
- * 좌상단부터 줄짓기로 빈 셀을 잡아 `origin` 으로 설정. 라우팅 BFS 가 이 셀을
- * occupancy 로 인식해 충돌 회피.
- *
- * 이 함수의 결과는 *임시* 위치 — 모든 머신 배치가 끝나면 후처리 단계가
- * chest 들을 internal bbox 의 perimeter ring 위로 재배치한다 (placement-search
- * §3 의 "통합 단계"). 본 함수는 ghost cell 만 internal 에 push 하고, external
- * 영역에는 컨테이너 메타데이터만 push (placed/bbox 는 internal 이 진실의 근원).
+ * 무한상자/무한파이프를 두 영역의 containers 에만 등록한다.
+ * ghost cell / placed / bbox 는 추가하지 않는다 — 실제 perimeter 배치와 라우팅은
+ * 모든 머신 배치 완료 후 `wrapExternalsAroundPerimeter` 가 전담한다.
  */
 export type PlaceExternalContainer = (
   spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
   external: Area,
   internal: Area,
-  near?: Container,
 ) => Container;
 
 /**
@@ -451,6 +456,7 @@ export type RoutePorts = (
     /** placement-search O2 — 지하 변형으로 사이 셀 비울 수 있으면 우선 */
     preferUnderground: boolean;
   },
+  extra?: Area,
 ) => RoutingAttempt;
 
 /**
@@ -502,15 +508,18 @@ export interface ContainerWizardResult {
 /**
  * 한 후보의 영역 통합 결과.
  *
- * `placed` = 두 영역을 단일 좌표계 (= 통합 좌표) 로 합친 셀 배열. 블루프린트
- * export · 그리드 적용에 그대로 사용 가능.
- *
- * 좌표계가 이미 단일 (perimeter 모델) 이라 평행이동 벡터 같은 부가 정보는 없다.
- * 본 함수는 사실상 `internal.placed` 의 얕은 복제.
+ * `placed` = 정규화 오프셋이 적용된 단일 좌표계 셀 배열 (실제 그리드 적용 입력).
+ * `internalBbox` = 정규화 후 Blueprint 영역 경계 — 렌더러가 이 bbox 바깥을
+ * 초록(외부) 영역으로 표시하는 데 사용한다. bbox 가 없으면 undefined.
  */
 export interface UnifyResult {
-  /** 통합 좌표계의 단일 PlacedCell 배열 (export · 그리드 적용 입력) */
+  /** 정규화된 PlacedCell 배열 (export · 그리드 적용 입력) */
   placed: PlacedCell[];
+  /** Blueprint(내부) 영역 bbox — 머신+라우팅 셀만 포함. 렌더러의 내부/외부 경계선. */
+  internalBbox: { x: number; y: number; w: number; h: number } | undefined;
+  /** 전체 캔버스 bbox — ghost cell(외부 컨테이너) 포함 모든 placed cell 의 bbox.
+   *  렌더러가 이 범위에서 internalBbox 바깥을 초록 외부 영역으로 칠한다. */
+  canvasBbox: { x: number; y: number; w: number; h: number } | undefined;
 }
 
 /**

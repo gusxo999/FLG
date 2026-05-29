@@ -12,7 +12,6 @@
 | [icon-mapping.md](icon-mapping.md) | 엔티티 아이콘 매핑 — 두 차례 시도 후 보류. 런타임 API의 의도적 차단과 모드 우회의 부적절성 정리 | 2026-04-26 |
 | [blueprint-metadata-coverage.md](blueprint-metadata-coverage.md) | Blueprint export 메타데이터 커버리지 — 현재(4필드 + recipe) → 전체(items/wires/control_behavior) 단계별 계획 + 진행 체크리스트 | 2026-04-27 |
 | [auto-layout-wizard.md](auto-layout-wizard.md) | **[parent]** 레이아웃 자동완성 — 위저드(레시피→머신→투입기→벨트→지하파이프) 인터페이스 사양 | 2026-04-29 |
-| [auto-layout-wizard.binary-search.md](auto-layout-wizard.binary-search.md) | ↳ 이진탐색 보조 (review 단계 하위 기능) — "최대 k" 탐색 + probe 트레이스 로그 | 2026-04-30 |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) + 해결 방향 | 2026-04-29 |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 — in-scope / passthrough / out-of-scope | 2026-04-28 |
 | [parametrized-blueprints-deferred.md](parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 — 향후 parametrized blueprint 자동완성 기능 시 함께 다룰 예정 | 2026-04-28 |
@@ -26,7 +25,6 @@
 ```
 auto-layout-wizard.md                          ← 부모 (기능 자체)
 auto-layout-wizard.algorithm.md                ← ↳ 자식: 알고리즘 작동 방식
-auto-layout-wizard.binary-search.md            ← ↳ 자식: 하위 기능 (이진탐색)
 auto-layout-wizard.known-limits.md             ← ↳ 자식: 알려진 한계
 auto-layout-wizard.control-behavior-scope.md   ← ↳ 자식: 추적 범위
 ```
