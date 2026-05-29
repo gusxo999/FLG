@@ -221,14 +221,6 @@ export interface PortPair {
   consumer: ContainerPort;
 }
 
-/** 모듈 3b 출력 — 한 머신의 컨테이너/라우팅 수 */
-export interface ContainerCounts {
-  /** 입력 ingredient 별 라우팅 개수 (= 외부 입력 무한상자 수) */
-  inputContainers: Record<string, number>;
-  /** 출력 product 별 라우팅 개수 (= 외부 출력 무한상자 수) */
-  outputContainers: Record<string, number>;
-}
-
 /**
  * 라우팅 시도 결과. 실패 시 `kind` 가 'no-port-pair' 또는 'no-path' 이며
  * 오케스트레이터의 fallback (다른 port 시도, 그래도 실패면 후보 마킹) 트리거.
@@ -381,22 +373,6 @@ export type ResolvePortPair = (
 ) => PortPair | null;
 
 /**
- * 모듈 3b — 슬롯 수 계산.
- *
- * 한 머신에 필요한 입력/출력 컨테이너 수를 처리량으로 산정.
- * `ceil(throughput / belt 또는 pipe 처리량)`. (placement-search §4 / §12)
- *
- * `machineEntityName` 으로부터 `crafting_speed` 를 읽어 per-second 처리량을
- * 계산. 모듈/신호기 효과는 1차 구현에서 미반영 (base crafting_speed 만).
- */
-export type ComputeContainerCounts = (
-  recipeName: string,
-  machineEntityName: string,
-  beltThroughputPerSecond: number,
-  pipeThroughputPerSecond: number,
-) => ContainerCounts;
-
-/**
  * 모듈 A — 머신 배치 (내부 영역).
  *
  * 부모 머신과 자식 머신의 상대 위치 (오른쪽 / 아래쪽) 를 받아 자식의 origin
@@ -414,19 +390,6 @@ export type PlaceMachine = (
   dir: 'right' | 'down',
   internal: Area,
 ) => Container | null;
-
-/**
- * 모듈 B — 외부 컨테이너 등록 (배치 지연).
- *
- * 무한상자/무한파이프를 두 영역의 containers 에만 등록한다.
- * ghost cell / placed / bbox 는 추가하지 않는다 — 실제 perimeter 배치와 라우팅은
- * 모든 머신 배치 완료 후 `wrapExternalsAroundPerimeter` 가 전담한다.
- */
-export type PlaceExternalContainer = (
-  spec: { kind: 'infinity-chest' | 'infinity-pipe'; entityName: string; content: string },
-  external: Area,
-  internal: Area,
-) => Container;
 
 /**
  * 모듈 4 — 라우팅.
@@ -522,43 +485,3 @@ export interface UnifyResult {
   canvasBbox: { x: number; y: number; w: number; h: number } | undefined;
 }
 
-/**
- * 두 영역을 단일 좌표계로 합쳐 final placed cell 배열을 반환한다. chest 는
- * 이미 internal 에 ghost-place 되어 통합 좌표 안에 있으므로 internal.placed
- * 가 그대로 결과가 된다.
- */
-export type UnifyAreas = (internal: Area, external: Area) => UnifyResult;
-
-/**
- * 외부 컨테이너를 새 통합 좌표로 옮기고, 그 컨테이너를 끝점으로 가진 모든
- * 라우팅을 재시도한다.
- *
- * 동작:
- *  1. 두 영역의 컨테이너 객체를 새 origin 으로 이동 (placed cell + bbox 갱신)
- *  2. 그 컨테이너를 from/to 로 가진 라우팅을 internal.placed 에서 uncommit
- *  3. 각 라우팅 재시도 (`routeWithFallback` 와 동일한 fallback 정책)
- *  4. 모두 성공: commit, ok=true 반환
- *     하나라도 실패: 모든 mutation rollback, ok=false 반환
- *
- * 실패 시 *후보 자체* 는 망가지지 않는다 — 사용자에게는 "그 자리에는 못 옮겨"
- * 라는 신호만 주고 원위치를 그대로 보존.
- */
-export type DragExternalContainer = (
-  containerId: string,
-  newOrigin: { x: number; y: number },
-  internal: Area,
-  external: Area,
-  routings: Routing[],
-  options: {
-    beltEntityName: string;
-    inserterEntityName: string;
-    pipeEntityName: string;
-    undergroundPipeEntityName?: string;
-    undergroundBeltEntityName?: string;
-    pipeMaxUndergroundDistance?: number;
-    beltMaxUndergroundDistance?: number;
-    preferUnderground: boolean;
-  },
-) =>
-  | { ok: true; rerouted: Routing[] }
-  | { ok: false; reason: 'no-port-pair' | 'no-path' | 'collision'; failedRouting?: string };

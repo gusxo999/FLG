@@ -95,10 +95,3 @@ const TYPE_TO_ENTITYTYPE: Record<string, EntityType> = {
 export function entityTypeFromFactorioType(factorioType: string): EntityType {
   return TYPE_TO_ENTITYTYPE[factorioType] ?? EntityType.Chest;
 }
-
-/**
- * 해당 카테고리 탭에 속하는지 검사.
- */
-export function belongsToCategory(factorioType: string, category: SidebarCategory): boolean {
-  return CATEGORY_TO_TYPES[category].includes(factorioType);
-}

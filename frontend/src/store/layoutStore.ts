@@ -1280,19 +1280,6 @@ export const useLayoutStore = create<LayoutState>()(
   ))
 );
 
-/** Utility: convert grid position to canvas pixel position */
-export function gridToCanvas(
-  gx: number,
-  gy: number,
-  viewport: ViewportState,
-  tileSize: number
-): GridPosition {
-  return {
-    x: gx * tileSize * viewport.zoom + viewport.offsetX,
-    y: gy * tileSize * viewport.zoom + viewport.offsetY,
-  };
-}
-
 /** Utility: convert canvas pixel position to grid tile position */
 export function canvasToGrid(
   cx: number,

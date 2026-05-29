@@ -19,7 +19,6 @@ import { EntityType, createEmptyCell } from '../../types/layout';
 import type { Direction, GridCell } from '../../types/layout';
 import type {
   Area,
-  ContainerPort,
   PortFace,
   PortKind,
   PortPair,

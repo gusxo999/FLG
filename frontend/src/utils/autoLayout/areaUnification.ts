@@ -10,7 +10,6 @@
 
 import type {
   Area,
-  CandidateLeaf,
   Container,
   PendingConnection,
   PortKind,
@@ -874,17 +873,6 @@ export function cloneRouting(r: Routing): Routing {
 
 function cloneKind(k: PortKind): PortKind {
   return typeof k === 'object' ? { fluid: k.fluid } : k;
-}
-
-export function cloneCandidate(c: CandidateLeaf): CandidateLeaf {
-  return {
-    ...c,
-    internal: cloneArea(c.internal),
-    external: cloneArea(c.external),
-    routings: c.routings.map(cloneRouting),
-    children: c.children,
-    snapshot: c.snapshot,
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

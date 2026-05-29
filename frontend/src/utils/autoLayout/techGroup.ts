@@ -52,10 +52,3 @@ export function expandSelectionByPrereq(params: {
 
   return result;
 }
-
-/**
- * 한 type 안에서 후보가 1개뿐이면 자동 선택해야 하는지 판단할 때 사용.
- */
-export function shouldSkipStep(candidates: ReadonlyArray<Entity>): boolean {
-  return candidates.length <= 1;
-}

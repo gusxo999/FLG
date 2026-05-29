@@ -72,11 +72,6 @@ export interface SignalID {
   type: 'item' | 'fluid' | 'virtual';
 }
 
-export interface Signal {
-  signal: SignalID;
-  count: number;
-}
-
 export interface ConnectionPoint {
   red?: ConnectionData[];
   green?: ConnectionData[];
