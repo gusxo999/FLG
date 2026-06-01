@@ -18,9 +18,19 @@
  *   - 탭(machine=sink): 픽업 = 트렁크 향(=faceVector(face), 바깥), 드롭 = 머신(안).
  */
 
+import type { Direction } from '../../types/layout';
 import type { ContainerPort, PlacedCell, PortPair } from './containerModel';
 import { faceVector, makeBeltCell, makeInserterCell } from './containerRouting';
 import type { TrunkPath } from './trunkPath';
+
+/**
+ * 트렁크 방향:
+ *  - 'supply'  — 입력. 상자(소스) → 머신들. 벨트 흐름 = 상자→끝, 탭은 트렁크에서
+ *    집어 머신에 넣고, 상자 인서터(피더)는 상자에서 집어 트렁크에 놓는다.
+ *  - 'collect' — 출력. 머신들 → 상자(싱크). 'supply' 의 거울: 벨트 흐름·모든 인서터
+ *    픽업 방향을 반전한다. 기하(셀 위치)는 동일.
+ */
+export type TrunkMode = 'supply' | 'collect';
 
 export interface TrunkEmitOptions {
   /** 공유 무한상자 id (entityId 생성·Routing 연결 키). */
@@ -30,6 +40,8 @@ export interface TrunkEmitOptions {
   inserterEntityName: string;
   /** long-handed(reach 2) 인서터 prototype. */
   longInserterEntityName: string;
+  /** 기본 'supply'(입력). 출력 병합은 'collect'. */
+  mode?: TrunkMode;
 }
 
 export interface TrunkTapEmission {
@@ -52,14 +64,17 @@ export interface TrunkEmission {
 export function emitTrunk(path: TrunkPath, opts: TrunkEmitOptions): TrunkEmission {
   const trunkConsumerId = `${opts.chestId}#trunk`;
   const trunkPair = synthPair(opts.chestId, trunkConsumerId);
+  // collect(출력)는 supply(입력)의 거울 — 벨트 흐름·모든 인서터 픽업을 반전.
+  const collect = opts.mode === 'collect';
 
-  // 1) 트렁크 belt 셀.
+  // 1) 트렁크 belt 셀. collect 면 흐름 방향 반전.
   const beltCells = path.trunkCells.map((c) =>
-    makeBeltCell({ x: c.x, y: c.y }, c.dir, opts.beltEntityName, trunkPair),
+    makeBeltCell({ x: c.x, y: c.y }, collect ? reverseDir(c.dir) : c.dir, opts.beltEntityName, trunkPair),
   );
 
-  // 2) chest 피더 인서터. chest -- feederSeat -- trunkStart 가 일직선(2칸).
-  //    f = chest→trunkStart 단위벡터. 피더는 chest 에서 집어(−f) belt 에 놓는다.
+  // 2) 상자측 인서터. chest -- seat -- trunkStart 가 일직선(2칸). f = chest→trunkStart.
+  //    supply 피더: 상자에서 집어(−f) belt 에 놓음.
+  //    collect 리시버: 트렁크에서 집어(+f) 상자에 넣음 (픽업 반전).
   let feeder: PlacedCell | null = null;
   const start = path.trunkCells[0];
   if (start) {
@@ -67,13 +82,16 @@ export function emitTrunk(path: TrunkPath, opts: TrunkEmitOptions): TrunkEmissio
       x: Math.sign(start.x - path.chestCell.x),
       y: Math.sign(start.y - path.chestCell.y),
     };
-    const feederSeat = { x: path.chestCell.x + f.x, y: path.chestCell.y + f.y };
-    feeder = makeInserterCell(feederSeat, { x: -f.x, y: -f.y }, opts.inserterEntityName, trunkPair);
+    const seat = { x: path.chestCell.x + f.x, y: path.chestCell.y + f.y };
+    const pickup = collect ? { x: f.x, y: f.y } : { x: -f.x, y: -f.y };
+    feeder = makeInserterCell(seat, pickup, opts.inserterEntityName, trunkPair);
   }
 
-  // 3) 머신별 탭 인서터. 픽업 = faceVector(face)(트렁크 향, 바깥). reach 로 prototype 선택.
+  // 3) 머신별 탭 인서터. supply: 트렁크에서 집어(+faceVector) 머신에 넣음.
+  //    collect: 머신에서 집어(−faceVector) 트렁크에 놓음 (픽업 반전). reach 로 prototype.
   const taps: TrunkTapEmission[] = path.covered.map((t) => {
-    const pickup = faceVector(t.face);
+    const v = faceVector(t.face);
+    const pickup = collect ? { x: -v.x, y: -v.y } : v;
     const name = t.reach === 2 ? opts.longInserterEntityName : opts.inserterEntityName;
     const pair = synthPair(trunkConsumerId, t.machineId);
     return {
@@ -98,4 +116,9 @@ function synthPair(producerId: string, consumerId: string): PortPair {
     kind: 'item',
   });
   return { producer: port(producerId), consumer: port(consumerId) };
+}
+
+/** 흐름 방향 반전 (N↔S, E↔W). Direction: 0=N,4=E,8=S,12=W. */
+function reverseDir(d: Direction): Direction {
+  return ((d + 8) % 16) as Direction;
 }

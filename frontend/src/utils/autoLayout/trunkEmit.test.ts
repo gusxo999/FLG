@@ -4,7 +4,7 @@ import { emitTrunk } from './trunkEmit';
 import { computeTrunkPath, type MachineLike, type TrunkPath } from './trunkPath';
 
 // Direction: 0=N,4=E,8=S,12=W
-const N = 0, E = 4, W = 12;
+const N = 0, E = 4, S = 8, W = 12;
 
 const OPTS = {
   chestId: 'CHEST',
@@ -92,6 +92,26 @@ describe('emitTrunk', () => {
     const e = emitTrunk(empty, OPTS);
     expect(e.feeder).toBeNull();
     expect(e.beltCells).toHaveLength(0);
+  });
+
+  it('collect mode mirrors supply: belt flow + all inserter pickups reversed', () => {
+    const e = emitTrunk(path, { ...OPTS, mode: 'collect' });
+
+    // 벨트 흐름 반전: E → W
+    for (const b of e.beltCells) expect(b.cell.direction).toBe(W);
+
+    // 상자 인서터(리시버): supply 의 W → collect 의 E (트렁크에서 집어 상자로)
+    expect(e.feeder!.cell.direction).toBe(E);
+
+    // 탭 픽업 반전: M1(N→S), M2(E→W)
+    const t1 = e.taps.find((t) => t.machineId === 'M1')!;
+    expect(t1.inserter.cell.direction).toBe(S);
+    const t2 = e.taps.find((t) => t.machineId === 'M2')!;
+    expect(t2.inserter.cell.direction).toBe(W);
+    // 셀 위치·prototype 은 그대로 (기하 동일)
+    expect(t2.inserter.cell.entityName).toBe('long-handed-inserter');
+    expect(t1.inserter.x).toBe(5);
+    expect(t1.inserter.y).toBe(10);
   });
 });
 
