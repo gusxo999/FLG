@@ -786,7 +786,7 @@ export function corridorFromJump(
  * 예: direction=0 (N) → 북쪽에서 집고 남쪽에 놓는다.
  *     direction=4 (E) → 동쪽에서 집고 서쪽에 놓는다.
  */
-function makeInserterCell(
+export function makeInserterCell(
   cell: { x: number; y: number },
   pickupVec: { x: number; y: number },
   inserterEntityName: string,
@@ -804,7 +804,7 @@ function makeInserterCell(
   return { x: cell.x, y: cell.y, cell: grid };
 }
 
-function makeBeltCell(
+export function makeBeltCell(
   cell: { x: number; y: number },
   direction: Direction,
   beltEntityName: string,
@@ -822,7 +822,7 @@ function makeBeltCell(
   return { x: cell.x, y: cell.y, cell: grid };
 }
 
-function faceVector(face: PortFace): { x: number; y: number } {
+export function faceVector(face: PortFace): { x: number; y: number } {
   switch (face) {
     case 'N': return { x: 0, y: -1 };
     case 'S': return { x: 0, y: 1 };
@@ -831,7 +831,7 @@ function faceVector(face: PortFace): { x: number; y: number } {
   }
 }
 
-function vectorToDirection(dx: number, dy: number): Direction {
+export function vectorToDirection(dx: number, dy: number): Direction {
   if (dx === 0 && dy < 0) return 0;
   if (dx > 0 && dy === 0) return 4;
   if (dx === 0 && dy > 0) return 8;
@@ -840,7 +840,7 @@ function vectorToDirection(dx: number, dy: number): Direction {
   return 0;
 }
 
-function cellKey(x: number, y: number): string {
+export function cellKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
