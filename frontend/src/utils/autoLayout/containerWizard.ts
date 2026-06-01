@@ -44,6 +44,12 @@ import type {
   RunContainerWizard,
 } from "./containerModel";
 import { wrapExternalsAroundPerimeter } from "./areaUnification";
+import {
+  wrapExternalsWithMerge,
+  AUTO_LAYOUT_MERGE_BOXES,
+  DEFAULT_MERGE_CONFIG,
+  type MergeConfig,
+} from "./externalMergePass";
 import { commitRouting } from "./containerRouting";
 import { placeExternalContainer } from "./externalPlacer";
 import {
@@ -54,7 +60,11 @@ import {
 import { routeWithFallback, type RouteOptions } from "./routeFallback";
 import { runSpringRelaxation } from "./springPlacer";
 import { DEFAULT_SPRING_CONFIG } from "./clusterModel";
-import { expandRecipeTree, assignMinimumCounts } from "./recipeTree";
+import {
+  expandRecipeTree,
+  assignMinimumCounts,
+  assignThroughputCounts,
+} from "./recipeTree";
 import type { RecipeTreeNode } from "./types";
 import {
   cloneArea,
@@ -62,6 +72,7 @@ import {
   commitAreaInPlace,
   labelFor,
   makeMachinePicker,
+  makeMachineParamsLookup,
   makeEmptyArea,
   permutations,
 } from "./wizardUtils";
@@ -149,16 +160,30 @@ export const runContainerWizard: RunContainerWizard = async (
   // max_underground_distance 를 lookup 해 점프 활성 여부를 결정.
   ROUTING_OPTIONS = buildRoutingOptions(input);
 
-  // 1. 레시피 트리 펼침 + 머신 수 산정 (1차는 minimum 모드 고정).
+  // 공유 무한상자 병합 설정 — 입력에 명시되면 우선, 없으면 모듈 토글.
+  MERGE_CONFIG = {
+    ...DEFAULT_MERGE_CONFIG,
+    enabled: input.mergeSupplyBoxes ?? AUTO_LAYOUT_MERGE_BOXES,
+  };
+
+  // 1. 레시피 트리 펼침 + 머신 수 산정.
+  //    countMode 'min' → 노드마다 1대 / { perTarget } → 루트 perTarget 개/초 처리량 기준 비례 배정.
   await reportFn("expandRecipeTree");
-  const tree = assignMinimumCounts(
-    expandRecipeTree(
-      input.targetRecipe,
-      recipeMap,
-      itemToRecipe,
-      input.externalIngredients,
-    ),
+  const expanded = expandRecipeTree(
+    input.targetRecipe,
+    recipeMap,
+    itemToRecipe,
+    input.externalIngredients,
   );
+  const tree =
+    input.countMode === "min"
+      ? assignMinimumCounts(expanded)
+      : assignThroughputCounts(
+          expanded,
+          input.countMode.perTarget,
+          recipeMap,
+          makeMachineParamsLookup(input.selectedMachines),
+        );
 
   if (!tree.recipeName) {
     return failureResult("no-machine-match", "target recipe not found");
@@ -389,14 +414,27 @@ async function buildSingleAttempt(
   attachRootOutput(placedRoot, tree, internal, external, allConnections);
 
   // 4. 후처리 — chest 들을 internal bbox 의 perimeter ring 위에 최초 배치 + 라우팅.
-  await reportFn("wrapExternalsAroundPerimeter");
-  wrapExternalsAroundPerimeter(
-    internal,
-    external,
-    allRoutings,
-    allConnections,
-    ROUTING_OPTIONS,
-  );
+  //    병합 플래그 ON 이면 공유 무한상자 병합 패스(트렁크), 아니면 기존 1:1.
+  if (MERGE_CONFIG.enabled) {
+    await reportFn("wrapExternalsWithMerge");
+    wrapExternalsWithMerge(
+      internal,
+      external,
+      allRoutings,
+      allConnections,
+      ROUTING_OPTIONS,
+      MERGE_CONFIG,
+    );
+  } else {
+    await reportFn("wrapExternalsAroundPerimeter");
+    wrapExternalsAroundPerimeter(
+      internal,
+      external,
+      allRoutings,
+      allConnections,
+      ROUTING_OPTIONS,
+    );
+  }
 
   // 5. 후보 leaf
   const leaf = makeCandidateLeaf(
@@ -639,6 +677,12 @@ export let ROUTING_OPTIONS: RouteOptions = {
   pipeEntityName: "pipe",
   preferUnderground: false,
 };
+
+/**
+ * 공유 무한상자 병합 설정 — `runContainerWizard` 진입부에서 입력/토글로 갱신된다.
+ * 기본 비활성.
+ */
+export let MERGE_CONFIG: MergeConfig = { ...DEFAULT_MERGE_CONFIG };
 
 /**
  * 위저드 입력으로부터 라우팅 옵션을 빌드. 사용자가 선택한 첫 underground

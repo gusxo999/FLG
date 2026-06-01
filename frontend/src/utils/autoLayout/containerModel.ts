@@ -454,6 +454,11 @@ export interface ContainerWizardInput {
   inserterOverrides?: Record<string, { throughput?: number; stackSize?: number }>;
   /** 외부 포트 default — 1차 구현은 'top-left' 만 지원 */
   externalPortsDefault?: ExternalPortDefault;
+  /**
+   * 공유 무한상자 병합 — 같은 외부 품목을 쓰는 가까운 머신들을 무한상자 1개 +
+   * 트렁크 벨트로 묶는다. 미지정이면 모듈 토글(AUTO_LAYOUT_MERGE_BOXES) 사용.
+   */
+  mergeSupplyBoxes?: boolean;
 }
 
 /** 새 위저드 결과 — 후보 트리 + 평탄화된 후보 배열. */

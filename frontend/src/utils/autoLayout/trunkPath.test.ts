@@ -47,6 +47,13 @@ describe('tapCandidates', () => {
     expect(cands.some((c) => c.tapCell.x === 5 && c.tapCell.y === 3)).toBe(false);
   });
 
+  it('omits reach-2 (long) candidates when allowLong=false', () => {
+    const m = machine('m', 5, 5);
+    const cands = tapCandidates(m, new Set(), undefined, false);
+    expect(cands).toHaveLength(12); // 12 포트 × normal 만
+    expect(cands.every((c) => c.reach === 1)).toBe(true);
+  });
+
   it('allows tap cell to coincide with the current trunk head', () => {
     const m = machine('m', 5, 5);
     const head = { x: 5, y: 3 }; // N@(5,4) normal 의 tap

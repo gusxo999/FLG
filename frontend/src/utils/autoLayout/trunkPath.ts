@@ -78,12 +78,15 @@ export interface TrunkConfig {
   wReach: number;
   /** 시도할 chest seed 후보 최대 개수. */
   maxSeeds: number;
+  /** false 면 reach-2(long inserter) 탭 후보를 생성하지 않는다. */
+  allowLongInserter: boolean;
 }
 
 export const DEFAULT_TRUNK_CONFIG: TrunkConfig = {
   wBend: 4,
   wReach: 1.5,
   maxSeeds: 8,
+  allowLongInserter: true,
 };
 
 export interface TrunkInput {
@@ -165,7 +168,7 @@ function tryGrow(
     let best: { cand: TapRecord; path: SubPath } | null = null;
     let bestCost = Infinity;
 
-    for (const cand of tapCandidates(m, occ, head)) {
+    for (const cand of tapCandidates(m, occ, head, cfg.allowLongInserter)) {
       const path = findBeltSubPath(head, headDir, cand.tapCell, occ, cand.seat);
       if (!path) continue;
       const bends = (path.firstDir !== headDir ? 1 : 0) + path.internalBends;
@@ -215,6 +218,7 @@ export function tapCandidates(
   m: MachineLike,
   occ: Set<string>,
   head?: { x: number; y: number },
+  allowLong = true,
 ): TapRecord[] {
   const tapOk = (c: { x: number; y: number }) =>
     free(occ, c) || (head !== undefined && c.x === head.x && c.y === head.y);
@@ -227,11 +231,13 @@ export function tapCandidates(
       out.push({ machineId: m.id, port, face, reach: 1, seat: port, tapCell: nTap });
     }
     // long: seat=rim2(port+v), tap=rim4(port+3v); 중간 rim1(port)·rim3(port+2v) free.
-    const lSeat = add(port, v);
-    const rim3 = add(port, mul(v, 2));
-    const lTap = add(port, mul(v, 3));
-    if (free(occ, lSeat) && tapOk(lTap) && free(occ, port) && free(occ, rim3)) {
-      out.push({ machineId: m.id, port, face, reach: 2, seat: lSeat, tapCell: lTap });
+    if (allowLong) {
+      const lSeat = add(port, v);
+      const rim3 = add(port, mul(v, 2));
+      const lTap = add(port, mul(v, 3));
+      if (free(occ, lSeat) && tapOk(lTap) && free(occ, port) && free(occ, rim3)) {
+        out.push({ machineId: m.id, port, face, reach: 2, seat: lSeat, tapCell: lTap });
+      }
     }
   }
   return out;
