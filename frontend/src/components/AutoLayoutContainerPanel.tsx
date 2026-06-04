@@ -18,10 +18,11 @@ import { useLayoutStore } from '../store/layoutStore';
 import type { RoutingEditSession, RoutingSessionRouting } from '../store/layoutStore';
 import { useToastStore } from '../store/toastStore';
 import { runContainerWizard, buildRoutingOptions } from '../utils/autoLayout/containerWizard';
+import { runLayeredWizard } from '../utils/autoLayout/layeredWizard';
 import {
   unifyAreas,
 } from '../utils/autoLayout/areaUnification';
-import { AUTO_LAYOUT_COORD_DUMP } from '../utils/autoLayout/debugFlags';
+import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_ALGORITHM } from '../utils/autoLayout/debugFlags';
 import { registerAutoLayoutDebug } from '../utils/debugApi';
 import type {
   AreaSnapshot,
@@ -35,7 +36,12 @@ import type {
 
 interface AutoLayoutContainerPanelProps {
   targetRecipe: string;
+  /** 'min' = 노드마다 1대 / 'manual' = perTarget 개/초 처리량 기준 비례 배정 */
+  countMode: 'min' | 'manual';
+  /** 'manual' 모드에서 루트가 산출할 목표 처리량 (items/sec) */
+  perTarget: number;
   externalIngredients: ReadonlySet<string>;
+  recipeOverrides: Readonly<Record<string, string>>;
   selectedMachines: ReadonlySet<string>;
   selectedInserters: ReadonlySet<string>;
   selectedBelts: ReadonlySet<string>;
@@ -102,8 +108,10 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
 
     const input: ContainerWizardInput = {
       targetRecipe: props.targetRecipe,
-      countMode: 'min',
+      countMode:
+        props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
       externalIngredients: props.externalIngredients,
+      recipeOverrides: props.recipeOverrides,
       selectedMachines: Array.from(props.selectedMachines),
       selectedInserters: Array.from(props.selectedInserters),
       selectedBelts: Array.from(props.selectedBelts),
@@ -116,7 +124,12 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     abortRef.current = ctrl;
 
     try {
-      const r = await runContainerWizard(input, {
+      // 디버그 탭의 AUTO_LAYOUT_ALGORITHM 토글로 배치 전략 선택.
+      //  - 'exhaustive' (S-EXH): 기존 완전탐색
+      //  - 'layered'    (S-LAYER): 계층화 DAG + 채널 라우팅
+      const runWizard =
+        AUTO_LAYOUT_ALGORITHM === 'layered' ? runLayeredWizard : runContainerWizard;
+      const r = await runWizard(input, {
         signal: ctrl.signal,
         onProgress: (snap) => setProgress(snap),
       });
@@ -173,8 +186,10 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
 
     const input: ContainerWizardInput = {
       targetRecipe: props.targetRecipe,
-      countMode: 'min',
+      countMode:
+        props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
       externalIngredients: props.externalIngredients,
+      recipeOverrides: props.recipeOverrides,
       selectedMachines: Array.from(props.selectedMachines),
       selectedInserters: Array.from(props.selectedInserters),
       selectedBelts: Array.from(props.selectedBelts),
@@ -249,6 +264,24 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       liveArea: { internal: leaf.internal, external: leaf.external, routings: leaf.routings },
     });
     useLayoutStore.getState().setRoutingEditMode(false);
+    // 시각화 진입 소스 저장 — 이 후보의 생성 과정을 traceCandidatePath 로 재현.
+    useLayoutStore.getState().setVisualizationSource({
+      input: {
+        targetRecipe: props.targetRecipe,
+        countMode:
+          props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
+        externalIngredients: props.externalIngredients,
+        recipeOverrides: props.recipeOverrides,
+        selectedMachines: Array.from(props.selectedMachines),
+        selectedInserters: Array.from(props.selectedInserters),
+        selectedBelts: Array.from(props.selectedBelts),
+        selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
+        selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
+        externalPortsDefault: 'top-left',
+      },
+      perm: leaf.sourcePerm,
+      dir: leaf.sourceDir,
+    });
     resetViewport();
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');
     // 위저드 설정 초기화하지 않음 — 사용자가 계속 설정을 유지할 수 있도록

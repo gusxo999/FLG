@@ -54,15 +54,17 @@ export const ko = {
 
     countMode: '머신 수 결정 방식',
     countMin: '최소값',
-    countManual: '사용자 지정 (타깃 머신 수)',
+    countManual: '처리량 기준',
+    countUnit: '개/초',
     countHelp:
-      '최소값: 자식 조립기를 1대씩만 사용해 타깃 레시피가 "만들어지기만 하면 되는" 구성. 처리량 균형은 보장하지 않음(부분 가동 허용). 사용자 지정: 타깃 머신 수에 비례해 자식 처리량을 만족시키는 머신 수를 산정.',
+      '최소값: 자식 조립기를 1대씩만 사용해 타깃 레시피가 "만들어지기만 하면 되는" 구성. 처리량 균형은 보장하지 않음(부분 가동 허용). 처리량 기준: 루트 레시피의 목표 산출량(개/초)을 입력하면, 모든 라인이 완전 공급되도록 위에서 아래로 머신 수를 비례 산정(올림).',
 
     ingredientTree: '재료 트리',
     ingredientTreeHelp:
       '재료/하위재료 트리. 행을 클릭하면 자체 생산 / 외부 공급 상태가 토글됩니다.',
     markExternal: '클릭: 외부 공급으로 전환',
     markInternal: '클릭: 자체 생산으로 전환',
+    altRecipeTooltip: '대체 제작법 선택 ({count}개) — 이 아이템을 만드는 데 사용할 레시피',
     badgeTarget: '타깃',
     badgeInternal: '자체 생산',
     badgeExternal: '외부 공급',

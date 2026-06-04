@@ -14,6 +14,7 @@
 | [auto-layout-wizard.md](auto-layout-wizard.md) | **[parent]** 레이아웃 자동완성 — 위저드(레시피→머신→투입기→벨트→지하파이프) 인터페이스 사양 | 2026-04-29 |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) + 해결 방향 | 2026-04-29 |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 — in-scope / passthrough / out-of-scope | 2026-04-28 |
+| [auto-layout-wizard.visualization-trace.md](auto-layout-wizard.visualization-trace.md) | ↳ 후보 생성 시각화의 함수 호출 트리 체크포인트 — `reportFn` 마커 규칙, 안 뜨는 함수의 이유, 새 마커 추가법 | 2026-06-04 |
 | [parametrized-blueprints-deferred.md](parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 — 향후 parametrized blueprint 자동완성 기능 시 함께 다룰 예정 | 2026-04-28 |
 | [direction-encoding.md](direction-encoding.md) | 내부 `Direction` 모델을 Factorio 2.0 16-방향 인코딩(0/4/8/12)으로 통일. 1.x 블루프린트는 ×2 자동 업그레이드, persist migrate 포함 | 2026-04-29 |
 | [surface-restriction-limits.md](surface-restriction-limits.md) | 우주/지상 표면 제약 자동 판단 포기. 모드마다 메커니즘과 필드명이 달라 자동완성 시 사용자가 직접 머신을 선택하게 함 | 2026-04-29 |

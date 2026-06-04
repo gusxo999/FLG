@@ -13,6 +13,7 @@ import { useLayoutStore, canvasToGrid } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { EntityType, getCell, type Direction } from '../types/layout';
+import type { Routing } from '../utils/autoLayout/containerModel';
 import { getEntitySizeRotated } from '../utils/entitySize';
 import { getDynamicEntityColor, collectPlacedEntityNames } from '../utils/entityColors';
 import {
@@ -101,8 +102,8 @@ export const unsubFns: Array<() => void> = [];
 
 export interface RoutingLineSegment {
   routingId: string;
-  fromPx: number; fromPy: number;
-  toPx: number; toPy: number;
+  /** 폴리라인 꼭짓점들 (≥2). 첫·끝점이 라우팅이 닿는 셀, 중간은 경로 셀. */
+  waypoints: { x: number; y: number }[];
 }
 
 export let routingLineCache: RoutingLineSegment[] = [];
@@ -127,10 +128,13 @@ export function hitTestRoutingLine(cx: number, cy: number, threshold = 10): stri
   let best: string | null = null;
   let bestDist = Infinity;
   for (const seg of routingLineCache) {
-    const d = pointToSegmentDist(cx, cy, seg.fromPx, seg.fromPy, seg.toPx, seg.toPy);
-    if (d < threshold && d < bestDist) {
-      bestDist = d;
-      best = seg.routingId;
+    const wp = seg.waypoints;
+    for (let i = 0; i + 1 < wp.length; i++) {
+      const d = pointToSegmentDist(cx, cy, wp[i].x, wp[i].y, wp[i + 1].x, wp[i + 1].y);
+      if (d < threshold && d < bestDist) {
+        bestDist = d;
+        best = seg.routingId;
+      }
     }
   }
   return best;
@@ -404,6 +408,20 @@ export function renderGrid() {
       const coox = routingEditSession.containerOriginOffset?.x ?? 0;
       const cooy = routingEditSession.containerOriginOffset?.y ?? 0;
 
+      // liveArea 라우팅 맵: routing id → 전체 Routing (placed 셀 경로 포함)
+      const liveRoutingMap = new Map<string, Routing>();
+      if (routingEditSession.liveArea) {
+        for (const r of routingEditSession.liveArea.routings) {
+          liveRoutingMap.set(r.id, r);
+        }
+      }
+
+      // 그리드 셀 (x,y) 중심 → 픽셀. drag delta 는 호출부에서 셀 좌표에 미리 더함.
+      const cellCenterPx = (x: number, y: number) => ({
+        x: (x + 0.5 + coox) * scaledTile + offsetX,
+        y: (y + 0.5 + cooy) * scaledTile + offsetY,
+      });
+
       for (const routing of routingEditSession.routings) {
         const fromC = containerMap.get(routing.fromContainerId);
         const toC   = containerMap.get(routing.toContainerId);
@@ -414,12 +432,38 @@ export function renderGrid() {
         const tdx = dragGroupIds?.has(routing.toContainerId)   ? dragDx : 0;
         const tdy = dragGroupIds?.has(routing.toContainerId)   ? dragDy : 0;
 
-        const fromPx = (fromC.origin.x + coox + fdx + fromC.size.w / 2) * scaledTile + offsetX;
-        const fromPy = (fromC.origin.y + cooy + fdy + fromC.size.h / 2) * scaledTile + offsetY;
-        const toPx   = (toC.origin.x   + coox + tdx + toC.size.w   / 2) * scaledTile + offsetX;
-        const toPy   = (toC.origin.y   + cooy + tdy + toC.size.h   / 2) * scaledTile + offsetY;
+        // 드래그 중이면 경로 셀이 아직 재라우팅되지 않았으므로 직선 fallback.
+        const isDraggingThis = dragGroupIds !== null && (
+          dragGroupIds.has(routing.fromContainerId) || dragGroupIds.has(routing.toContainerId)
+        );
+        const liveR = liveRoutingMap.get(routing.id);
 
-        routingLineCache.push({ routingId: routing.id, fromPx, fromPy, toPx, toPy });
+        // 폴리라인 꼭짓점.
+        //  - liveArea 의 placed[] 를 그대로 따라간다.
+        //    placed[0] = 생산자(조립기계) 바로 옆 인접 셀(인서터/파이프),
+        //    placed[last] = 소비자 바로 옆 인접 셀. → 끝점이 어셈블러 "중심"이 아니라
+        //    라우팅이 실제로 닿는 셀이 된다 (item·fluid 공통).
+        //  - liveArea 없거나 드래그 중이면 컨테이너 중심끼리 직선.
+        let waypoints: { x: number; y: number }[];
+        if (liveR && !isDraggingThis && liveR.placed.length > 0) {
+          waypoints = liveR.placed.map(pc => cellCenterPx(pc.x, pc.y));
+        } else {
+          waypoints = [
+            {
+              x: (fromC.origin.x + coox + fdx + fromC.size.w / 2) * scaledTile + offsetX,
+              y: (fromC.origin.y + cooy + fdy + fromC.size.h / 2) * scaledTile + offsetY,
+            },
+            {
+              x: (toC.origin.x + coox + tdx + toC.size.w / 2) * scaledTile + offsetX,
+              y: (toC.origin.y + cooy + tdy + toC.size.h / 2) * scaledTile + offsetY,
+            },
+          ];
+        }
+
+        routingLineCache.push({ routingId: routing.id, waypoints });
+
+        const fromPx = waypoints[0].x, fromPy = waypoints[0].y;
+        const toPx = waypoints[waypoints.length - 1].x, toPy = waypoints[waypoints.length - 1].y;
 
         const extC = fromC.kind !== 'machine' ? fromC : toC;
         const lineColor = externalIOMap.get(extC.id) === 'input'
@@ -427,29 +471,29 @@ export function renderGrid() {
 
         const isHovered = routing.id === hoveredRoutingId;
 
+        const tracePath = () => {
+          lineGfx.moveTo(waypoints[0].x, waypoints[0].y);
+          for (let wi = 1; wi < waypoints.length; wi++) {
+            lineGfx.lineTo(waypoints[wi].x, waypoints[wi].y);
+          }
+        };
+
         if (isHovered) {
           // 호버 시: glow 후광 (두꺼운 반투명 선) + 메인 선 + 양 끝 점
-          lineGfx
-            .moveTo(fromPx, fromPy)
-            .lineTo(toPx, toPy)
-            .stroke({ width: 10, color: lineColor, alpha: 0.18 });
-          lineGfx
-            .moveTo(fromPx, fromPy)
-            .lineTo(toPx, toPy)
-            .stroke({ width: 3, color: lineColor, alpha: 1.0 });
+          tracePath();
+          lineGfx.stroke({ width: 10, color: lineColor, alpha: 0.18 });
+          tracePath();
+          lineGfx.stroke({ width: 3, color: lineColor, alpha: 1.0 });
           const dotR = 5;
           lineGfx.circle(fromPx, fromPy, dotR).fill({ color: lineColor, alpha: 1.0 });
           lineGfx.circle(toPx,   toPy,   dotR).fill({ color: lineColor, alpha: 1.0 });
-          // 중심점 (클릭 가능 표시)
-          const midX = (fromPx + toPx) / 2;
-          const midY = (fromPy + toPy) / 2;
-          lineGfx.circle(midX, midY, 7).fill({ color: 0xffffff, alpha: 0.15 });
-          lineGfx.circle(midX, midY, 7).stroke({ width: 1.5, color: lineColor, alpha: 0.9 });
+          // 중심점 (클릭 가능 표시) — 폴리라인 중앙 꼭짓점
+          const mid = waypoints[Math.floor(waypoints.length / 2)];
+          lineGfx.circle(mid.x, mid.y, 7).fill({ color: 0xffffff, alpha: 0.15 });
+          lineGfx.circle(mid.x, mid.y, 7).stroke({ width: 1.5, color: lineColor, alpha: 0.9 });
         } else {
-          lineGfx
-            .moveTo(fromPx, fromPy)
-            .lineTo(toPx, toPy)
-            .stroke({ width: 1.5, color: lineColor, alpha: 0.65 });
+          tracePath();
+          lineGfx.stroke({ width: 1.5, color: lineColor, alpha: 0.65 });
         }
       }
     }

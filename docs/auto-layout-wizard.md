@@ -8,7 +8,7 @@
 
 | 문서 | 주제 |
 |------|------|
-| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **알고리즘 단일 출처** — 컨테이너 모델 + 조건 등록부 (C/O/M 항목) |
+| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델 + 정합성 조건(C/O/M) + 배치 전략 레이어(§5.5: 완전 탐색 S-EXH / shape-curve DP S-DP 등) |
 | [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
@@ -78,9 +78,11 @@
 
 ## 알고리즘
 
-알고리즘 본문 (컨테이너 모델, 조건 등록부, 라우팅, 모듈 구성) 은
+알고리즘 본문 (컨테이너 모델, 조건 등록부, 라우팅, 모듈 구성, **배치 전략 레이어**) 은
 [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
+
+> **주의:** placement-search 의 "완전 탐색(S-EXH)" 은 **여러 배치 전략 중 기준·임시 전략 하나**다(§5.5). 영구 계약이 아니며, 상황에 따라 다른 전략(상향식 shape-curve DP 등)으로 교체된다.
 
 ### 입력 — `WizardInput`
 

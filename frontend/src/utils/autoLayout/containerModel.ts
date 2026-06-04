@@ -298,6 +298,13 @@ export interface CandidateLeaf extends CandidateNodeBase {
   routings: Routing[];
   /** O1 점수 — 내부 영역 bbox 의 |W − H|. 작을수록 정사각형에 가까움 */
   squarenessPenalty: number;
+  /**
+   * 이 후보를 생성한 루트 자식 순열 (itemName 순서). 시각화(Visualization)가
+   * `traceCandidatePath` 로 동일 경로를 결정적으로 재현하는 데 사용.
+   */
+  sourcePerm: string[];
+  /** 이 후보의 루트 자식 배치 방향 — 시각화 재현용. */
+  sourceDir: 'right' | 'down';
 }
 
 /** 실패 leaf — 라우팅 실패 / 모든 port 조합 소진 등. */
@@ -326,6 +333,54 @@ export interface CandidateTree {
     failuresGenerated: number;
     deepestDepth: number;
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §7.5 시각화(Visualization) — 후보 1개의 생성 과정을 함수 단계로 기록
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 함수(phase) 단계의 기록. `reportFn` 진입 시점마다 1개 생성된다.
+ * `snapshot` 은 그 함수가 실행되기 *직전* 의 영역 상태(= 직전 함수의 결과).
+ * 마지막에 별도의 '완료' 단계가 최종 상태를 담아 추가된다.
+ */
+export interface TraceStep {
+  /** 0부터의 실행 순서 인덱스 */
+  order: number;
+  /** 실행된 함수 / phase 이름 (reportFn 인자 그대로) */
+  functionName: string;
+  /** 함수 호출 트리에서의 중첩 깊이 (0 = 최상위). 사이드바 트리 구성에 사용. */
+  callDepth: number;
+  /** 이 단계 시점의 영역 스냅샷 (raw layout 좌표 — 정규화하지 않음) */
+  snapshot: AreaSnapshot;
+}
+
+/**
+ * 한 라우팅의 연결 정보 — 시각화가 producer↔consumer 컨테이너 중심을 잇는
+ * 선을 그리는 데 사용. 양 끝 컨테이너가 해당 단계 스냅샷에 둘 다 존재할 때만
+ * 그 단계에서 선이 그려진다(점진적 등장).
+ */
+export interface TraceRouting {
+  /** producer(자식/생산) 컨테이너 id */
+  fromId: string;
+  /** consumer(부모/소비) 컨테이너 id */
+  toId: string;
+  /** fluid 라우팅이면 true (파이프), 아니면 item(벨트) */
+  fluid: boolean;
+}
+
+/** 후보 1개 생성 과정의 전체 트레이스 — 시각화 모달의 입력. */
+export interface CandidateTraceResult {
+  steps: TraceStep[];
+  /** 최종 후보의 전체 라우팅 연결 목록 (단계별 선 그리기에 사용) */
+  routings: TraceRouting[];
+  /**
+   * 모든 단계에 걸친 placed 셀의 합집합 bbox (raw layout 좌표).
+   * 시각화 그리드의 카메라를 이 범위에 고정해 단계 진행 시 화면이 튀지 않게 한다.
+   */
+  bbox: { x: number; y: number; w: number; h: number } | undefined;
+  /** 재현 결과가 실패 leaf 로 끝났는지 여부 */
+  failed: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -444,6 +499,8 @@ export interface ContainerWizardInput {
   targetRecipe: string;
   countMode: 'min' | { perTarget: number };
   externalIngredients: ReadonlySet<string>;
+  /** item.name → 사용자가 고른 대체 제작법 이름. 비어 있으면 기본 제작법(itemToRecipe). */
+  recipeOverrides?: Readonly<Record<string, string>>;
   selectedMachines: ReadonlyArray<string>;
   selectedInserters: ReadonlyArray<string>;
   selectedBelts: ReadonlyArray<string>;

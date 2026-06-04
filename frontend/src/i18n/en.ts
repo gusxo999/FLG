@@ -57,15 +57,17 @@ export const en: Translations = {
 
     countMode: 'Machine count mode',
     countMin: 'Minimum',
-    countManual: 'Manual (target machines)',
+    countManual: 'By throughput',
+    countUnit: 'items/s',
     countHelp:
-      'Minimum: one assembler per sub-recipe — just enough that the target recipe gets made at all (throughput is not balanced; partial operation is allowed). Manual: scale child machine counts proportionally to satisfy target throughput.',
+      'Minimum: one assembler per sub-recipe — just enough that the target recipe gets made at all (throughput is not balanced; partial operation is allowed). By throughput: enter the target output rate (items/s) for the root recipe; machine counts are scaled top-down so every line is fully supplied (rounded up).',
 
     ingredientTree: 'Ingredient tree',
     ingredientTreeHelp:
       'Recipe and sub-recipe tree. Click a row to toggle between internal production and external supply.',
     markExternal: 'Click to switch to external supply',
     markInternal: 'Click to switch to internal production',
+    altRecipeTooltip: 'Pick alternative recipe ({count}) — the recipe used to make this item',
     badgeTarget: 'Target',
     badgeInternal: 'Internal',
     badgeExternal: 'External',

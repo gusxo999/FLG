@@ -37,6 +37,12 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   products: RecipeProduct[];
   icon?: string;
+  /**
+   * 게임 시작 시점부터 제작 가능(연구 불필요)한지 여부.
+   * enabled === false 이고 어떤 기술도 unlock 하지 않는 레시피는
+   * 플레이어가 영영 선택할 수 없으므로 자동 레이아웃 ingredient 해결에서 제외한다.
+   */
+  enabled?: boolean;
   /** 이 레시피가 허용하는 모듈 카테고리 화이트리스트. nil이면 머신 측 화이트리스트만 적용. */
   allowed_module_categories?: string[];
   /** 이 레시피를 만들 수 있는 표면 조건. nil이면 모든 표면. */
@@ -274,6 +280,12 @@ interface GameDataState {
    * 머신 entity → items_to_place_this[0] → 이 인덱스 → 레시피 → 기술 체인을 얻는다.
    */
   itemToRecipe: Map<string, string>;
+  /**
+   * item.name → 그 아이템을 products 로 만드는 모든 '선택 가능한' 레시피 이름 배열.
+   * 배열 [0] 은 itemToRecipe 의 기본값과 동일(첫 매칭). 길이가 2 이상이면 대체 제작법이 존재.
+   * 레시피 트리에서 사용자가 하위 아이템의 제작법을 직접 고를 때 후보 목록으로 쓴다.
+   */
+  recipesByProduct: Map<string, string[]>;
   loaded: boolean;
   storageWarning: string | null;
 
@@ -340,13 +352,29 @@ function buildDerived(data: GameData) {
     }
   }
 
-  // item.name → 그 아이템을 products 에 포함하는 첫 레시피.
+  // 플레이어가 실제로 선택 가능한 레시피인지 판별.
+  // enabled === true 면 시작부터 활성, 그 외에는 어떤 기술이든 unlock 해야 선택 가능.
+  // 둘 다 아니면 (예: vanilla 'glass' 4 모래→1 유리처럼 모드가 비활성화하고 어떤 기술도
+  // 해금하지 않는 레시피) 플레이어가 영영 만들 수 없으므로 자동완성 후보에서 제외한다.
+  const isRecipeSelectable = (r: Recipe): boolean =>
+    r.enabled === true || recipeToTech.has(r.name);
+
+  // item.name → 그 아이템을 products 에 포함하는 첫 '선택 가능한' 레시피.
   // 머신 entity → items_to_place_this[0] → 이 인덱스로 → 레시피 → 기술 추적.
+  // item.name → 그것을 만드는 모든 '선택 가능한' 레시피 (등장 순서 유지).
+  // recipes 배열 순서대로 push 하므로 [0] 은 itemToRecipe 의 기본 매칭과 일치한다.
   const itemToRecipe = new Map<string, string>();
+  const recipesByProduct = new Map<string, string[]>();
   for (const r of data.recipes) {
+    if (!isRecipeSelectable(r)) continue;
     for (const p of r.products) {
-      if (p.type === 'item' && !itemToRecipe.has(p.name)) {
-        itemToRecipe.set(p.name, r.name);
+      if (p.type !== 'item') continue;
+      if (!itemToRecipe.has(p.name)) itemToRecipe.set(p.name, r.name);
+      const list = recipesByProduct.get(p.name);
+      if (list) {
+        if (!list.includes(r.name)) list.push(r.name);
+      } else {
+        recipesByProduct.set(p.name, [r.name]);
       }
     }
   }
@@ -362,6 +390,7 @@ function buildDerived(data: GameData) {
     techMap,
     recipeToTech,
     itemToRecipe,
+    recipesByProduct,
   };
 }
 
@@ -406,6 +435,7 @@ export const useGameDataStore = create<GameDataState>()(
       techMap: new Map<string, Technology>(),
       recipeToTech: new Map<string, string>(),
       itemToRecipe: new Map<string, string>(),
+      recipesByProduct: new Map<string, string[]>(),
       loaded: false,
       storageWarning: null,
 
@@ -424,6 +454,7 @@ export const useGameDataStore = create<GameDataState>()(
           techMap: derived.techMap,
           recipeToTech: derived.recipeToTech,
           itemToRecipe: derived.itemToRecipe,
+          recipesByProduct: derived.recipesByProduct,
           loaded: true,
           storageWarning: null,
         });
@@ -443,6 +474,7 @@ export const useGameDataStore = create<GameDataState>()(
           techMap: new Map(),
           recipeToTech: new Map(),
           itemToRecipe: new Map(),
+          recipesByProduct: new Map(),
           loaded: false,
           storageWarning: null,
         }),
@@ -619,6 +651,7 @@ export const useGameDataStore = create<GameDataState>()(
           state.techMap = derived.techMap;
           state.recipeToTech = derived.recipeToTech;
           state.itemToRecipe = derived.itemToRecipe;
+          state.recipesByProduct = derived.recipesByProduct;
         }
       },
     }

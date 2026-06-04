@@ -20,7 +20,7 @@ import { getEntitySizeRotated } from '../utils/entitySize';
 import { useToastStore } from './toastStore';
 import { t } from '../i18n';
 import { nanoid } from './nanoid';
-import type { Container, Area, PortKind, Routing } from '../utils/autoLayout/containerModel';
+import type { Container, Area, PortKind, Routing, ContainerWizardInput } from '../utils/autoLayout/containerModel';
 import type { RouteOptions } from '../utils/autoLayout/routeFallback';
 import { routeWithFallback } from '../utils/autoLayout/routeFallback';
 import { commitRouting } from '../utils/autoLayout/containerRouting';
@@ -60,6 +60,20 @@ export interface RoutingEditSession {
    * apply 없이 직접 그리드에 배치한 경우 undefined.
    */
   liveArea?: { internal: Area; external: Area; routings: Routing[] };
+}
+
+/**
+ * 시각화(Visualization) 진입 소스 — 후보 적용 시점에 저장된다.
+ * 시각화 버튼이 `traceCandidatePath(input, perm, dir)` 로 그 후보의 생성 과정을
+ * 결정적으로 재현하는 데 필요한 최소 정보.
+ */
+export interface VisualizationSource {
+  /** 후보 생성에 쓰인 위저드 입력 */
+  input: ContainerWizardInput;
+  /** 선택된 후보의 루트 자식 순열 (itemName 순서) */
+  perm: string[];
+  /** 선택된 후보의 루트 자식 배치 방향 */
+  dir: 'right' | 'down';
 }
 
 const DEFAULT_GRID_WIDTH = 256;
@@ -138,6 +152,8 @@ interface LayoutState {
   routingEditMode: boolean;
   routingEditSession: RoutingEditSession | null;
   selectedRoutingId: string | null;
+  /** 시각화 진입 소스 — 후보 적용 시 세팅. null 이면 시각화 버튼 비활성. */
+  visualizationSource: VisualizationSource | null;
 
   // Grid actions
   resizeGrid: (width: number, height: number) => void;
@@ -160,6 +176,7 @@ interface LayoutState {
   setAutoLayoutCanvasBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
   setRoutingEditMode: (v: boolean) => void;
   setRoutingEditSession: (session: RoutingEditSession | null) => void;
+  setVisualizationSource: (s: VisualizationSource | null) => void;
   setSelectedRouting: (id: string | null) => void;
   /** InfinityChest/InfinityPipe 를 새 위치로 이동. 성공 여부 반환. */
   moveEntityById: (entityId: string, toX: number, toY: number) => boolean;
@@ -281,6 +298,7 @@ export const useLayoutStore = create<LayoutState>()(
     routingEditMode: false,
     routingEditSession: null,
     selectedRoutingId: null,
+    visualizationSource: null,
 
     resizeGrid: (width, height) => {
       get().pushHistory('resizeGrid');
@@ -299,6 +317,7 @@ export const useLayoutStore = create<LayoutState>()(
         routingEditSession: null,
         routingEditMode: false,
         selectedRoutingId: null,
+        visualizationSource: null,
       });
     },
 
@@ -517,6 +536,7 @@ export const useLayoutStore = create<LayoutState>()(
 
     setRoutingEditMode: (v) => set({ routingEditMode: v }),
     setRoutingEditSession: (session) => set({ routingEditSession: session }),
+    setVisualizationSource: (s) => set({ visualizationSource: s }),
     setSelectedRouting: (id) => set({ selectedRoutingId: id }),
 
     moveAssemblerGroup: (containerId, dx, dy) => {

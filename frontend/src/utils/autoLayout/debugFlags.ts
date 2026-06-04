@@ -19,3 +19,25 @@ export let AUTO_LAYOUT_COORD_DUMP = true;
 export function setAutoLayoutCoordDump(v: boolean): void {
   AUTO_LAYOUT_COORD_DUMP = v;
 }
+
+/**
+ * AUTO_LAYOUT_ALGORITHM — 자동 배치에 사용할 배치 전략(strategy) 선택.
+ *
+ * 다른 세션에서 언급할 때: "AUTO_LAYOUT_ALGORITHM 플래그"
+ *
+ *  - `'exhaustive'` (S-EXH) : 기존 알고리즘. 하향식 그리디 + perm(n!)×dir(2) 완전 탐색.
+ *                             여러 후보를 squarenessPenalty 로 정렬해 반환.
+ *  - `'layered'`    (S-LAYER): 계층화 DAG 레이아웃 + 채널 라우팅(Sugiyama).
+ *                             레시피 깊이를 열(레이어)로, 레이어 사이에 빈 채널을
+ *                             두어 라우팅을 구조적으로 보장. 결정적 단일 후보 반환.
+ *                             설계: docs/auto-layout-wizard.s-layer-channel-reservation.md
+ *
+ * 디버그 탭의 "ALGORITHM" 토글로 런타임 전환. 토글 후 자동 배치를 다시 실행해야 반영됨.
+ */
+export type AutoLayoutAlgorithm = 'exhaustive' | 'layered';
+
+export let AUTO_LAYOUT_ALGORITHM: AutoLayoutAlgorithm = 'exhaustive';
+
+export function setAutoLayoutAlgorithm(v: AutoLayoutAlgorithm): void {
+  AUTO_LAYOUT_ALGORITHM = v;
+}

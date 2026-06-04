@@ -25,6 +25,8 @@ interface WizardState {
   selectedUndergroundBelts: string[];
   selectedPipes: string[];
   inserterOverrides: Record<string, InserterOverrideEntry>;
+  /** item.name → 사용자가 고른 대체 제작법 이름. 기본 제작법을 쓰는 아이템은 항목 없음. */
+  recipeOverrides: Record<string, string>;
 
   setStep: (s: WizardStep) => void;
   setTargetRecipe: (r: string) => void;
@@ -37,6 +39,7 @@ interface WizardState {
   setSelectedUndergroundBelts: (v: Set<string>) => void;
   setSelectedPipes: (v: Set<string>) => void;
   setInserterOverrides: (v: Record<string, InserterOverrideEntry>) => void;
+  setRecipeOverrides: (v: Record<string, string>) => void;
   reset: () => void;
 }
 
@@ -52,6 +55,7 @@ const INITIAL = {
   selectedUndergroundBelts: [] as string[],
   selectedPipes: [] as string[],
   inserterOverrides: {} as Record<string, InserterOverrideEntry>,
+  recipeOverrides: {} as Record<string, string>,
 };
 
 export const useWizardStore = create<WizardState>()(
@@ -70,6 +74,7 @@ export const useWizardStore = create<WizardState>()(
       setSelectedUndergroundBelts: (v) => set({ selectedUndergroundBelts: [...v] }),
       setSelectedPipes: (v) => set({ selectedPipes: [...v] }),
       setInserterOverrides: (v) => set({ inserterOverrides: v }),
+      setRecipeOverrides: (v) => set({ recipeOverrides: v }),
       reset: () => set({ ...INITIAL }),
     }),
     {

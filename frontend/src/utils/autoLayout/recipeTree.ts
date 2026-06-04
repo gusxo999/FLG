@@ -5,12 +5,18 @@ interface ExpandContext {
   recipeMap: Map<string, Recipe>;
   itemToRecipe: Map<string, string>;
   externalIngredients: ReadonlySet<string>;
+  /**
+   * item.name → 사용자가 직접 고른 제작법 이름. 비어 있으면 itemToRecipe 의 기본값을 쓴다.
+   * 대체 제작법(여러 레시피가 같은 아이템을 만들 때) 선택을 트리에 반영하기 위한 override.
+   */
+  recipeOverrides: ReadonlyMap<string, string>;
   /** 사이클 차단을 위해 현재 선조 경로의 레시피 이름들 */
   ancestors: Set<string>;
 }
 
 /**
- * 타깃 레시피를 루트로, 모든 ingredient → 그 ingredient 를 만드는 첫 매칭 레시피를 자식으로 펼친다.
+ * 타깃 레시피를 루트로, 모든 ingredient → 그 ingredient 를 만드는 레시피를 자식으로 펼친다.
+ * 기본은 첫 매칭(itemToRecipe)이지만 recipeOverrides 에 항목이 있으면 그 제작법을 우선한다.
  * external 로 토글된 ingredient 는 leaf 로만 기록 (그 자식 펼침 X).
  * 사이클(직간접 자기 참조)은 자식 무시.
  */
@@ -19,6 +25,7 @@ export function expandRecipeTree(
   recipeMap: Map<string, Recipe>,
   itemToRecipe: Map<string, string>,
   externalIngredients: ReadonlySet<string>,
+  recipeOverrides: ReadonlyMap<string, string> = new Map(),
 ): RecipeTreeNode {
   const recipe = recipeMap.get(targetRecipe);
   if (!recipe) {
@@ -35,6 +42,7 @@ export function expandRecipeTree(
     recipeMap,
     itemToRecipe,
     externalIngredients,
+    recipeOverrides,
     ancestors: new Set([targetRecipe]),
   };
   return {
@@ -57,7 +65,7 @@ function expandIngredient(itemName: string, ctx: ExpandContext): RecipeTreeNode 
     };
   }
 
-  const recipeName = ctx.itemToRecipe.get(itemName);
+  const recipeName = ctx.recipeOverrides.get(itemName) ?? ctx.itemToRecipe.get(itemName);
   if (!recipeName || ctx.ancestors.has(recipeName)) {
     return {
       recipeName: undefined,
@@ -132,5 +140,129 @@ export function assignMinimumCounts(root: RecipeTreeNode): RecipeTreeNode {
     machineCount: root.external ? 0 : 1,
     children: root.children.map(assignMinimumCounts),
   };
+}
+
+/**
+ * 한 머신의 유효 파라미터. v1 은 base `crafting_speed` 와 `productivityMultiplier = 1`.
+ *
+ * 모듈 지원을 붙일 때는 [moduleEffects.ts](./../moduleEffects.ts) 의
+ * `applyEffectsToMachine` 결과(`craftingSpeed`, `productivityMultiplier`)를 그대로
+ * 넣으면 처리량 계산이 모듈을 반영한다 — 알고리즘은 손대지 않아도 된다.
+ */
+export interface NodeMachineParams {
+  /** 유효 제작 속도. 모듈 미적용 시 머신의 base crafting_speed */
+  craftingSpeed: number;
+  /** 산출물 배수 (1 + productivity). 모듈 미적용 시 1 */
+  productivityMultiplier: number;
+}
+
+/** recipeName → 그 레시피를 돌릴 머신의 유효 파라미터. 머신 매칭 실패 시 undefined */
+export type MachineParamsLookup = (recipeName: string) => NodeMachineParams | undefined;
+
+/** energy_required(초)가 0/누락이면 1초로 간주해 0 나눗셈 방지 */
+function craftTime(recipe: Recipe): number {
+  return recipe.energy_required > 0 ? recipe.energy_required : 1;
+}
+
+/**
+ * 머신 1대가 `producedItem` 을 초당 몇 개 산출하는지.
+ * = product.amount × probability × productivityMultiplier × craftingSpeed / energy_required
+ * 확률성 산출물은 기대 수율(amount × probability)을 사용한다.
+ */
+function perMachineItemsPerSec(
+  recipe: Recipe,
+  producedItem: string,
+  params: NodeMachineParams,
+): number {
+  const product =
+    recipe.products.find((p) => p.name === producedItem) ?? recipe.products[0];
+  if (!product) return 0;
+  const yieldPerCraft = product.amount * (product.probability ?? 1);
+  return (
+    (yieldPerCraft * params.productivityMultiplier * params.craftingSpeed) /
+    craftTime(recipe)
+  );
+}
+
+/** 머신 N대의 초당 제작 횟수 (productivity 는 횟수가 아닌 산출량에만 영향) */
+function craftsPerSec(
+  recipe: Recipe,
+  machineCount: number,
+  params: NodeMachineParams,
+): number {
+  return (machineCount * params.craftingSpeed) / craftTime(recipe);
+}
+
+/** 요구 산출 rate(items/sec)를 만족하는 최소 머신 수. 비-외부 노드는 최소 1대. */
+function countForDemand(
+  node: RecipeTreeNode,
+  demandItemsPerSec: number,
+  recipeMap: Map<string, Recipe>,
+  lookup: MachineParamsLookup,
+): number {
+  if (node.external || !node.recipeName) return 0;
+  const recipe = recipeMap.get(node.recipeName);
+  const params = lookup(node.recipeName);
+  // 레시피/머신 정보가 없으면 안전하게 1대 — 위저드가 머신 미매칭을 별도로 보고한다.
+  if (!recipe || !params) return 1;
+  const per = perMachineItemsPerSec(recipe, node.itemName, params);
+  if (per <= 0) return 1;
+  return Math.max(1, Math.ceil(demandItemsPerSec / per));
+}
+
+/** 머신 수가 결정된 노드의 자식 demand 를 계산해 재귀적으로 카운트 배정 */
+function buildThroughput(
+  node: RecipeTreeNode,
+  machineCount: number,
+  recipeMap: Map<string, Recipe>,
+  lookup: MachineParamsLookup,
+): RecipeTreeNode {
+  if (node.external || !node.recipeName) {
+    return {
+      ...node,
+      machineCount: 0,
+      children: node.children.map((c) =>
+        buildThroughput(c, 0, recipeMap, lookup),
+      ),
+    };
+  }
+
+  const recipe = recipeMap.get(node.recipeName);
+  const params = lookup(node.recipeName);
+  const crafts =
+    recipe && params ? craftsPerSec(recipe, machineCount, params) : 0;
+
+  const children = node.children.map((child) => {
+    const ingredient = recipe?.ingredients.find(
+      (i) => i.name === child.itemName,
+    );
+    // 이 부모가 child.itemName 을 초당 소비하는 양 = 제작 횟수 × ingredient.amount
+    const demand = crafts * (ingredient?.amount ?? 0);
+    const childCount = countForDemand(child, demand, recipeMap, lookup);
+    return buildThroughput(child, childCount, recipeMap, lookup);
+  });
+
+  return { ...node, machineCount, children };
+}
+
+/**
+ * '처리량' 모드: 루트가 `targetItemsPerSec` 개/초를 산출하도록 머신 수를 정하고,
+ * 각 자식의 머신 수를 부모의 요구 처리량을 채우도록 위에서 아래로 비례 배정한다.
+ *
+ * - 분수 머신 수는 올림(ceil) → 모든 라인이 완전 공급(약간의 과잉 생산 허용).
+ * - 확률성/다중 산출물은 기대 수율(amount × probability)로 계산.
+ * - 모듈은 v1 에서 미반영(`lookup` 이 base crafting_speed, productivityMultiplier=1 반환).
+ *   `lookup` 이 모듈 반영 파라미터를 주면 알고리즘 수정 없이 모듈이 적용된다.
+ *
+ * 트리를 in-place 로 수정하지 않고 동일 모양의 새 트리를 반환.
+ */
+export function assignThroughputCounts(
+  root: RecipeTreeNode,
+  targetItemsPerSec: number,
+  recipeMap: Map<string, Recipe>,
+  lookup: MachineParamsLookup,
+): RecipeTreeNode {
+  const rootCount = countForDemand(root, targetItemsPerSec, recipeMap, lookup);
+  return buildThroughput(root, rootCount, recipeMap, lookup);
 }
 

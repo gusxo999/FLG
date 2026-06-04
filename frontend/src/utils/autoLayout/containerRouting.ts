@@ -558,13 +558,23 @@ export interface DijkstraInput {
 /**
  * Dijkstra — 지상 인접 + 지하 점프 페어 통합 탐색.
  *
- * 상태 = `(x, y, jumpDir)`. jumpDir = -1(지상/시작 도착) 또는 0..3(점프로 도착한
- * 방향 = 지하벨트 출구 셀). 한 셀은 도착 방식·방향에 따라 여러 상태로 갈라진다.
- * 이유 1: jump 로 도착한 셀은 underground-exit entity 를 차지하므로, 그 셀에서
- *   *다시 jump* 로 나가면 entrance 가 같은 셀에 겹쳐 invalid → 재점프 금지.
- * 이유 2: 지하 출구는 *진행 방향으로만* 아이템을 토출한다. 따라서 출구 셀에서는
- *   같은 방향 지상 직진만 허용한다. 출구 직후 꺾으면 다음 벨트와 물리적으로
- *   연결되지 않는 (끊긴) 경로가 되기 때문 → jumpDir>=0 이면 그 방향 surface 만.
+ * 상태 = `(x, y, arr)`. arr 는 *이 셀에 도착한 방식·방향* 을 인코딩한다:
+ *   -1   = 시작 셀 (아직 진행 방향 없음).
+ *   0..3 = 지상으로 surfaceDirs[arr] 방향 진행하며 도착.
+ *   4..7 = 점프(지하 출구)로 surfaceDirs[arr-4] 방향 진행하며 도착 (출구 셀).
+ * 한 셀은 도착 방식·방향에 따라 여러 상태로 갈라진다.
+ *
+ * 점프(지하벨트/지하파이프)는 입출구가 *직선* 으로만 이어진다. 출구는 진행 방향으로만
+ * 토출하고, 입구는 진행 방향 반대(뒤)로만 받는다 (이 모델은 sideload 를 배제한다).
+ * 따라서 꺾임은 반드시 *지상 셀* 위에서 일어나야 하며, 두 지하 운반체가 직각으로
+ * 맞붙으면 물리적으로 끊긴다. 이를 막는 두 제약:
+ *  - 출구 직진 (exit-straight): 출구 셀(arr>=4)에서는 같은 방향 지상 직진만 허용,
+ *    재점프 금지. 출구 entity 위에 입구가 겹치는 것도 함께 방지.
+ *  - 입구 직진 (entrance-straight): 점프는 *그 셀에 진행해 온 방향과 같은 방향* 으로만
+ *    시작할 수 있다 (지상 도착 arr=0..3 → 같은 방향 점프만). 시작 셀(arr=-1)은
+ *    예외로 임의 방향 허용 — 머신이 뒤에서 공급하기 때문.
+ * 두 제약이 함께 작동해 꺾임-직후-점프 / 점프-직후-꺾임을 모두 지상 셀로 밀어내므로,
+ * 직각 코너에는 항상 연결용 지상 벨트/파이프 한 칸이 놓인다.
  *
  * 결정성: 동률 cost 시 expand 순서 = 지상 N→E→S→W → 점프 (k 작은 것부터,
  * 축 N→E→S→W). PQ tie-break = (cost, enqueueSeq).
@@ -583,16 +593,17 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
     return { cells: [{ x: start.x, y: start.y }], edges: [], cost: 0 };
   }
 
-  // 상태의 jumpDir: -1 = 지상/시작으로 도착. 0..3 = surfaceDirs[idx] 방향 점프로 도착
-  // (= 지하벨트 출구 셀). 출구는 진행 방향으로만 토출하므로, 그 셀에서는 같은 방향
-  // 지상 직진만 허용하고 재점프는 금지한다 (출구 직후 꺾기 = 물리적으로 끊긴 경로).
-  type PQEntry = { x: number; y: number; jumpDir: number; cost: number; seq: number };
+  // 상태의 arr: -1 = 시작 셀. 0..3 = surfaceDirs[arr] 방향 지상 진행으로 도착.
+  // 4..7 = surfaceDirs[arr-4] 방향 점프로 도착(= 지하 출구 셀). 출구(arr>=4)는 같은
+  // 방향 지상 직진만 + 재점프 금지(exit-straight). 점프는 도착 방향과 같은 방향으로만
+  // 시작 가능(entrance-straight); 시작 셀(arr=-1)만 임의 방향 허용.
+  type PQEntry = { x: number; y: number; arr: number; cost: number; seq: number };
   const pq: PQEntry[] = [];
   let seqCounter = 0;
   const pqLess = (a: PQEntry, b: PQEntry): boolean =>
     a.cost < b.cost || (a.cost === b.cost && a.seq < b.seq);
-  const enqueue = (x: number, y: number, jumpDir: number, cost: number): void => {
-    const node: PQEntry = { x, y, jumpDir, cost, seq: seqCounter++ };
+  const enqueue = (x: number, y: number, arr: number, cost: number): void => {
+    const node: PQEntry = { x, y, arr, cost, seq: seqCounter++ };
     pq.push(node);
     let i = pq.length - 1;
     while (i > 0) {
@@ -624,11 +635,11 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
   };
 
   type CameFromEntry = {
-    prev: { x: number; y: number; jumpDir: number };
+    prev: { x: number; y: number; arr: number };
     edge: RouteEdge;
   };
-  const stateKey = (x: number, y: number, jumpDir: number): string =>
-    `${x},${y},${jumpDir}`;
+  const stateKey = (x: number, y: number, arr: number): string =>
+    `${x},${y},${arr}`;
   const bestCost = new Map<string, number>();
   const cameFrom = new Map<string, CameFromEntry>();
   bestCost.set(stateKey(start.x, start.y, -1), 0);
@@ -648,7 +659,7 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
   while (true) {
     const cur = dequeue();
     if (!cur) return null;
-    const curKey = stateKey(cur.x, cur.y, cur.jumpDir);
+    const curKey = stateKey(cur.x, cur.y, cur.arr);
     const known = bestCost.get(curKey);
     if (known !== undefined && cur.cost > known) continue;
 
@@ -657,14 +668,14 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
       const edgesRev: RouteEdge[] = [];
       let nx = cur.x;
       let ny = cur.y;
-      let nj = cur.jumpDir;
+      let nj = cur.arr;
       while (true) {
         const entry = cameFrom.get(stateKey(nx, ny, nj));
         if (!entry) break;
         edgesRev.push(entry.edge);
         nx = entry.prev.x;
         ny = entry.prev.y;
-        nj = entry.prev.jumpDir;
+        nj = entry.prev.arr;
         cellsRev.push({ x: nx, y: ny });
       }
       return {
@@ -674,35 +685,43 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
       };
     }
 
-    // 지상 인접 edge (cost 1). 지하 출구(jumpDir>=0)에서는 출구 방향으로만 직진 —
-    // 출구는 진행 방향으로만 토출하므로 꺾으면 다음 벨트와 물리적으로 안 이어진다.
+    const isExit = cur.arr >= 4;
+    const exitDir = isExit ? cur.arr - 4 : -1;
+
+    // 지상 인접 edge (cost 1). 지하 출구(arr>=4)에서는 출구 방향으로만 직진 —
+    // 출구는 진행 방향으로만 토출하므로 꺾으면 다음 운반체와 물리적으로 안 이어진다.
     for (let di = 0; di < surfaceDirs.length; di++) {
-      if (cur.jumpDir >= 0 && di !== cur.jumpDir) continue;
+      if (isExit && di !== exitDir) continue;
       const d = surfaceDirs[di];
       const nx = cur.x + d.dx;
       const ny = cur.y + d.dy;
-      const nk = stateKey(nx, ny, -1);
+      const nk = stateKey(nx, ny, di);
       if (blocked.has(cellKey(nx, ny)) && !(nx === end.x && ny === end.y)) continue;
       const newCost = cur.cost + 1;
       const prev = bestCost.get(nk);
       if (prev !== undefined && prev <= newCost) continue;
       bestCost.set(nk, newCost);
       cameFrom.set(nk, {
-        prev: { x: cur.x, y: cur.y, jumpDir: cur.jumpDir },
+        prev: { x: cur.x, y: cur.y, arr: cur.arr },
         edge: 'surface',
       });
-      enqueue(nx, ny, -1, newCost);
+      enqueue(nx, ny, di, newCost);
     }
 
-    // 지하 점프 edge (cost 2). 지하 출구 직후(jumpDir>=0)엔 재점프 금지
-    // (출구 entity 위에 입구 entity 가 겹침 + 직진 토출 규칙).
-    if (maxJumpDistance > 0 && cur.jumpDir === -1) {
+    // 지하 점프 edge (cost 2). 출구 셀(arr>=4)에서는 재점프 금지(출구 entity 위에
+    // 입구가 겹침 + 직진 토출). 점프는 entrance-straight — 이 셀에 진행해 온 방향과
+    // 같은 방향으로만 시작 가능. 시작 셀(arr=-1)만 임의 방향 허용.
+    if (maxJumpDistance > 0 && !isExit) {
+      const atStart = cur.arr === -1;
       for (let di = 0; di < surfaceDirs.length; di++) {
+        // entrance-straight: 지상 도착 방향(arr)과 같은 방향 점프만. 꺾으려면 먼저
+        // 지상 셀에서 방향을 바꾼 뒤 그 다음 셀에서 점프 → 코너에 연결용 셀이 남는다.
+        if (!atStart && di !== cur.arr) continue;
         const d = surfaceDirs[di];
         for (let k = 1; k <= maxJumpDistance; k++) {
           const nx = cur.x + d.dx * k;
           const ny = cur.y + d.dy * k;
-          const nk = stateKey(nx, ny, di);
+          const nk = stateKey(nx, ny, 4 + di);
           if (blocked.has(cellKey(nx, ny)) && !(nx === end.x && ny === end.y)) continue;
           if (!isJumpAllowed(cur.x, cur.y, nx, ny, groupCorridors)) continue;
           const newCost = cur.cost + 2;
@@ -710,10 +729,10 @@ export function dijkstraWithJumps(input: DijkstraInput): DijkstraResult | null {
           if (prev !== undefined && prev <= newCost) continue;
           bestCost.set(nk, newCost);
           cameFrom.set(nk, {
-            prev: { x: cur.x, y: cur.y, jumpDir: cur.jumpDir },
+            prev: { x: cur.x, y: cur.y, arr: cur.arr },
             edge: { dx: d.dx, dy: d.dy, k },
           });
-          enqueue(nx, ny, di, newCost);
+          enqueue(nx, ny, 4 + di, newCost);
         }
       }
     }

@@ -253,6 +253,7 @@ export function parseGameData(raw: unknown): GameData {
     localised_name: r.name,
     category: r.category,
     energy_required: r.energy ?? 0.5,
+    enabled: r.enabled,
     ingredients: toArray(r.ingredients).map((ing) => ({
       name: ing.name,
       amount: ing.amount,

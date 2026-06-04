@@ -8,7 +8,9 @@ import {
   flattenTree,
   collectInternalRecipes,
   assignMinimumCounts,
+  assignThroughputCounts,
 } from '../utils/autoLayout/recipeTree';
+import { makeMachineParamsLookup } from '../utils/autoLayout/wizardUtils';
 import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
 import type { RecipeTreeNode } from '../utils/autoLayout/types';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
@@ -67,6 +69,7 @@ export default function AutoLayoutSidebar() {
     recipes,
     recipeMap,
     itemToRecipe,
+    recipesByProduct,
     entityMap,
     techMap,
     loaded,
@@ -78,6 +81,7 @@ export default function AutoLayoutSidebar() {
       recipes: s.recipes,
       recipeMap: s.recipeMap,
       itemToRecipe: s.itemToRecipe,
+      recipesByProduct: s.recipesByProduct,
       entityMap: s.entityMap,
       techMap: s.techMap,
       loaded: s.loaded,
@@ -98,6 +102,12 @@ export default function AutoLayoutSidebar() {
   const setPerTarget = useWizardStore((s) => s.setPerTarget);
   const inserterOverrides = useWizardStore((s) => s.inserterOverrides);
   const setInserterOverrides = useWizardStore((s) => s.setInserterOverrides);
+  const recipeOverrides = useWizardStore((s) => s.recipeOverrides);
+  const setRecipeOverrides = useWizardStore((s) => s.setRecipeOverrides);
+  const recipeOverridesMap = useMemo(
+    () => new Map(Object.entries(recipeOverrides)),
+    [recipeOverrides],
+  );
 
   // Set 값은 배열로 저장되므로 useMemo 로 변환
   const _extIngr = useWizardStore((s) => s.externalIngredients);
@@ -127,12 +137,28 @@ export default function AutoLayoutSidebar() {
     [recipes],
   );
 
-  // 1단계 트리 미리보기 (외부 토글 반영)
+  // 1단계 트리 미리보기 (외부 토글 + countMode 반영)
+  // manual 모드의 처리량 카운트는 선택된 머신의 crafting_speed 가 필요하므로 selectedMachines 로 lookup.
+  // (effectiveMachines 는 machineCandidates→previewTree 에 의존해 순환되므로 raw set 사용; 머신 미선택 시 1대 폴백)
   const previewTree: RecipeTreeNode | null = useMemo(() => {
     if (!targetRecipe) return null;
-    const tree = expandRecipeTree(targetRecipe, recipeMap, itemToRecipe, externalIngredients);
+    const tree = expandRecipeTree(
+      targetRecipe,
+      recipeMap,
+      itemToRecipe,
+      externalIngredients,
+      recipeOverridesMap,
+    );
+    if (countMode === 'manual') {
+      return assignThroughputCounts(
+        tree,
+        perTarget,
+        recipeMap,
+        makeMachineParamsLookup(Array.from(selectedMachines)),
+      );
+    }
     return assignMinimumCounts(tree);
-  }, [targetRecipe, recipeMap, itemToRecipe, externalIngredients]);
+  }, [targetRecipe, recipeMap, itemToRecipe, externalIngredients, recipeOverridesMap, countMode, perTarget, selectedMachines]);
 
   // 2단계 머신 후보: 트리 안 비-외부 레시피의 category 합집합을 처리할 수 있는 머신
   const machineCandidates: Entity[] = useMemo(() => {
@@ -340,6 +366,7 @@ export default function AutoLayoutSidebar() {
             <RecipeStep
               recipes={recipeOptions}
               recipeMap={recipeMap}
+              recipesByProduct={recipesByProduct}
               targetRecipe={targetRecipe}
               setTargetRecipe={setTargetRecipe}
               countMode={countMode}
@@ -349,6 +376,8 @@ export default function AutoLayoutSidebar() {
               tree={previewTree}
               externalIngredients={externalIngredients}
               setExternalIngredients={setExternalIngredients}
+              recipeOverrides={recipeOverrides}
+              setRecipeOverrides={setRecipeOverrides}
               loaded={loaded}
               t={t}
             />
@@ -448,7 +477,10 @@ export default function AutoLayoutSidebar() {
               />
               <AutoLayoutContainerPanel
                 targetRecipe={targetRecipe}
+                countMode={countMode}
+                perTarget={perTarget}
                 externalIngredients={externalIngredients}
+                recipeOverrides={recipeOverrides}
                 selectedMachines={effectiveMachines}
                 selectedInserters={effectiveInserters}
                 selectedBelts={effectiveBelts}
@@ -501,7 +533,8 @@ export default function AutoLayoutSidebar() {
 
 interface RecipeStepProps {
   recipes: { name: string; localised_name: string }[];
-  recipeMap: Map<string, { name: string; category: string; energy_required: number; ingredients: { name: string; amount: number; type: string }[]; products: { name: string; amount: number }[] }>;
+  recipeMap: Map<string, { name: string; localised_name?: string; category: string; energy_required: number; ingredients: { name: string; amount: number; type: string }[]; products: { name: string; amount: number }[] }>;
+  recipesByProduct: Map<string, string[]>;
   targetRecipe: string;
   setTargetRecipe: (v: string) => void;
   countMode: 'min' | 'manual';
@@ -511,6 +544,8 @@ interface RecipeStepProps {
   tree: RecipeTreeNode | null;
   externalIngredients: Set<string>;
   setExternalIngredients: (v: Set<string>) => void;
+  recipeOverrides: Record<string, string>;
+  setRecipeOverrides: (v: Record<string, string>) => void;
   loaded: boolean;
   t: (k: string, p?: Record<string, string | number>) => string;
 }
@@ -519,6 +554,7 @@ function RecipeStep(props: RecipeStepProps) {
   const {
     recipes,
     recipeMap,
+    recipesByProduct,
     targetRecipe,
     setTargetRecipe,
     countMode,
@@ -528,6 +564,8 @@ function RecipeStep(props: RecipeStepProps) {
     tree,
     externalIngredients,
     setExternalIngredients,
+    recipeOverrides,
+    setRecipeOverrides,
     loaded,
     t,
   } = props;
@@ -598,13 +636,17 @@ function RecipeStep(props: RecipeStepProps) {
             {t('autoLayoutModal.countManual')}
           </button>
           {countMode === 'manual' && (
-            <input
-              type="number"
-              min={1}
-              value={perTarget}
-              onChange={(e) => setPerTarget(Math.max(1, Number(e.target.value)))}
-              className="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
-            />
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={perTarget}
+                onChange={(e) => setPerTarget(Math.max(0, Number(e.target.value)))}
+                className="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+              />
+              <span className="text-[10px] text-gray-400">{t('autoLayoutModal.countUnit')}</span>
+            </div>
           )}
         </div>
         <p className="text-[10px] text-gray-500 mt-1">{t('autoLayoutModal.countHelp')}</p>
@@ -622,8 +664,12 @@ function RecipeStep(props: RecipeStepProps) {
             <div className="bg-gray-800/40 border border-gray-700 rounded p-2 text-xs max-h-64 overflow-y-auto">
               <TreeView
                 node={tree}
+                recipeMap={recipeMap}
+                recipesByProduct={recipesByProduct}
                 externalIngredients={externalIngredients}
                 setExternalIngredients={setExternalIngredients}
+                recipeOverrides={recipeOverrides}
+                setRecipeOverrides={setRecipeOverrides}
                 t={t}
               />
             </div>
@@ -863,24 +909,41 @@ function SelfProducedChips({
   );
 }
 
+type RecipeMapLike = Map<
+  string,
+  { name: string; localised_name?: string; category: string; energy_required: number; ingredients: { name: string; amount: number; type: string }[]; products: { name: string; amount: number }[] }
+>;
+
 interface TreeViewProps {
   node: RecipeTreeNode;
   depth?: number;
+  recipeMap: RecipeMapLike;
+  recipesByProduct: Map<string, string[]>;
   externalIngredients: Set<string>;
   setExternalIngredients: (v: Set<string>) => void;
+  recipeOverrides: Record<string, string>;
+  setRecipeOverrides: (v: Record<string, string>) => void;
   t: (k: string, p?: Record<string, string | number>) => string;
 }
 
 function TreeView({
   node,
   depth = 0,
+  recipeMap,
+  recipesByProduct,
   externalIngredients,
   setExternalIngredients,
+  recipeOverrides,
+  setRecipeOverrides,
   t,
 }: TreeViewProps) {
   const isExternal = node.external;
   const isRoot = depth === 0;
   const canToggle = !isRoot; // root 는 항상 내부 생산
+
+  // 이 아이템을 만들 수 있는 레시피들. 2개 이상이면 대체 제작법 선택 UI 노출.
+  const altRecipes = isRoot ? [] : recipesByProduct.get(node.itemName) ?? [];
+  const hasAlternatives = !isExternal && altRecipes.length > 1 && !!node.recipeName;
 
   function handleToggle() {
     if (!canToggle) return;
@@ -888,6 +951,20 @@ function TreeView({
     if (next.has(node.itemName)) next.delete(node.itemName);
     else next.add(node.itemName);
     setExternalIngredients(next);
+  }
+
+  function handlePickRecipe(recipeName: string) {
+    const next = { ...recipeOverrides };
+    // 기본(첫 번째) 제작법을 고르면 override 제거 — 깔끔하게 유지.
+    if (altRecipes[0] === recipeName) delete next[node.itemName];
+    else next[node.itemName] = recipeName;
+    setRecipeOverrides(next);
+  }
+
+  function recipeLabel(name: string): string {
+    const r = recipeMap.get(name);
+    const loc = r?.localised_name;
+    return loc && loc !== name ? `${loc} (${name})` : name;
   }
 
   let rowClass: string;
@@ -928,8 +1005,24 @@ function TreeView({
           {badgeText}
         </span>
         <span className="font-medium">{node.itemName}</span>
-        {node.recipeName && node.recipeName !== node.itemName && (
-          <span className="text-[10px] opacity-60">({node.recipeName})</span>
+        {hasAlternatives ? (
+          <select
+            value={node.recipeName}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => handlePickRecipe(e.target.value)}
+            title={t('autoLayoutModal.altRecipeTooltip', { count: altRecipes.length })}
+            className="ml-1 max-w-[55%] bg-gray-900 border border-amber-600/60 text-amber-100 text-[10px] rounded px-1 py-0.5 cursor-pointer hover:border-amber-400 focus:outline-none focus:border-amber-400"
+          >
+            {altRecipes.map((rn) => (
+              <option key={rn} value={rn} className="bg-gray-900 text-gray-100">
+                {recipeLabel(rn)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          node.recipeName && node.recipeName !== node.itemName && (
+            <span className="text-[10px] opacity-60">({node.recipeName})</span>
+          )
         )}
         {!isExternal && node.recipeName && (
           <span className="text-[10px] ml-auto opacity-80">×{node.machineCount}</span>
@@ -940,8 +1033,12 @@ function TreeView({
           key={c.itemName + ':' + i}
           node={c}
           depth={depth + 1}
+          recipeMap={recipeMap}
+          recipesByProduct={recipesByProduct}
           externalIngredients={externalIngredients}
           setExternalIngredients={setExternalIngredients}
+          recipeOverrides={recipeOverrides}
+          setRecipeOverrides={setRecipeOverrides}
           t={t}
         />
       ))}

@@ -42,6 +42,9 @@ import type {
   ProgressReporter,
   Routing,
   RunContainerWizard,
+  TraceStep,
+  TraceRouting,
+  CandidateTraceResult,
 } from "./containerModel";
 import { wrapExternalsAroundPerimeter } from "./areaUnification";
 import {
@@ -136,9 +139,39 @@ async function maybeYield(): Promise<void> {
   }
 }
 
-/** emit + maybeYield 한 번에 — phase 진입 지점에서 호출. */
-async function reportFn(name: string): Promise<void> {
+// ─────────────────────────────────────────────────────────────────────────────
+// 시각화 레코더 (모듈 스코프) — `traceCandidatePath` 가 활성화하면 각 reportFn
+// 진입마다 (함수 이름 + 호출 깊이 + 영역 스냅샷) 을 한 단계로 기록한다.
+// 평소엔 null 이라 runContainerWizard 의 성능/동작에 영향을 주지 않는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TraceRecorder {
+  steps: TraceStep[];
+  /** recurseMachine 재귀 깊이 — 호출 트리 중첩 구성용 */
+  callDepth: number;
+}
+
+let traceRecorder: TraceRecorder | null = null;
+
+/**
+ * emit + maybeYield 한 번에 — phase 진입 지점에서 호출.
+ *
+ * `areas` 가 주어지고 레코더가 활성이면 그 시점의 스냅샷을 한 단계로 기록한다.
+ * (areas 미전달 = 트레이스 대상 아님 → 기록 생략.)
+ */
+async function reportFn(
+  name: string,
+  areas?: { internal: Area; external: Area },
+): Promise<void> {
   emitProgress(name);
+  if (traceRecorder && areas) {
+    traceRecorder.steps.push({
+      order: traceRecorder.steps.length,
+      functionName: name,
+      callDepth: traceRecorder.callDepth,
+      snapshot: captureSnapshot(areas.internal, areas.external),
+    });
+  }
   await maybeYield();
 }
 
@@ -174,6 +207,7 @@ export const runContainerWizard: RunContainerWizard = async (
     recipeMap,
     itemToRecipe,
     input.externalIngredients,
+    new Map(Object.entries(input.recipeOverrides ?? {})),
   );
   const tree =
     input.countMode === "min"
@@ -302,6 +336,154 @@ export function flattenCandidates(tree: CandidateTree): CandidateLeaf[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 시각화 트레이스 — 선택된 후보 1개의 생성 과정을 함수 단계로 재현
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 후보의 (perm, dir) 로 `buildSingleAttempt` 를 *한 번만* 재실행하며 각 reportFn
+ * 진입을 한 단계로 기록한다. `runContainerWizard` 는 모든 perm×dir 을 탐색하지만
+ * 여기선 확정된 한 조합만 결정적으로 재현하므로 동일 후보가 그대로 나온다.
+ *
+ * 반환된 단계들은 시각화 모달이 0.5초(사용자 지정) 간격으로 재생한다.
+ */
+/**
+ * 트레이스 직렬화 락 — `traceRecorder`/`ROUTING_OPTIONS`/`MERGE_CONFIG` 가 모두
+ * 모듈 전역이라 동시 실행 시 서로를 덮어쓴다. React StrictMode(개발)가 effect 를
+ * 이중 호출하면 traceCandidatePath 가 둘 동시에 돌 수 있으므로, 이전 트레이스가
+ * 끝날 때까지 기다려 한 번에 하나만 실행되게 한다.
+ */
+let traceLock: Promise<void> = Promise.resolve();
+
+export async function traceCandidatePath(
+  input: ContainerWizardInput,
+  perm: string[],
+  dir: "right" | "down",
+): Promise<CandidateTraceResult> {
+  const prevLock = traceLock;
+  let release!: () => void;
+  traceLock = new Promise<void>((r) => (release = r));
+  await prevLock;
+
+  // 로컬 레코더 — 전역 traceRecorder 가 다른 호출에 의해 null 이 되어도 안전.
+  const rec: TraceRecorder = { steps: [], callDepth: 0 };
+  let failed = false;
+  try {
+    resetProgress(undefined);
+    ROUTING_OPTIONS = buildRoutingOptions(input);
+    MERGE_CONFIG = {
+      ...DEFAULT_MERGE_CONFIG,
+      enabled: input.mergeSupplyBoxes ?? AUTO_LAYOUT_MERGE_BOXES,
+    };
+
+    const { recipeMap, itemToRecipe } = useGameDataStore.getState();
+    const expanded = expandRecipeTree(
+      input.targetRecipe,
+      recipeMap,
+      itemToRecipe,
+      input.externalIngredients,
+      new Map(Object.entries(input.recipeOverrides ?? {})),
+    );
+    const tree =
+      input.countMode === "min"
+        ? assignMinimumCounts(expanded)
+        : assignThroughputCounts(
+            expanded,
+            input.countMode.perTarget,
+            recipeMap,
+            makeMachineParamsLookup(input.selectedMachines),
+          );
+
+    if (!tree.recipeName)
+      return { steps: [], routings: [], bbox: undefined, failed: true };
+
+    const pickMachine = makeMachinePicker(input);
+    const rootMachineEntity = pickMachine(tree.recipeName);
+    if (!rootMachineEntity)
+      return { steps: [], routings: [], bbox: undefined, failed: true };
+
+    const rootContainer = makeMachineContainer(tree, rootMachineEntity.name);
+
+    // perm(itemName 순서) → 실제 자식 노드 배열로 복원. perm 에 없는 자식은 뒤에 보충.
+    const directChildren = tree.children.filter(
+      (c) => !c.external && c.recipeName,
+    );
+    const rootPerm: RecipeTreeNode[] = [];
+    for (const name of perm) {
+      const found = directChildren.find(
+        (c) => c.itemName === name && !rootPerm.includes(c),
+      );
+      if (found) rootPerm.push(found);
+    }
+    for (const c of directChildren) {
+      if (!rootPerm.includes(c)) rootPerm.push(c);
+    }
+
+    traceRecorder = rec;
+    let routings: TraceRouting[] = [];
+    try {
+      const result = await buildSingleAttempt(
+        tree,
+        rootContainer,
+        rootPerm,
+        dir,
+        pickMachine,
+        undefined,
+      );
+      if (result.kind === "candidate") {
+        // 최종 '완료' 단계 — 완성된 후보의 영역을 그대로 담는다.
+        rec.steps.push({
+          order: rec.steps.length,
+          functionName: "완료",
+          callDepth: 0,
+          snapshot: captureSnapshot(result.internal, result.external),
+        });
+        // 전체 라우팅 연결 목록 — 단계별로 양 끝 컨테이너 존재 시 선을 그린다.
+        routings = result.routings.map((r) => ({
+          fromId: r.from.containerId,
+          toId: r.to.containerId,
+          fluid: r.from.kind !== "item",
+        }));
+      } else {
+        failed = true;
+      }
+    } finally {
+      if (traceRecorder === rec) traceRecorder = null;
+    }
+
+    return {
+      steps: rec.steps,
+      routings,
+      bbox: unionStepsBbox(rec.steps),
+      failed,
+    };
+  } finally {
+    release();
+  }
+}
+
+/** 모든 단계의 placed 셀(internal+external) 합집합 bbox — 카메라 고정용. */
+function unionStepsBbox(
+  steps: TraceStep[],
+): { x: number; y: number; w: number; h: number } | undefined {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const s of steps) {
+    for (const area of [s.snapshot.internal, s.snapshot.external]) {
+      for (const p of area.placed) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x + 1 > maxX) maxX = p.x + 1;
+        if (p.y + 1 > maxY) maxY = p.y + 1;
+      }
+    }
+  }
+  if (!isFinite(minX)) return undefined;
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 한 (perm × dir) 시도 — 루트 배치 → 자식 재귀 → 외부 IO 채우기
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -331,7 +513,7 @@ async function buildSingleAttempt(
   const machineRecords: MachineRecord[] = [];
 
   // 1. 루트 배치 — machineCount > 1 이면 클러스터 (Spring Relaxation)
-  await reportFn("placeRootMachine");
+  await reportFn("placeRootMachine", { internal, external });
   let placedRoot: Container;
   if (tree.machineCount > 1) {
     const clusterResult = placeCluster(
@@ -368,8 +550,10 @@ async function buildSingleAttempt(
   }
 
   // 2. 자식 DFS 재귀 (Phase 1 — 머신 배치만)
+  // 루트 직계 자식들: 배치는 직전 형제 옆에 나란히(lastAnchor)지만, 라우팅은
+  // 모두 실제 부모(placedRoot)로 보낸다 — 형제끼리는 서로의 재료가 아니다.
   const childMachineNodes: CandidateNode[] = [];
-  let lastParent = placedRoot;
+  let lastAnchor = placedRoot;
   for (const child of rootPerm) {
     if (signal?.aborted) {
       return makeFailureLeaf(
@@ -380,7 +564,8 @@ async function buildSingleAttempt(
     }
     const childResult = await recurseMachine(
       child,
-      lastParent,
+      lastAnchor,
+      placedRoot,
       rootDir,
       internal,
       external,
@@ -400,23 +585,23 @@ async function buildSingleAttempt(
       return failure;
     }
     collectRoutingsFromTree(childResult, allRoutings);
-    lastParent = childResult.machine;
+    lastAnchor = childResult.machine;
   }
 
   // Phase 2 — 외부 컨테이너 등록 (모든 머신 배치 완료 후)
-  await reportFn("attachExternalInputs (Phase 2)");
+  await reportFn("attachExternalInputs (Phase 2)", { internal, external });
   for (const { machine, treeNode } of machineRecords) {
     attachExternalInputs(machine, treeNode, internal, external, allConnections);
   }
 
   // 3. 루트 product 출력 연결 등록 — root 머신 → 외부 무한상자/파이프
-  await reportFn("attachRootOutput");
+  await reportFn("attachRootOutput", { internal, external });
   attachRootOutput(placedRoot, tree, internal, external, allConnections);
 
   // 4. 후처리 — chest 들을 internal bbox 의 perimeter ring 위에 최초 배치 + 라우팅.
   //    병합 플래그 ON 이면 공유 무한상자 병합 패스(트렁크), 아니면 기존 1:1.
   if (MERGE_CONFIG.enabled) {
-    await reportFn("wrapExternalsWithMerge");
+    await reportFn("wrapExternalsWithMerge", { internal, external });
     wrapExternalsWithMerge(
       internal,
       external,
@@ -426,7 +611,7 @@ async function buildSingleAttempt(
       MERGE_CONFIG,
     );
   } else {
-    await reportFn("wrapExternalsAroundPerimeter");
+    await reportFn("wrapExternalsAroundPerimeter", { internal, external });
     wrapExternalsAroundPerimeter(
       internal,
       external,
@@ -444,6 +629,8 @@ async function buildSingleAttempt(
     rootPerm.length === 0
       ? "depth-0 candidate"
       : `perm=[${rootPerm.map((n) => n.itemName).join(", ")}] dir=${rootDir}`,
+    rootPerm.map((n) => n.itemName),
+    rootDir,
   );
   // 자식 노드들을 일시 보관 (호출자가 옮긴다).
   leaf.children = childMachineNodes;
@@ -455,6 +642,41 @@ async function buildSingleAttempt(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * `recurseMachine` 의 얇은 래퍼 — 시각화 레코더의 호출 깊이를 증감시켜
+ * 함수 호출 트리의 중첩 관계를 기록한다. 레코더 비활성 시 비용 없음.
+ */
+async function recurseMachine(
+  treeNode: RecipeTreeNode,
+  placeAnchor: Container,
+  consumer: Container,
+  dir: "right" | "down",
+  internal: Area,
+  external: Area,
+  containerByRecipe: Map<string, Container>,
+  pickMachine: (recipeName: string) => { name: string } | undefined,
+  signal: AbortSignal | undefined,
+  machineRecords: MachineRecord[],
+): Promise<MachineNode | FailureLeaf> {
+  if (traceRecorder) traceRecorder.callDepth += 1;
+  try {
+    return await recurseMachineImpl(
+      treeNode,
+      placeAnchor,
+      consumer,
+      dir,
+      internal,
+      external,
+      containerByRecipe,
+      pickMachine,
+      signal,
+      machineRecords,
+    );
+  } finally {
+    if (traceRecorder) traceRecorder.callDepth -= 1;
+  }
+}
+
+/**
  * 한 비-external 레시피 노드를 부모 옆에 배치 + 그 자식 (= 손자, 증손자 ...) 도
  * 재귀적으로 배치한다.
  *
@@ -462,9 +684,14 @@ async function buildSingleAttempt(
  * 조합만 commit (= 트리에는 모든 시도가 BranchNode 로 기록되지만 상태에는
  * first-success 만 반영). 더 강한 cross-product enumeration 은 follow-up.
  */
-async function recurseMachine(
+async function recurseMachineImpl(
   treeNode: RecipeTreeNode,
-  parent: Container,
+  // 배치 기준점 — 충돌 회피를 위해 이 컨테이너 옆(dir)에 자식을 나란히 둔다.
+  // 형제 체인에서는 *직전 형제* 가 들어온다 (레이아웃 압축용).
+  placeAnchor: Container,
+  // 라우팅 소비자 — 이 자식의 product 를 실제로 소비하는 부모 머신.
+  // placeAnchor 와 다를 수 있다 (형제끼리는 서로의 재료가 아니므로).
+  consumer: Container,
   dir: "right" | "down",
   internal: Area,
   external: Area,
@@ -490,7 +717,7 @@ async function recurseMachine(
   }
 
   const machineContainer = makeMachineContainer(treeNode, machineEntity.name);
-  await reportFn(`placeMachine [${treeNode.recipeName}]`);
+  await reportFn(`placeMachine [${treeNode.recipeName}]`, { internal, external });
 
   const routings: Routing[] = [];
   let placed: Container;
@@ -504,7 +731,7 @@ async function recurseMachine(
     const clusterResult = placeCluster(
       treeNode,
       machineEntity.name,
-      parent,
+      placeAnchor,
       dir,
       internal,
     );
@@ -519,10 +746,11 @@ async function recurseMachine(
     for (const m of clusterResult.machines) {
       await reportFn(
         `routeWithFallback [${treeNode.itemName} → 부모 (클러스터)]`,
+        { internal, external },
       );
       const routeResult = routeWithFallback(
         m,
-        parent,
+        consumer,
         routeKind,
         internal,
         ROUTING_OPTIONS,
@@ -543,7 +771,7 @@ async function recurseMachine(
     placed = clusterResult.representative;
   } else {
     // 단일 기계 경로
-    const single = placeMachine(parent, machineContainer, dir, internal);
+    const single = placeMachine(placeAnchor, machineContainer, dir, internal);
     if (!single) {
       return makeFailureLeaf(
         "no-routing",
@@ -553,11 +781,14 @@ async function recurseMachine(
     }
     placed = single;
 
-    // Route this → parent — treeNode.itemName 은 부모로 흘러 들어가는 자식의 product 이름.
-    await reportFn(`routeWithFallback [${treeNode.itemName} → 부모]`);
+    // Route this → consumer — treeNode.itemName 은 소비자(부모)로 흘러 들어가는 자식의 product 이름.
+    await reportFn(`routeWithFallback [${treeNode.itemName} → 부모]`, {
+      internal,
+      external,
+    });
     const routeResult = routeWithFallback(
       placed,
-      parent,
+      consumer,
       routeKind,
       internal,
       ROUTING_OPTIONS,
@@ -598,6 +829,7 @@ async function recurseMachine(
       wizardProgress.attempts += 1;
       await reportFn(
         `recurseMachine 손자 시도 [${perm.map((p) => p.itemName).join(",")}] dir=${childDir}`,
+        { internal, external },
       );
 
       const branch = makeBranchNode(
@@ -613,12 +845,15 @@ async function recurseMachine(
       const containerByRecipeAttempt = new Map(containerByRecipe);
       const machineRecordsLengthBefore = machineRecords.length;
 
-      let lastParent = placed;
+      // 형제 손자들: 배치는 직전 형제 옆에 나란히(lastAnchor)지만, 라우팅은
+      // 모두 실제 부모(placed)로 보낸다 — 형제끼리는 서로의 재료가 아니다.
+      let lastAnchor = placed;
       let allOk = true;
       for (const grandchild of perm) {
         const childResult = await recurseMachine(
           grandchild,
-          lastParent,
+          lastAnchor,
+          placed,
           childDir,
           internalAttempt,
           externalAttempt,
@@ -632,7 +867,7 @@ async function recurseMachine(
           allOk = false;
           break;
         }
-        lastParent = childResult.machine;
+        lastAnchor = childResult.machine;
       }
 
       if (allOk && !committed) {
@@ -886,6 +1121,8 @@ function makeCandidateLeaf(
   external: Area,
   routings: Routing[],
   label: string,
+  sourcePerm: string[],
+  sourceDir: "right" | "down",
 ): CandidateLeaf {
   const bbox = internal.bbox;
   const squarenessPenalty = bbox ? Math.abs(bbox.w - bbox.h) : 0;
@@ -898,6 +1135,8 @@ function makeCandidateLeaf(
     squarenessPenalty,
     children: [],
     label,
+    sourcePerm,
+    sourceDir,
   };
 }
 
@@ -928,13 +1167,24 @@ function captureSnapshot(internal: Area, external: Area): AreaSnapshot {
 // 컨테이너 / 영역 / 라우팅 유틸
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 머신 footprint 크기 조회. 배치는 엔티티가 entityMap 에 *존재해야만* 시작할 수
+ * 있으므로, 없으면 예외를 던진다 — 기본값(3×3) 으로 조용히 배치하지 않는다.
+ * (정상 경로에선 pickMachine 이 이미 존재를 보장하므로 발생하지 않는 invariant.)
+ */
+function resolveMachineSize(entityName: string): { w: number; h: number } {
+  const entity = useGameDataStore.getState().entityMap.get(entityName);
+  if (!entity) {
+    throw new Error(`머신 엔티티 없음: ${entityName} — 배치 불가`);
+  }
+  return { w: entity.tile_width, h: entity.tile_height };
+}
+
 function makeMachineContainer(
   node: RecipeTreeNode,
   entityName: string,
 ): Container {
-  const entity = useGameDataStore.getState().entityMap.get(entityName);
-  const w = entity?.tile_width ?? 3;
-  const h = entity?.tile_height ?? 3;
+  const { w, h } = resolveMachineSize(entityName);
   return {
     id: `m-${node.recipeName ?? node.itemName}-${nextNodeId("id")}`,
     kind: "machine",
@@ -973,9 +1223,7 @@ function placeCluster(
   internal: Area,
 ): ClusterPlaceResult {
   const count = Math.max(1, node.machineCount);
-  const entity = useGameDataStore.getState().entityMap.get(entityName);
-  const w = entity?.tile_width ?? 3;
-  const h = entity?.tile_height ?? 3;
+  const { w, h } = resolveMachineSize(entityName);
 
   // N개 템플릿 생성 (origin 은 Spring 이 결정)
   const templates: Container[] = Array.from({ length: count }, (_, i) => ({

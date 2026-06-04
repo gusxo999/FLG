@@ -10,6 +10,7 @@ import { EntityType } from '../types/layout';
 import type { GridCell, Direction } from '../types/layout';
 import { modulesToInsertPlans, insertPlansToModules } from '../utils/blueprintItemsCodec';
 import { entityTypeFromFactorioType } from '../utils/entityCategory';
+import VisualizationModal from './visualization/VisualizationModal';
 // 빌드타임에 lua export 스크립트를 문자열로 번들 (단일 source-of-truth)
 import luaExportScript from '../../../scripts/export-gamedata.min.lua?raw';
 
@@ -23,7 +24,9 @@ export default function Toolbar() {
   const grid = useLayoutStore((s) => s.grid);
   const routingEditMode = useLayoutStore((s) => s.routingEditMode);
   const routingEditSession = useLayoutStore((s) => s.routingEditSession);
+  const visualizationSource = useLayoutStore((s) => s.visualizationSource);
   const { fillGridFromCells, clearGrid, undo, redo, setRoutingEditMode } = useLayoutStore.getState();
+  const [vizOpen, setVizOpen] = useState(false);
   const gameDataLoaded = useGameDataStore((s) => s.loaded);
   const gameDataRecipeCount = useGameDataStore((s) => s.recipes.length);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -540,7 +543,23 @@ export default function Toolbar() {
         >
           {routingEditMode ? '라우팅편집중' : '라우팅편집'}
         </button>
+        <button
+          onClick={() => visualizationSource && setVizOpen(true)}
+          disabled={!visualizationSource}
+          title={visualizationSource
+            ? '후보 생성 시각화 — 선택된 후보의 생성 과정을 함수 단계별로 재생.'
+            : '자동 레이아웃 후보를 먼저 적용해야 사용할 수 있습니다.'}
+          className={`toolbar-btn transition-colors ${
+            !visualizationSource
+              ? 'opacity-30 cursor-not-allowed'
+              : 'text-purple-300 hover:text-purple-200'
+          }`}
+        >
+          시각화
+        </button>
       </div>
+
+      {vizOpen && <VisualizationModal onClose={() => setVizOpen(false)} />}
 
 
 
