@@ -8,6 +8,8 @@
  * which is fully erasable and behaves identically at runtime.
  */
 
+import type { InfinitySettings, InfinityPipeSettings } from './blueprint';
+
 export const EntityType = {
   Belt:            'Belt',
   UndergroundBelt: 'UndergroundBelt',
@@ -110,6 +112,19 @@ export interface GridCell {
   mirror?: boolean;
   /** import 시 보존만 — round-trip 위해 */
   tags?: Record<string, unknown>;
+  /**
+   * 무한상자(infinity-container)·무한파이프(infinity-pipe)가 보관/공급/회수하는
+   * 내용물 정보. 셀의 entityType 에 따라 모양이 다르다:
+   *  - InfinityChest → `InfinitySettings` (아이템 필터 리스트)
+   *  - InfinityPipe  → `InfinityPipeSettings` (단일 유체)
+   *
+   * - 자동 레이아웃이 만든 컨테이너: `content` + 입출력 역할로부터 합성 (입력은
+   *   공급 = `at-least`, 출력은 회수 = `at-most` + 빈 채움).
+   * - 블루프린트 import: 원본 `infinity_settings` 를 그대로 보존.
+   *
+   * Export 시 블루프린트 엔티티의 `infinity_settings` 로 그대로 직렬화된다.
+   */
+  infinitySettings?: InfinitySettings | InfinityPipeSettings;
   /** Rendering hint color (hex string) */
   color?: string;
 }

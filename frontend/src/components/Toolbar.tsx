@@ -66,6 +66,8 @@ export default function Toolbar() {
           ...(insertPlans ? { items: insertPlans } : {}),
           // underground-belt 의 input/output 구분 (Factorio blueprint format).
           ...(cell.undergroundType ? { type: cell.undergroundType } : {}),
+          // 무한상자 아이템 정보 (입력=공급 / 출력=회수). import 보존 + 자동배치 합성.
+          ...(cell.infinitySettings ? { infinity_settings: cell.infinitySettings } : {}),
           // Phase 1 passthrough
           ...(cell.quality ? { quality: cell.quality } : {}),
           ...(cell.mirror ? { mirror: cell.mirror } : {}),
@@ -217,6 +219,8 @@ export default function Toolbar() {
               isOrigin,
               ...(isOrigin && e.recipe ? { recipe: e.recipe } : {}),
               ...(isOrigin && modules ? { modules } : {}),
+              // 무한상자 아이템 정보 보존 — round-trip 위해 그대로 저장.
+              ...(isOrigin && e.infinity_settings ? { infinitySettings: e.infinity_settings } : {}),
               ...(isOrigin && e.quality ? { quality: e.quality } : {}),
               ...(undergroundType ? { undergroundType } : {}),
               ...(isOrigin && e.mirror ? { mirror: e.mirror } : {}),

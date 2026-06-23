@@ -18,10 +18,9 @@
  *   - 탭(machine=sink): 픽업 = 트렁크 향(=faceVector(face), 바깥), 드롭 = 머신(안).
  */
 
-import type { Direction } from '../../types/layout';
 import type { ContainerPort, PlacedCell, PortPair } from './containerModel';
-import { faceVector, makeBeltCell, makeInserterCell } from './containerRouting';
-import type { TrunkPath } from './trunkPath';
+import { faceVector, makeBeltCell, makeInserterCell, vectorToDirection } from './containerRouting';
+import type { TapRole, TrunkPath } from './trunkPath';
 
 /**
  * 트렁크 방향:
@@ -46,7 +45,10 @@ export interface TrunkEmitOptions {
 
 export interface TrunkTapEmission {
   machineId: string;
-  reach: 1 | 2;
+  /** 집기 거리(셀 수). 1=일반, ≥2=긴팔. */
+  reach: number;
+  /** belt 기준 흐름 역할 ('source'=머신→belt, 'sink'=belt→머신). */
+  role: TapRole;
   inserter: PlacedCell;
 }
 
@@ -67,16 +69,40 @@ export function emitTrunk(path: TrunkPath, opts: TrunkEmitOptions): TrunkEmissio
   // collect(출력)는 supply(입력)의 거울 — 벨트 흐름·모든 인서터 픽업을 반전.
   const collect = opts.mode === 'collect';
 
-  // 1) 트렁크 belt 셀. collect 면 흐름 방향 반전.
-  const beltCells = path.trunkCells.map((c) =>
-    makeBeltCell({ x: c.x, y: c.y }, collect ? reverseDir(c.dir) : c.dir, opts.beltEntityName, trunkPair),
-  );
+  // 1) 트렁크 belt 셀.
+  //    supply: trunkCells[i].dir 그대로 (chest→끝, 각 셀 = 다음 셀로의 흐름 방향).
+  //    collect: 흐름이 끝→chest 로 반전된다. 코너 셀은 방향이 하나뿐이라 단순
+  //    reverseDir 로는 흐름이 꺾여 돌지 못하고 경로 밖(빈칸)을 가리키게 된다
+  //    (직선 셀에서만 우연히 일치). 따라서 셀 순서 기하로 "이전 셀(=collect
+  //    흐름의 *다음* 셀)" 방향을 다시 계산한다. cell[0] 의 이전 = chest 측 피더 자리.
+  const cells = path.trunkCells;
+  const start = cells[0];
+  let beltCells: PlacedCell[];
+  if (collect && start) {
+    const f0 = {
+      x: Math.sign(start.x - path.chestCell.x),
+      y: Math.sign(start.y - path.chestCell.y),
+    };
+    const feederSeat = { x: path.chestCell.x + f0.x, y: path.chestCell.y + f0.y };
+    beltCells = cells.map((c, i) => {
+      const prev = i === 0 ? feederSeat : cells[i - 1];
+      return makeBeltCell(
+        { x: c.x, y: c.y },
+        vectorToDirection(prev.x - c.x, prev.y - c.y),
+        opts.beltEntityName,
+        trunkPair,
+      );
+    });
+  } else {
+    beltCells = cells.map((c) =>
+      makeBeltCell({ x: c.x, y: c.y }, c.dir, opts.beltEntityName, trunkPair),
+    );
+  }
 
   // 2) 상자측 인서터. chest -- seat -- trunkStart 가 일직선(2칸). f = chest→trunkStart.
   //    supply 피더: 상자에서 집어(−f) belt 에 놓음.
   //    collect 리시버: 트렁크에서 집어(+f) 상자에 넣음 (픽업 반전).
   let feeder: PlacedCell | null = null;
-  const start = path.trunkCells[0];
   if (start) {
     const f = {
       x: Math.sign(start.x - path.chestCell.x),
@@ -89,14 +115,17 @@ export function emitTrunk(path: TrunkPath, opts: TrunkEmitOptions): TrunkEmissio
 
   // 3) 머신별 탭 인서터. supply: 트렁크에서 집어(+faceVector) 머신에 넣음.
   //    collect: 머신에서 집어(−faceVector) 트렁크에 놓음 (픽업 반전). reach 로 prototype.
+  //    단, role='sink'(멀티싱크 버스의 소비자 부모)는 트렁크 모드와 무관하게 belt 에서
+  //    집어(+faceVector) 머신에 넣는다 — collect belt 도중에서 아이템을 내리는 소비자.
   const taps: TrunkTapEmission[] = path.covered.map((t) => {
     const v = faceVector(t.face);
-    const pickup = collect ? { x: -v.x, y: -v.y } : v;
-    const name = t.reach === 2 ? opts.longInserterEntityName : opts.inserterEntityName;
+    const pickup = collect && t.role !== 'sink' ? { x: -v.x, y: -v.y } : v;
+    const name = t.reach >= 2 ? opts.longInserterEntityName : opts.inserterEntityName;
     const pair = synthPair(trunkConsumerId, t.machineId);
     return {
       machineId: t.machineId,
       reach: t.reach,
+      role: t.role,
       inserter: makeInserterCell(t.seat, pickup, name, pair),
     };
   });
@@ -116,9 +145,4 @@ function synthPair(producerId: string, consumerId: string): PortPair {
     kind: 'item',
   });
   return { producer: port(producerId), consumer: port(consumerId) };
-}
-
-/** 흐름 방향 반전 (N↔S, E↔W). Direction: 0=N,4=E,8=S,12=W. */
-function reverseDir(d: Direction): Direction {
-  return ((d + 8) % 16) as Direction;
 }

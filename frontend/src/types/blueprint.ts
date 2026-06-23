@@ -32,6 +32,21 @@ export interface InfinitySettings {
   filters?: InfinityFilter[];
 }
 
+/**
+ * infinity-pipe 의 `infinity_settings` — 무한상자(infinity-container)와는 다른 모양이다.
+ * 단일 유체 1종의 채움 수준을 지정한다 (필터 리스트가 아님).
+ *  - `name`        : 유체 이름. 미지정이면 빈 파이프.
+ *  - `percentage`  : 0..1 채움 비율.
+ *  - `temperature` : 유체 온도(°C). 미지정이면 유체 기본 온도.
+ *  - `mode`        : 채움 모드. 상자와 달리 `add`/`remove` 도 존재.
+ */
+export interface InfinityPipeSettings {
+  name?: string;
+  percentage?: number;
+  temperature?: number;
+  mode?: 'at-least' | 'at-most' | 'exactly' | 'add' | 'remove';
+}
+
 export interface ArithmeticCondition {
   first_signal?: SignalID;
   second_signal?: SignalID;
@@ -142,7 +157,8 @@ export interface BlueprintEntity {
     filters?: ItemFilter[];
     bar?: number;
   };
-  infinity_settings?: InfinitySettings;
+  /** infinity-container 는 `InfinitySettings`, infinity-pipe 는 `InfinityPipeSettings`. */
+  infinity_settings?: InfinitySettings | InfinityPipeSettings;
   type?: 'input' | 'output' | 'input-output';
   input_priority?: 'right' | 'left';
   output_priority?: 'right' | 'left';

@@ -169,7 +169,7 @@ function craftTime(recipe: Recipe): number {
  * = product.amount × probability × productivityMultiplier × craftingSpeed / energy_required
  * 확률성 산출물은 기대 수율(amount × probability)을 사용한다.
  */
-function perMachineItemsPerSec(
+export function perMachineItemsPerSec(
   recipe: Recipe,
   producedItem: string,
   params: NodeMachineParams,

@@ -1,19 +1,23 @@
-# 배치 탐색 알고리즘 — 컨테이너 모델
+# 배치 탐색 알고리즘 — 컨테이너 모델 + 전략 레이어
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
+> **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) (현재 전략 S-LAYER 의 채널 단계), [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 >
-> **상태:** 본 문서는 컨테이너 모델의 정의서다.
+> **상태:** 본 문서는 두 부분으로 나뉜다.
+> - **Part I — 컨테이너 모델 (§2–§6):** 어떤 배치 전략에서도 변하지 않는 *불변 기반*. 코드와 일치한다.
+> - **Part II — 전략 레이어 (§7–§13):** *교체 가능한* 전략. **현재 구현된 전략은 `S-LAYER` 하나**이며(§5.5·§7), 과거의 `S-EXH`(완전탐색)는 롤백되어 더 이상 코드에 없다. `S-DP`·`S-MEMO` 는 미구현 설계 후보다.
 
 ---
 
 ## 1. 한 줄 요약
 
-머신과 무한상자·무한파이프를 단일 추상 *컨테이너* 로 묶고, 컨테이너끼리의 입출력을 *벨트(가변길이) + 투입기 페어* (item) 또는 *파이프 + 지하파이프* (fluid) 로 라우팅한다. 부모-자식은 §4 라우팅 형식의 최소 거리만큼 인접하게 연결한다.
+머신과 무한상자·무한파이프를 단일 추상 *컨테이너* 로 묶고, 컨테이너끼리의 입출력을 *벨트(가변길이) + 투입기 페어* (item) 또는 *파이프 + 지하파이프* (fluid) 로 라우팅한다.
 
-이 컨테이너 모델(§2–4)과 정합성 조건(§6 C1–C3)은 **어떤 배치 전략에서도 변하지 않는 불변 기반**이다. 반면 *후보를 어떤 빌드 방향으로 탐색하고, 무엇을 열거하며, 무엇을 반환하는지* 는 교체 가능한 **배치 전략 레이어(§5.5)** 의 몫이며, 상황(트리 크기·사용자 의도·시간 예산)에 맞는 전략을 고른다. 현재 기준(baseline) 전략은 모든 형제 순서·방향을 빠짐없이 훑는 *완전 탐색(S-EXH)* 이고, 부분트리를 모듈로 합성하는 *shape-curve DP(S-DP)* 가 설계 중이다 — **완전 탐색은 유일·최종 전략이 아니라 정합성 검증용 임시 기준선**이다.
+이 컨테이너 모델(§2–4)과 정합성 조건(§6 C1–C3)은 **어떤 배치 전략에서도 변하지 않는 불변 기반**이다. 반면 *머신 좌표를 어떻게 정하고, 무엇을 열거하며, 무엇을 반환하는지* 는 교체 가능한 **배치 전략 레이어(§5.5)** 의 몫이다. **현재 구현된 전략은 계층화 레이아웃 `S-LAYER`** — 레시피 트리를 레이어(열)로 깔고, 레이어 사이에 라우팅 채널을 예약하며, 백트래킹 없이 결정적으로 후보 1개를 만든다(§7).
 
 ---
+
+# Part I — 컨테이너 모델 (불변 기반)
 
 ## 2. 컨테이너
 
@@ -24,10 +28,12 @@
 | 컨테이너 종류 | 게임 엔티티 | 용도 |
 |---|---|---|
 | 머신 (machine) | assembling-machine, furnace, rocket-silo 등 | 레시피 처리 |
-| 무한상자 (infinity chest) | `infinity-container` (base game: `infinity-chest`, 1×1) | 외부 item I/O |
-| 무한파이프 (infinity pipe) | `infinity-pipe` (base game: `infinity-pipe`, 1×1) | 외부 fluid I/O |
+| 무한상자 (infinity chest) | `infinity-chest` (1×1) | 외부 item I/O |
+| 무한파이프 (infinity pipe) | `infinity-pipe` (1×1) | 외부 fluid I/O |
 
-각 컨테이너의 footprint 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다 — 두 필드는 머신·무한파이프 양쪽이 공유하는 유일한 명시적 공통 필드다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
+각 컨테이너의 footprint 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
+
+구현: [containerModel.ts](../frontend/src/utils/autoLayout/containerModel.ts) `Container`.
 
 ### 2.2 ports
 
@@ -38,9 +44,9 @@
 | item port | footprint 둘레 셀 (`2(w + h)` 개) | ✓ | ✓ | — |
 | fluid port (특정 fluid) | `fluid_boxes[].connections[].positions` (회전 0 기준 고정) | ✓ (해당 머신만) | — | ✓ |
 
-`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다.
+`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현: [portInference.ts](../frontend/src/utils/autoLayout/portInference.ts) `enumerateContainerPorts`.
 
-> 회전은 미고려 ([§13.1](#131-비-목표-항목)). prototype 의 기본 회전에서의 positions 만 사용한다.
+> 회전은 미고려 ([§13.1](#131-비-목표-항목)). prototype 의 기본 회전(0=N)에서의 positions 만 사용한다.
 
 ---
 
@@ -50,399 +56,224 @@
 
 | 영역 | 한국어 | 구성 | 좌표 기준점 |
 |---|---|---|---|
-| internal area | 내부 영역 | 머신 + 내부 라우팅 (벨트·파이프·투입기) | 최상위 머신을 (5, 5) 에 두고 시작 |
-| external area | 외부 영역 | 무한상자·무한파이프 | **internal 영역의 머신+라우팅 bbox 의 1셀 두께 perimeter ring** 위에 정렬 |
+| internal area | 내부 영역 | 머신 + 내부 라우팅 (벨트·파이프·투입기) | 머신 footprint 의 bbox |
+| external area | 외부 영역 | 무한상자·무한파이프 | **internal 영역의 머신+라우팅 bbox 의 perimeter ring** 위 |
 
-**핵심 규칙** — 외부 컨테이너는 *internal bbox 의 perimeter ring* 위에 산다. 별도 좌표계나 (0,0)+ 줄짓기 같은 추상은 없다.
+**핵심 규칙** — 외부 컨테이너는 *internal bbox 의 perimeter ring* 위에 산다. 별도 좌표계는 없다.
 
 **알고리즘 순서:**
-1. 사이클 안에서는 chest 를 *임시 자리* (consumer 머신 N면) 에 배치 — 라우팅 BFS 의 occupancy 갱신을 위해 placeholder 좌표 필요.
-2. 모든 머신 + 내부 라우팅이 끝난 **후처리 단계** (`wrapExternalsAroundPerimeter`) 에서 chest 들을 perimeter ring 위로 재배치한다 — consumer 머신과 가장 가까운 빈 perimeter 셀로. 라우팅은 자동 재시도, 실패하면 chest 는 임시 자리 유지 (graceful degradation).
-3. 사용자 드래그는 **perimeter ring 셀로만 제한** — 비-perimeter 셀에는 drop 이 거부된다.
+1. 외부 컨테이너는 일단 두 영역의 `containers` 에만 *지연 등록* 한다 (`origin` 미정, [externalPlacer.ts](../frontend/src/utils/autoLayout/externalPlacer.ts) `placeExternalContainer`).
+2. 모든 머신 + 내부 라우팅이 끝난 **후처리 단계** ([areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) `wrapExternalsAroundPerimeter`, 병합 ON 이면 [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) `wrapExternalsWithMerge`) 에서 consumer/producer 머신과 가장 가까운 빈 perimeter 셀로 배치하고 라우팅한다. 실패하면 graceful degradation.
+3. 사용자 드래그는 **perimeter ring 셀로만 제한** *(드래그 동작 상세는 본 문서 범위 밖)*.
 
 ---
 
 ## 4. 라우팅 형식
 
-라우팅 = 두 컨테이너의 (producer port, consumer port) 사이를 잇는 운반체 체인.
+라우팅 = 두 컨테이너의 (producer port, consumer port) 사이를 잇는 운반체 체인. 구현: [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routePorts`.
 
 | kind | 체인 형식 | 메모 |
 |---|---|---|
-| item | `컨테이너 — 투입기 — 벨트(+지하벨트) — 투입기 — 컨테이너` | 벨트 길이 0 자체는 발생 불가. 너무 가까워서 벨트가 안 들어가면 *다른 port 셀* 로 우회 ([§7.4](#74-fallback)). 지상 벨트 사이에 *지하벨트 페어* 가 들어갈 수 있음. |
-| fluid | `컨테이너 — 파이프(+지하파이프) — 컨테이너` | 투입기 없음. 지상 파이프 사이에 *지하파이프 페어* 가 들어갈 수 있음. |
+| item | `컨테이너 — 투입기 — 벨트(+지하벨트) — 투입기 — 컨테이너` | 두 컨테이너가 1셀 gap 으로 마주보면 벨트 없이 *인서터 1개* 로 직결(코너 케이스). 너무 가까워 못 끼우면 *다른 port 셀* 로 우회 ([§7.4](#74-fallback)). |
+| fluid | `컨테이너 — 파이프(+지하파이프) — 컨테이너` | 투입기 없음. |
 
-**원칙:** 라우팅 1개 = 컨테이너 1개. 한 라우팅이 처리량을 못 채우면 *컨테이너 수* 를 늘려 별도 라우팅으로 분할한다 ([§5 모듈 3b](#5-모듈-구성)).
+**원칙:** 라우팅 1개 = 컨테이너 1개. 한 라우팅이 처리량을 못 채우면 *컨테이너 수* 를 늘려 별도 라우팅으로 분할한다.
 
 ### 4.1 지하 변형 (underground-belt / pipe-to-ground)
 
-라우팅 BFS 는 *Dijkstra* 로 — 지상 인접 edge (cost 1) + 지하 점프 페어 edge (cost 2). 점프 edge 는 한 축 방향으로 `k ∈ [1, max_underground_distance]` 떨어진 셀을 입출구 페어로 emit. 사이 통과 셀 = `k − 1` 칸. 통과 셀 위로 *다른 지상 파이프/벨트* 는 자유롭게 지날 수 있다 (지하라 분리).
+라우팅 경로 탐색은 *Dijkstra* — 지상 인접 edge (cost 1) + 지하 점프 페어 edge (cost 2). 점프 edge 는 한 축 방향으로 `k ∈ [1, max_underground_distance]` 떨어진 셀을 입출구 페어로 emit. 사이 통과 셀 = `k − 1` 칸.
 
 **차단 규칙 (Factorio 게임 동작 기준):**
 
 | 종류 | 같은 직선 위 다른 페어 차단 조건 |
 |---|---|
-| `pipe-to-ground` | **무조건** — entity prototype 이 달라도 (예: 바닐라 ↔ kr-steel ↔ se-space) 서로 차단. 단일 `blockGroup = "pipe-to-ground"` 로 묶어 검사. |
-| `underground-belt` | **같은 prototype 만** — 다른 티어 (`underground-belt` ↔ `fast-underground-belt` 등) 는 독립. `blockGroup = entityName`. |
+| `pipe-to-ground` | **무조건** — entity prototype 이 달라도 서로 차단. 단일 `blockGroup = "pipe-to-ground"`. |
+| `underground-belt` | **같은 prototype 만** — 다른 티어는 독립. `blockGroup = entityName`. |
 
-수직(다른 축) corridor 끼리는 어떤 group 이든 간섭 없음. 지하 운반체는 입출구가 *직선* 으로만 이어지므로 꺾임은 반드시 지상 셀 위에서 일어나야 한다. Dijkstra 상태 `(x, y, arr)` (arr = 도착 방식·방향) 가 두 제약을 강제한다: **출구 직진** — 출구 셀에서는 같은 방향 직진만 + 재점프 금지(같은 셀에 출구·입구 entity 가 겹치는 연속 jump 도 함께 차단); **입구 직진** — 점프는 그 셀에 진행해 온 방향과 같은 방향으로만 시작(시작 셀만 예외). 두 제약이 함께 작동해 직각 코너에는 항상 연결용 지상 벨트/파이프 한 칸이 놓인다 (직각으로 맞붙은 두 지하 운반체는 물리적으로 끊기므로).
+지하 운반체는 입출구가 *직선* 으로만 이어지므로 꺾임은 반드시 지상 셀에서 일어난다. Dijkstra 상태 `(x, y, arr)` (arr = 도착 방식·방향) 가 **출구 직진**(출구 셀은 같은 방향 직진만 + 재점프 금지)·**입구 직진**(점프는 도착 방향과 같은 방향으로만 시작; 시작 셀만 예외) 두 제약을 강제해, 직각 코너에 항상 연결용 지상 한 칸이 남게 한다. 구현: [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `dijkstraWithJumps`.
+
+> *지하 변형의 게임 메커니즘 자체*(왜 직선만, 왜 차단되는가)는 본 문서 범위 밖이다.
 
 ---
 
 ## 5. 모듈 구성
 
-본 알고리즘은 다음 5개 모듈 + 1개 오케스트레이터로 분리된다.
-
-| 모듈 | 책임 | 입력 | 출력 |
-|---|---|---|---|
-| **3a. port 유추** | 컨테이너 + 상대 컨테이너 위치 → 어느 port 를 입력/출력으로 쓸지 그리디 결정 | (container, neighbor-direction, kind) | port (= 좌표 + 면 방향) |
-| **3b. 슬롯 수 계산** | 레시피 throughput → 필요 컨테이너 수 (= 라우팅 수) | (recipe, belt/pipe 처리량) | `inputContainers` / `outputContainers` |
-| **A. 머신 배치** | 내부 좌표계에서 머신 footprint 를 부모와 인접하게 배치 (하향식) | (parent-machine, child-machine, dir) | (x, y) |
-| **B. 외부 컨테이너 배치** | 외부 좌표계에서 무한상자/무한파이프를 (0,0) 부터 1×1 단위로 줄지어 배치 | 컨테이너 목록 | 좌표 배열 |
-| **4. 라우팅** | (from-port, to-port, kind) → 운반체 체인 생성. item/fluid 분기, BFS, 지하 변형 | port 페어 + occupancy | placed cells (벨트/투입기/파이프) |
-| **오케스트레이터** | 배치 전략(§5.5) 실행, 실패 처리, 진행 UI 알림 | WizardInput | 후보 트리 |
-
-> 모듈 3a 와 3b 는 *분리된 두 함수* 다 ([부록 Q14](#부록--설계-결정-요약) 결정).
+| 모듈 | 책임 | 구현 |
+|---|---|---|
+| **port 유추** | 두 컨테이너의 상대 위치 → 가장 가까운 면의 port 페어 그리디 결정 | [portInference.ts](../frontend/src/utils/autoLayout/portInference.ts) `resolvePortPair` |
+| **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
+| **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `commitContainer` |
+| **외부 컨테이너** | 무한상자/파이프 지연 등록 + perimeter 배치 | [externalPlacer.ts](../frontend/src/utils/autoLayout/externalPlacer.ts), [areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) |
+| **라우팅** | port 페어 → 운반체 체인 (item/fluid, Dijkstra, 지하) | [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routePorts` + [routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts) `routeWithFallback` |
+| **트렁크 병합** | N:1 공유 belt + 머신별 탭 (§7 클러스터/외부) | [trunkPath.ts](../frontend/src/utils/autoLayout/trunkPath.ts), [trunkEmit.ts](../frontend/src/utils/autoLayout/trunkEmit.ts), [mergeGrouping.ts](../frontend/src/utils/autoLayout/mergeGrouping.ts), [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts), [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) |
+| **채널 계획** | 레이어 사이 라우팅 채널 폭/트랙 산정 | [channelPlanner.ts](../frontend/src/utils/autoLayout/channelPlanner.ts) |
+| **오케스트레이터 (전략)** | 위 모듈을 엮어 후보 생성 | [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard` (= 전략 S-LAYER) |
 
 ---
 
 ## 5.5 배치 전략 레이어 (pluggable)
 
-§2–4 의 컨테이너 모델·라우팅 형식과 §6 의 정합성 조건(C1–C3)은 **전략과 무관한 불변 기반**이다. 그 위에서 *후보 배치를 어떤 빌드 방향으로, 어떻게 열거하고, 무엇을 반환하는지* 는 **교체 가능한 전략**이다. 하나의 "정답 알고리즘"이 있는 게 아니라, 상황(트리 크기·사용자 의도·시간 예산)에 따라 오케스트레이터가 알맞은 전략을 고른다.
+§2–4 의 컨테이너 모델·라우팅 형식과 §6 의 정합성 조건(C1–C3)은 **전략과 무관한 불변 기반**이다. 그 위에서 *머신 좌표를 어떻게 정하고 무엇을 반환하는지* 는 **교체 가능한 전략**이다.
 
-**모든 전략의 공통 계약 (전략이 바뀌어도 불변):**
-- 출력은 C1(무충돌)·C2(라우팅 가능)·C3(액체 mixing 방지)를 반드시 만족한다.
-- 후보 정렬·선택은 O1(정사각형 근접)·O2(지하 우선)를 사용한다.
+**모든 전략의 공통 계약:**
+- 출력은 C1(무충돌)·C2(라우팅 가능)·C3(액체 mixing 방지)를 만족한다.
 - 결정성·종료(§10)를 만족한다.
-
-**전략이 자유롭게 정하는 것:**
-- 빌드 방향 — 하향식(root→leaf) / 상향식(leaf→root).
-- 열거 범위 — 완전 열거 / Pareto 합성 / 그리디 / beam.
-- 반환물 — 모든 후보 / 최적 소수.
 
 ### 전략 등록부
 
-| ID | 빌드 방향 | 열거 | 반환 | 비용 | 상태 | 적합 상황 |
-|---|---|---|---|---|---|---|
-| **S-EXH** | 하향식 | 형제 순서 `n!` × 방향 2 완전 열거 | 모든 성공 후보 | factorial | **구현됨 (기준·임시)** | 작은 트리, 사용자가 모든 후보를 직접 비교하려는 경우 |
-| **S-MEMO** | 하향식 | S-EXH 와 동일(`n!`×방향 2 완전 열거)하되, 동일 부분트리 배치를 translation-invariant 키로 캐시·재사용 | 모든 성공 후보 | factorial (동일 부분트리 재사용 시 실측 감소) | 설계 후보 | 동일 레시피 클러스터·반복 부분트리가 많은 중·대형 트리 |
-| **S-DP** | 상향식 (post-order) | 부분트리를 모듈로 동결, `(W, H, attachFace, portCell)` 의 비지배 집합(shape curve)을 합성 | Pareto-최적 소수 | polynomial (× shape-curve 크기) | 설계 중 | 큰 트리, 빠르게 충분히 좋은(near-square) 결과를 원하는 경우 |
-| _(여지)_ S-GREEDY / S-BEAM | 임의 | 휴리스틱 / beam | 1~k 개 | 선형~ | 미정 | 초대형 트리, 실시간 미리보기 |
+| ID | 빌드 방향 | 열거 | 반환 | 상태 |
+|---|---|---|---|---|
+| **S-LAYER** | 계층화(레이어=열) | 없음 (tidy-tree 결정적 단일 패스) | **후보 1개** | **✅ 구현됨 (현재 유일)** |
+| S-EXH | 하향식 | 형제 순서 `n!` × 방향 2 완전 열거 | 모든 성공 후보 | ❌ 폐기 (롤백, 코드 없음) |
+| S-MEMO | 하향식 | S-EXH + 부분트리 메모이제이션 | 모든 성공 후보 | 미구현 설계 후보 |
+| S-DP | 상향식 (post-order) | 부분트리 모듈의 shape-curve 합성 | Pareto-최적 소수 | 미구현 설계 후보 ([§7B](#7b-미구현-설계-후보-s-dp--상향식-모듈-합성)) |
 
-> **S-MEMO 의 위치:** S-DP 재평가에서 분리한 3개 독립 아이디어 중 **메모이제이션만** 떼어낸 전략이다. (i) 메모이제이션(전략 무관 순이득) / (ii) shape-curve Pareto(완전성 포기 대가) / (iii) 축 제한(정책 선택) 중, S-MEMO 는 (i)만 채택해 **S-EXH 의 완전성·모든-후보-반환을 유지하면서** 동일 부분트리의 중복 재계산만 제거한다. 빌드 방향이 하향식이라 §7 흐름을 그대로 쓰되 부분트리 결과를 캐시한다(전용 절 불필요). S-EXH 와 S-DP 사이의 중간 전략.
+> **현재 사실:** 실제로 실행되는 전략은 **S-LAYER 하나**다 ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)). 과거 문서가 "기준 전략"으로 삼던 S-EXH(완전탐색·`containerWizard.ts`)는 롤백되어 코드에서 제거됐다. S-DP/S-MEMO 는 설계 메모로만 남아 있다(§7B).
 
-> **이 절의 핵심:** "모든 perm×dir 완전 탐색"(S-EXH)은 최적화 구현 *이전* 의 기준·임시 전략이다. 편리한 정합성 검증 baseline 일 뿐 *유일* 하거나 *최종* 전략이 아니다. 문서·코드가 이 한 전략에 고정되지 않도록 한다 — 다른 전략은 빌드 방향부터 반환물까지 다르다.
+### S-LAYER 가 백트래킹을 없애는 원리
 
-### 전략 ↔ §7 흐름 매핑
-
-§7 의 알고리즘 흐름은 **기준 전략 S-EXH** 의 흐름이다. **S-DP 의 전용 흐름은 §7B** 에서 기술한다(상향식 모듈 합성·shape curve). 이후 추가 전략도 자체 절을 가진다.
+S-EXH 는 머신을 놓고 → 라우팅을 *발견* 하려다 막히면 `n!` 조합을 백트래킹했다. S-LAYER 는 **레이어 사이에 빈 채널을 먼저 예약** 하고 머신은 레이어 안에만, 라우팅은 채널 안에만 둔다. 채널 폭이 트랙 수만큼 보장되므로 라우팅이 *구성에 의해* 항상 성공한다(VLSI channel routing). 상세: [s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md).
 
 ---
 
 ## 6. 조건 등록부
 
-> **분류:** **C** = 정합성 조건(모든 전략이 반드시 만족하는 불변) / **O** = 목적·정렬 기준 / **M** = 모델·전략 관련. C1–C3 와 M1 은 전략 무관 불변이고, **M2 는 *기준 전략 S-EXH 의 정의*** 로서 전략을 바꾸면 달라진다(§5.5).
+> **분류:** **C** = 정합성 조건(모든 전략이 만족하는 불변) / **O** = 정렬 기준 / **M** = 모델 관련.
 
 ### C1 — 충돌 없는 배치
-모든 컨테이너 footprint, 라우팅 점유 셀, 인서터 셀이 한 셀이라도 겹치지 않는다.
+모든 컨테이너 footprint, 라우팅 점유 셀, 인서터 셀이 한 셀도 겹치지 않는다.
 
 ### C2 — 라우팅 가능
-모든 (producer, consumer, content, kind) 페어에 대해 §4 형식의 라우팅이 존재한다.
+모든 (producer, consumer, content, kind) 페어에 §4 형식의 라우팅이 존재한다. S-LAYER 는 채널 예약으로 이를 *구성에 의해* 보장한다(§5.5).
 
 ### C3 — 액체 mixing 방지
-한 fluid-route 셀은 단 하나의 fluid 만 운반. 두 라우팅의 fluid 가 서로 다르면 점유 셀이 겹치면 안 된다.
+한 fluid-route 셀은 단 하나의 fluid 만 운반. 다른 fluid 라우팅끼리 점유 셀이 겹치면 안 된다.
 
 ### O1 — 내부 영역 bbox 가 정사각형에 가까울수록 우선
-완전 탐색의 후보 정렬에 사용. `|W − H|` 가 작을수록 더 나은 후보. 외부 영역은 평가에서 제외 — 정사각형 평가는 *내부 영역만* 의 bbox 기준.
+`|W − H|` 가 작을수록 나은 후보. **단, S-LAYER 는 후보를 1개만 반환하므로 현재는 선택에 쓰이지 않고 메타데이터(`squarenessPenalty`)로만 기록된다.** 다수 후보를 반환하는 전략(S-EXH 등)에서 정렬 기준.
 
 ### O2 — 지하 변형 우선
-지상 (transport-belt / pipe) 으로 점유될 셀을 지하 변형 (`underground-belt` / `pipe-to-ground`) 페어로 비울 수 있으면 그쪽을 우선. 라우팅 모듈 4 의 Dijkstra cost (지상 1 / 점프 2) 가 자연스럽게 짧은 우회 시 지상, 막힌 길에서 지하를 선택. 비교 정책은 사전식 O1 → O2 순. 상세는 [§4.1](#41-지하-변형-underground-belt--pipe-to-ground).
+지상으로 점유될 셀을 지하 변형 페어로 비울 수 있으면 우선. 라우팅 Dijkstra 의 cost(지상 1 / 점프 2)가 자연히 짧은 우회 시 지상, 막힌 길에서 지하를 선택([§4.1](#41-지하-변형-underground-belt--pipe-to-ground)).
 
 ### M1 — 컨테이너 추상화
-§2 의 정의를 사용. 구 둘레 슬롯 번호 모델 (`ceil(재료/2)`, `2(w+h)` 한계, 슬롯 1..2(w+h) 번호 부여) 은 **폐기**.
+§2 의 정의를 사용. 구 *둘레 슬롯 번호 모델* (`ceil(재료/2)`, 슬롯 번호 부여)은 **폐기**. 새 모델은 둘레 셀 자체가 port 후보.
 
-### M2 — (기준 전략 S-EXH) A↔B 사이클 + 하향식 + 완전 탐색
-
-> 이 항목은 불변 조건이 아니라 **기준 전략 S-EXH 의 정의**다(§5.5). 빌드 방향(하향식)·열거(완전 탐색)는 전략 교체 시 달라진다. 전략 무관 불변은 "부모-자식은 §4 라우팅 형식의 최소 거리로 인접 연결된다" 뿐이다.
-
-- 사이클 단위: (A) 머신 1개 배치 → (B) 그 머신의 *모든* 입력 라우팅 (외부 입력 + 부모와의 연결).
-- 진행: 상위 머신부터, DFS 방식으로 자식 → 손자 ... .
-- 자식 형제 순서 (n!) × 자식 위치 (오른쪽/아래쪽 = 2 가지) 를 모두 후보로 탐색.
+### M2 — (구) S-EXH 정의 — **폐기**
+> 이전 M2 는 기준 전략 S-EXH 의 "A↔B 사이클 + 하향식 + 완전 탐색" 정의였다. S-EXH 롤백으로 폐기. 현재 전략의 정의는 §7(S-LAYER)을 보라. 전략 무관 불변은 "부모-자식은 §4 라우팅 형식으로 연결된다" 뿐이다.
 
 ---
 
-## 7. 알고리즘 흐름 — 기준 전략 S-EXH
+# Part II — 전략 레이어
 
-> 본 절은 **기준 전략 S-EXH** 의 흐름이다(§5.5). 다른 전략(예: S-DP)은 빌드 방향·열거가 달라 자체 흐름을 가진다 — 본 절을 "유일한 알고리즘"으로 읽지 말 것.
+## 7. 알고리즘 흐름 — 현재 전략 S-LAYER
+
+[layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard` 의 결정적 단일 패스. 10단계:
 
 ```
-runWizard(input)
-├─ 1. 트리 펼침 (recipeTree.expandRecipeTree)
-├─ 2. 머신 수 산정 (assignMinimumCounts / Proportional)
-├─ 3. 슬롯 수 계산 — 모듈 3b
-│      └─ 머신별 inputContainers / outputContainers
-└─ 4. 완전 탐색 — 오케스트레이터
-       └─ DFS over (자식 형제 순서 perm × 자식 위치 dir)
-           ├─ (A) 부모 머신 배치 (내부 영역 (5,5))
-           ├─ (B) 부모 외부 입력 라우팅 (외부 영역)
-           ├─ for each child c in perm:
-           │   ├─ (A) c 를 부모 옆 (dir) 인접 배치
-           │   └─ (B) c 의 외부 입력 + 부모와의 연결 라우팅
-           ├─ §7.4 fallback (port 다른 셀 시도)
-           └─ §7.5 종결 (성공 → 후보 저장 / 실패 → 마킹 후 다음 perm·dir)
+runLayeredWizard(input)
+├─ 1. 레시피 트리 + 머신 수 산정            (recipeTree)            ← 범위 밖
+├─ 2. 메타 수집 + 부모맵 (DFS)             depth=레이어, count=머신수
+├─ 3. 레이어 폭 (colWidth) = 깊이별 최대 머신 폭
+├─ 4. tidy-tree 세로 배치 + 채널 계획 + 열 x좌표
+│      ├─ 4a. layout(): 부모를 자식 중앙에 정렬 (Reingold–Tilford 풍)
+│      ├─ 4b. 열 내 겹침 안전 스윕 (C1)
+│      ├─ 4c. 채널 구간(interval) 수집 — 각 연결의 세로 점유
+│      └─ 4d. left-edge 트랙 배정 → 채널 폭 → colX 누적   (channelPlanner)
+├─ 5. 머신 배치 — 노드별 N대를 한 열에 세로로 commit       (§7.1 클러스터)
+├─ 6. 채널 라우팅
+│      ├─ 6a. 트렁크 병합 (병합 ON + 아이템 + N≥2)         (§7.2 트렁크)
+│      └─ 6b. 나머지 1:1 채널 라우팅                       (§7.3 라우팅)
+├─ 7. 외부 입력 등록 (머신별 무한상자/파이프)
+├─ 8. 루트 출력 등록 (루트 머신마다)
+├─ 9. 외부 perimeter 배치 + 트렁크(병합 ON)/1:1(OFF)
+└─ 10. 후보 leaf 1개로 래핑
 ```
 
-### 7.1 사이클 단위
-"한 사이클" = (A 머신 1개) + (B 그 머신의 모든 입력 라우팅). 외부·내부 입력을 한 묶음으로 처리한다.
+좌표 규약: **루트(제품, depth 0)가 왼쪽**, 깊은 레이어(재료)가 오른쪽 → 물질 흐름은 오른쪽→왼쪽. 상수: `CHANNEL_MIN=3`, `ROW_GAP=3`, `SUBTREE_GAP=3` ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)). `ROW_GAP`(클러스터 세로 간격)·열 고정 형태의 한계는 [known-limits.md](auto-layout-wizard.known-limits.md) §1·§2.
 
-### 7.2 하향식 (top-down)
-상위 머신을 (5, 5) 에 두고 시작. 자식은 부모와 *벨트 길이 ≥ 1* 만 확보하도록 인접 배치. 자식의 자식 (= 손자) 도 같은 규칙을 자식 기준으로 재귀 적용.
+### 7.1 클러스터 (한 노드 N대)
 
-### 7.3 완전 탐색
-- 자식 형제 순서: `n!` 가지 (자식이 n 명일 때).
-- 자식 위치: 부모 기준 *오른쪽* 또는 *아래쪽* — 2 가지.
-- 후보 수 상한 없음. 진행 UI 에 후보 수 + 트리 깊이/형제 진행률 표시.
-- 사용자 Esc → 중단 + 알림. 그때까지 생성된 후보는 *모두 유지* 한다.
+**클러스터 = 같은 레시피 노드의 N대 동일 머신.** 현재 한 열에 세로로 쌓는 **기둥(column)** 형태로만 배치된다 (`origin.y = baseTop + i*(h + ROW_GAP)`). 클러스터는 트렁크 병합·채널 라우팅·그룹화의 기본 단위다.
+
+- **지배축(dominant axis):** 머신 중심 분포가 넓은 축. 기둥이면 세로축. 방문 순서·그룹 정렬·트렁크 시드가 이 축을 따른다.
+- **포트 기하:** 머신 둘레 셀이 포트. 기둥에서 안쪽 머신은 N/S 면을 이웃에 뺏기고 W·E 면만 남는다 → 포트 수요가 많은(입출력 多·fluid 多) 레시피는 한 열에 다 못 담는다([known-limits.md](auto-layout-wizard.known-limits.md) §1).
+
+### 7.2 트렁크 벨트 (N:1 병합)
+
+같은 품목을 쓰는 N대를 **공유 belt 1줄 + 머신별 탭 인서터 + 종단(상자 또는 소비자)** 으로 묶는다. 4개 순수 단위로 분해:
+
+1. **그룹화 ③** ([mergeGrouping.ts](../frontend/src/utils/autoLayout/mergeGrouping.ts)) — 용량 모델로 게이트. 머신별 수요 `= (crafting_speed/energy_required) × amount`. 조건: 총수요 ≤ beltCap, 머신별 ≤ tapCap(인서터 처리량, 사용자 보정 가능), 크기 ≤ maxTaps. 과수요 머신은 단독(1:1 강제).
+2. **경로 ①** ([trunkPath.ts](../frontend/src/utils/autoLayout/trunkPath.ts) `computeTrunkPath`) — 그리디 성장. chest seed 후보(centroid 근접 + 끝-축 평행)를 *모두 평가* 해 점수 `[untapped, 횡축 span, 길이]` 최소를 채택(한쪽 변 직선 spine 선호). 탭 = `(포트 p, 면 f, reach r)` → tapCell `= p + f×r`. 직선/L 서브경로.
+3. **방출 ②** ([trunkEmit.ts](../frontend/src/utils/autoLayout/trunkEmit.ts) `emitTrunk`) — belt 셀 + 피더 인서터 + 탭 인서터. `supply`(상자→머신) ↔ `collect`(머신→상자)는 거울(흐름·픽업 반전).
+4. **commit** — 두 적용 지점:
+   - **내부(클러스터→부모)** ([clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts)) — 6a 단계. 종단이 이미 배치된 소비자 머신(`terminalOccupied`) → 상자 없이 직접 투입.
+   - **외부(상자↔머신)** ([externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts)) — 9단계. 입력=supply, 출력=collect.
+
+v1 범위·잠복 버그는 [known-limits.md](auto-layout-wizard.known-limits.md) §3·§4.
+
+### 7.3 1:1 라우팅 (트렁크의 폴백·기본)
+
+병합 실패·단독·fluid·일반 트리 간선은 1:1 경로([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routePorts`). 채널 폭이 트랙 수만큼 확보돼 있어 BFS/Dijkstra 가 실패하지 않는다. occupancy 는 1차 단순화로 *모든 placed 셀 통과 불가*([known-limits.md](auto-layout-wizard.known-limits.md) §5).
 
 ### 7.4 fallback
-한 라우팅이 실패하면:
-1. **다른 port 셀** 시도 — 컨테이너 둘레의 다른 셀로 producer/consumer port 를 바꿔 재시도.
-2. 모든 port 조합 실패 → 후보 자체를 *실패* 로 마킹하고 다음 perm·dir 후보로 이동.
+
+한 라우팅이 실패하면 ([routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts) `routeWithFallback`):
+1. **다른 port 셀** 시도 — 모든 port 페어를 manhattan 거리 오름차순으로 재시도.
+2. 모두 실패 → 그 연결을 실패로 카운트(`routeFailures`). (S-LAYER 는 백트래킹하지 않는다 — 채널 보장으로 실패가 사실상 안 난다.)
 
 ### 7.5 종결
-- 성공: 후보 트리에 leaf 로 저장.
-- 실패: 트리에 회색 취소선 노드로 저장 (사용자 토글로 보기/숨기기).
+
+성공 후보 1개를 `CandidateLeaf` 로 래핑해 `CandidateTree` 에 담는다(S-EXH UI 와 호환). 라우팅 실패가 있으면 leaf 라벨에 `⚠ N 라우팅 실패` 표기.
 
 ---
 
-## 7B. 전략 S-DP — 상향식 모듈 합성 (shape-curve DP)
+## 7B. (미구현 설계 후보) S-DP — 상향식 모듈 합성
 
-> **상태: 설계 중.** 본 절은 §5.5 전략 등록부의 **S-DP** 행에 대응하는 전용 흐름이다. §7(S-EXH)과 빌드 방향·열거·반환이 전부 다르다. **전제:** 외부상자(무한상자/파이프) 라우팅은 최종 단계 문제로 분리 — 본 전략은 *내부 머신 배치* 만 다루고, 외부 IO 는 모든 머신 배치 후 일괄 처리한다고 가정한다.
+> **상태: 미구현 · 설계 메모.** 코드에 없다. 현재 실행 전략은 §7 의 S-LAYER 다. 본 절은 향후 "다수의 near-square 후보를 빠르게" 원할 때를 위한 설계 보존용이며, 채택 시 §7 처럼 자체 흐름·구현이 필요하다.
 
-### 7B.1 한 줄 요약
+**핵심 아이디어:** 부분트리(레시피 노드 + 자손)를 불투명 **모듈** 로 동결하고 leaf→root **post-order** 로 합성한다. 각 모듈은 단일 배치가 아니라 **비지배 형상 집합(shape curve)** `{(W, H, attachFace, connectorPort)}` 를 들고 다닌다 — 목적함수 `|W−H|` 가 분리 불가능하므로(자식 혼자 최적 ≠ 부모와 합성 시 최적) 부모가 자기에게 맞는 형상을 고를 수 있어야 하기 때문이다.
 
-부분트리(레시피 노드 1개 + 그 자손)를 불투명 **모듈** 로 동결하고, leaf→root **post-order** 로 합성한다. 핵심: 각 모듈은 *단일 최적 배치 1개* 가 아니라 **비지배 형상 집합(shape curve)** 을 들고 다닌다. 목적함수 `|W−H|` 가 분리 불가능하므로(자식 혼자 최적 ≠ 부모와 합성 시 최적), 부모가 *자기에게 가장 잘 맞는 형상* 을 고를 수 있어야 하기 때문이다.
+- **합성:** 부모 박스 + 자식 모듈을 right(수평 절단: `W=W₁+GAP+W₂, H=max`)/down(수직 절단)으로 결합 후 Pareto 필터.
+- **attachFace 파라미터화:** 붙는 면을 모를 때를 대비해 `{left, top}` 각각 곡선을 만들고, connector(루트) 머신을 그 면 가장자리에 핀고정.
+- **형제 순서:** `k!` 완전열거 대신 축 제한(전부 right 또는 전부 down) 1차안.
+- **trade-off:** 완전성 포기(Pareto 소수만), 모듈 불투명성으로 packing 느슨, 외부 IO 는 최종 단계 분리. 최적성은 "모듈 추상화 ∧ 완전열거" 이중 전제 하에서만 O1 최적, 축 제한 시 근사.
 
-### 7B.2 모듈 정의
+> S-MEMO(메모이제이션만 떼어 S-EXH 완전성 유지) 도 같은 미구현 후보다. 둘 다 도입 전까지 본 등록부의 행으로만 존재한다.
 
-```
-Module = {
-  shapeCurve: ShapePoint[]      // 비지배 (W,H) 형상들
-}
-ShapePoint = {
-  w, h: number                  // 모듈 bbox 크기
-  attachFace: 'left' | 'top'    // 부모가 이 모듈을 right/down 에 둘 때 닿는 면
-  connectorPort: { cell, face } // 부모로 product 를 내보내는 둘레 포트
-  materialize(offset): PlacedCell[]   // 동결된 상대 배치를 절대 좌표로 translate
-}
-```
+---
 
-- **왜 (W,H)만으론 부족한가:** 모듈을 블랙박스로 만들면 부모는 모듈 *둘레 포트* 에만 붙을 수 있다. 그래서 `connectorPort` 위치가 형상의 일부여야 한다.
-- **왜 단일이 아니라 집합인가:** §5.5 / 쟁점1 — `|W−H|` 비분리성. 6×6(정사각) 자식이 부모 전체로 보면 4×9 자식보다 나쁠 수 있다. Pareto 집합 전체를 들고 가야 부모가 고를 수 있다.
+## 8. 결정성 · 종료 · 완전성
 
-### 7B.3 합성 규칙 (combine)
-
-부모 머신 박스 1개 + 자식 모듈들을 §7 과 동일한 right/down 인접으로 합성하되, *형상끼리* 합성한다:
-
-| dir | 합성 (slicing floorplan) |
+| 속성 | S-LAYER (현재) |
 |---|---|
-| `right` (수평 절단) | `W = W₁ + GAP + W₂`,  `H = max(H₁, H₂)` |
-| `down` (수직 절단) | `W = max(W₁, W₂)`,  `H = H₁ + GAP + H₂` |
-
-`GAP` = §4 라우팅 최소 거리. 머신 배치 시점엔 item/fluid 미정이라 보수적으로 큰 쪽(item, 3) — [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `ROUTING_GAP` 과 동일.
-
-### 7B.4 DP 재귀식
-
-```
-shape(leaf 머신)        = { footprint(+port margin) }, attachFace 별 connector 를 가장자리에 둠
-shape(클러스터 N대)      = Spring 수렴 bbox 1개를 leaf 모듈로 (machineCount>1, springPlacer.ts)
-shape(내부 노드)         = combineAll(부모박스, 자식들의 shapeCurve) over (형제순서 × dir),
-                          그 뒤 Pareto 필터
-루트 선택               = root 의 shapeCurve 에서 |W−H| 최소점 선택 → backtrack 하여 materialize
-```
-
-- **Pareto(비지배) 정의:** 형상 `a` 가 `b` 를 지배 ⟺ `a.w ≤ b.w ∧ a.h ≤ b.h`. 지배당하는 점은 버린다. 정수 좌표라 곡선 점 수는 bound 되고, 두 곡선 merge 는 정렬 후 O(m+n).
-- **평가 순서:** 레시피 트리의 post-order DFS (leaf 먼저).
-
-### 7B.5 attachFace 파라미터화 + connector 핀고정 (쟁점 2·3)
-
-bottom-up 의 함정: 모듈을 만들 때 *어느 면이 부모에 붙을지 아직 모른다* — 그건 한 단계 위(부모 레벨)에서 right/down 으로 결정된다.
-
-- **해결:** 모듈을 **붙는 면별로 파라미터화**. 부모가 right 에 두면 자식 *왼쪽 면*, down 에 두면 *위쪽 면* 이 닿으므로 `attachFace ∈ {left, top}` (최대 2배 상수 비용)로 각각 곡선을 만든다.
-- **connector 핀고정:** 모듈이 커지면 product 를 내보내는 루트 머신이 내부 깊숙이 묻혀 부모까지 라우팅이 길어진다. 그래서 각 attachFace 버전은 **루트(connector) 머신을 그 면 가장자리에 핀고정** 한 채 레이아웃한다. S-EXH 가 top-down 으로 공짜로 얻던 "부모에 바짝 붙기"(`ROUTING_GAP` 만)를 S-DP 는 이 핀고정으로 회복한다.
-
-### 7B.6 형제 순서 처리 (쟁점 4)
-
-한 노드의 `k` 자식 모듈 + 방향 합성에서, 순서 `k!` 완전 열거는 비용이 크다. dir 과 차원 합성은 DP 가 먹지만 *순서* 는 잔여 탐색이다. 정책 후보:
-
-| 옵션 | 내용 | 비용 | 비고 |
-|---|---|---|---|
-| **A. 축 제한 (권장 1차)** | 노드당 한 축만 (자식 전부 right *또는* 전부 down). 한 줄 배치에서 가변 차원 최소화는 정렬/그리디 | 낮음 | 순서 폭발 제거, slicing 단순화 |
-| B. beam search | 곡선 위에서 상위 b 개 순서만 유지 | 중간 | near-optimal |
-| C. 완전 `k!` | 작은 `k` 에서만 | 높음 | S-EXH 와 동일 위험 |
-
-**1차 구현은 A.** 정책은 미확정.
-
-### 7B.7 정합성 계약 충족 (§5.5 공통 계약)
-
-- **C1 무충돌:** 모듈이 불투명 사각형 → 모듈끼리 절대 겹치지 않는다(부모 라우팅이 모듈 *내부* 를 관통 불가). 대가: 공유 그리드처럼 틈새로 벨트를 끼우는 packing 은 못 해 면적이 약간 늘 수 있다.
-- **C2 라우팅 가능:** connector 핀고정으로 부모-자식 인접 라우팅을 보장. 모듈 *내부* 라우팅은 동결 시점에 이미 해결됨.
-- **C3 액체 mixing:** 모듈 내부에서 해결, 모듈 간 연결은 단일 connector port 라 혼합 없음.
-- **O1 / O2:** root 곡선에서 `|W−H|` 최소 선택 → near-square 최적 — 단 **모듈 추상화·완전 열거 한정** 이며 축 제한(§7B.6 A) 시 근사다([§10 최적성 ◐ 해설](auto-layout-wizard.placement-search.md)). O2 지하 변형은 모듈 내부 라우팅 Dijkstra(§4.1)가 담당.
-
-### 7B.8 메모이제이션 / 재사용
-
-캐시 키 = `(레시피 시그니처, machineCount, 자식 구조 해시, attachFace)`. 배치가 **translation-invariant**(절대 좌표 무관, [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts))라 곡선을 좌표와 분리해 저장·재사용. 구조가 동일한 부분트리(예: 두 가지가 똑같이 "철 기어 N대")는 곡선을 공유한다 — §13.1 공유 자식 비-목표와 무관하게 *구조 동일 모듈* 재사용은 가능.
-
-### 7B.9 S-EXH 대비 trade-off · 미해결
-
-- **완전성 포기** — Pareto-최적 소수만 반환(§10). "모든 후보 노출" 제품 가치를 원하면 S-EXH 를 쓴다.
-- **packing 느슨** — 모듈 불투명성의 대가(7B.7).
-- **외부 IO 분리 가정** — 본 절은 내부 배치만. 외부상자 perimeter 래핑은 [areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) 가 최종 단계에서.
-- **형제 순서 정책 미확정**(7B.6).
-- **다중 product connector** — 머신이 item+fluid 등 복수 product 를 부모/조부모로 보낼 때 connector port 가 여러 개. 1차는 주 product 1개 가정, 일반화는 follow-up.
+| 결정성 (동일 입력 → 동일 후보) | ✓ 난수 미사용. 정렬·seed 평가·Dijkstra tie-break 모두 결정적 |
+| 종료 | ✓ 단일 패스, 자연 종료 (Esc 시 부분 결과) |
+| 완전성 (모든 배치 탐색) | ✗ 후보 1개만 생성 (탐색 안 함) — 다수 후보가 필요하면 다른 전략 |
+| 최적성 (near-square) | ✗ O1 미사용(후보 1개). squarenessPenalty 는 기록만 |
 
 ---
 
-## 8. 사용자 인터페이스
-
-### 8.1 진행 UI
-실시간 표시:
-- 생성된 후보 수 (예: "12 블루프린트 생성됨")
-- 트리 깊이 / 형제 순서 진행률 (예: "depth 3/5, 형제 2/6")
-- Esc → 중단 + 알림
-
-### 8.2 결과 트리 로그
-A 노드 (머신 배치 1회) 안에 *분기점 노드* (자식 형제 순서 / 자식 위치) 가 중첩되는 트리 구조.
-
-- **실패 가지** — 토글로 보기/숨기기. 보일 때는 회색·취소선.
-- **노드 클릭** — 중간 노드는 *그 시점까지의 부분 블루프린트* 미리보기, leaf 는 *완성된 블루프린트*.
-
-### 8.3 사용자 드래그
-
-| 대상 | 동작 | 충돌 처리 |
-|---|---|---|
-| 자식 머신 | 자식 + 자손 머신 + 라우팅 경로를 *통째* 이동 | 충돌 위치는 스냅 거부 (드롭 자체 막기) |
-| 외부 포트 | 코어 bbox 둘레 셀 단위 자유 위치. default = 좌상단 | 드래그 시 라우팅 + 포트 재계산 |
-| 무한상자 | internal bbox 의 *perimeter ring 셀* 위로만 이동. 비-perimeter 드롭 거부 | 라우팅 자동 재시도, 실패 시 원위치 rollback |
-
-자식 머신 드래그 시 *자식의 라우팅 재계산* 은 1차 구현에서 미포함 — 드래그한 만큼 라우팅 경로가 평행 이동만 하고, 다른 자식·머신과 충돌하면 스냅 거부.
-
----
-
-## 9. 입출력 인터페이스
-
-(현행 [WizardInput / WizardResult](../frontend/src/utils/autoLayout/types.ts) 와 호환을 유지하되, 새 모델 도입 시 다음 필드를 확장한다 — 정확한 시그니처는 모듈 스켈레톤 커밋에서 정의.)
-
-| 필드 (예정) | 의미 |
-|---|---|
-| `WizardResult.candidateTree` | 후보 트리 (A 노드 + 분기점 노드 + 실패 마킹) |
-| `WizardResult.candidates` | 성공 leaf 들의 평탄화된 블루프린트 배열 |
-| `WizardResult.partial` | Esc 중단 시 부분 결과 여부 |
-| `WizardInput.externalPortsDefault` | 외부 포트 default 위치 (= 좌상단) |
-| `onProgress(depth, siblingIndex, candidatesGenerated)` | 진행 UI 콜백 |
-| `signal: AbortSignal` | Esc 중단 신호 |
-
----
-
-## 10. 결정성 · 종료 · 완전성
-
-> **전략 무관 불변** 과 **전략 의존 속성** 을 구분한다. 완전성·최적성은 *전략의 속성* 이지 모델의 보장이 아니다(§5.5).
-
-**전략 무관 (모든 전략 공통):**
-
-| 속성 | 보장 |
-|---|---|
-| 결정성 (= 동일 입력 → 동일 후보 집합) | ✓ 난수 미사용. 후보 정렬은 안정 정렬 |
-| 종료 | ✓ 자연 종료 또는 Esc |
-
-**전략 의존:**
-
-| 속성 | S-EXH (완전 탐색) | S-MEMO (메모) | S-DP (shape-curve) |
-|---|---|---|---|
-| 완전성 (= 모든 perm × dir 탐색) | ✓ 상한 없음 | ✓ 캐시로 동일 후보 집합 보존 | ✗ Pareto-최적만 반환 |
-| 최적성 (= near-square / 최소 area) | △ 후보 집합 내 O1 정렬, 사용자 선택 | △ S-EXH 와 동일 | ◐ **모듈 추상화·완전 열거 한정** O1 최적; 축 제한 시 근사 |
-
-> **S-DP 최적성 ◐ 해설 (정정):** 이전 "✓ shape curve 상 O1 최적" 은 두 가지를 과장했다.
-> 1. **모듈 추상화의 해공간 축소** — S-DP 는 부분트리를 직사각 모듈로 동결해 합성하므로, S-EXH 가 공유 그리드에 머신을 자유 packing 하며 얻는 배치(모듈 경계를 넘나드는 끼워넣기)를 표현할 수 없다. 따라서 S-DP 의 "최적" 은 *전역 최적이 아니라 모듈 추상화 안에서의 최적* 이다.
-> 2. **축 제한 시 근사** — [§7B.6](auto-layout-wizard.placement-search.md) 1차안(옵션 A, 축 제한)은 형제 순서 `k!` 를 선형으로 줄이며 **완전 열거를 포기**한다. 이 경우 shape curve 자체가 부분집합만 담아 모듈 추상화 안에서도 최적이 아니라 근사다. 완전 열거(옵션 C)를 쓸 때만 "모듈 추상화 안 최적" 이 성립한다.
->
-> 즉 S-DP 최적성은 **무조건 ✓ 가 아니라 "모듈 추상화 ∧ 완전 열거" 라는 이중 전제 하에서만 O1 최적**이고, 실전 1차안(축 제한)에서는 근사다.
-
----
-
-## 11. 새 조건 처리 절차
-
-1. §6 조건 등록부에 항목 번호 (C/O/M 또는 dotted 확장) 와 한 줄 정의 추가.
-2. 그 조건이 §5 의 어느 모듈에 반영되는지 명시.
-3. UI 영향이 있으면 §8 갱신.
-4. 등록부 외 자리에서 *암묵적으로 가정되는* 조건은 채택하지 않는다.
-
----
-
-## 12. 신규 모델로 흡수된 / 폐기된 항목
+## 9. 흡수된 / 폐기된 항목
 
 | 구 항목 | 처리 |
 |---|---|
-| 둘레 슬롯 번호 (1..2(w+h)) | **폐기** — 새 모델은 둘레 셀 자체가 port 후보. 번호 부여 없음 |
-| `inputSlots = ceil(재료/2)` (lane=2 가정) | **폐기** — 새 모델은 컨테이너 1개 = 라우팅 1개. lane 가정 미사용 |
-| `outputSlots = ceil(throughput / min(belt, inserter))` | **흡수** — 모듈 3b 의 `ceil(throughput / belt_throughput)` (item) / `ceil(throughput / pipe_throughput)` (fluid) |
-| 입력 낮은 번호 / 출력 높은 번호 분배 정책 | **폐기** — 새 모델은 자식 위치 방향에 따라 port 가 자동 결정 (모듈 3a 그리디) |
-| O3 — 인접 머신 슬롯 공유 | **흡수** — 새 모델의 M2 가 *부모-자식 인접 배치* 를 기본으로 함. 별도 항목 불필요 |
-| 슬롯 한계 `inputSlots + outputSlots > 2(w+h)` | **폐기** — 컨테이너 수를 늘리는 정책 (모듈 3b) 으로 우회 |
+| 둘레 슬롯 번호 (1..2(w+h)) | **폐기** — 둘레 셀 자체가 port 후보 (M1) |
+| `inputSlots = ceil(재료/2)` (lane=2 가정) | **폐기** — 컨테이너 1개 = 라우팅 1개 |
+| S-EXH 완전탐색 (`containerWizard.ts`) | **폐기(롤백)** — S-LAYER 로 대체. 코드 없음 |
+| `slotPlacer` / `springPlacer` | **폐기** — 존재하지 않음. 머신 배치는 `machinePlacer.commitContainer` |
+| S-EXH 의 A↔B 사이클·perm×dir·FailureLeaf 백트래킹 | **폐기** — S-LAYER 는 채널 예약으로 백트래킹 불필요 |
 
 ---
 
-## 13. 명시적 비-목표
+## 10. 명시적 비-목표
 
-### 13.1 비-목표 항목
-- **머신 회전** — N 방향 고정. 4방향 후보 미사용.
-- **공유 자식** — 한 product 가 여러 부모 입력으로 공급되는 케이스는 *고려하지 않는다*. 트리 펼침 시 발견 여부 자체를 검사하지 않으며, 발견되어도 별도 처리 없음.
-- **머신 1대 단위의 multiple 합류 / splitter 분기** — 컨테이너 분할 (모듈 3b) 로 우회. splitter 사용 안 함.
-- **외부 포트 default 외 자동 최적화** — 외부 포트 위치는 default 좌상단 + 사용자 드래그만. 알고리즘이 자동으로 더 나은 면을 선택하지 않음.
+### 10.1 비-목표 항목
+- **머신 회전** — 0(N) 고정. fluid_box positions 도 회전 0 기준만.
+- **공유 자식** — 한 product 가 여러 부모로 공급되는 케이스는 고려하지 않는다(트리 펼침이 품목을 중복 전개).
+- **splitter 분기 / 측면 합류** — 컨테이너 분할 또는 트렁크 병합으로 우회. splitter 미사용.
 
-### 13.2 보류 항목 (재검토 가능)
-- **자식 머신 드래그 시 라우팅 재계산** — 1차 미구현. 통째 이동만.
-- **하이브리드 모드 (공유 자식이 허브로 먼저 고정)** — 13.1 의 공유 자식 비-목표가 깨질 때 도입 검토.
-- **회전 4방향 후보** — fluid_box 위치가 회전마다 달라지는 머신에서 *배치 가능성* 자체를 늘리고 싶을 때 도입 검토.
-
----
-
-## 부록 — 설계 결정 요약
-
-새 모델 설계 시점의 31개 결정 항목. 본문에 흩어진 결정의 출처 추적용.
-
-> 이 결정들은 **기준 전략 S-EXH** 설계 시점의 것이다. 일부(Q10·Q17·Q20·Q28 등 완전 탐색·후보 상한 관련)는 **전략 의존**이며 다른 전략에선 달라진다(§5.5).
-
-| # | 항목 | 결정 |
-|---|---|---|
-| Q1 | 좌표계 | 별도 (내부/외부), 마지막에 통합 |
-| Q2 | 무한상자 나열 방향 종속 | 철회 |
-| Q3 | 무한상자→머신 라우팅 | 컨테이너-투입기-벨트(가변)-투입기-컨테이너 |
-| Q4 | 무한파이프→머신 라우팅 | 컨테이너-파이프+지하파이프-컨테이너 |
-| Q5 | 외부 출력 라우팅 | 동일 형식 |
-| Q6 | 자식 머신 단계 | 부모와 인접 배치 + 재귀 |
-| Q7 | 사이 빈 공간 | 라우팅 점유 공간 (다른 머신 못 들어옴) |
-| Q8 | 영역 명명 | 외부/내부 영역 (external/internal area) |
-| Q9 | 다이렉트 연결 | 별도 의미 없음 — 항상 §4 형식 |
-| Q10 | 정사각형 판정 | 두 후보 모두 완전 탐색, 사용자 드래그 가능 |
-| Q11 | A↔B 단위 | 머신 1개 + 그 모든 입력 |
-| Q12 | 슬롯 수 계산식 | `ceil(throughput / belt or pipe)` |
-| Q13 | 컨테이너에 인서터 포함 | 미포함 (라우팅 함수 책임) |
-| Q14 | 모듈 3 분리 | 3a port 유추 + 3b 슬롯 수 — 두 함수 |
-| Q15 | 회전 | 미고려 |
-| Q16 | 공유 자식 | 미고려 |
-| Q17 | 형제 순서 | 완전 탐색 |
-| Q18 | 너무 가까운 라우팅 | 다른 port 셀 시도 |
-| Q19 | throughput 부족 | 컨테이너 수 늘림 |
-| Q20 | 후보 수 상한 | 없음, Esc 중단 + 알림 |
-| Q21 | 슬롯 매칭 우선순위 | 그리디 (자식 방향 자동) → fallback |
-| Q22 | 자식 드래그 | 통째 이동, 라우팅 재계산 미구현 |
-| Q23 | 외부 포트 드래그 단위 | 셀 단위 자유 위치 |
-| Q24 | 좌표계 통합 시점 | 마지막 일괄, 직전 사용자 드래그 가능 |
-| Q25 | 자식 드래그 충돌 | 스냅 거부 |
-| Q26 | 모든 port 조합 실패 | 그 후보 실패 마킹 후 다음 perm·dir |
-| Q27 | 진행 UI 단위 | 후보 수 + 트리 깊이/형제 진행률 |
-| Q28 | Esc 중단 시 | 부분 결과 모두 유지 (트리 로그) |
-| Q29 | 트리 노드 단위 | A 노드 안에 분기점 노드 중첩 |
-| Q30 | 실패 가지 표시 | 토글 보기/숨기기 |
-| Q31 | 노드 클릭 | 중간 = 부분, leaf = 완성 |
+### 10.2 보류 항목 (재검토 가능)
+- **클러스터 형태 일반화** (기둥 → 행/격자) — [known-limits.md](auto-layout-wizard.known-limits.md) §1.
+- **포트-버짓 기반 적응 gap** — [known-limits.md](auto-layout-wizard.known-limits.md) §2.
+- **다수 후보 전략** (S-EXH/S-MEMO/S-DP) — §5.5·§7B.
+- **회전 4방향 후보** — fluid_box 위치가 회전마다 달라지는 머신의 배치 가능성을 늘릴 때.

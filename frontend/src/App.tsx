@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
 import GridCanvas from './components/GridCanvas';
@@ -8,9 +8,10 @@ import EntityInfoModal from './components/EntityInfoModal';
 import RoutingConnectionModal from './components/RoutingConnectionModal';
 import AutoLayoutSidebar from './components/AutoLayoutModal';
 import { useInspectStore } from './store/inspectStore';
-import { EntityType } from './types/layout';
+import { EntityType, ENTITY_SIZES } from './types/layout';
 import { useLayoutStore } from './store/layoutStore';
 import { useGameDataStore } from './store/gameDataStore';
+import type { Entity } from './store/gameDataStore';
 import { useT } from './i18n';
 
 export default function App() {
@@ -25,6 +26,27 @@ export default function App() {
   const inspectedEntity = useGameDataStore(
     (s) => (inspectName ? s.entityMap.get(inspectName) ?? null : null),
   );
+  const grid = useLayoutStore((s) => s.grid);
+
+  // 게임 데이터에 프로토타입이 없는 배치 인스턴스(예: 무한상자 — lua export 대상이
+  // 아님)도 정보 모달이 뜨도록 셀에서 최소 Entity 를 합성한다. 그래야 무한상자의
+  // 아이템 정보 패널(InfinityChestInfo)이 노출된다.
+  const modalEntity = useMemo<Entity | null>(() => {
+    if (inspectedEntity || !inspectName) return inspectedEntity;
+    const cell = inspectId
+      ? grid.cells.find((c) => c.entityId === inspectId)
+      : undefined;
+    if (!cell) return null;
+    const size = ENTITY_SIZES[cell.entityType];
+    return {
+      id: -1,
+      name: inspectName,
+      localised_name: inspectName,
+      type: cell.entityType,
+      tile_width: size?.width ?? 1,
+      tile_height: size?.height ?? 1,
+    };
+  }, [inspectedEntity, inspectName, inspectId, grid]);
 
   // persist hydration 직후: stale selectedEntityName 자동 정리
   // (이전 세션에서 선택한 엔티티가 현재 entityMap에 없으면 1x1 fallback이 발생)
@@ -90,7 +112,7 @@ export default function App() {
     <div className="flex flex-col w-full h-full">
       <ToastContainer />
       <EntityInfoModal
-        entity={inspectedEntity}
+        entity={modalEntity}
         instanceId={inspectId}
         open={!!inspectName}
         onClose={closeInspect}

@@ -12,7 +12,10 @@
 | [icon-mapping.md](icon-mapping.md) | 엔티티 아이콘 매핑 — 두 차례 시도 후 보류. 런타임 API의 의도적 차단과 모드 우회의 부적절성 정리 | 2026-04-26 |
 | [blueprint-metadata-coverage.md](blueprint-metadata-coverage.md) | Blueprint export 메타데이터 커버리지 — 현재(4필드 + recipe) → 전체(items/wires/control_behavior) 단계별 계획 + 진행 체크리스트 | 2026-04-27 |
 | [auto-layout-wizard.md](auto-layout-wizard.md) | **[parent]** 레이아웃 자동완성 — 위저드(레시피→머신→투입기→벨트→지하파이프) 인터페이스 사양 | 2026-04-29 |
-| [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) + 해결 방향 | 2026-04-29 |
+| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(현재 구현=S-LAYER) | 2026-06-09 |
+| [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 | 2026-06-04 |
+| [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | 2026-06-09 |
+| [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) + 해결 방향 | 2026-06-09 |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 — in-scope / passthrough / out-of-scope | 2026-04-28 |
 | [auto-layout-wizard.visualization-trace.md](auto-layout-wizard.visualization-trace.md) | ↳ 후보 생성 시각화의 함수 호출 트리 체크포인트 — `reportFn` 마커 규칙, 안 뜨는 함수의 이유, 새 마커 추가법 | 2026-06-04 |
 | [parametrized-blueprints-deferred.md](parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 — 향후 parametrized blueprint 자동완성 기능 시 함께 다룰 예정 | 2026-04-28 |

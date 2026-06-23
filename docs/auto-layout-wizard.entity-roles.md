@@ -13,12 +13,12 @@ placer 입력으로도 받지 않는다.
 
 ## 한 장으로 보기
 
-| 역할 | 대표 type | placer 위치 | router occupancy | 미구현 |
+| 역할 | 대표 type | placer 위치 | router occupancy | 남은 한계 |
 |------|-----------|-------------|------------------|--------|
-| **A. 변환기** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin (curX, curY) + N×M 머신 footprint | `machine` (통과 불가) | 다양한 footprint / 회전 ([known-limits §2](auto-layout-wizard.known-limits.md)) |
-| **B. 핸드오프** | `inserter` 와 변형, `loader`, `loader-1x1` | 둘레 슬롯 중 입력/출력 슬롯의 *머신 인접 1셀* | `inserter` (통과 불가) | 머신 수 산정에 throughput 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
-| **C. 고체 운반** | `transport-belt`, `underground-belt`, `splitter` | 둘레 슬롯 중 입력/출력 슬롯의 *머신 바깥 1셀* (stub) + router 가 깐 belt-route 경로 | `belt-fixed` (stub), `belt-route` (라우팅) | splitter 자동 분기 ([§4](auto-layout-wizard.known-limits.md)), underground 자동 점프 ([§5](auto-layout-wizard.known-limits.md)) |
-| **D. 액체 운반** | `pipe`, `pipe-to-ground`, `pump` | (M7) 머신 회전별 fluid_boxes positions 에서 파생 | (M7) `pipe-fixed`, `pipe-route` | M7 통과 전까지 emit 없음 ([§1](auto-layout-wizard.known-limits.md)) |
+| **A. 변환기** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin + `tile_width×tile_height` footprint (가변) | `machine` (통과 불가) | 회전 0 고정 ([known-limits §6](auto-layout-wizard.known-limits.md)); EntityType 단순화(전부 Assembler) |
+| **B. 핸드오프** | `inserter` 와 변형, `loader` | 머신 면 셀(seat)에 인서터 1셀, direction=픽업 방향 | `inserter` (통과 불가) | 머신 수 산정에 throughput 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
+| **C. 고체 운반** | `transport-belt`, `underground-belt`, `splitter` | router(Dijkstra)가 깐 belt + 지하벨트 점프 경로 | 모든 belt 셀 통과 불가(mixing 미구현) | belt/pipe mixing ([§5](auto-layout-wizard.known-limits.md)), splitter 자동 분기 미사용 |
+| **D. 액체 운반** | `pipe`, `pipe-to-ground`, `pump` | 머신 fluid_boxes positions(회전 0) + router(Dijkstra)가 깐 파이프/지하파이프 | 모든 pipe 셀 통과 불가 | fluid 트렁크 병합 미지원(1:1만, [§3](auto-layout-wizard.known-limits.md)), fluidbox 고정면 제약([§6](auto-layout-wizard.known-limits.md)), pump 자동배치 미사용 |
 
 ---
 
@@ -32,7 +32,7 @@ placer 입력으로도 받지 않는다.
 - `crafting_speed × (1 / energy_required)` 로 초당 처리량이 결정된다.
 - 고체 입출력은 측면 아무 셀에서나 인서터로 가능. 액체 입출력은 `fluid_boxes[].connections[].positions` 에 정의된 **고정 셀** 에서만.
 
-**현재 알고리즘:** 둘레 슬롯 모델 자체는 임의 footprint 를 가정한 일반 규칙이지만, 현재 구현은 머신 footprint 를 3×3 으로 가정하고 회전 0 (북쪽) 으로 고정한다. 다른 footprint / 회전은 [known-limits §2](auto-layout-wizard.known-limits.md).
+**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](auto-layout-wizard.known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `machineEntityType`).
 
 ---
 
@@ -57,24 +57,42 @@ placer 입력으로도 받지 않는다.
 - **splitter** (2×1): 두 입력 → 두 출력. 분배 / 우선순위 / 필터 가능.
 - 진행 방향 = `direction` 필드. 라인 합류는 splitter 또는 측면 합류로만.
 
-**두 lane 의 의미:** 한 belt-route 셀은 서로 다른 두 item 까지 동시 운반 가능. 이는 router 의 belt-route
-통과 정책 (item 종류 무관 통과) 에 반영되며, 둘레 슬롯 모델의 입력 슬롯 수가 `ceil(재료 가짓수 / 2)` 인
-이유이기도 하다. 셀당 ≤ 2 종류 상한은 [.placement-search](auto-layout-wizard.placement-search.md) 조건 등록부에 보류 자리로 등록.
+**두 lane 의 의미:** 게임상 한 belt 는 좌/우 두 lane 으로 서로 다른 두 item 까지 동시 운반 가능하다. **현재 router 는 이를 활용하지 않는다** — occupancy 가 모든 belt 셀을 통과 불가로 처리해 라우팅끼리 벨트를 공유하지 못한다(belt mixing 미구현, [known-limits §5](auto-layout-wizard.known-limits.md)). 한 라우팅 = 한 컨테이너 = 한 belt 줄.
+
+**벨트 연결 = 타일 겹침 + 흐름-인접 둘 다.** 게임에서 두 벨트는 **같은 타일을 공유할 때만** 이어지는 게
+아니다 — *한 벨트의 지표 출력이 옆 타일의 벨트로 떨어지면* 타일을 공유하지 않아도 물리적으로 이어진다
+(직진 투입 / side-load). 지하벨트 **출구**도 진행 방향 앞 칸의 벨트로 토출하므로 같다(지하벨트 **입구**는
+터널로 들어가 지표 출력이 없다). 라우팅마다 독립 아이템 스트림이므로 이 흐름-인접 연결은 **항상 의도치
+않은 오염**이다. 따라서 occupancy 의 "타일 배타성"(겹침 금지)만으로는 부족하고, 그 **경계 버전**이 필요하다:
+
+> **서로 다른 라우팅의 벨트 셀은 흐름 방향으로 인접해선 안 된다** — 내 벨트의 출력 칸이 외부 벨트
+> 타일이 되거나, 외부 벨트의 출력 칸 위에 내 벨트가 놓여선 안 된다.
+
+이 불변식은 [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) 의 `collectBeltFlow`
+(이미 배치된 벨트의 타일 + 지표 출력 칸 수집) + `dijkstraWithJumps` 의 lazy-constraint 가드
+(`beltFlowConflictCell` — 합류하는 셀을 `blocked` 에 넣고 재탐색)로 강제된다. 트렁크 패스
+([externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) ·
+[clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts))도 외부 벨트의 출력 칸을
+occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패스가 먼저 깔리든 **나중에 깔리는 쪽**이
+이미 배치된 벨트를 보고 우회하므로 순서와 무관하게 성립한다.
+
+> **참고(파이프):** D 의 파이프는 방향과 무관하게 4면 인접이면 자동 연결되므로 이 흐름-인접 모델이
+> 아니라 **인접 자체**가 합류다(다른 fluid 간). 현재는 occupancy 겹침 금지로만 분리하며, 파이프
+> 인접-합류 방지는 본 벨트 불변식의 무방향 버전으로 후속 확장 대상이다.
 
 ---
 
 ## D. 액체 운반 (파이프)
 
-벨트의 fluid 버전. **현재 위저드 알고리즘은 이 역할을 전혀 다루지 않는다.**
+벨트의 fluid 버전. **현재 위저드는 fluid 를 1:1 파이프로 라우팅한다** ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routeFluid`).
 
-- **pipe** (1×1): 인접한 fluid_box 와 **자동으로** 연결. direction 의미 없음.
-- **pipe-to-ground** (1×1 두 개): underground-belt 와 동일 패턴.
-- **pump** (1×2): 한 방향으로만 흐름, 압력 boost. 파이프 네트워크의 분리·역류 방지에 사용.
-- **fluid mixing 금지** — 같은 네트워크에 다른 액체가 섞이면 머신 동작 정지.
-- **머신 fluid_box 위치는 회전별 고정** — `entity.fluid_boxes[].connections[].positions` 가 4-방향 회전마다 다른 좌표 정의.
+- **pipe** (1×1): 인접한 fluid_box 와 **자동으로** 연결. direction 의미 없음(0 고정).
+- **pipe-to-ground** (1×1 두 개): 지하 점프 페어. router 의 Dijkstra 가 `pipe-to-ground` blockGroup 으로 처리.
+- **pump** (1×2): **자동 배치 미사용**.
+- **fluid mixing 금지** — C3. 다른 fluid 라우팅끼리 셀이 겹치지 않게 한다.
+- **머신 fluid_box 위치는 회전별 고정** — `fluid_boxes[].connections[].positions`. 현재 회전 0 positions 만 사용([portInference.ts](../frontend/src/utils/autoLayout/portInference.ts) `fluidPorts`).
 
-**도입 경로 (M7):** [.placement-search M7](auto-layout-wizard.placement-search.md) — 운반 요구 E 에
-`kind ∈ {belt, pipe}` 추가, occupancy `pipe-fixed` / `pipe-route` 분류 + fluid 이름 태깅 (C3 mixing 방지).
+**남은 한계:** fluid 클러스터는 **트렁크 병합 대상이 아니라 항상 1:1**(아이템 전용 게이트, [known-limits §3](auto-layout-wizard.known-limits.md)). fluidbox 고정면 때문에 기둥 클러스터에서 다중 fluid 머신 서빙이 제약된다([§6](auto-layout-wizard.known-limits.md)).
 
 ### 본 역할이 자동으로 흡수하지 *않는* 인접 항목
 

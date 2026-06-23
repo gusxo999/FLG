@@ -12,6 +12,7 @@ import type {
   Area,
   Container,
   PendingConnection,
+  PortFace,
   PortKind,
   Routing,
   UnifyResult,
@@ -120,7 +121,7 @@ export function computeMachineRoutingBbox(
 // wrapExternalsAroundPerimeter — 후처리
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MAX_EXTERNAL_SEARCH_RADIUS = 12;
+export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
 
 /**
  * bbox 바깥 minRadius~maxRadius 칸 전체 외부 영역의 셀 좌표 목록.
@@ -152,38 +153,171 @@ export function enumeratePerimeterCells(
   return cells;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 변별 독립 perimeter — 직사각형(네 직선 변)이되 변마다 깊이가 다를 수 있다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PerimeterSide = 'w' | 'n' | 'e' | 's';
+/** 머신 footprint bbox 기준, 네 변의 바깥 오프셋(칸). 모두 같으면 균일 링과 동일. */
+export type SideOffsets = Record<PerimeterSide, number>;
+
+/**
+ * 머신 컨테이너 footprint 만의 bbox (라우팅 제외).
+ * perimeter 링을 머신에 바짝 붙이기 위한 기준. 라우팅 돌출은 변별 성장으로 비켜난다.
+ */
+export function computeMachineFootprintBbox(
+  internal: Area,
+): { x: number; y: number; w: number; h: number } | undefined {
+  let bbox: Area['bbox'] = undefined;
+  for (const c of internal.containers) {
+    if (c.kind === 'machine') {
+      bbox = expandBbox(bbox, c.origin.x, c.origin.y, c.size.w, c.size.h);
+    }
+  }
+  return bbox;
+}
+
+/**
+ * `machineBbox` 바깥으로 네 변을 각각 `off` 만큼 민 직사각형의 둘레 셀.
+ * 변마다 오프셋이 달라도 결과는 항상 네 직선 변의 직사각형 한 줄(돌기 없음)이다.
+ * 시계방향 N → E → S → W. 코너 중복 없음.
+ */
+export function enumeratePerimeterRect(
+  machineBbox: { x: number; y: number; w: number; h: number },
+  off: SideOffsets,
+): { x: number; y: number }[] {
+  const x0 = machineBbox.x - off.w;
+  const y0 = machineBbox.y - off.n;
+  const x1 = machineBbox.x + machineBbox.w - 1 + off.e;
+  const y1 = machineBbox.y + machineBbox.h - 1 + off.s;
+  const cells: { x: number; y: number }[] = [];
+  for (let x = x0; x <= x1; x++) cells.push({ x, y: y0 });           // N
+  for (let y = y0 + 1; y <= y1; y++) cells.push({ x: x1, y });       // E
+  for (let x = x1 - 1; x >= x0; x--) cells.push({ x, y: y1 });       // S
+  for (let y = y1 - 1; y >= y0 + 1; y--) cells.push({ x: x0, y });   // W
+  return cells;
+}
+
+/**
+ * 머신이 footprint bbox 의 어느 변에 가장 가까운지. 그 머신에 딸린 chest 가 통로를
+ * 못 뚫었을 때 *그 변만* 한 칸 밀어내기 위한 판정. (chest 는 머신 최근접 변에 놓이므로)
+ */
+export function sideOfMachine(
+  machine: { origin: { x: number; y: number }; size: { w: number; h: number } },
+  bbox: { x: number; y: number; w: number; h: number },
+): PerimeterSide {
+  const dW = machine.origin.x - bbox.x;
+  const dE = bbox.x + bbox.w - 1 - (machine.origin.x + machine.size.w - 1);
+  const dN = machine.origin.y - bbox.y;
+  const dS = bbox.y + bbox.h - 1 - (machine.origin.y + machine.size.h - 1);
+  const m = Math.min(dW, dE, dN, dS);
+  if (m === dW) return 'w';
+  if (m === dE) return 'e';
+  if (m === dN) return 'n';
+  return 's';
+}
+
+/** perimeter 변별 성장 공용 상수 — 최소 오프셋(머신 면과 1칸 인서터 간극) / 최대. */
+export const MIN_EXTERNAL_OFFSET = 2;
+
+/**
+ * 변별 독립 성장 드라이버 — 1:1 경로와 병합 경로가 공유.
+ *
+ * 네 변을 모두 최소 오프셋(MIN)에서 시작해 직사각형 둘레를 만들고 `runAttempt` 로
+ * 배치를 시도한다. 통로를 못 뚫은 chest 가 있으면 — 전체 링을 키우는 대신 — 그
+ * chest 의 머신이 가장 가까운 *변만* 한 칸 밀어내고 재시도한다. 결과는 항상
+ * 직사각형(네 직선 변)이며, 돌출이 없는 변은 최소 오프셋으로 얇게 유지된다.
+ *
+ * `beforeAttempt` 는 매 시도 전에 호출돼 상태를 baseline 으로 되돌린다(직전 시도의
+ * 부분 배치/origin 이동 취소). 성공/한계 도달 시 마지막 시도의 mutation 이 그대로
+ * 살아남는다(확정).
+ */
+export function growRingPerSide<A extends { failed: number; failedMachineIds: string[] }>(
+  machineBbox: { x: number; y: number; w: number; h: number },
+  lookupMachine: (
+    id: string,
+  ) => { origin: { x: number; y: number }; size: { w: number; h: number } } | undefined,
+  beforeAttempt: () => void,
+  runAttempt: (ringCells: { x: number; y: number }[]) => A,
+): { chosen: SideOffsets; final: A } {
+  const MIN = MIN_EXTERNAL_OFFSET;
+  const MAX = MAX_EXTERNAL_SEARCH_RADIUS;
+  const off: SideOffsets = { w: MIN, n: MIN, e: MIN, s: MIN };
+  const maxIters = 4 * (MAX - MIN) + 1;
+
+  let final: A | undefined;
+  for (let i = 0; i < maxIters; i++) {
+    beforeAttempt();
+    final = runAttempt(enumeratePerimeterRect(machineBbox, off));
+    if (final.failed === 0) break;
+
+    // 실패한 chest 의 머신 최근접 변만 키운다(이미 MAX 면 제외).
+    const grow = new Set<PerimeterSide>();
+    for (const mid of final.failedMachineIds) {
+      const m = lookupMachine(mid);
+      if (!m) continue;
+      const s = sideOfMachine(m, machineBbox);
+      if (off[s] < MAX) grow.add(s);
+    }
+    if (grow.size === 0) break; // 더 키울 변 없음 → best-effort 확정.
+    for (const s of grow) off[s] += 1;
+  }
+  return { chosen: { ...off }, final: final! };
+}
+
 /**
  * 모든 머신 + 라우팅 배치 후, PendingConnection 목록을 받아 각 chest 를 최종
- * perimeter ring 위에 처음으로 배치하고 라우팅한다.
+ * perimeter ring 위에 배치하고 라우팅한다.
  *
  * 라우팅 지연 패턴: `placeExternalContainer` 는 chest 를 containers 에만 등록하고
  * ghost cell / routing 을 만들지 않는다. 이 함수가 모든 배치 완료 후 한 번에
  * ghost cell 추가 + 라우팅을 수행한다.
  *
- * 각 chest 는 연결된 머신 origin 기준 manhattan 거리가 가장 가까운 free perimeter
- * 셀부터 시도한다. 라우팅 실패 시 다음 후보 셀로 이동, 모든 후보 소진 시 failed.
+ * 단일 링 불변식: chest 위치는 "이 경계에 입출력 *통로* 가 존재한다" 는 추상적
+ * 표상이다 — 위치 자체는 최적화 대상이 아니고, 통로(라우팅)가 **항상 존재** 해야
+ * 한다. 따라서 perimeter ring 은 최종 블루프린트에서 **항상 한 줄(단일 반경 r)** 이다.
+ *
+ * 알고리즘 (place-then-grow): 단일 반경 r 의 링 하나에 *모든* chest 를 배치+라우팅
+ * 시도한다. 한 chest 라도 그 링에서 통로를 못 뚫으면 — 개별 chest 를 바깥 링으로
+ * spill 시키지 않고(그러면 다중 줄) — **링 전체를 한 단계 키워(r+1) 전원 재시도** 한다.
+ * 각 chest 는 한 링 안에서 연결 머신에 가까운 free 셀부터 시도하며, 그 셀에서
+ * 라우팅이 성공하면 거기 통로가 난 것이다(위치는 통로 출구를 따라갈 뿐). r=MAX
+ * 까지도 전원 성공이 안 되면 그 최대 링의 best-effort 결과를 남기고 실패를 보고한다.
  */
-export function wrapExternalsAroundPerimeter(
+export type RingConnLog = {
+  chestId: string; machineId: string; kind: string;
+  tried: number; placedAt: { x: number; y: number } | null; routingOk: boolean;
+};
+
+/**
+ * 단일 링(`ringCells`) 위에 주어진 연결들을 배치+라우팅한다. 성장(ring grow)·
+ * 롤백은 하지 않는다 — 호출자(성장 루프)가 담당. 각 chest 는 연결 머신에 가까운
+ * free 셀부터 시도하며, 라우팅 성공 셀이 곧 통로 출구다(chest 위치는 거기 따라감).
+ *
+ * 같은 단일 링을 trunk(`externalMergePass`)·1:1(`wrapExternalsAroundPerimeter`)
+ * 양쪽이 공유하기 위한 빌딩블록.
+ */
+export function placeConnectionsOnRing(
   internal: Area,
   external: Area,
   routings: Routing[],
   connections: PendingConnection[],
   options: RouteOptions,
-): { placed: number; failed: number } {
-  const bbox = computeMachineRoutingBbox(internal);
-  if (!bbox) return { placed: 0, failed: connections.length };
-
-  const perimeter = enumeratePerimeterCells(bbox);
+  ringCells: { x: number; y: number }[],
+): { placed: number; failed: number; failedMachineIds: string[]; logs: RingConnLog[] } {
   const externalIds = new Set(external.containers.map((c) => c.id));
-
+  const logs: RingConnLog[] = [];
+  const failedMachineIds: string[] = [];
   let placed = 0;
   let failed = 0;
 
-  type ConnLog = {
-    chestId: string; machineId: string; kind: string;
-    tried: number; placedAt: { x: number; y: number } | null; routingOk: boolean;
-  };
-  const connLogs: ConnLog[] = [];
+  // 단일 외곽 링 불변식: 모든 라우팅은 현재 ring 직사각형(= ringCells 의 bbox) 안에
+  // 머물러야 한다. ring 바깥으로 새는 belt 를 금지하고, 못 풀린 연결은 호출자(성장
+  // 루프)가 그 변을 키워 재시도한다. ringCells 가 비면 제약 없음(방어).
+  const ringBounds = ringCells.length > 0 ? boundsOfCells(ringCells) : undefined;
+  const ringOptions: RouteOptions = ringBounds
+    ? { ...options, routingBounds: ringBounds }
+    : options;
 
   for (const conn of connections) {
     const isProducerChest = externalIds.has(conn.producerId);
@@ -198,23 +332,23 @@ export function wrapExternalsAroundPerimeter(
 
     if (!chest || !machine) {
       failed += 1;
+      failedMachineIds.push(machineId);
       if (AUTO_LAYOUT_COORD_DUMP) {
-        connLogs.push({ chestId, machineId, kind: String(conn.kind), tried: 0, placedAt: null, routingOk: false });
+        logs.push({ chestId, machineId, kind: String(conn.kind), tried: 0, placedAt: null, routingOk: false });
       }
       continue;
     }
 
-    const sortedPerimeter = [...perimeter].sort((a, b) => {
-      const da =
-        Math.abs(a.x - machine.origin.x) + Math.abs(a.y - machine.origin.y);
-      const db =
-        Math.abs(b.x - machine.origin.x) + Math.abs(b.y - machine.origin.y);
+    // 링 안에서만, 연결 머신에 가까운 셀부터 시도(통로 출구 후보).
+    const sorted = [...ringCells].sort((a, b) => {
+      const da = Math.abs(a.x - machine.origin.x) + Math.abs(a.y - machine.origin.y);
+      const db = Math.abs(b.x - machine.origin.x) + Math.abs(b.y - machine.origin.y);
       return da - db;
     });
 
     let succeeded = false;
     let triedCount = 0;
-    for (const candidate of sortedPerimeter) {
+    for (const candidate of sorted) {
       if (
         internal.placed.some((p) => p.x === candidate.x && p.y === candidate.y) ||
         external.placed.some((p) => p.x === candidate.x && p.y === candidate.y)
@@ -232,12 +366,24 @@ export function wrapExternalsAroundPerimeter(
 
       const producer = isProducerChest ? chest : machine;
       const consumer = isProducerChest ? machine : chest;
+      // ring 게이트웨이: 이 셀이 놓인 변을 보고 상자를 내부향 한 면으로만 노출시킨다.
+      // item 연결에만 적용(fluid 는 fluid_box 위치가 면을 강제하므로 제외).
+      const connOptions: RouteOptions =
+        ringBounds && conn.kind === 'item'
+          ? {
+              ...ringOptions,
+              inwardPortFace: {
+                containerId: chestId,
+                face: inwardRingFace(candidate, ringBounds, machine),
+              },
+            }
+          : ringOptions;
       const attempt = routeWithFallback(
         producer,
         consumer,
         conn.kind,
         internal,
-        options,
+        connOptions,
         external,
       );
 
@@ -247,44 +393,93 @@ export function wrapExternalsAroundPerimeter(
         succeeded = true;
         placed += 1;
         if (AUTO_LAYOUT_COORD_DUMP) {
-          connLogs.push({ chestId, machineId, kind: String(conn.kind), tried: triedCount, placedAt: { ...candidate }, routingOk: true });
+          logs.push({ chestId, machineId, kind: String(conn.kind), tried: triedCount, placedAt: { ...candidate }, routingOk: true });
         }
         break;
       }
 
-      // 후보 실패 — rollback 후 다음 perimeter 셀 시도
+      // 이 셀엔 통로가 안 남 — rollback 후 같은 링의 다음 셀 시도.
       chest.origin = oldOrigin;
       if (chestInInternal && chestInInternal !== chest) {
         chestInInternal.origin = oldOrigin;
       }
       external.placed = external.placed.filter(
         (p) =>
-          !(
-            p.x === candidate.x &&
-            p.y === candidate.y &&
-            p.cell.entityId === chestId
-          ),
+          !(p.x === candidate.x && p.y === candidate.y && p.cell.entityId === chestId),
       );
     }
 
     if (!succeeded) {
       failed += 1;
+      failedMachineIds.push(machineId);
       if (AUTO_LAYOUT_COORD_DUMP) {
-        connLogs.push({ chestId, machineId, kind: String(conn.kind), tried: triedCount, placedAt: null, routingOk: false });
+        logs.push({ chestId, machineId, kind: String(conn.kind), tried: triedCount, placedAt: null, routingOk: false });
       }
     }
   }
 
+  return { placed, failed, failedMachineIds, logs };
+}
+
+export function wrapExternalsAroundPerimeter(
+  internal: Area,
+  external: Area,
+  routings: Routing[],
+  connections: PendingConnection[],
+  options: RouteOptions,
+): { placed: number; failed: number } {
+  const machineBbox = computeMachineFootprintBbox(internal);
+  if (!machineBbox) return { placed: 0, failed: connections.length };
+
+  const externalIds = new Set(external.containers.map((c) => c.id));
+
+  // baseline 복원용: 모든 chest 의 원본 origin 보존 + 외부 패스 진입 시점 배열 길이.
+  const chestOrigins = new Map<string, { x: number; y: number }>();
+  for (const conn of connections) {
+    const cid = externalIds.has(conn.producerId) ? conn.producerId : conn.consumerId;
+    if (chestOrigins.has(cid)) continue;
+    const c = external.containers.find((c) => c.id === cid);
+    if (c) chestOrigins.set(cid, { ...c.origin });
+  }
+  const snap = {
+    internal: internal.placed.length,
+    external: external.placed.length,
+    routings: routings.length,
+    corridors: internal.undergroundCorridors.length,
+  };
+
+  const { chosen, final } = growRingPerSide(
+    machineBbox,
+    (id) =>
+      internal.containers.find((c) => c.id === id) ??
+      external.containers.find((c) => c.id === id),
+    () => {
+      internal.placed.length = snap.internal;
+      external.placed.length = snap.external;
+      routings.length = snap.routings;
+      internal.undergroundCorridors.length = snap.corridors;
+      for (const [id, o] of chestOrigins) {
+        const ce = external.containers.find((c) => c.id === id);
+        const ci = internal.containers.find((c) => c.id === id);
+        if (ce) ce.origin = { ...o };
+        if (ci) ci.origin = { ...o };
+      }
+    },
+    (ringCells) =>
+      placeConnectionsOnRing(internal, external, routings, connections, options, ringCells),
+  );
+
+  const result = { placed: final.placed, failed: final.failed };
   if (AUTO_LAYOUT_COORD_DUMP) {
     console.log('[autoLayout debug] wrapExternalsAroundPerimeter\n' + JSON.stringify({
-      machineBbox: bbox,
-      perimeterRings: { min: 2, max: MAX_EXTERNAL_SEARCH_RADIUS, totalCells: perimeter.length },
-      connections: connLogs,
-      summary: { placed, failed },
+      machineBbox,
+      chosenOffsets: chosen,
+      connections: final.logs,
+      summary: result,
     }, null, 2));
   }
 
-  return { placed, failed };
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -909,6 +1104,59 @@ function deriveFluidName(r: Routing): string | undefined {
   const k2 = r.to.kind;
   if (typeof k2 === 'object' && 'fluid' in k2) return k2.fluid;
   return undefined;
+}
+
+/** 셀 목록의 포함 경계(min/max). ring 직사각형 → routingBounds 변환에 사용. */
+export function boundsOfCells(
+  cells: ReadonlyArray<{ x: number; y: number }>,
+): { x0: number; y0: number; x1: number; y1: number } {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of cells) {
+    if (c.x < x0) x0 = c.x;
+    if (c.y < y0) y0 = c.y;
+    if (c.x > x1) x1 = c.x;
+    if (c.y > y1) y1 = c.y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * ring 직사각형 위 셀의 *내부향 면* — 상자가 노출할 단일 포트 면.
+ *
+ * 변 판정: 서벽(x=x0)→E, 동벽(x=x1)→W, 북벽(y=y0)→S, 남벽(y=y1)→N. 모두 ring 안쪽
+ * (= 머신 쪽)을 향한다. 코너(두 변 동시)는 머신 중심으로 향하는 쪽을 고른다.
+ * 어느 변에도 안 닿으면(방어) 머신 방향 우세축으로 결정.
+ */
+export function inwardRingFace(
+  cell: { x: number; y: number },
+  rb: { x0: number; y0: number; x1: number; y1: number },
+  machine: Container,
+): PortFace {
+  const onW = cell.x === rb.x0;
+  const onE = cell.x === rb.x1;
+  const onN = cell.y === rb.y0;
+  const onS = cell.y === rb.y1;
+
+  const mcx = machine.origin.x + machine.size.w / 2;
+  const mcy = machine.origin.y + machine.size.h / 2;
+  const dx = mcx - cell.x;
+  const dy = mcy - cell.y;
+
+  // 후보 내부향 면(닿은 변마다 1개). 코너면 2개 → 머신 방향으로 점수 매겨 선택.
+  const cands: Array<{ face: PortFace; score: number }> = [];
+  if (onW) cands.push({ face: 'E', score: dx });   // 동향, 머신이 동쪽일수록 큼
+  if (onE) cands.push({ face: 'W', score: -dx });
+  if (onN) cands.push({ face: 'S', score: dy });
+  if (onS) cands.push({ face: 'N', score: -dy });
+
+  if (cands.length > 0) {
+    cands.sort((a, b) => b.score - a.score);
+    return cands[0].face;
+  }
+
+  // 변 미접촉 방어 — 머신 방향 우세축.
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'E' : 'W';
+  return dy >= 0 ? 'S' : 'N';
 }
 
 function recomputeBbox(area: Area): void {

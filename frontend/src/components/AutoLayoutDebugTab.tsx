@@ -2,14 +2,12 @@ import { useState } from 'react';
 import {
   AUTO_LAYOUT_COORD_DUMP,
   setAutoLayoutCoordDump,
-  AUTO_LAYOUT_ALGORITHM,
-  setAutoLayoutAlgorithm,
-  type AutoLayoutAlgorithm,
 } from '../utils/autoLayout/debugFlags';
 import {
   AUTO_LAYOUT_MERGE_BOXES,
   setAutoLayoutMergeBoxes,
 } from '../utils/autoLayout/externalMergePass';
+import { useUiDebugStore } from '../store/uiDebugStore';
 
 /**
  * 디버그 탭 — 자동 배치 런타임 토글.
@@ -20,51 +18,11 @@ import {
 export default function AutoLayoutDebugTab() {
   const [dumpEnabled, setDumpEnabled] = useState(AUTO_LAYOUT_COORD_DUMP);
   const [mergeEnabled, setMergeEnabled] = useState(AUTO_LAYOUT_MERGE_BOXES);
-  const [algorithm, setAlgorithm] = useState<AutoLayoutAlgorithm>(AUTO_LAYOUT_ALGORITHM);
-
-  const ALGORITHMS: { value: AutoLayoutAlgorithm; label: string; desc: string }[] = [
-    {
-      value: 'exhaustive',
-      label: 'S-EXH (완전탐색)',
-      desc: '기존 알고리즘. 하향식 그리디 + perm(n!)×방향(2) 완전 탐색. 여러 후보를 정사각형 점수로 정렬해 반환합니다.',
-    },
-    {
-      value: 'layered',
-      label: 'S-LAYER (계층/채널)',
-      desc: '계층화 DAG 레이아웃 + 채널 라우팅(Sugiyama). 레시피 깊이를 열(레이어)로 배치하고 레이어 사이에 빈 채널을 둬 라우팅을 구조적으로 보장합니다. 결정적 단일 후보.',
-    },
-  ];
+  const showEntityDebugInfo = useUiDebugStore((s) => s.showEntityDebugInfo);
+  const setShowEntityDebugInfo = useUiDebugStore((s) => s.setShowEntityDebugInfo);
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-mono">
-          ALGORITHM — 배치 전략
-        </div>
-        <div className="flex gap-2">
-          {ALGORITHMS.map((a) => (
-            <button
-              key={a.value}
-              onClick={() => {
-                setAutoLayoutAlgorithm(a.value);
-                setAlgorithm(a.value);
-              }}
-              className={`flex-1 text-[10px] font-mono px-2 py-1 rounded border transition-colors ${
-                algorithm === a.value
-                  ? 'bg-purple-900/60 border-purple-500 text-purple-200'
-                  : 'bg-gray-800/40 border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400'
-              }`}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-[11px] text-gray-400 leading-relaxed">
-          {ALGORITHMS.find((a) => a.value === algorithm)?.desc}
-          {' '}전략을 바꾼 뒤 자동 배치를 다시 실행해야 반영됩니다.
-        </p>
-      </div>
-
       <div className="flex items-start gap-3">
         <button
           onClick={() => {
@@ -107,6 +65,23 @@ export default function AutoLayoutDebugTab() {
           감당하는 한도 내에서 하나의 무한상자 + 트렁크 벨트가 공급하도록 묶습니다.
           묶기가 불가능하면 기존 1:1 배치로 자동 폴백합니다. 토글 후 자동 배치를
           다시 실행해야 반영됩니다.
+        </p>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => setShowEntityDebugInfo(!showEntityDebugInfo)}
+          className={`shrink-0 text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
+            showEntityDebugInfo
+              ? 'bg-sky-900/60 border-sky-600 text-sky-300 hover:bg-sky-800/60'
+              : 'bg-gray-800/40 border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400'
+          }`}
+        >
+          ENTITY IDS {showEntityDebugInfo ? 'ON' : 'OFF'}
+        </button>
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          켜면 엔티티 정보 모달에 인스턴스 ID·내부 이름·그리드 좌표·방향 등
+          디버깅용 정보가 추가로 표시됩니다. 기본은 꺼짐(숨김)입니다.
         </p>
       </div>
     </div>

@@ -15,8 +15,8 @@
 > 그 레이어 경계를 가로지르는 **모든 연결을 이 띠 안에서만** 달리게 한다.
 > 채널은 항상 비어 있으므로 **라우팅이 실패할 수 없다** (정의상).
 
-이것이 현재 [containerWizard.ts](../frontend/src/utils/autoLayout/containerWizard.ts) 의
-`FailureLeaf` 백트래킹과 `permutations()` `n!` 폭발을 동시에 제거하는 핵심 메커니즘이다.
+이것이 (롤백된) 완전탐색 전략 S-EXH 의 `FailureLeaf` 백트래킹·`n!` 형제순서 폭발을 없애는 핵심
+메커니즘이며, 현재 전략 S-LAYER ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 로 구현돼 있다.
 
 ---
 
@@ -73,7 +73,7 @@ automation-science-pack         (L0, 제품)
 
 ## 3. 채널이 푸는 문제 (현재 설계와의 대비)
 
-### 현재 (S-EXH) — 라우팅을 "발견"한다
+### (구) S-EXH — 라우팅을 "발견"한다  *(롤백됨, 코드 없음)*
 
 ```
 1. 머신을 부모 옆 빈자리에 그리디로 놓는다        (placeMachine)
@@ -96,10 +96,19 @@ automation-science-pack         (L0, 제품)
 
 ---
 
+> **구현 상태 (2026-06-04):** §4·§5 의 **트랙 수 산정**은 구현 완료.
+> `channelPlanner.ts` 의 `assignTracksLeftEdge` 가 left-edge interval partitioning 으로
+> 채널별 최소 트랙 수를 구하고, `layeredWizard.ts` 가 `channelWidthFromTracks` 로 채널 폭을 동적 결정한다
+> (고정폭 상수 대신 `CHANNEL_MIN = 3` 하한 + 트랙 수 기반 폭). 라우팅은 (depth, track, lo) 순서로 정렬해 깔되, **셀 구성
+> (벨트/투입기/파이프/방향)** 은 검증된 기존 BFS 라우터(`containerRouting.routePorts`)를
+> 재사용한다. 트랙 폭이 충분하므로 BFS 가 실패하지 않는다(§8 C2 의 실용 보장).
+> **명시적 셀 직접 깔기(BFS 완전 제거)** 는 follow-up — 기존 Dijkstra 라우터가 지하
+> 변형·방향·유체를 이미 정확히 처리하므로 재구현 리스크를 피해 보류.
+
 ## 4. 채널 폭(W) 계산 — 가장 중요한 디테일
 
 채널 폭은 임의 상수가 아니라 **그 경계를 가로지르는 동시 연결 수**로 계산한다.
-현재 코드의 `ROUTING_GAP = 3` 은 이 계산의 *하한*으로 흡수된다.
+현재 코드의 `CHANNEL_MIN = 3` ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 이 이 계산의 *하한*이다.
 
 ### 4.1 한 연결이 채널에서 쓰는 자원
 
@@ -108,8 +117,8 @@ automation-science-pack         (L0, 제품)
 | **아이템** | 투입기(1) — 벨트(≥1) — 투입기(1) | 3 | 벨트 1줄 |
 | **유체** | 파이프(≥1) | 1 | 파이프 1줄 |
 
-`ROUTING_GAP = 3` 은 정확히 아이템 체인의 최소 가로 폭(투입기+벨트+투입기)이다.
-→ 채널 폭의 **바닥값**이 이미 코드에 있는 셈.
+`CHANNEL_MIN = 3` 은 정확히 아이템 체인의 최소 가로 폭(투입기+벨트+투입기)이다.
+→ 채널 폭의 **바닥값**.
 
 ### 4.2 트랙 수 = 동시 연결 수
 
@@ -118,10 +127,9 @@ automation-science-pack         (L0, 제품)
 교차하지 않으려면 진입/진출 지점이 분리되어야 하므로 실무적으로:
 
 ```
-W(channel) = max(
-    ROUTING_GAP,                       // 아이템 체인 최소(=3) / 유체면 1
-    base_chain_width + extra_tracks    // 동시 연결이 많을 때 트랙 여유
-)
+W(channel) = channelWidthFromTracks(trackCount, CHANNEL_MIN)
+           = max(CHANNEL_MIN,      // 아이템 체인 최소(=3)
+                 trackCount + 2)   // 동시 연결(트랙) 수 + 양끝 여유
 ```
 
 여기서 `base_chain_width` 는 운반 종류(아이템 3 / 유체 1), `extra_tracks` 는 한 채널을
@@ -132,10 +140,8 @@ W(channel) = max(
 `science-pack` 이 L1 에서 `gear-wheel`, `copper-plate` 2개를 받는다고 하자.
 
 ```
-채널 C01 을 가로지르는 연결: 2개 (gear→pack, copper→pack)  → k = 2
-둘 다 아이템 라우팅                                        → base = 3
-필요 트랙: 2  →  extra_tracks = 1
-W(C01) = max(3, 3 + 1) = 4
+채널 C01 을 가로지르는 연결: 2개 (gear→pack, copper→pack)  → trackCount = 2
+W(C01) = max(CHANNEL_MIN, trackCount + 2) = max(3, 4) = 4
 ```
 
 → C01 은 **폭 4셀**로 예약된다. 두 연결이 각자 트랙을 잡으므로 교차 없이 진입 가능.
@@ -210,9 +216,9 @@ L0 이 L2 의 산출물을 직접 소비하는 경우:
 `assignThroughputCounts` 로 노드가 N대가 되면, 레이어 안에서 **세로로 N칸을 차지하는
 한 슬롯**이 된다. 채널 쪽에서 보면:
 
-- N대의 산출물이 한 소비자로 합쳐지는 경우 → 채널 안에서 **트렁크(합류) 트랙**으로 병합.
-  현재 [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) 의 트렁크 병합
-  로직을 채널 내부 버전으로 재사용 가능.
+- N대의 산출물이 한 소비자로 합쳐지는 경우 → **트렁크(합류) 트랙**으로 병합. **구현됨:**
+  [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts) 가 클러스터→부모 소비자 트렁크,
+  [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) 가 외부 상자↔머신 트렁크를 담당.
 - 소비자도 M대면 → 채널이 N→M 분배(distribution) 영역이 된다. 폭이 더 필요할 수 있다.
 
 ```
@@ -264,7 +270,7 @@ function reserveChannels(layers: Layer[], edges: Edge[]) -> Channel[]:
         itemTracks  = leftEdgeAssign(itemEdges)   # 겹치지 않는 구간끼리 트랙 공유
         fluidTracks = leftEdgeAssign(fluidEdges)
 
-        width = max(ROUTING_GAP,
+        width = max(CHANNEL_MIN,
                     itemBaseWidth(itemTracks) + fluidBaseWidth(fluidTracks))
 
         channels.push(Channel{ between: (k, k+1), width, tracks: itemTracks ∪ fluidTracks })
@@ -283,15 +289,15 @@ function assignColumns(layers, channels):
 
 ---
 
-## 10. 현재 코드 매핑 (어디를 무엇으로 바꾸나)
+## 10. 현재 코드 매핑
 
-| S-LAYER 요소 | 대체/재사용하는 현재 코드 |
+| S-LAYER 요소 | 현재 코드 |
 |---|---|
-| 채널 폭의 하한 | `ROUTING_GAP = 3` ([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts)) → 명시적 채널 폭으로 승격 |
-| 트랙 내 실제 벨트/투입기/파이프 깔기 | `commitRouting` ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts)) 재사용 (탐색 없이 직선) |
-| 라우팅 실패 처리 | `routeWithFallback` / `FailureLeaf` → **제거** (채널에선 실패 불가) |
-| 트렁크 합류 | [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) 의 병합 로직을 채널 내부로 |
-| 머신 좌표 commit | `commitContainer` ([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts)) 그대로 |
+| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../frontend/src/utils/autoLayout/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) |
+| 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts)) → `routePorts`/`commitRouting` ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts)) |
+| 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
+| 트렁크 합류 | [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts) (내부) + [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) (외부) |
+| 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts)) |
 
 ---
 
@@ -308,5 +314,5 @@ function assignColumns(layers, channels):
 ## 12. 다음 문서
 
 - `s-layer-layer-assignment.md` — longest-path 레이어 배정 + 더미 노드 삽입
-- `s-layer-ordering.md` — barycenter 레이어 내 정렬 (현재 `permutations()` 대체)
+- `s-layer-ordering.md` — barycenter 레이어 내 정렬 (현재는 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 tidy-tree `layout` 으로 처리)
 - `s-layer-coordinate.md` — 레이어/채널 → `Container.origin` / `Area.placed` 확정

@@ -21,23 +21,17 @@ export function setAutoLayoutCoordDump(v: boolean): void {
 }
 
 /**
- * AUTO_LAYOUT_ALGORITHM — 자동 배치에 사용할 배치 전략(strategy) 선택.
+ * AUTO_LAYOUT_MODULE_PIPELINE — 조각 5 하이브리드 배선 스위치.
  *
- * 다른 세션에서 언급할 때: "AUTO_LAYOUT_ALGORITHM 플래그"
+ * true 면 `runLayeredWizard` 가 **트리 전체가 simple-item(유체 0·미탭 0·홉 성공)** 일 때
+ * generateModule+packModuleTree+routeModuleHops 자족 모듈 경로를 타고, 아니면 옛 경로로
+ * 폴백한다. false(기본)면 항상 옛 경로 — 회귀 0.
  *
- *  - `'exhaustive'` (S-EXH) : 기존 알고리즘. 하향식 그리디 + perm(n!)×dir(2) 완전 탐색.
- *                             여러 후보를 squarenessPenalty 로 정렬해 반환.
- *  - `'layered'`    (S-LAYER): 계층화 DAG 레이아웃 + 채널 라우팅(Sugiyama).
- *                             레시피 깊이를 열(레이어)로, 레이어 사이에 빈 채널을
- *                             두어 라우팅을 구조적으로 보장. 결정적 단일 후보 반환.
- *                             설계: docs/auto-layout-wizard.s-layer-channel-reservation.md
- *
- * 디버그 탭의 "ALGORITHM" 토글로 런타임 전환. 토글 후 자동 배치를 다시 실행해야 반영됨.
+ * 목적: 자식 클러스터를 부모-무시 모듈로 생성해 "자식 == 루트" 를 라이브에서 실현.
+ * 검증 단계라 기본 OFF. setAutoLayoutModulePipeline(true) 로 켠다.
  */
-export type AutoLayoutAlgorithm = 'exhaustive' | 'layered';
+export let AUTO_LAYOUT_MODULE_PIPELINE = false;
 
-export let AUTO_LAYOUT_ALGORITHM: AutoLayoutAlgorithm = 'exhaustive';
-
-export function setAutoLayoutAlgorithm(v: AutoLayoutAlgorithm): void {
-  AUTO_LAYOUT_ALGORITHM = v;
+export function setAutoLayoutModulePipeline(v: boolean): void {
+  AUTO_LAYOUT_MODULE_PIPELINE = v;
 }

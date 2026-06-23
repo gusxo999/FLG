@@ -1,14 +1,14 @@
 /**
  * Visualization — 전체화면 모달.
  *
- * 후보 적용 시 저장된 `visualizationSource` 로 `traceCandidatePath` 를 호출해
- * 선택된 후보 1개의 생성 과정을 함수 단계로 재현하고, 0.5초(사용자 지정) 간격으로
+ * 후보 적용 시 저장된 `visualizationSource` 로 `traceLayeredPath` 를 호출해
+ * 선택된 후보 1개의 생성 과정을 phase 단계로 재현하고, 0.5초(사용자 지정) 간격으로
  * 재생한다. 좌측은 독립 그리드, 우측은 함수 호출 트리, 하단은 재생 컨트롤.
  */
 
 import { useEffect, useState } from 'react';
 import { useLayoutStore } from '../../store/layoutStore';
-import { traceCandidatePath } from '../../utils/autoLayout/containerWizard';
+import { traceLayeredPath } from '../../utils/autoLayout/layeredWizard';
 import type { CandidateTraceResult } from '../../utils/autoLayout/containerModel';
 import VisualizationGrid from './VisualizationGrid';
 import FunctionTreeSidebar from './FunctionTreeSidebar';
@@ -36,7 +36,7 @@ export default function VisualizationModal({ onClose }: VisualizationModalProps)
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
-    traceCandidatePath(source.input, source.perm, source.dir)
+    traceLayeredPath(source.input)
       .then((result) => {
         if (cancelled) return;
         setTrace(result);

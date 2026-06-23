@@ -97,12 +97,19 @@ function TreeRow({
 }
 
 function toneFor(name: string): { dot: string } {
-  if (name.startsWith('placeRootMachine') || name.startsWith('placeMachine'))
+  if (name.startsWith('coordinate') || name.startsWith('placeMachines'))
     return { dot: 'bg-blue-400' };
-  if (name.startsWith('routeWithFallback')) return { dot: 'bg-amber-400' };
+  if (
+    name.startsWith('channelRouting') ||
+    name.startsWith('planChannels') ||
+    name.startsWith('trunk') ||
+    name.startsWith('route')
+  )
+    return { dot: 'bg-amber-400' };
+  if (name.startsWith('외부 연결')) return { dot: 'bg-teal-300' };
   if (name.startsWith('attach')) return { dot: 'bg-teal-400' };
   if (name.startsWith('wrapExternals')) return { dot: 'bg-green-400' };
-  if (name.startsWith('recurseMachine')) return { dot: 'bg-fuchsia-400' };
+  if (name.startsWith('layerAssignment')) return { dot: 'bg-fuchsia-400' };
   if (name === '완료') return { dot: 'bg-green-300' };
   return { dot: 'bg-gray-500' };
 }

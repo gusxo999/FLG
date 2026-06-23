@@ -68,4 +68,4 @@ import한 값을 그대로 보존만 하고, 자동완성 로직은 무시. roun
 
 - 32개 BlueprintControlBehavior 변종 전체 목록과 export 스키마: [blueprint-metadata-coverage.md](blueprint-metadata-coverage.md) 2절
 - 위저드 부모 문서: [auto-layout-wizard.md](auto-layout-wizard.md)
-- 알고리즘 상세: [auto-layout-wizard.algorithm.md](auto-layout-wizard.algorithm.md)
+- 알고리즘 상세: [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)

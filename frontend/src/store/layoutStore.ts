@@ -64,16 +64,12 @@ export interface RoutingEditSession {
 
 /**
  * 시각화(Visualization) 진입 소스 — 후보 적용 시점에 저장된다.
- * 시각화 버튼이 `traceCandidatePath(input, perm, dir)` 로 그 후보의 생성 과정을
- * 결정적으로 재현하는 데 필요한 최소 정보.
+ * 시각화 버튼이 `traceLayeredPath(input)` 로 그 후보의 생성 과정을 결정적으로
+ * 재현하는 데 필요한 최소 정보. S-LAYER 는 perm/dir 없는 단일 패스라 입력만 필요.
  */
 export interface VisualizationSource {
   /** 후보 생성에 쓰인 위저드 입력 */
   input: ContainerWizardInput;
-  /** 선택된 후보의 루트 자식 순열 (itemName 순서) */
-  perm: string[];
-  /** 선택된 후보의 루트 자식 배치 방향 */
-  dir: 'right' | 'down';
 }
 
 const DEFAULT_GRID_WIDTH = 256;

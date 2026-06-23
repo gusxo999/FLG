@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react';
 import type { Entity, FluidBoxInfo, Module, Recipe } from '../store/gameDataStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useLayoutStore } from '../store/layoutStore';
+import { useUiDebugStore } from '../store/uiDebugStore';
 import type { ModuleSlot } from '../types/layout';
+import { EntityType } from '../types/layout';
+import type { InfinityFilter, InfinitySettings, InfinityPipeSettings } from '../types/blueprint';
 import { useT } from '../i18n';
 import { applyEffectsToMachine, sumModuleEffects } from '../utils/moduleEffects';
 import { formatSurfaceConditions } from '../utils/surfaceConditions';
@@ -37,6 +40,9 @@ export default function EntityDetails({ entity, instanceId }: Props) {
       </div>
       <div className="text-gray-500 text-[10px] font-mono truncate">{entity.name}</div>
 
+      {/* 디버그 정보 (디버그 탭 ENTITY IDS 토글로 노출, 기본 숨김) */}
+      <EntityDebugInfo entity={entity} instanceId={instanceId ?? null} />
+
       {/* 인스턴스 편집: 레시피 바인딩 (crafting machine 한정) */}
       {instanceId && entity.crafting_categories && entity.crafting_categories.length > 0 && (
         <RecipeBinding instanceId={instanceId} entity={entity} />
@@ -46,6 +52,9 @@ export default function EntityDetails({ entity, instanceId }: Props) {
       {instanceId && entity.module_slots !== undefined && entity.module_slots > 0 && (
         <ModuleBinding instanceId={instanceId} entity={entity} />
       )}
+
+      {/* 무한상자 아이템 / 무한파이프 유체 정보 (입력/출력 모두) */}
+      {instanceId && <InfinityContainerInfo instanceId={instanceId} />}
 
       <div className="pt-1 border-t border-gray-700 space-y-0.5">
         <Row label={t('sidebar.details.type')} value={entity.type} />
@@ -267,6 +276,187 @@ export default function EntityDetails({ entity, instanceId }: Props) {
       )}
     </div>
   );
+}
+
+const DIRECTION_LABEL: Record<number, string> = {
+  0: 'N (0)',
+  4: 'E (4)',
+  8: 'S (8)',
+  12: 'W (12)',
+};
+
+/**
+ * 디버그용 정보 패널. 디버그 탭의 ENTITY IDS 토글이 켜졌을 때만 렌더된다.
+ * 배치된 인스턴스(instanceId 존재)면 그리드에서 origin 셀을 찾아 인스턴스
+ * ID·좌표·방향·레시피 등 런타임 식별 정보를 보여준다.
+ */
+function EntityDebugInfo({ entity, instanceId }: { entity: Entity; instanceId: string | null }) {
+  const t = useT();
+  const show = useUiDebugStore((s) => s.showEntityDebugInfo);
+  const grid = useLayoutStore((s) => s.grid);
+
+  const placed = useMemo(() => {
+    if (!instanceId) return null;
+    const idx = grid.cells.findIndex((c) => c.entityId === instanceId && c.isOrigin);
+    const cell = idx >= 0 ? grid.cells[idx] : null;
+    if (!cell) return null;
+    return {
+      cell,
+      x: idx % grid.width,
+      y: Math.floor(idx / grid.width),
+    };
+  }, [grid, instanceId]);
+
+  if (!show) return null;
+
+  const cell = placed?.cell;
+
+  return (
+    <div className="pt-1 border-t border-sky-800/50 space-y-0.5">
+      <div className="text-sky-400/80 text-[10px] uppercase tracking-wide mb-1">
+        {t('sidebar.details.debugSection')}
+      </div>
+      {instanceId && (
+        <DebugRow label={t('sidebar.details.debugInstanceId')} value={instanceId} />
+      )}
+      <DebugRow label={t('sidebar.details.debugEntityName')} value={entity.name} />
+      <DebugRow label={t('sidebar.details.debugEntityType')} value={String(entity.type)} />
+      {placed && (
+        <DebugRow
+          label={t('sidebar.details.debugPosition')}
+          value={`(${placed.x}, ${placed.y})`}
+        />
+      )}
+      {cell && (
+        <DebugRow
+          label={t('sidebar.details.debugDirection')}
+          value={DIRECTION_LABEL[cell.direction] ?? String(cell.direction)}
+        />
+      )}
+      {cell?.recipe && (
+        <DebugRow label={t('sidebar.details.debugRecipe')} value={cell.recipe} />
+      )}
+      {cell?.quality && (
+        <DebugRow label={t('sidebar.details.debugQuality')} value={cell.quality} />
+      )}
+    </div>
+  );
+}
+
+/** 디버그 row — 값을 monospace 로 표시하고 길면 줄바꿈해서 전체 노출. */
+function DebugRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-gray-500 shrink-0">{label}</span>
+      <span className="text-sky-200/90 font-mono text-[10px] text-right break-all">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * 배치된 무한상자(infinity-container)·무한파이프(infinity-pipe) 인스턴스가
+ * 보관/공급/회수하는 내용물 정보를 셀 타입에 맞춰 렌더한다. 무한 컨테이너가
+ * 아니거나 정보가 없으면 아무것도 렌더하지 않는다.
+ */
+function InfinityContainerInfo({ instanceId }: { instanceId: string }) {
+  const grid = useLayoutStore((s) => s.grid);
+
+  const cell = useMemo(
+    () => grid.cells.find((c) => c.entityId === instanceId),
+    [grid, instanceId],
+  );
+
+  const settings = cell?.infinitySettings;
+  if (!settings) return null;
+
+  // 셀 타입이 권위 있는 판별자 — 같은 `infinity_settings` 키지만 모양이 다르다.
+  if (cell?.entityType === EntityType.InfinityPipe) {
+    return <InfinityPipeInfo settings={settings as InfinityPipeSettings} />;
+  }
+  return <InfinityChestInfo settings={settings as InfinitySettings} />;
+}
+
+/** 무한상자(아이템 필터 리스트) 정보. */
+function InfinityChestInfo({ settings }: { settings: InfinitySettings }) {
+  const t = useT();
+  const filters: InfinityFilter[] = settings.filters ?? [];
+
+  return (
+    <div className="pt-1 border-t border-gray-700">
+      <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-1">
+        {t('sidebar.details.infinityItems')}
+      </div>
+      {filters.length === 0 ? (
+        <div className="text-gray-500 text-[11px] italic px-1">—</div>
+      ) : (
+        <ul className="space-y-0.5">
+          {filters.map((f, idx) => (
+            <li
+              key={`${f.name}-${idx}`}
+              className="flex items-baseline justify-between gap-2 px-1 py-0.5 rounded bg-gray-900/40"
+            >
+              <span className="text-gray-200 truncate">{f.name}</span>
+              <span className="shrink-0 text-right">
+                <span className="text-[10px] text-gray-400">{infinityModeLabel(f.mode, t)}</span>
+                <span className="ml-1 text-emerald-300 font-mono">×{f.count}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {settings.remove_unfiltered_items && (
+        <div className="text-gray-500 text-[10px] mt-1 px-1">
+          {t('sidebar.details.infinityRemoveUnfiltered')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 무한파이프(단일 유체) 정보 — 유체 이름·모드·채움 비율·온도. */
+function InfinityPipeInfo({ settings }: { settings: InfinityPipeSettings }) {
+  const t = useT();
+  return (
+    <div className="pt-1 border-t border-gray-700">
+      <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-1">
+        {t('sidebar.details.infinityFluid')}
+      </div>
+      {!settings.name ? (
+        <div className="text-gray-500 text-[11px] italic px-1">—</div>
+      ) : (
+        <div className="flex items-baseline justify-between gap-2 px-1 py-0.5 rounded bg-gray-900/40">
+          <span className="text-gray-200 truncate">{settings.name}</span>
+          <span className="shrink-0 text-right">
+            {settings.mode && (
+              <span className="text-[10px] text-gray-400">{infinityModeLabel(settings.mode, t)}</span>
+            )}
+            {settings.percentage !== undefined && (
+              <span className="ml-1 text-sky-300 font-mono">{Math.round(settings.percentage * 100)}%</span>
+            )}
+          </span>
+        </div>
+      )}
+      {settings.name && settings.temperature !== undefined && (
+        <div className="text-gray-500 text-[10px] mt-1 px-1">
+          {t('sidebar.details.infinityTemperature')}: {settings.temperature}°C
+        </div>
+      )}
+    </div>
+  );
+}
+
+function infinityModeLabel(
+  mode: NonNullable<InfinityPipeSettings['mode']>,
+  t: (k: string) => string,
+): string {
+  switch (mode) {
+    case 'at-least': return t('sidebar.details.infinityModeAtLeast');
+    case 'at-most': return t('sidebar.details.infinityModeAtMost');
+    case 'exactly': return t('sidebar.details.infinityModeExactly');
+    case 'add': return t('sidebar.details.infinityModeAdd');
+    case 'remove': return t('sidebar.details.infinityModeRemove');
+    default: return mode;
+  }
 }
 
 function FluidBoxRow({ fb }: { fb: FluidBoxInfo }) {

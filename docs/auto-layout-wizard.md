@@ -8,7 +8,8 @@
 
 | 문서 | 주제 |
 |------|------|
-| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델 + 정합성 조건(C/O/M) + 배치 전략 레이어(§5.5: 완전 탐색 S-EXH / shape-curve DP S-DP 등) |
+| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5). **현재 구현 전략 = S-LAYER**(§7) |
+| [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 |
 | [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
@@ -82,7 +83,7 @@
 [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
 
-> **주의:** placement-search 의 "완전 탐색(S-EXH)" 은 **여러 배치 전략 중 기준·임시 전략 하나**다(§5.5). 영구 계약이 아니며, 상황에 따라 다른 전략(상향식 shape-curve DP 등)으로 교체된다.
+> **현재 구현 전략 = S-LAYER** ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard`). 레시피 트리를 레이어(열)로 깔고 레이어 사이에 라우팅 채널을 예약해, 백트래킹 없이 결정적으로 후보 1개를 만든다. 흐름은 placement-search [§7](auto-layout-wizard.placement-search.md), 채널 예약은 [s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md). (과거 기준 전략 S-EXH=완전탐색은 롤백되어 코드에 없다. S-DP/S-MEMO 는 미구현 후보.)
 
 ### 입력 — `WizardInput`
 
@@ -111,6 +112,8 @@
 - ✅ 레시피 트리 펼치기 (`expandRecipeTree`)
 - ✅ 최소 / 처리량 모드 머신 수 계산
 - ✅ 인서터 처리량 사용자 override (`inserterThroughput`)
+- ✅ 배치·라우팅 — 전략 **S-LAYER** (`runLayeredWizard`): 레이어 배치 + 채널 라우팅 + 트렁크 병합(공유 무한상자) + 외부 perimeter 래핑
+- ✅ fluid 라우팅 (파이프/지하파이프, 1:1)
 
 ### 구현 위치
 
@@ -118,4 +121,5 @@
 - [frontend/src/utils/autoLayout/recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
 - [frontend/src/utils/autoLayout/techGroup.ts](../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
 - [frontend/src/utils/autoLayout/inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
+- [frontend/src/utils/autoLayout/layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) — **전략 S-LAYER 오케스트레이터** (`runLayeredWizard`)
 - [frontend/src/components/AutoLayoutModal.tsx](../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI

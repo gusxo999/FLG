@@ -11,8 +11,8 @@
  *   탭 = (포트 셀 p, 면 f, reach r) → 트렁크가 관통할 셀 = p + f×r.
  *   머신은 4면 둘레 포트를 모두 후보로 둔다(포트 자유도). 인서터는 트렁크 셀
  *   옆(seat)에 앉아 belt 에서 집어 머신에 넣는다.
- *     · 일반 인서터(reach 1): seat = rim1(p),       tap = rim2(p+f)
- *     · long inserter(reach 2): seat = rim2(p+f),   tap = rim4(p+3f)
+ *     · 일반 인서터(reach 1): seat = rim1(p),   tap = rim2(p+f)
+ *     · long inserter(reach 2): seat = rim1(p), tap = rim3(p+2f) — 앞 칸 건너뜀
  *
  * 탐색: 머신을 **지배축 투영순**으로 방문(위빙 차단), 각 연결의 탭셀·포트·서브
  *   경로는 **굽힘 페널티 cost** 로 고른다(직선 연장 선호 → 깔끔한 L). 직선/L 로
@@ -34,12 +34,20 @@ export interface MachineLike {
   size: { w: number; h: number };
 }
 
-export type Reach = 1 | 2;
+/** 인서터 집기 거리(seat→pickup, 셀 수). 1=일반, ≥2=긴팔. */
+export type Reach = number;
+
+/** 탭의 역할 — belt 기준 흐름 방향. */
+export type TapRole =
+  /** 머신→belt (소스: 머신에서 집어 belt 에 놓음). 기본값. */
+  | 'source'
+  /** belt→머신 (싱크/소비자: belt 에서 집어 머신에 넣음). 멀티싱크 버스의 부모 탭. */
+  | 'sink';
 
 /** 한 머신이 트렁크를 직접 탭하는 방법 1개. */
 export interface TapRecord {
   machineId: string;
-  /** 기준 둘레 셀 (rim1). seat 과 다를 수 있다(long). */
+  /** 기준 둘레 셀 (rim1) = seat. */
   port: { x: number; y: number };
   face: PortFace;
   reach: Reach;
@@ -47,6 +55,8 @@ export interface TapRecord {
   seat: { x: number; y: number };
   /** 인서터가 집어가는 트렁크 belt 셀. */
   tapCell: { x: number; y: number };
+  /** belt 기준 흐름 역할. `sinkIds` 에 든 머신은 'sink', 그 외 'source'. */
+  role: TapRole;
 }
 
 /** 트렁크 belt 셀 1개 (좌표 + 흐름 방향). 실제 PlacedCell 생성은 commit 단계. */
@@ -78,15 +88,28 @@ export interface TrunkConfig {
   wReach: number;
   /** 시도할 chest seed 후보 최대 개수. */
   maxSeeds: number;
-  /** false 면 reach-2(long inserter) 탭 후보를 생성하지 않는다. */
-  allowLongInserter: boolean;
+  /**
+   * 긴팔(long inserter)의 집기 거리(seat→pickup, 셀 수). undefined / <2 면 긴팔
+   * 탭 후보를 생성하지 않는다(reach-1 일반 인서터만). 처리량과 대칭으로 데이터에서
+   * 흐르는 파라미터 — 호출자가 prototype `inserter_pickup_position` 에서 산출해 넘긴다.
+   */
+  longReach?: number;
+  /**
+   * cross-axis 탭 페널티 — 클러스터 *장축에 평행한* 면(컬럼이면 N/S 끝면)을 탭하면
+   * 더해지는 비용. belt 레인을 한 축(컬럼이면 W/E 측면)에 모아 용량 모델(2면×2레인)을
+   * 지키게 한다. soft 선호일 뿐이라 장축 수직면이 막혔으면 끝면 탭으로 폴백(미탭 방지).
+   */
+  wCrossAxis: number;
 }
 
 export const DEFAULT_TRUNK_CONFIG: TrunkConfig = {
   wBend: 4,
   wReach: 1.5,
-  maxSeeds: 8,
-  allowLongInserter: true,
+  // centroid 근접·축 평행 두 그룹 각각에서 이만큼 시도(끝-축 평행 seed 까지 포함되도록 여유).
+  maxSeeds: 16,
+  longReach: 2,
+  // bend(4)보다 강해 같은 거리면 장축 수직면(W/E)을 확실히 선호하되, 끝면만 가능하면 허용.
+  wCrossAxis: 6,
 };
 
 export interface TrunkInput {
@@ -96,6 +119,30 @@ export interface TrunkInput {
   /** chest 후보 perimeter 셀 (enumeratePerimeterCells 결과). */
   chestCandidates: { x: number; y: number }[];
   config?: Partial<TrunkConfig>;
+  /**
+   * 종착(`chestCell`) 셀이 *이미 점유된* 컨테이너 셀인 경우 true.
+   *
+   * 기본(false): chestCell 은 빈 perimeter 칸이며 거기에 무한상자를 새로 놓는다.
+   * true: 종착이 이미 배치된 소비자 머신의 footprint 가장자리 셀이다 — chestCell 의
+   *   free 검사와 occ 추가를 건너뛴다(소비자가 이미 점유). feederSeat·trunkStart 는
+   *   여전히 free 여야 한다. collect 모드에서 feeder(리시버) 인서터가 트렁크에서 집어
+   *   chestCell(=소비자 셀)에 드롭하므로, 별도 상자 없이 소비자에 직접 투입된다.
+   */
+  terminalOccupied?: boolean;
+  /**
+   * 트렁크 허용 영역 (포함 경계). 주어지면 트렁크 belt·seat·tap·feeder 가 이 직사각형
+   * 밖으로 나가지 못한다 — perimeter ring 단일 외곽선 불변식(ring 바깥 누출 금지).
+   * 트렁크는 chest(ring)에서 안쪽으로 자라 대개 이미 내부지만, 안전망으로 클립한다.
+   * 미지정이면 제약 없음.
+   */
+  bounds?: { x0: number; y0: number; x1: number; y1: number };
+  /**
+   * `machines` 중 **싱크(소비자)** 로 다룰 머신 id 집합. 멀티싱크 버스에서 종착(chest)
+   * 부모 외의 부모들을 belt 도중 sink-tap 으로 잇는다. 탐색·기하는 소스와 동일하고,
+   * 결과 `TapRecord.role` 만 'sink' 가 된다(emit 이 인서터 픽업 방향을 belt→머신으로
+   * 뒤집음). 미지정/빈 집합이면 전부 'source'(기존 동작과 동일).
+   */
+  sinkIds?: Set<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,15 +167,75 @@ export function computeTrunkPath(input: TrunkInput): TrunkResult {
     }
   }
 
-  // chest 후보를 centroid 근접순으로 정렬 후 상위 maxSeeds 개 시도.
-  const seeds = [...input.chestCandidates]
-    .sort((a, b) => manhattan(a, centroid) - manhattan(b, centroid))
-    .slice(0, cfg.maxSeeds);
+  // chest seed 후보 선정 — 두 부류를 합친다:
+  //  (1) centroid 근접 seed: 뭉친(blob) 클러스터용 (기존 동작).
+  //  (2) 축 평행 seed: inwardCardinal 이 *지배축*을 따르는 후보. 클러스터 끝에서
+  //      축에 평행하게 성장 → 한 줄(기둥/행)을 한쪽 변에서 직선으로 전부 탭한다.
+  //      (centroid 근접 seed 는 줄에 수직으로 파고들어 1~2대만 닿고 끝나기 쉬움.)
+  // 그리고 첫-매치 반환이 아니라 *모든 seed 를 평가해 untapped 최소(이상 0)* 를 고른다.
+  const byCentroid = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    manhattan(a, centroid) - manhattan(b, centroid);
+  const horizontal = dominantAxisHorizontal(machines);
+  const nearest = [...input.chestCandidates].sort(byCentroid).slice(0, cfg.maxSeeds);
 
-  for (const chestCell of seeds) {
-    const grown = tryGrow(chestCell, order, centroid, baseOcc, cfg);
-    if (grown) return { ok: true, path: grown };
+  // 클러스터 footprint 의 지배축 범위 [aMin, aMax]. 그 밖(끝 너머)에서 시작하는 평행
+  // seed 라야 축 전체를 한쪽 변으로 훑는다. 안쪽(중간) 평행 seed 는 중앙에서 자라
+  // 한쪽 끝밖에 못 닿거나 감아돈다 → 끝-너머 seed 를 우선해 slice 에 살아남게 한다.
+  let aMin = Infinity, aMax = -Infinity;
+  for (const m of machines) {
+    const lo = horizontal ? m.origin.x : m.origin.y;
+    const hi = horizontal ? m.origin.x + m.size.w - 1 : m.origin.y + m.size.h - 1;
+    if (lo < aMin) aMin = lo;
+    if (hi > aMax) aMax = hi;
   }
+  const along = (c: { x: number; y: number }) => (horizontal ? c.x : c.y);
+  // 끝 너머 거리 (작을수록 클러스터 끝에 바짝, 짧은 feeder). 안쪽이면 0.
+  const endDist = (c: { x: number; y: number }) => {
+    const a = along(c);
+    return a < aMin ? aMin - a : a > aMax ? a - aMax : 0;
+  };
+  // 평행 + 끝 너머 seed = 한쪽 변 직선 spine 후보. 얕은 끝(짧은 cap)부터, 충분히
+  // 많이 평가한다(경계 slice 로 좋은 측면-열 seed 가 잘려나가지 않도록 여유 cap).
+  const endSeeds = input.chestCandidates
+    .filter((c) => {
+      const f = inwardCardinal(c, centroid);
+      const par = horizontal ? f.y === 0 : f.x === 0; // 성장 방향이 지배축과 평행한가.
+      return par && endDist(c) > 0;
+    })
+    .sort((a, b) => endDist(a) - endDist(b) || byCentroid(a, b))
+    .slice(0, cfg.maxSeeds * 4);
+
+  // 모든 후보 seed 를 평가해 *가장 깔끔한 full-tap* 을 고른다. 점수(작을수록 좋음):
+  //   [ untapped 수, 횡축 span, 트렁크 길이 ].
+  // 횡축 span = 지배축에 수직인 좌표의 폭. 한쪽 변에 붙은 직선 spine 은 span 0,
+  // 클러스터를 가로질러 감아도는 경로는 span 큼 → 후자를 배제한다. 이로써 한 줄을
+  // 한쪽 변에서 깔끔히 탭하고 반대 변을 비워 2차 패스(입력↔출력)가 충돌 없이 깔린다.
+  const crossSpan = (p: TrunkPath): number => {
+    if (p.trunkCells.length === 0) return 0;
+    let lo = Infinity, hi = -Infinity;
+    for (const c of p.trunkCells) {
+      const v = horizontal ? c.y : c.x;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    return hi - lo;
+  };
+  const seen = new Set<string>();
+  let best: TrunkPath | null = null;
+  let bestScore: [number, number, number] | null = null;
+  for (const chestCell of [...endSeeds, ...nearest]) {
+    const k = key(chestCell);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const grown = tryGrow(chestCell, order, centroid, baseOcc, cfg, input.terminalOccupied ?? false, horizontal, input.sinkIds, input.bounds);
+    if (!grown) continue;
+    const score: [number, number, number] = [grown.untapped.length, crossSpan(grown), grown.trunkCells.length];
+    if (bestScore === null || lexLt(score, bestScore)) {
+      best = grown;
+      bestScore = score;
+    }
+  }
+  if (best) return { ok: true, path: best };
   return { ok: false, infeasible: 'all-seeds-failed' };
 }
 
@@ -142,19 +249,52 @@ function tryGrow(
   centroid: { x: number; y: number },
   baseOcc: Set<string>,
   cfg: TrunkConfig,
+  terminalOccupied: boolean,
+  /** 클러스터 지배축이 가로인가 — cross-axis(장축 평행면) 탭 페널티 판정용. */
+  horizontal: boolean,
+  /** belt→머신 픽업으로 다룰 싱크 머신 id (멀티싱크 버스의 부모 탭). */
+  sinkIds?: Set<string>,
+  /** 트렁크 허용 영역 (포함 경계). bounds 밖 셀은 못 쓴다(ring 바깥 누출 금지). */
+  bounds?: { x0: number; y0: number; x1: number; y1: number },
 ): TrunkPath | null {
   const occ = new Set(baseOcc);
+  const inBounds = (c: { x: number; y: number }): boolean =>
+    bounds === undefined ||
+    (c.x >= bounds.x0 && c.x <= bounds.x1 && c.y >= bounds.y0 && c.y <= bounds.y1);
 
   // chest 는 1×1, chest→트렁크도 인서터(normal). f = 클러스터 향 cardinal.
+  // terminalOccupied: chestCell 은 이미 배치된 소비자 셀 → free 검사·occ 추가를 건너뛴다.
   const f = inwardCardinal(chestCell, centroid);
   const feederSeat = add(chestCell, f);
   const trunkStart = add(chestCell, mul(f, 2));
-  if (occ.has(key(chestCell)) || occ.has(key(feederSeat)) || occ.has(key(trunkStart))) {
+  const chestBlocked = !terminalOccupied && occ.has(key(chestCell));
+  if (chestBlocked || occ.has(key(feederSeat)) || occ.has(key(trunkStart))) {
     return null; // 이 seed 는 시작조차 불가 → 다음 seed.
   }
-  occ.add(key(chestCell));
+  // 시작 셀이 ring 직사각형 밖이면 이 seed 폐기(트렁크가 바깥으로 시작 불가).
+  if (!inBounds(chestCell) || !inBounds(feederSeat) || !inBounds(trunkStart)) {
+    return null;
+  }
+  if (!terminalOccupied) occ.add(key(chestCell));
   occ.add(key(feederSeat));
   occ.add(key(trunkStart));
+
+  // 방문 순서를 *이 seed* 의 접근 방향에 맞춘다. `order` 는 지배축 투영 오름차순
+  // (전역, seed 무관)이라, chest 가 축의 높은 쪽 끝에 있으면 head 가 머신들을
+  // 내림차순으로 만난다. 오름차순 그대로 방문하면 먼(높은 투영) 머신으로 가는
+  // 경로가 그 사이 가까운 머신의 자연 탭 셀을 깔고 앉아, 그 머신이 긴팔+우회로로
+  // 밀려난다. trunkStart 가 클러스터 투영 중점보다 높은 쪽이면 뒤집어, 항상
+  // "가까운 머신부터" 단조 방문(위빙 없음)하게 한다.
+  const projOf = (m: MachineLike) =>
+    horizontal ? m.origin.x + m.size.w / 2 : m.origin.y + m.size.h / 2;
+  const projStart = horizontal ? trunkStart.x : trunkStart.y;
+  let pMin = Infinity, pMax = -Infinity;
+  for (const m of order) {
+    const p = projOf(m);
+    if (p < pMin) pMin = p;
+    if (p > pMax) pMax = p;
+  }
+  const visit = projStart > (pMin + pMax) / 2 ? [...order].reverse() : order;
 
   const trunkCells: TrunkCell[] = [{ x: trunkStart.x, y: trunkStart.y, dir: dirOf(f) }];
   let headIdx = 0;
@@ -164,15 +304,26 @@ function tryGrow(
   const covered: TapRecord[] = [];
   const untapped: string[] = [];
 
-  for (const m of order) {
+  for (const m of visit) {
     let best: { cand: TapRecord; path: SubPath } | null = null;
     let bestCost = Infinity;
 
-    for (const cand of tapCandidates(m, occ, head, cfg.allowLongInserter)) {
+    for (const cand of tapCandidates(m, occ, head, cfg.longReach)) {
+      // seat·tap 이 ring 직사각형 밖이면 이 후보 폐기(바깥 누출 금지).
+      if (!inBounds(cand.seat) || !inBounds(cand.tapCell)) continue;
       const path = findBeltSubPath(head, headDir, cand.tapCell, occ, cand.seat);
       if (!path) continue;
+      // 서브 경로 셀이 하나라도 bounds 밖이면 폐기.
+      if (path.cells.some((c) => !inBounds(c))) continue;
       const bends = (path.firstDir !== headDir ? 1 : 0) + path.internalBends;
-      const cost = path.cells.length + cfg.wBend * bends + cfg.wReach * (cand.reach === 2 ? 1 : 0);
+      // cross-axis = 탭 면이 지배축과 평행(컬럼이면 N/S 끝면). 한 축 정렬을 위해 페널티.
+      const fv = faceVector(cand.face);
+      const crossAxis = horizontal ? fv.x !== 0 : fv.y !== 0;
+      const cost =
+        path.cells.length +
+        cfg.wBend * bends +
+        cfg.wReach * (cand.reach > 1 ? 1 : 0) +
+        (crossAxis ? cfg.wCrossAxis : 0);
       if (cost < bestCost) {
         bestCost = cost;
         best = { cand, path };
@@ -185,8 +336,9 @@ function tryGrow(
       continue;
     }
 
-    // commit.
+    // commit. 싱크 머신이면 belt→머신 흐름(role='sink') — emit 이 픽업 방향을 뒤집는다.
     const { cand, path } = best;
+    cand.role = sinkIds?.has(m.id) ? 'sink' : 'source';
     if (path.cells.length > 0) {
       trunkCells[headIdx].dir = path.firstDir; // head 를 새 경로로 꺾음.
       for (const c of path.cells) {
@@ -211,14 +363,16 @@ function tryGrow(
 /**
  * 머신 1개의 직접 탭 후보들. seat 은 비어있어야 하고, tapCell 은 비어있거나
  * (이미 깔린) 현재 트렁크 head 여야 한다 — head 면 새 벨트 없이 그 셀을 그대로
- * 탭한다. long 은 팔 아래 중간 셀(rim1·rim3)도 보수적으로 free 요구. 4면 둘레
- * 포트 전부를 본다(포트 자유도).
+ * 탭한다. 긴팔(`longReach`≥2)은 seat=port·pickup=port+longReach·v 로 앞 칸들을
+ * 건너뛰며, 중간 칸(port+v … port+(longReach−1)v)은 팔이 위로 넘으므로 검사하지
+ * 않는다(인서터 정의 확장). `longReach` 미지정/<2 면 긴팔 후보를 만들지 않는다.
+ * 4면 둘레 포트 전부를 본다(포트 자유도).
  */
 export function tapCandidates(
   m: MachineLike,
   occ: Set<string>,
   head?: { x: number; y: number },
-  allowLong = true,
+  longReach?: number,
 ): TapRecord[] {
   const tapOk = (c: { x: number; y: number }) =>
     free(occ, c) || (head !== undefined && c.x === head.x && c.y === head.y);
@@ -228,15 +382,15 @@ export function tapCandidates(
     // normal: seat=rim1(port), tap=rim2(port+v)
     const nTap = add(port, v);
     if (free(occ, port) && tapOk(nTap)) {
-      out.push({ machineId: m.id, port, face, reach: 1, seat: port, tapCell: nTap });
+      out.push({ machineId: m.id, port, face, reach: 1, seat: port, tapCell: nTap, role: 'source' });
     }
-    // long: seat=rim2(port+v), tap=rim4(port+3v); 중간 rim1(port)·rim3(port+2v) free.
-    if (allowLong) {
-      const lSeat = add(port, v);
-      const rim3 = add(port, mul(v, 2));
-      const lTap = add(port, mul(v, 3));
-      if (free(occ, lSeat) && tapOk(lTap) && free(occ, port) && free(occ, rim3)) {
-        out.push({ machineId: m.id, port, face, reach: 2, seat: lSeat, tapCell: lTap });
+    // 긴팔(reach R): seat=rim1(port, 머신 옆), pickup=port+R·v(앞 칸들 건너 뒷 칸).
+    // 중간 칸(port+v … port+(R−1)v)은 팔이 위로 넘으므로 검사하지 않는다(인서터 정의
+    // 확장). drop = seat−R·v 쪽 머신 내부. 내 자리(seat) + 집는 칸(pickup)만 따진다.
+    if (longReach !== undefined && longReach >= 2) {
+      const lTap = add(port, mul(v, longReach));
+      if (free(occ, port) && tapOk(lTap)) {
+        out.push({ machineId: m.id, port, face, reach: longReach, seat: port, tapCell: lTap, role: 'source' });
       }
     }
   }
@@ -360,8 +514,8 @@ function clusterCentroid(machines: MachineLike[]): { x: number; y: number } {
   return { x: sx / machines.length, y: sy / machines.length };
 }
 
-/** 지배축(넓은 쪽) 투영순 정렬. 머신은 안 움직이고 방문 순서만 매긴다. */
-function visitOrder(machines: MachineLike[]): MachineLike[] {
+/** 지배축(머신 중심 분포가 넓은 쪽)이 가로인지. true=가로(행), false=세로(기둥). */
+function dominantAxisHorizontal(machines: MachineLike[]): boolean {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const m of machines) {
     const cx = m.origin.x + m.size.w / 2;
@@ -369,7 +523,12 @@ function visitOrder(machines: MachineLike[]): MachineLike[] {
     minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
     minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
   }
-  const horizontal = maxX - minX >= maxY - minY;
+  return maxX - minX >= maxY - minY;
+}
+
+/** 지배축(넓은 쪽) 투영순 정렬. 머신은 안 움직이고 방문 순서만 매긴다. */
+function visitOrder(machines: MachineLike[]): MachineLike[] {
+  const horizontal = dominantAxisHorizontal(machines);
   const keyOf = (m: MachineLike) => {
     const cx = m.origin.x + m.size.w / 2;
     const cy = m.origin.y + m.size.h / 2;
@@ -406,6 +565,14 @@ function mul(v: { x: number; y: number }, k: number) {
 
 function manhattan(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/** 동일 길이 숫자 튜플 사전식 비교 — a < b 면 true. (seed 점수 선택용.) */
+function lexLt(a: number[], b: number[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i];
+  }
+  return false;
 }
 
 function key(c: { x: number; y: number }): string {

@@ -12,6 +12,7 @@
 
 import { EntityType, createEmptyCell } from "../../types/layout";
 import type { Direction, GridCell } from "../../types/layout";
+import type { InfinitySettings, InfinityPipeSettings } from "../../types/blueprint";
 import type {
   Area,
   Container,
@@ -30,6 +31,8 @@ export function placeExternalContainer(
     kind: "infinity-chest" | "infinity-pipe";
     entityName: string;
     content: string;
+    /** 입력(공급)/출력(회수) 역할 — export 시 infinity_settings 필터 모드 결정. */
+    role?: "input" | "output";
   },
   external: Area,
   internal: Area,
@@ -43,6 +46,7 @@ export function placeExternalContainer(
     origin: { x: 0, y: 0 }, // wrapExternalsAroundPerimeter 이 최종 위치로 덮어쓴다.
     size: { w: 1, h: 1 },
     content: spec.content,
+    role: spec.role,
   };
 
   external.containers.push(container);
@@ -77,8 +81,58 @@ export function makeContainerCell(
     direction: 0 satisfies Direction,
     tileOffset: { x: 0, y: 0 },
     isOrigin: true,
+    ...(c.content && c.kind !== "machine"
+      ? {
+          infinitySettings:
+            c.kind === "infinity-chest"
+              ? buildInfinitySettings(c.content, c.role)
+              : buildPipeInfinitySettings(c.content, c.role),
+        }
+      : {}),
   };
   return { x: at.x, y: at.y, cell };
+}
+
+/** 무한상자 1개가 유지할 공급 아이템 수량 (입력 상자 `at-least` 필터 기본값). */
+const DEFAULT_SUPPLY_COUNT = 100;
+
+/**
+ * 무한상자의 `content` + 역할로부터 블루프린트 `infinity_settings` 를 합성한다.
+ *  - 입력(공급) 상자: `at-least` 로 항상 채워 머신이 끌어가게 함.
+ *  - 출력(회수) 상자: `at-most 0` + remove_unfiltered_items 로 무한 sink.
+ *  - 역할 미상: 공급으로 간주.
+ */
+function buildInfinitySettings(
+  item: string,
+  role: "input" | "output" | undefined,
+): InfinitySettings {
+  if (role === "output") {
+    return {
+      remove_unfiltered_items: true,
+      filters: [{ name: item, count: 0, mode: "at-most", index: 1 }],
+    };
+  }
+  return {
+    remove_unfiltered_items: false,
+    filters: [{ name: item, count: DEFAULT_SUPPLY_COUNT, mode: "at-least", index: 1 }],
+  };
+}
+
+/**
+ * 무한파이프의 `content`(유체) + 역할로부터 블루프린트 `infinity_settings` 를 합성한다.
+ * 무한상자와 대칭 의미를 갖되, 파이프 전용 모양(단일 유체 + percentage)을 쓴다.
+ *  - 입력(공급) 파이프: `at-least` + 가득(100%) — 머신이 항상 끌어가게 함.
+ *  - 출력(회수) 파이프: `at-most` + 빈(0%) — 무한 sink.
+ *  - 역할 미상: 공급으로 간주.
+ */
+function buildPipeInfinitySettings(
+  fluid: string,
+  role: "input" | "output" | undefined,
+): InfinityPipeSettings {
+  if (role === "output") {
+    return { name: fluid, percentage: 0, mode: "at-most" };
+  }
+  return { name: fluid, percentage: 1, mode: "at-least" };
 }
 
 export function expandBbox(

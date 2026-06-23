@@ -53,6 +53,13 @@ export interface Container {
    * `infinity_settings.filters` (또는 fluid 필터) 의 값으로 들어간다.
    */
   content?: string;
+  /**
+   * 무한상자/무한파이프의 입출력 역할 — 머신은 undefined.
+   *  - `input`  : 머신에 재료를 *공급* 하는 상자 (source). export 시 `at-least` 필터.
+   *  - `output` : 머신의 산출물을 *회수* 하는 상자 (sink). export 시 `at-most 0` +
+   *               remove_unfiltered_items.
+   */
+  role?: 'input' | 'output';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -298,13 +305,6 @@ export interface CandidateLeaf extends CandidateNodeBase {
   routings: Routing[];
   /** O1 점수 — 내부 영역 bbox 의 |W − H|. 작을수록 정사각형에 가까움 */
   squarenessPenalty: number;
-  /**
-   * 이 후보를 생성한 루트 자식 순열 (itemName 순서). 시각화(Visualization)가
-   * `traceCandidatePath` 로 동일 경로를 결정적으로 재현하는 데 사용.
-   */
-  sourcePerm: string[];
-  /** 이 후보의 루트 자식 배치 방향 — 시각화 재현용. */
-  sourceDir: 'right' | 'down';
 }
 
 /** 실패 leaf — 라우팅 실패 / 모든 port 조합 소진 등. */
@@ -340,16 +340,19 @@ export interface CandidateTree {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 한 함수(phase) 단계의 기록. `reportFn` 진입 시점마다 1개 생성된다.
- * `snapshot` 은 그 함수가 실행되기 *직전* 의 영역 상태(= 직전 함수의 결과).
+ * 한 phase 단계의 기록. layeredWizard 의 `emit(라벨, areas, depth)` 가 areas 를
+ * 넘긴 시점마다 1개 생성된다. `snapshot` 은 그 phase 시점의 영역 상태.
  * 마지막에 별도의 '완료' 단계가 최종 상태를 담아 추가된다.
  */
 export interface TraceStep {
   /** 0부터의 실행 순서 인덱스 */
   order: number;
-  /** 실행된 함수 / phase 이름 (reportFn 인자 그대로) */
+  /** 실행된 phase / 라벨 (emit 첫 인자 그대로) */
   functionName: string;
-  /** 함수 호출 트리에서의 중첩 깊이 (0 = 최상위). 사이드바 트리 구성에 사용. */
+  /**
+   * 함수 호출 트리에서의 중첩 깊이. depth 0 = phase 그룹 헤더,
+   * depth 1 = 그 phase 의 루프 단위 자식 단계. 사이드바 트리 구성(buildFunctionTree)에 사용.
+   */
   callDepth: number;
   /** 이 단계 시점의 영역 스냅샷 (raw layout 좌표 — 정규화하지 않음) */
   snapshot: AreaSnapshot;

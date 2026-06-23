@@ -59,3 +59,14 @@ export function defaultInserterThroughput(entity: Entity | undefined): number {
   return K * entity.inserter_rotation_speed * DEFAULT_STACK;
 }
 
+/**
+ * 인서터 prototype 의 집기 거리(reach, 셀 수). `inserter_pickup_position` 의 최대
+ * 절대성분을 반올림(일반 ≈ 1, 긴팔 ≈ 2). 데이터 없으면 1. 이름 무관·데이터 기반 —
+ * 형태 탭 용량 산정(layeredWizard)과 라우팅 거리 파라미터(routeFallback) 공용.
+ */
+export function inserterReach(entity: Entity | undefined): number {
+  const p = entity?.inserter_pickup_position;
+  if (!p) return 1;
+  return Math.max(1, Math.round(Math.max(Math.abs(p.x), Math.abs(p.y))));
+}
+

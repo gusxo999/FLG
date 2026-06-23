@@ -45,14 +45,19 @@ describe('computeIngredientDemand', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let idSeq = 0;
-function cand(content: string, demand: number, pos: { x: number; y: number }): MergeCandidate {
+function cand(
+  content: string,
+  demand: number,
+  pos: { x: number; y: number },
+  recipeName = content, // 기본: 품목명과 동일(레시피 분할이 기존 테스트에 영향 없도록).
+): MergeCandidate {
   idSeq += 1;
   const connection: PendingConnection = {
     producerId: `chest-${idSeq}`,
     consumerId: `machine-${idSeq}`,
     kind: 'item',
   };
-  return { connection, content, demand, pos };
+  return { connection, content, demand, pos, machineId: `machine-${idSeq}`, recipeName };
 }
 
 const cfg = (over: Partial<GroupConfig> = {}): GroupConfig => ({
@@ -114,6 +119,33 @@ describe('groupConnections', () => {
     expect(groups[0].members).toHaveLength(4); // x = 0,10,20,30
     expect(groups[1].members).toHaveLength(1); // x = 40 (far)
     expect(groups[1].members[0].pos.x).toBe(40);
+  });
+
+  it('splits one content into separate groups per recipe by default', () => {
+    // 같은 iron-plate 4대지만 레시피 2종(electric-motor 2 + iron-gear-wheel 2) →
+    // 레시피 분할(기본 ON)로 두 그룹. 두 블록을 넘는 트렁크 폴백(untapped) 방지.
+    const groups = groupConnections(
+      [
+        cand('iron-plate', 1, { x: 0, y: 0 }, 'electric-motor'),
+        cand('iron-plate', 1, { x: 1, y: 0 }, 'electric-motor'),
+        cand('iron-plate', 1, { x: 2, y: 0 }, 'iron-gear-wheel'),
+        cand('iron-plate', 1, { x: 3, y: 0 }, 'iron-gear-wheel'),
+      ],
+      cfg(),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => g.content === 'iron-plate')).toBe(true);
+    expect(groups.map((g) => g.members.length).sort()).toEqual([2, 2]);
+  });
+
+  it('keeps one content together across recipes when splitByRecipe is off', () => {
+    const cands = [
+      cand('iron-plate', 1, { x: 0, y: 0 }, 'electric-motor'),
+      cand('iron-plate', 1, { x: 1, y: 0 }, 'iron-gear-wheel'),
+    ];
+    const groups = groupConnections(cands, cfg({ splitByRecipe: false }));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].members).toHaveLength(2);
   });
 
   it('single consumer yields a size-1 group (effectively 1:1)', () => {

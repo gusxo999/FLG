@@ -3,7 +3,7 @@
  *
  * 부모 모달 ([AutoLayoutModal.tsx]) 의 review 단계에 하단 박스로 노출되는
  * *대체* 진입점. 사용자가 토글로 새 모델을 켜면 본 패널이 활성화되어
- * `runContainerWizard` 를 호출하고 결과 후보 트리를 표시한다.
+ * `runLayeredWizard`(S-LAYER) 를 호출하고 결과 후보 트리를 표시한다.
  *
  * **후보 적용 시 동작:**
  *  - 그리드에 셀이 적용되고 비-InfinityChest/Pipe 셀의 bbox 가 layoutStore 의
@@ -17,12 +17,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
 import type { RoutingEditSession, RoutingSessionRouting } from '../store/layoutStore';
 import { useToastStore } from '../store/toastStore';
-import { runContainerWizard, buildRoutingOptions } from '../utils/autoLayout/containerWizard';
+import { useGameDataStore } from '../store/gameDataStore';
+import { useWizardStore } from '../store/wizardStore';
 import { runLayeredWizard } from '../utils/autoLayout/layeredWizard';
+import { buildRoutingOptions } from '../utils/autoLayout/routeFallback';
 import {
   unifyAreas,
 } from '../utils/autoLayout/areaUnification';
-import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_ALGORITHM } from '../utils/autoLayout/debugFlags';
+import { AUTO_LAYOUT_COORD_DUMP } from '../utils/autoLayout/debugFlags';
 import { registerAutoLayoutDebug } from '../utils/debugApi';
 import type {
   AreaSnapshot,
@@ -68,12 +70,33 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
   const setAutoLayoutRunning = useLayoutStore((s) => s.setAutoLayoutRunning);
   const resetViewport = useLayoutStore((s) => s.resetViewport);
   const showToast = useToastStore((s) => s.show);
+  // 사용자 인서터 처리량/묶음 보정 — 위저드 입력에 실어 라우팅·병합 용량 계산에 반영.
+  const inserterOverrides = useWizardStore((s) => s.inserterOverrides);
 
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ContainerWizardResult | null>(null);
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // "오래 걸림" 안내 — 생성이 10초를 넘기면 모달로 현재 단계를 보여주고 계속할지 묻는다.
+  const SLOW_THRESHOLD_MS = 10_000;
+  const [slowPrompt, setSlowPrompt] = useState(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runStartRef = useRef<number>(0);
+
+  // 다음 10초 경과 시 다시 묻도록 타이머를 (재)무장한다.
+  function armSlowTimer() {
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => {
+      if (abortRef.current) setSlowPrompt(true);
+    }, SLOW_THRESHOLD_MS);
+  }
+  function clearSlowTimer() {
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = null;
+    setSlowPrompt(false);
+  }
 
   // review 단계 진입 시 자동 실행 (파이프 선택까지 완료된 시점)
   const autoStartedRef = useRef(false);
@@ -117,19 +140,18 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       selectedBelts: Array.from(props.selectedBelts),
       selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
       selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
+      inserterOverrides,
       externalPortsDefault: 'top-left',
     };
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    runStartRef.current = Date.now();
+    armSlowTimer();
 
     try {
-      // 디버그 탭의 AUTO_LAYOUT_ALGORITHM 토글로 배치 전략 선택.
-      //  - 'exhaustive' (S-EXH): 기존 완전탐색
-      //  - 'layered'    (S-LAYER): 계층화 DAG + 채널 라우팅
-      const runWizard =
-        AUTO_LAYOUT_ALGORITHM === 'layered' ? runLayeredWizard : runContainerWizard;
-      const r = await runWizard(input, {
+      // 배치 전략 S-LAYER (계층화 DAG + 채널 라우팅) — 유일 전략.
+      const r = await runLayeredWizard(input, {
         signal: ctrl.signal,
         onProgress: (snap) => setProgress(snap),
       });
@@ -140,12 +162,26 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       setRunning(false);
       setAutoLayoutRunning(false);
       abortRef.current = null;
+      clearSlowTimer();
     }
   }
 
   function handleAbort() {
     abortRef.current?.abort();
+    clearSlowTimer();
   }
+
+  // "오래 걸림" 모달 — 계속: 모달 닫고 다음 10초 후 다시 질문 / 중단: abort.
+  function handleSlowContinue() {
+    setSlowPrompt(false);
+    armSlowTimer();
+  }
+  function handleSlowAbort() {
+    handleAbort();
+  }
+
+  // 언마운트 시 타이머 정리.
+  useEffect(() => () => { if (slowTimerRef.current) clearTimeout(slowTimerRef.current); }, []);
 
   function applyLayoutBboxes(
     internalBbox: { x: number; y: number; w: number; h: number } | undefined,
@@ -195,6 +231,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       selectedBelts: Array.from(props.selectedBelts),
       selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
       selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
+      inserterOverrides,
       externalPortsDefault: 'top-left',
     };
 
@@ -205,6 +242,59 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     const { placed, internalBbox, canvasBbox } = unifyAreas(leaf.internal, leaf.external);
 
     if (AUTO_LAYOUT_COORD_DUMP) {
+      // 레이아웃 좌표를 dump 하기 전에 그 레이아웃이 생성된 *런타임 환경* 을 먼저 출력한다.
+      // (AI 가 배치 결과만이 아니라 "어떤 레시피·머신·벨트 제약 하에서 생성됐는지" 를
+      //  근거로 레이아웃의 문제를 스스로 검증할 수 있도록.)
+      const gd = useGameDataStore.getState();
+      // entity 이름 → 검증에 필요한 핵심 스펙만 추림. JSON.stringify 가 undefined 키를
+      // 자동으로 누락하므로, 타입별로 의미 없는 필드(예: 벨트의 crafting_speed)는 표시되지 않는다.
+      const entitySpec = (name: string) => {
+        const e = gd.entityMap.get(name);
+        if (!e) return { name, missing: true };
+        return {
+          name,
+          type: e.type,
+          tile: { w: e.tile_width, h: e.tile_height },
+          crafting_speed: e.crafting_speed,
+          crafting_categories: e.crafting_categories,
+          module_slots: e.module_slots,
+          belt_speed: e.belt_speed,
+          max_underground_distance: e.max_underground_distance,
+        };
+      };
+      // 이 레이아웃에 실제로 등장하는 레시피 집합 (컨테이너 recipeName 기준, 등장 순서 유지).
+      const recipeNames: string[] = [];
+      for (const c of leaf.internal.containers) {
+        if (c.recipeName && !recipeNames.includes(c.recipeName)) recipeNames.push(c.recipeName);
+      }
+      console.log('[autoLayout debug] 환경 정보 (런타임 입력 — 레이아웃 검증용)\n' + JSON.stringify({
+        target: {
+          recipe: props.targetRecipe,
+          countMode: props.countMode,
+          perTarget: props.countMode === 'manual' ? props.perTarget : undefined,
+        },
+        externalIngredients: Array.from(props.externalIngredients),
+        recipeOverrides: props.recipeOverrides,
+        selectedMachines: Array.from(props.selectedMachines).map(entitySpec),
+        selectedBelts: Array.from(props.selectedBelts).map(entitySpec),
+        selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts).map(entitySpec),
+        selectedInserters: Array.from(props.selectedInserters).map(entitySpec),
+        selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes).map(entitySpec),
+        recipesInLayout: recipeNames.map((name) => {
+          const r = gd.recipeMap.get(name);
+          if (!r) return { name, missing: true };
+          return {
+            name: r.name,
+            category: r.category,
+            energy_required: r.energy_required,
+            ingredients: r.ingredients.map((i) => ({ name: i.name, amount: i.amount, type: i.type })),
+            products: r.products.map((p) => ({
+              name: p.name, amount: p.amount, type: p.type, probability: p.probability,
+            })),
+          };
+        }),
+      }, null, 2));
+
       console.log('[autoLayout debug] handleApplyCandidate\n' + JSON.stringify({
         'internal.containers': leaf.internal.containers.map((c) => ({
           id: c.id, kind: c.kind, entityName: c.entityName,
@@ -264,7 +354,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       liveArea: { internal: leaf.internal, external: leaf.external, routings: leaf.routings },
     });
     useLayoutStore.getState().setRoutingEditMode(false);
-    // 시각화 진입 소스 저장 — 이 후보의 생성 과정을 traceCandidatePath 로 재현.
+    // 시각화 진입 소스 저장 — 이 후보의 생성 과정을 traceLayeredPath 로 재현.
     useLayoutStore.getState().setVisualizationSource({
       input: {
         targetRecipe: props.targetRecipe,
@@ -277,10 +367,9 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
         selectedBelts: Array.from(props.selectedBelts),
         selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
         selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
+        inserterOverrides,
         externalPortsDefault: 'top-left',
       },
-      perm: leaf.sourcePerm,
-      dir: leaf.sourceDir,
     });
     resetViewport();
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');
@@ -368,6 +457,85 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
           }}
         />
       )}
+
+      {slowPrompt && running && (
+        <SlowRunModal
+          progress={progress}
+          elapsedSec={Math.round((Date.now() - runStartRef.current) / 1000)}
+          onContinue={handleSlowContinue}
+          onAbort={handleSlowAbort}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "오래 걸림" 모달 — 생성이 10초를 넘기면 현재 시도 중인 phase/라우팅 정보를 보여주고
+// 계속 진행할지 묻는다. (생성 자체는 협조적 양보로 백그라운드에서 계속 진행 중.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SlowRunModal({
+  progress,
+  elapsedSec,
+  onContinue,
+  onAbort,
+}: {
+  progress: ProgressSnapshot | null;
+  elapsedSec: number;
+  onContinue: () => void;
+  onAbort: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl border border-amber-700/60 bg-gray-900 shadow-2xl">
+        <div className="border-b border-amber-800/50 px-4 py-3">
+          <h3 className="text-sm font-semibold text-amber-300">
+            자동 생성이 오래 걸리고 있습니다
+          </h3>
+          <p className="mt-0.5 text-[11px] text-gray-400">
+            {elapsedSec}초 경과 — 복잡한 레시피·라우팅이면 정상일 수 있습니다.
+          </p>
+        </div>
+
+        <div className="space-y-1.5 px-4 py-3 text-[11px] font-mono text-gray-300">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">현재 진행 상황</div>
+          {progress?.currentFunction ? (
+            <div className="text-purple-300 break-all">▶ {progress.currentFunction}</div>
+          ) : (
+            <div className="text-gray-500">초기화 중…</div>
+          )}
+          {progress && (
+            <div className="text-gray-400">
+              {progress.attempts !== undefined && (
+                <>
+                  <span className="text-cyan-300">단계 {progress.attempts}</span>
+                  {' · '}
+                </>
+              )}
+              <span className="text-green-300">{progress.candidatesGenerated} 후보</span>
+              {' / '}
+              <span className="text-amber-300">{progress.failuresGenerated} 실패</span>
+              {' · '}depth {progress.depth}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-800 px-4 py-3">
+          <button
+            onClick={onAbort}
+            className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600"
+          >
+            중단
+          </button>
+          <button
+            onClick={onContinue}
+            className="rounded-lg bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-600"
+          >
+            계속 진행
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

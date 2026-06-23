@@ -22,8 +22,8 @@ describe('emitTrunk', () => {
     ],
     chestCell: { x: 3, y: 9 },
     covered: [
-      { machineId: 'M1', port: { x: 5, y: 10 }, face: 'N', reach: 1, seat: { x: 5, y: 10 }, tapCell: { x: 5, y: 9 } },
-      { machineId: 'M2', port: { x: 8, y: 9 }, face: 'E', reach: 2, seat: { x: 8, y: 9 }, tapCell: { x: 10, y: 9 } },
+      { machineId: 'M1', port: { x: 5, y: 10 }, face: 'N', reach: 1, seat: { x: 5, y: 10 }, tapCell: { x: 5, y: 9 }, role: 'source' },
+      { machineId: 'M2', port: { x: 8, y: 9 }, face: 'E', reach: 2, seat: { x: 8, y: 9 }, tapCell: { x: 10, y: 9 }, role: 'source' },
     ],
     untapped: ['M3'],
   };
@@ -70,6 +70,33 @@ describe('emitTrunk', () => {
     expect(t2.inserter.cell.entityName).toBe('long-handed-inserter');
     expect(t2.inserter.cell.entityType).toBe(EntityType.Inserter); // type 은 둘 다 Inserter
     expect(t2.inserter.cell.direction).toBe(E); // faceVector('E') → pickup E
+  });
+
+  it('sink-role taps pick from the belt (+faceVector) even in collect mode', () => {
+    // 멀티싱크 버스: source 는 머신에서 집어 belt 에 놓고(collect 반전), sink(소비자
+    // 부모)는 belt 에서 집어 머신에 넣는다(반전 안 함) — 같은 collect belt 위에 공존.
+    const busPath: TrunkPath = {
+      trunkCells: [
+        { x: 5, y: 9, dir: E },
+        { x: 6, y: 9, dir: E },
+      ],
+      chestCell: { x: 3, y: 9 },
+      covered: [
+        { machineId: 'SRC', port: { x: 5, y: 10 }, face: 'N', reach: 1, seat: { x: 5, y: 10 }, tapCell: { x: 5, y: 9 }, role: 'source' },
+        { machineId: 'SINK', port: { x: 6, y: 10 }, face: 'N', reach: 1, seat: { x: 6, y: 10 }, tapCell: { x: 6, y: 9 }, role: 'sink' },
+      ],
+      untapped: [],
+    };
+    const e = emitTrunk(busPath, { ...OPTS, mode: 'collect' });
+
+    const src = e.taps.find((t) => t.machineId === 'SRC')!;
+    const sink = e.taps.find((t) => t.machineId === 'SINK')!;
+    expect(src.role).toBe('source');
+    expect(sink.role).toBe('sink');
+    // SRC(source, collect): pickup = −faceVector('N')=(0,−1) 반전 → S. 머신→belt.
+    expect(src.inserter.cell.direction).toBe(S);
+    // SINK(sink): pickup = +faceVector('N')=(0,−1) → N. belt→머신 (collect 무관).
+    expect(sink.inserter.cell.direction).toBe(N);
   });
 
   it('passes untapped machines through as spursNeeded', () => {
