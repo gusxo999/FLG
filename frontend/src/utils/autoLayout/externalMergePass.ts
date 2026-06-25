@@ -81,6 +81,8 @@ export function wrapExternalsWithMerge(
   options: RouteOptions,
   cfg: MergeConfig,
 ): { placed: number; failed: number } {
+  const _t0 = (typeof performance !== 'undefined' ? performance : Date).now();
+  let _attempts = 0;
   // 비활성이거나 머신이 없으면 기존 1:1 경로 그대로.
   const machineBbox = computeMachineFootprintBbox(internal);
   if (!cfg.enabled || !machineBbox) {
@@ -166,6 +168,7 @@ export function wrapExternalsWithMerge(
       internal.undergroundCorridors.length = snap.corridors;
     },
     (ringCells) => {
+      _attempts += 1;
       const leftover: PendingConnection[] = [...baseLeftover];
       const logs: GroupLog[] = [];
       processGroups(inputGroups, 'input', internal, external, ringCells, options, leftover, logs, routings);
@@ -185,7 +188,9 @@ export function wrapExternalsWithMerge(
   const result = { placed: final.placedCount, failed: final.failed };
 
   if (AUTO_LAYOUT_COORD_DUMP) {
+    const _ms = ((typeof performance !== 'undefined' ? performance : Date).now() - _t0);
     console.log('[autoLayout debug] externalMergePass\n' + JSON.stringify({
+      perf: { ms: Math.round(_ms), ringAttempts: _attempts },
       capacity: { beltCap, tapCap, maxTaps: cfg.maxTaps },
       inputCands: inputCands.length, outputCands: outputCands.length,
       chosenOffsets: chosen,
@@ -297,7 +302,15 @@ function tryMergeGroup(
   });
   // v1 "무조건 성공" 가정 — 일부라도 직접 탭 안 되면 통째로 1:1 폴백.
   if (!result.ok) return { ok: false, reason: result.infeasible };
-  if (result.path.untapped.length > 0) return { ok: false, reason: `untapped=${result.path.untapped.length}` };
+  if (result.path.untapped.length > 0) {
+    if (AUTO_LAYOUT_COORD_DUMP) {
+      console.log('[autoLayout debug] trunk untapped\n' + JSON.stringify({
+        role, content: chest.content, longReach: options.longInserter?.reach,
+        untappedInfo: result.path.untappedInfo,
+      }, null, 2));
+    }
+    return { ok: false, reason: `untapped=${result.path.untapped.length}` };
+  }
 
   const emission = emitTrunk(result.path, {
     chestId: chest.id,

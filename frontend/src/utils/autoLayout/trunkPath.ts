@@ -75,6 +75,8 @@ export interface TrunkPath {
   covered: TapRecord[];
   /** 직접 탭 실패 → ② 스퍼가 처리할 머신 id 들. */
   untapped: string[];
+  /** [진단] 미탭 머신별 후보 통계 (왜 못 탭됐는지). AUTO_LAYOUT_COORD_DUMP 분석용. */
+  untappedInfo?: { id: string; cands: number; oobSeatTap: number; noPath: number; oobPath: number }[];
 }
 
 export type TrunkResult =
@@ -143,6 +145,12 @@ export interface TrunkInput {
    * 뒤집음). 미지정/빈 집합이면 전부 'source'(기존 동작과 동일).
    */
   sinkIds?: Set<string>;
+  /**
+   * 머신별 탭 면/reach 제약 — 면 할당기(clusterFaceAllocator)가 각 머신을 어느
+   * 슬롯(면+레인)에서 탭할지 못박을 때. 키=머신 id. 미지정 머신은 자유(기존 동작).
+   * 한 클러스터의 여러 트렁크(내부버스·외부)가 서로 다른 슬롯을 받아 충돌을 원천 차단한다.
+   */
+  faceConstraints?: Map<string, { face?: PortFace; reach?: number }>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +206,7 @@ export function computeTrunkPath(input: TrunkInput): TrunkResult {
   // 많이 평가한다(경계 slice 로 좋은 측면-열 seed 가 잘려나가지 않도록 여유 cap).
   const endSeeds = input.chestCandidates
     .filter((c) => {
-      const f = inwardCardinal(c, centroid);
+      const f = inwardFromWall(c, centroid, input.bounds);
       const par = horizontal ? f.y === 0 : f.x === 0; // 성장 방향이 지배축과 평행한가.
       return par && endDist(c) > 0;
     })
@@ -227,7 +235,7 @@ export function computeTrunkPath(input: TrunkInput): TrunkResult {
     const k = key(chestCell);
     if (seen.has(k)) continue;
     seen.add(k);
-    const grown = tryGrow(chestCell, order, centroid, baseOcc, cfg, input.terminalOccupied ?? false, horizontal, input.sinkIds, input.bounds);
+    const grown = tryGrow(chestCell, order, centroid, baseOcc, cfg, input.terminalOccupied ?? false, horizontal, input.sinkIds, input.bounds, input.faceConstraints);
     if (!grown) continue;
     const score: [number, number, number] = [grown.untapped.length, crossSpan(grown), grown.trunkCells.length];
     if (bestScore === null || lexLt(score, bestScore)) {
@@ -256,15 +264,18 @@ function tryGrow(
   sinkIds?: Set<string>,
   /** 트렁크 허용 영역 (포함 경계). bounds 밖 셀은 못 쓴다(ring 바깥 누출 금지). */
   bounds?: { x0: number; y0: number; x1: number; y1: number },
+  /** 머신별 탭 면/reach 제약 (면 할당기). */
+  faceConstraints?: Map<string, { face?: PortFace; reach?: number }>,
 ): TrunkPath | null {
   const occ = new Set(baseOcc);
   const inBounds = (c: { x: number; y: number }): boolean =>
     bounds === undefined ||
     (c.x >= bounds.x0 && c.x <= bounds.x1 && c.y >= bounds.y0 && c.y <= bounds.y1);
 
-  // chest 는 1×1, chest→트렁크도 인서터(normal). f = 클러스터 향 cardinal.
+  // chest 는 1×1, chest→트렁크도 인서터(normal). f = 벽 법선 inward (게이트웨이 규칙:
+  // 서/동벽=수평, 북/남벽=수직). bounds 없거나 코너면 centroid 향 폴백.
   // terminalOccupied: chestCell 은 이미 배치된 소비자 셀 → free 검사·occ 추가를 건너뛴다.
-  const f = inwardCardinal(chestCell, centroid);
+  const f = inwardFromWall(chestCell, centroid, bounds);
   const feederSeat = add(chestCell, f);
   const trunkStart = add(chestCell, mul(f, 2));
   const chestBlocked = !terminalOccupied && occ.has(key(chestCell));
@@ -303,18 +314,21 @@ function tryGrow(
 
   const covered: TapRecord[] = [];
   const untapped: string[] = [];
+  const untappedInfo: NonNullable<TrunkPath['untappedInfo']> = [];
 
   for (const m of visit) {
     let best: { cand: TapRecord; path: SubPath } | null = null;
     let bestCost = Infinity;
+    let nCands = 0, nOobSeatTap = 0, nNoPath = 0, nOobPath = 0;
 
-    for (const cand of tapCandidates(m, occ, head, cfg.longReach)) {
+    for (const cand of tapCandidates(m, occ, head, cfg.longReach, faceConstraints?.get(m.id))) {
+      nCands += 1;
       // seat·tap 이 ring 직사각형 밖이면 이 후보 폐기(바깥 누출 금지).
-      if (!inBounds(cand.seat) || !inBounds(cand.tapCell)) continue;
+      if (!inBounds(cand.seat) || !inBounds(cand.tapCell)) { nOobSeatTap += 1; continue; }
       const path = findBeltSubPath(head, headDir, cand.tapCell, occ, cand.seat);
-      if (!path) continue;
+      if (!path) { nNoPath += 1; continue; }
       // 서브 경로 셀이 하나라도 bounds 밖이면 폐기.
-      if (path.cells.some((c) => !inBounds(c))) continue;
+      if (path.cells.some((c) => !inBounds(c))) { nOobPath += 1; continue; }
       const bends = (path.firstDir !== headDir ? 1 : 0) + path.internalBends;
       // cross-axis = 탭 면이 지배축과 평행(컬럼이면 N/S 끝면). 한 축 정렬을 위해 페널티.
       const fv = faceVector(cand.face);
@@ -333,6 +347,7 @@ function tryGrow(
     if (!best) {
       // 직접 탭 불가 → ② 스퍼에 위임.
       untapped.push(m.id);
+      untappedInfo.push({ id: m.id, cands: nCands, oobSeatTap: nOobSeatTap, noPath: nNoPath, oobPath: nOobPath });
       continue;
     }
 
@@ -353,7 +368,7 @@ function tryGrow(
     covered.push(cand);
   }
 
-  return { trunkCells, chestCell, covered, untapped };
+  return { trunkCells, chestCell, covered, untapped, untappedInfo };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,21 +388,29 @@ export function tapCandidates(
   occ: Set<string>,
   head?: { x: number; y: number },
   longReach?: number,
+  /**
+   * 면/reach 제약 — 면 할당기(clusterFaceAllocator)가 한 스트림을 배정한 슬롯
+   * (예: W면·reach2)으로 탭을 가둘 때. `face` 지정 시 그 면 포트만, `reach` 지정 시
+   * 그 거리 후보만 생성한다. 미지정이면 전체(기존 동작).
+   */
+  constraint?: { face?: PortFace; reach?: number },
 ): TapRecord[] {
   const tapOk = (c: { x: number; y: number }) =>
     free(occ, c) || (head !== undefined && c.x === head.x && c.y === head.y);
   const out: TapRecord[] = [];
   for (const { cell: port, face } of machinePorts(m)) {
+    if (constraint?.face && face !== constraint.face) continue;
     const v = faceVector(face);
     // normal: seat=rim1(port), tap=rim2(port+v)
     const nTap = add(port, v);
-    if (free(occ, port) && tapOk(nTap)) {
+    if ((constraint?.reach === undefined || constraint.reach === 1) && free(occ, port) && tapOk(nTap)) {
       out.push({ machineId: m.id, port, face, reach: 1, seat: port, tapCell: nTap, role: 'source' });
     }
     // 긴팔(reach R): seat=rim1(port, 머신 옆), pickup=port+R·v(앞 칸들 건너 뒷 칸).
     // 중간 칸(port+v … port+(R−1)v)은 팔이 위로 넘으므로 검사하지 않는다(인서터 정의
     // 확장). drop = seat−R·v 쪽 머신 내부. 내 자리(seat) + 집는 칸(pickup)만 따진다.
-    if (longReach !== undefined && longReach >= 2) {
+    if (longReach !== undefined && longReach >= 2 &&
+        (constraint?.reach === undefined || constraint.reach === longReach)) {
       const lTap = add(port, mul(v, longReach));
       if (free(occ, port) && tapOk(lTap)) {
         out.push({ machineId: m.id, port, face, reach: longReach, seat: port, tapCell: lTap, role: 'source' });
@@ -549,6 +572,34 @@ function inwardCardinal(
   const dy = centroid.y - cell.y;
   if (Math.abs(dx) >= Math.abs(dy)) return { x: Math.sign(dx) || 1, y: 0 };
   return { x: 0, y: Math.sign(dy) || 1 };
+}
+
+/**
+ * 트렁크가 chest 에서 자라나갈 inward 방향. **벽 법선으로 고정**해 게이트웨이 규칙
+ * (1:1 경로의 `inwardRingFace`)과 통일한다 — 서/동벽 상자는 수평(E/W) feeder,
+ * 북/남벽 상자는 수직(S/N) feeder 로, ring 이 한 칸씩 후퇴하며 chest↔centroid 상대
+ * 위치가 바뀌어도 면이 흔들리지 않게 한다.
+ *
+ * `bounds` 가 주어지고 cell 이 한 변 위에만 있으면 그 변의 inward 법선. 코너(두 변
+ * 동시)·내부·bounds 미지정이면 centroid 향 `inwardCardinal` 로 폴백(축은 여전히
+ * cardinal). 폴백조차 코너에선 두 벽 법선 중 centroid 우세축을 고르므로 axis-aligned.
+ */
+function inwardFromWall(
+  cell: { x: number; y: number },
+  centroid: { x: number; y: number },
+  bounds?: { x0: number; y0: number; x1: number; y1: number },
+): { x: number; y: number } {
+  if (bounds) {
+    const onW = cell.x === bounds.x0;
+    const onE = cell.x === bounds.x1;
+    const onN = cell.y === bounds.y0;
+    const onS = cell.y === bounds.y1;
+    const vWall = onW || onE; // 세로 변(서/동) → 수평 법선
+    const hWall = onN || onS; // 가로 변(북/남) → 수직 법선
+    if (vWall && !hWall) return { x: onW ? 1 : -1, y: 0 };
+    if (hWall && !vWall) return { x: 0, y: onN ? 1 : -1 };
+  }
+  return inwardCardinal(cell, centroid);
 }
 
 function dirOf(v: { x: number; y: number }): Direction {

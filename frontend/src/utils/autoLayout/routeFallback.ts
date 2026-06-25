@@ -47,6 +47,13 @@ export interface RouteOptions {
   /** 지하벨트 입출구 좌표 차이 한계. undefined / 0 이면 점프 비활성. */
   beltMaxUndergroundDistance?: number;
   preferUnderground: boolean;
+  /**
+   * 지상 벨트 꺾임 1회당 추가 cost. 양수면 꺾임이 적은(더 곧은) 경로를 선호한다 —
+   * 계단/대각처럼 보이는 벨트를 줄이고, 상자 같은 장애물을 *우회* 하기보다 *직진 점프*
+   * 로 넘긴다. 외부상자 드래그 재라우팅에서 가독성 향상용으로만 켠다. 미지정/0 이면
+   * 기존 동작(꺾임 무비용). item 벨트 경로에만 적용(파이프 라우팅은 무관).
+   */
+  turnPenalty?: number;
   /** 탭 인서터(=inserterEntityName)의 사용자 처리량/묶음 보정. 병합 용량 계산용. */
   inserterOverride?: { throughput?: number; stackSize?: number };
   /**

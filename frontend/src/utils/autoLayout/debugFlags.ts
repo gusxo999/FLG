@@ -28,9 +28,11 @@ export function setAutoLayoutCoordDump(v: boolean): void {
  * 폴백한다. false(기본)면 항상 옛 경로 — 회귀 0.
  *
  * 목적: 자식 클러스터를 부모-무시 모듈로 생성해 "자식 == 루트" 를 라이브에서 실현.
- * 검증 단계라 기본 OFF. setAutoLayoutModulePipeline(true) 로 켠다.
+ * planner(clusterPortPlanner) 배선으로 포트가 W/E 두 면에 결정적 배정되어 1:1 붕괴를
+ * 일으키던 옛 경로(clusterTrunkMerge·externalMergePass)를 대체한다. fluid·미탭·홉 실패
+ * 트리는 여전히 자동 폴백(회귀 0). setAutoLayoutModulePipeline(false) 로 끌 수 있다.
  */
-export let AUTO_LAYOUT_MODULE_PIPELINE = false;
+export let AUTO_LAYOUT_MODULE_PIPELINE = true;
 
 export function setAutoLayoutModulePipeline(v: boolean): void {
   AUTO_LAYOUT_MODULE_PIPELINE = v;

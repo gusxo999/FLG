@@ -36,6 +36,21 @@ const electronicCircuit: ModuleInput = {
   longInserter: { entityName: "long-handed-inserter", reach: 2 },
 };
 
+/** electric-motor 류: 입력 3 + 출력 1 = 정확히 용량 4(긴팔). 4스트림 스트레스. */
+const electricMotor: ModuleInput = {
+  machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
+  count: 3,
+  lines: [
+    line("iron-gear-wheel", "input"),
+    line("copper-cable", "input"),
+    line("iron-plate", "input"),
+    line("electric-motor", "output"),
+  ],
+  inserterEntityName: "inserter",
+  beltEntityName: "transport-belt",
+  longInserter: { entityName: "long-handed-inserter", reach: 2 },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ASCII 렌더 — 결과물을 눈으로 보기 위한 진단 출력
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +122,15 @@ describe("generateModule", () => {
 
     expect(mod.unroutedLines).toHaveLength(0);
     expect(mod.inputPorts).toHaveLength(2);
+    expect(mod.outputPorts).toHaveLength(1);
+  });
+
+  it("electric-motor: 입력 3 + 출력 1 = 4스트림 (용량 4 정확히)", () => {
+    const mod = generateModule(electricMotor);
+    render(mod, "electric-motor ×3 (4스트림, 용량 4)");
+
+    expect(mod.unroutedLines).toHaveLength(0);
+    expect(mod.inputPorts).toHaveLength(3);
     expect(mod.outputPorts).toHaveLength(1);
   });
 

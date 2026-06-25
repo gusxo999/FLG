@@ -29,6 +29,22 @@ const packConfig: PackConfig = {
 };
 const hopConfig: HopConfig = { beltEntityName: "transport-belt" };
 
+// 프로덕션 충실 트리: electric-motor(root) ← iron-gear-wheel + copper-cable (2 홉).
+// + 프로덕션처럼 지하벨트 활성 config. 단일-홉·지상-only 테스트가 못 잡던 멀티홉 교차를 재현.
+const emSpecs: NodeSpec[] = [
+  {
+    id: "em", depth: 0, machine: M, count: 3,
+    lines: [inL("iron-gear-wheel"), inL("copper-cable"), inL("iron-plate"), outL("electric-motor")],
+  },
+  { id: "gear", depth: 1, parentId: "em", machine: M, count: 2, lines: [inL("iron-plate"), outL("iron-gear-wheel")] },
+  { id: "copper", depth: 1, parentId: "em", machine: M, count: 6, lines: [inL("copper-plate"), outL("copper-cable")] },
+];
+const ugConfig: HopConfig = {
+  beltEntityName: "transport-belt",
+  beltMaxUndergroundDistance: 9,
+  undergroundBeltEntityName: "underground-belt",
+};
+
 /** 모듈 셀 + 머신 footprint 의 점유 좌표 집합. */
 function occupancyOf(pack: PackResult): Set<string> {
   const occ = new Set<string>();
@@ -93,6 +109,39 @@ describe("routeModuleHops", () => {
     }
     // 정확히 1곳: 부모 입력 trunkStart 로 들어가는 seat_to belt.
     expect(endpointsHittingTrunk).toBeGreaterThanOrEqual(1);
+  });
+
+  it("[불변식] 지하벨트 활성·멀티홉에서도 belt 체인은 텔레포트하지 않는다", () => {
+    // 회귀: dijkstraWithJumps 가 점프 경로를 내면 emit 이 지하벨트로 materialize 하지
+    // 않고 지상 belt 1칸만 찍어 체인이 끊겼다(아이템이 허공/타 스트림으로 샘). 각 홉
+    // route.cells 는 chain 순서이므로 연속 두 셀은 반드시 직교 인접(거리 1)이어야 한다.
+    const pack = packModuleTree(emSpecs, packConfig);
+    const res = routeModuleHops(pack, ugConfig);
+    expect(res.failures).toBe(0);
+    for (const route of res.routes) {
+      if (!route.ok) continue;
+      for (let i = 0; i + 1 < route.cells.length; i++) {
+        const a = route.cells[i], b = route.cells[i + 1];
+        const md = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        expect(md, `홉 ${route.item}: (${a.x},${a.y})→(${b.x},${b.y}) 텔레포트(거리 ${md})`).toBe(1);
+      }
+    }
+  });
+
+  it("[불변식] 모든 홉 belt 는 하류가 belt/인서터/머신 — 허공·orphan 없음", () => {
+    const pack = packModuleTree(emSpecs, packConfig);
+    const res = routeModuleHops(pack, ugConfig);
+    const DIRVEC: Record<number, { x: number; y: number }> = {
+      0: { x: 0, y: -1 }, 4: { x: 1, y: 0 }, 8: { x: 0, y: 1 }, 12: { x: -1, y: 0 },
+    };
+    const hopSet = new Set(res.cells.map((c) => `${c.x},${c.y}`));
+    const occ = occupancyOf(pack);
+    for (const k of res.strippedCellKeys) occ.delete(k);
+    for (const c of res.cells) {
+      const v = DIRVEC[c.cell.direction];
+      const nk = `${c.x + v.x},${c.y + v.y}`;
+      expect(hopSet.has(nk) || occ.has(nk), `홉 belt (${c.x},${c.y}) 하류가 허공`).toBe(true);
+    }
   });
 
   it("seat_from 은 자식 출력 trunkStart 와 인접 (기하 유도 검증)", () => {

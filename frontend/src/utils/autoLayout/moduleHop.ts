@@ -120,8 +120,15 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   const routes: HopRoute[] = [];
   let failures = 0;
 
-  const maxJump = config.beltMaxUndergroundDistance ?? 0;
+  // 지상 전용 강제. routeOneHop 의 emit(아래)은 result.edges 를 보지 않고 셀-델타로만
+  // 방향을 잡으므로, dijkstra 가 점프(지하벨트) 경로를 내면 지하벨트 entity 를
+  // materialize 하지 못해 belt 체인이 끊긴다(아이템이 허공/타 스트림으로 샘). 점프를
+  // 0 으로 막아 항상 연속 지상 경로만 나오게 한다. 지상이 막혀 경로가 없으면 그 홉은
+  // 실패 → 트리 전체가 옛 경로로 폴백(회귀, correctness 유지). 지하벨트 지원은
+  // emit 을 edge-aware(=containerRouting.emitItemPath)로 바꾼 뒤 config 로 재활성.
+  const maxJump = 0;
   const blockGroup = config.undergroundBeltEntityName ?? config.beltEntityName;
+  void config.beltMaxUndergroundDistance; // 예약(현재 미사용) — 위 주석 참조
 
   for (const hop of pack.hops) {
     const route = routeOneHop(hop, base, hopBelts, maxJump, blockGroup, config);
@@ -189,6 +196,18 @@ function routeOneHop(
   // 새 belt 체인: seat_from → [경로 셀들(chest_from..chest_to)] → seat_to.
   // 각 셀 방향 = 다음 셀 향함. seat_to 의 다음 = trunkStart_to(기존, 방향 산출용 sentinel).
   const chain: { x: number; y: number }[] = [from.seat, ...result.cells, to.seat];
+
+  // INVARIANT: belt 체인은 텔레포트하지 않는다 — 연속 두 셀은 직교 인접(거리 1)이어야
+  // 한다. 이 emit 은 지하벨트를 materialize 하지 않으므로 점프 셀(거리>1)을 만나면
+  // 끊긴 체인을 낳는다. 그런 결과를 *조용히 내보내지 말고* 홉 실패로 처리해 트리가
+  // 옛 경로로 폴백하게 한다(가짜 물류 방지). maxJump=0 이면 정상적으로 절대 안 걸린다.
+  for (let i = 0; i + 1 < chain.length; i++) {
+    const md = Math.abs(chain[i].x - chain[i + 1].x) + Math.abs(chain[i].y - chain[i + 1].y);
+    if (md !== 1) {
+      return { item: hop.item, ok: false, cells: [], reason: "discontinuous-chain" };
+    }
+  }
+
   const pair = synthPair(hop.from.chest.id, hop.to.chest.id);
   const out: PlacedCell[] = [];
   for (let i = 0; i < chain.length; i++) {

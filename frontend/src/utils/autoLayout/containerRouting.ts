@@ -111,6 +111,8 @@ function routeItem(
     inserterEntityName: string;
     undergroundBeltEntityName?: string;
     beltMaxUndergroundDistance?: number;
+    turnPenalty?: number;
+    routingBounds?: { x0: number; y0: number; x1: number; y1: number };
   },
   extra?: Area,
 ): RoutingAttempt {
@@ -214,6 +216,7 @@ function routeItem(
     blockGroup,
     // 지하벨트는 충돌 회피용으로만 — 지상이 뚫려 있으면 항상 지상을 택한다.
     jumpCostModel: 'length',
+    turnPenalty: options.turnPenalty,
     // 타 라우팅 벨트 스트림과 흐름-인접 합류 방지(타일 배타성의 경계 버전).
     beltFlow: collectBeltFlow([area, extra]),
     bounds: options.routingBounds,
@@ -478,6 +481,7 @@ function routeFluid(
     pipeEntityName: string;
     undergroundPipeEntityName?: string;
     pipeMaxUndergroundDistance?: number;
+    routingBounds?: { x0: number; y0: number; x1: number; y1: number };
   },
   extra?: Area,
 ): RoutingAttempt {
@@ -728,6 +732,15 @@ export interface DijkstraInput {
    */
   jumpCostModel?: 'flat' | 'length';
   /**
+   * 지상 벨트가 *방향을 꺾을 때마다* 더해지는 추가 cost. 0/미지정이면 꺾임 무비용
+   * (기존 동작 — 직선과 계단형 경로가 동률이라 임의 tie-break). 양수면 꺾임이 적은
+   * 경로가 이기므로 (1) 계단/대각처럼 보이는 벨트 대신 곧은 벨트를, (2) 상자 같은
+   * 장애물을 *우회(2회 꺾임)* 하기보다 *직진 점프* 로 넘기를 선호하게 된다. 외부상자
+   * 드래그 재라우팅처럼 가독성이 중요한 경로에서 켠다. 점프 edge 에는 적용하지 않는다
+   * (점프는 entrance-straight 규약상 진행 방향을 유지하므로 꺾임이 아니다).
+   */
+  turnPenalty?: number;
+  /**
    * 라우팅 허용 영역 (포함 경계, inclusive). 주어지면 이 직사각형 **바깥** 셀로는
    * 진입할 수 없다(지상 인접·지하 점프 타겟 모두). 단 `ends` 셀은 예외(blocked 와 동일).
    * perimeter ring 의 단일 외곽선 불변식 — 라우팅이 ring 직사각형 밖으로 새지 못하게
@@ -771,6 +784,7 @@ export interface DijkstraInput {
 function searchWithJumps(input: DijkstraInput): DijkstraResult | null {
   const { blocked, corridors, maxJumpDistance, blockGroup, bounds } = input;
   const jumpCostModel = input.jumpCostModel ?? 'flat';
+  const turnPenalty = input.turnPenalty ?? 0;
   // bounds 밖 셀 진입 금지(ends 는 예외 — blocked 와 동일 취급). 미지정이면 항상 false.
   const outOfBounds = (x: number, y: number): boolean =>
     bounds !== undefined &&
@@ -914,7 +928,12 @@ function searchWithJumps(input: DijkstraInput): DijkstraResult | null {
       const nk = stateKey(nx, ny, di);
       if (blocked.has(cellKey(nx, ny)) && !endSet.has(cellKey(nx, ny))) continue;
       if (outOfBounds(nx, ny) && !endSet.has(cellKey(nx, ny))) continue;
-      const newCost = cur.cost + 1;
+      // 꺾임 비용: 직전 진행 방향(arr)과 다른 방향으로 나아가면 turnPenalty 가산.
+      // arr=-1(시작)은 진행 방향이 없어 무비용. 출구(arr>=4)는 위에서 di===exitDir 만
+      // 통과하므로 꺾임이 될 수 없다.
+      const prevDir = cur.arr >= 4 ? cur.arr - 4 : cur.arr;
+      const isTurn = prevDir >= 0 && di !== prevDir;
+      const newCost = cur.cost + 1 + (isTurn ? turnPenalty : 0);
       const prev = bestCost.get(nk);
       if (prev !== undefined && prev <= newCost) continue;
       bestCost.set(nk, newCost);

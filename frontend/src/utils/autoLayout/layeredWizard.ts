@@ -64,6 +64,11 @@ import {
   DEFAULT_MERGE_CONFIG,
   AUTO_LAYOUT_MERGE_BOXES,
 } from "./externalMergePass";
+import {
+  gatherExternalsToPoints,
+  DEFAULT_GATHER_CONFIG,
+  AUTO_LAYOUT_GATHER_EXTERNALS,
+} from "./externalGatherPass";
 import { tryMergeClusterOutput, tryMergeClusterOutputBus } from "./clusterTrunkMerge";
 import { beltThroughput } from "./beltThroughput";
 import {
@@ -140,6 +145,7 @@ export const runLayeredWizard: RunContainerWizard = async (
   // 방지) 진행 표시·중단·"오래 걸림" 모달이 동작하도록. 트레이스(hooks 없음)는 양보 없이
   // 동기 재현(레코더 단계 순서 보존).
   const emit = makeEmitter(hooks?.onProgress, hooks ? { yieldEveryMs: 40 } : undefined);
+  const _wizT0 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
   // '간단한 레시피' = I/O 에 유체가 없는 아이템 전용 레시피. 이런 클러스터는 W/E 옆면만
   // 쓰므로 머신을 밀착(rowGap=0)시킨다 — N/S gap 으로 트렁크가 파고들 공간을 없애 기둥
@@ -591,8 +597,23 @@ export const runLayeredWizard: RunContainerWizard = async (
     routeFailures += ext.failed;
   }
 
+  // 9.5 외부 상자 집결 — 같은 품목·role 상자를 한 변으로 인접 이송(외부 물류 접점 하나).
+  //     맨 마지막 후처리. 그룹 단위 all-or-nothing 폴백이라 실패해도 9의 ring 정렬 유지.
+  const gather = {
+    ...DEFAULT_GATHER_CONFIG,
+    enabled: AUTO_LAYOUT_GATHER_EXTERNALS,
+  };
+  if (gather.enabled) {
+    await emit("gatherExternalsToPoints", { internal, external }, 1);
+    gatherExternalsToPoints(internal, external, routings, connections, options, gather);
+  }
+
   // 10. 단일 후보 leaf + 트리 래핑.
   await emit("완료", { internal, external });
+  if (AUTO_LAYOUT_COORD_DUMP) {
+    const _ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - _wizT0;
+    console.log(`[autoLayout debug] runLayeredWizard total ${Math.round(_ms)}ms · routeFailures=${routeFailures}`);
+  }
   const bbox = internal.bbox;
   const squarenessPenalty = bbox ? Math.abs(bbox.w - bbox.h) : 0;
   const leaf: CandidateLeaf = {

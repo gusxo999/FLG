@@ -21,7 +21,7 @@
  */
 
 import { enumeratePerimeterCells } from "./areaUnification";
-import type { IoLine } from "./clusterPortPlanner";
+import { planClusterPorts, type IoLine } from "./clusterPortPlanner";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, PlacedCell, PortFace } from "./containerModel";
 import { cellKey, faceVector } from "./containerRouting";
@@ -89,8 +89,9 @@ export interface ModuleInput {
  * 한 클러스터를 자족 모듈로 생성. 입력 line 은 supply 트렁크, 출력 line 은 collect
  * 트렁크로 자기 ring 까지 깐다. 각 트렁크의 종착 ring 셀 = 그 line 의 포트 anchor.
  *
- * 결정적: 입력 먼저(등장 순), 그다음 출력. 라인마다 누적 occupancy 를 공유해 트렁크가
- * 서로 다른 면/레인으로 자연히 갈라진다([externalMergePass] 와 동일).
+ * 결정적: [clusterPortPlanner] 가 줄마다 슬롯(면 W/E·레인 near/far·인서터)을 먼저
+ * 못박고, 각 트렁크를 그 슬롯에만 가둔다(faceConstraints). 누적 occupancy 로 같은 면
+ * 두 레인의 seat 행이 겹치지 않게 한다. 슬롯은 columnTapCapacity 로 보장돼 미탭 불가.
  */
 export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
@@ -129,27 +130,41 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
 
-  // 결정적 순서: 입력(0) 먼저, 그다음 출력(1). 동순위는 등장 순서 유지.
-  const ordered = input.lines
-    .map((line, idx) => ({ line, idx }))
-    .sort((a, b) => rankOf(a.line) - rankOf(b.line) || a.idx - b.idx)
-    .map((e) => e.line);
+  // 유체(pipe) 줄은 v1 미지원 — 직접 위임(planner 도 pipe 면 complex 반환).
+  const beltLines = input.lines.filter((l) => l.kind === "belt");
+  for (const l of input.lines) if (l.kind !== "belt") unroutedLines.push(l);
+
+  // 안내원(planner): 보장된 columnTapCapacity 슬롯을 줄마다 1:1 못박는다
+  // (natural-divergence 대체). 각 줄 → {면 W/E, 레인 near/far, 인서터}. 결과 순서가
+  // 곧 처리 순서(입력 먼저·near 면부터). complex(과용량·무인서터)면 전부 위임.
+  const plan = planClusterPorts({
+    lines: beltLines,
+    caps: { hasNormal: true, hasLong: !!input.longInserter },
+    perimeterNearSide: "W",
+  });
+  if (!plan.ok) {
+    for (const l of beltLines) unroutedLines.push(l);
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines };
+  }
 
   let seq = 0;
-  for (const line of ordered) {
-    if (line.kind !== "belt") {
-      unroutedLines.push(line); // 유체 미지원 — 위임
-      continue;
-    }
+  for (const planned of plan.lines) {
+    const line = planned.line;
+    // 이 줄의 모든 머신을 배정된 면·reach 로 못박는다 — 트렁크가 그 슬롯에만 안착.
+    const reach = planned.inserter === "long" ? (input.longInserter?.reach ?? 2) : 1;
+    const faceConstraints = new Map(
+      machineLikes.map((m) => [m.id, { face: planned.side as PortFace, reach }] as const),
+    );
 
     const result = computeTrunkPath({
       machines: machineLikes,
       occupancy,
       chestCandidates: ring,
       config: { longReach: input.longInserter?.reach },
+      faceConstraints,
     });
     if (!result.ok || result.path.untapped.length > 0) {
-      unroutedLines.push(line); // all-or-nothing: 일부라도 미탭이면 위임
+      unroutedLines.push(line); // 슬롯 보장에도 실패하면 위임(진단 신호).
       continue;
     }
 
@@ -212,11 +227,6 @@ export function generateModule(input: ModuleInput): GeneratedModule {
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** 라인 처리 우선순위 — 입력(0) 먼저, 출력(1) 나중. */
-function rankOf(line: IoLine): number {
-  return line.role === "input" ? 0 : 1;
-}
 
 /** 트렁크 종착 셀(ring)에서 바깥을 향하는 면(= 클러스터 반대 방향). */
 function outwardFace(path: TrunkPath): PortFace {

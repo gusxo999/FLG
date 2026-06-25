@@ -72,7 +72,9 @@ describe("transformModule (D4)", () => {
     expect(sig(m)).toEqual(sig(base));
   });
 
-  it("출력 포트 face 가 회전마다 N→E→S→W 순환", () => {
+  it("출력 포트 face 가 회전마다 +90°(N→E→S→W 순서) 순환", () => {
+    // 기준 face 는 planner 슬롯 배정에 따라 정해지므로 하드코딩하지 않는다. 검증 대상은
+    // transformModule 의 회전 로직 — 어느 면에서 시작하든 +90° 마다 N→E→S→W 링을 한 칸씩.
     const base = generateModule(copperCable);
     const faces = [base.outputPorts[0].face];
     let m = base;
@@ -80,7 +82,10 @@ describe("transformModule (D4)", () => {
       m = transformModule(m, { rotation: 90 });
       faces.push(m.outputPorts[0].face);
     }
-    expect(faces).toEqual(["N", "E", "S", "W"]);
+    const ring = ["N", "E", "S", "W"] as const;
+    const start = ring.indexOf(base.outputPorts[0].face);
+    const expected = [0, 1, 2, 3].map((i) => ring[(start + i) % 4]);
+    expect(faces).toEqual(expected);
   });
 
   it("90° 에서 머신 footprint w×h → h×w (비정사각)", () => {

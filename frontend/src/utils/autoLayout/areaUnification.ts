@@ -124,6 +124,14 @@ export function computeMachineRoutingBbox(
 export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
 
 /**
+ * 외부상자 드래그 재라우팅에서 쓰는 벨트 꺾임 penalty. 양수면 곧은 벨트를 선호해
+ * 계단/대각형 벨트를 줄이고, 상자 같은 장애물을 *우회* 대신 *직진 점프* 로 넘긴다
+ * (상자 우회는 무의미; 벨트 우회는 별도로 여전히 허용됨). 사용자가 외부상자를 한
+ * 점으로 모으려 드래그할 때 가독성을 높인다.
+ */
+export const DRAG_BELT_TURN_PENALTY = 2;
+
+/**
  * bbox 바깥 minRadius~maxRadius 칸 전체 외부 영역의 셀 좌표 목록.
  * 각 반경(ring)을 시계 방향 N → E → S → W 로 열거한다.
  * wrapExternalsAroundPerimeter 가 머신 기준 manhattan 거리로 재정렬하므로
@@ -245,11 +253,26 @@ export function growRingPerSide<A extends { failed: number; failedMachineIds: st
   const off: SideOffsets = { w: MIN, n: MIN, e: MIN, s: MIN };
   const maxIters = 4 * (MAX - MIN) + 1;
 
+  // 무개선 조기 종료: ring 을 키워도 실패 수가 줄지 않으면 더 키워도 소용없는 경우가
+  // 대부분이다(예: 트렁크 미탭은 ring 크기가 아니라 클러스터 내부 면 경합 문제라 변을
+  // 아무리 키워도 같은 머신이 계속 실패). 이런 경우 변을 MAX 까지 키우며 매번 전체를
+  // 재계산하면 큰 레시피에서 수십 초가 낭비된다. 연속 PATIENCE 회 무개선이면 멈춘다.
+  const PATIENCE = 2;
+  let bestFailed = Infinity;
+  let stale = 0;
+
   let final: A | undefined;
   for (let i = 0; i < maxIters; i++) {
     beforeAttempt();
     final = runAttempt(enumeratePerimeterRect(machineBbox, off));
     if (final.failed === 0) break;
+
+    if (final.failed < bestFailed) {
+      bestFailed = final.failed;
+      stale = 0;
+    } else if (++stale >= PATIENCE) {
+      break; // 변을 키워도 개선이 없음 → best-effort 확정(추가 성장 낭비 방지).
+    }
 
     // 실패한 chest 의 머신 최근접 변만 키운다(이미 MAX 면 제외).
     const grow = new Set<PerimeterSide>();
@@ -640,6 +663,23 @@ export function dragExternalContainer(
   const remaining = routings.filter(
     (r) => !(r.from.containerId === containerId || r.to.containerId === containerId),
   );
+
+  // 드래그 재라우팅 옵션 — 호출자가 명시한 값은 존중하고, 미지정 항목만 드래그 기본값으로 채운다.
+  //  • turnPenalty: 가독성 우선(곧은 벨트 + 상자 직진 점프, 상자 우회 회피).
+  //  • routingBounds: 단일 외곽 ring 불변식 — 재라우팅 belt 가 ring 바깥으로 새지 못하게
+  //    가둔다(상자를 한 점으로 모을 때도 통로가 둘레 밖으로 돌면 안 됨). ring = 현재 레이아웃
+  //    직사각형 = 내부 머신 + 외부 chest 전체의 bbox(이 시점엔 상자가 이미 새 위치로 이동·셀
+  //    갱신된 상태라 = 새 레이아웃 범위). ring 안에서 길을 못 찾으면 라우팅 실패 → 드래그 거부(롤백).
+  const layoutBounds = boundsOfCells([
+    ...internal.placed.map((p) => ({ x: p.x, y: p.y })),
+    ...external.placed.map((p) => ({ x: p.x, y: p.y })),
+  ]);
+  const dragOptions: RouteOptions = {
+    ...options,
+    turnPenalty: options.turnPenalty ?? DRAG_BELT_TURN_PENALTY,
+    routingBounds: options.routingBounds ?? layoutBounds,
+  };
+
   const newRoutings: Routing[] = [];
   for (const r of affected) {
     const otherId =
@@ -659,7 +699,7 @@ export function dragExternalContainer(
     const kind: PortKind = r.kind === 'fluid'
       ? { fluid: deriveFluidName(r) ?? '' }
       : 'item';
-    const attempt = routeWithFallback(producer, consumer, kind, internal, options, external, true);
+    const attempt = routeWithFallback(producer, consumer, kind, internal, dragOptions, external, true);
     if (!attempt.ok) {
       rollback();
       if (AUTO_LAYOUT_COORD_DUMP) {

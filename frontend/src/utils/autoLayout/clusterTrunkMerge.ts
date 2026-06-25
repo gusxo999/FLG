@@ -178,6 +178,12 @@ export function tryMergeClusterOutputBus(
   external: Area,
   options: RouteOptions,
   busOpts: BusMergeOptions,
+  /**
+   * 부모(소비자) 클러스터 sink-탭을 가둘 면/reach (면 할당기). 같은 부모에 들어오는
+   * 여러 자식 버스가 서로 다른 슬롯(예: E-near / E-far)을 받아 충돌·미탭을 막는다.
+   * 미지정이면 자유(기존 동작).
+   */
+  parentConstraint?: { face?: PortFace; reach?: number },
 ): Routing[] | null {
   if (machines.length < 1 || consumers.length < 2) return null;
 
@@ -217,13 +223,25 @@ export function tryMergeClusterOutputBus(
       size: { ...m.size },
     }));
 
+    // 면 할당: 부모 sink 들을 배정 슬롯(면+reach)으로 가두고, 종착(terminal)도
+    // 같은 면 가장자리에서만 seed 하도록 candidate 를 거른다 → 같은 부모의 여러 자식
+    // 버스가 서로 다른 슬롯에 깔려 충돌·미탭이 사라진다.
+    let chestCandidates = consumerEdgeCells(terminal);
+    let faceConstraints: Map<string, { face?: PortFace; reach?: number }> | undefined;
+    if (parentConstraint?.face) {
+      const filtered = faceEdgeCells(terminal, parentConstraint.face);
+      if (filtered.length > 0) chestCandidates = filtered;
+      faceConstraints = new Map(sinks.map((s) => [s.id, parentConstraint]));
+    }
+
     const result = computeTrunkPath({
       machines: machineLikes,
       occupancy: occ,
-      chestCandidates: consumerEdgeCells(terminal),
+      chestCandidates,
       config: { longReach: options.longInserter?.reach },
       terminalOccupied: true,
       sinkIds: new Set(sinks.map((s) => s.id)),
+      faceConstraints,
     });
 
     if (!result.ok || result.path.untapped.length > 0) {
@@ -336,6 +354,22 @@ function consumerEdgeCells(c: Container): { x: number; y: number }[] {
       if (onEdge) cells.push({ x: ox + dx, y: oy + dy });
     }
   }
+  return cells;
+}
+
+/**
+ * 소비자 footprint 의 한 *면*(face) 가장자리 셀들 — 면 할당기가 종착(terminal)을
+ * 그 면에서만 seed 하도록 chestCandidates 를 거를 때. centroid 근접순은 computeTrunkPath
+ * 가 적용한다. E=오른쪽 열, W=왼쪽 열, N=위 행, S=아래 행.
+ */
+function faceEdgeCells(c: Container, face: PortFace): { x: number; y: number }[] {
+  const { x: ox, y: oy } = c.origin;
+  const { w, h } = c.size;
+  const cells: { x: number; y: number }[] = [];
+  if (face === 'E') for (let dy = 0; dy < h; dy++) cells.push({ x: ox + w - 1, y: oy + dy });
+  else if (face === 'W') for (let dy = 0; dy < h; dy++) cells.push({ x: ox, y: oy + dy });
+  else if (face === 'N') for (let dx = 0; dx < w; dx++) cells.push({ x: ox + dx, y: oy });
+  else for (let dx = 0; dx < w; dx++) cells.push({ x: ox + dx, y: oy + h - 1 });
   return cells;
 }
 

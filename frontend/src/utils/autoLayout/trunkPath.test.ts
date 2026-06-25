@@ -288,6 +288,34 @@ describe('computeTrunkPath', () => {
     assertContinuous(r.path.trunkCells);
   });
 
+  it('pins the chest feeder to the wall normal (horizontal on a west wall) despite a vertical centroid offset', () => {
+    // 서벽(x=x0=0) 상자, 머신 클러스터는 크게 남쪽으로 치우침 → centroid 향
+    // inwardCardinal 이라면 수직(S) feeder 를 골랐겠지만, bounds 의 서벽 법선으로
+    // 고정되어 수평(E) feeder 여야 한다(게이트웨이 규칙 = 1:1 inwardRingFace 와 통일).
+    // ring 이 한 칸씩 후퇴해 chest↔centroid 상대 위치가 변해도 면이 흔들리지 않는 핵심.
+    const machines = [machine('M1', 4, 28), machine('M2', 4, 33)];
+    const bounds = { x0: 0, y0: 0, x1: 8, y1: 40 };
+    const r = computeTrunkPath({
+      machines,
+      occupancy: new Set(),
+      chestCandidates: [{ x: 0, y: 5 }],
+      bounds,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.path.untapped).toHaveLength(0);
+    // feeder 축 = chest→trunkStart = sign(trunkCells[0] − chestCell). 첫 셀이 chest
+    // 동쪽 같은 행(2,5)이면 feeder 가 수평(E). (수직 폴백이었으면 (0,7) 남쪽이 됐을 것.)
+    // emit 은 이 벡터로 feeder.direction(픽업=−f=W, 입력상자 규약)을 만든다.
+    // 셀의 dir 자체는 다음 머신으로 곧장 꺾여 S 일 수 있으나, feeder 축과는 무관.
+    const f = {
+      x: Math.sign(r.path.trunkCells[0].x - r.path.chestCell.x),
+      y: Math.sign(r.path.trunkCells[0].y - r.path.chestCell.y),
+    };
+    expect(f).toEqual({ x: 1, y: 0 });
+    expect(r.path.trunkCells[0]).toMatchObject({ x: 2, y: 5 });
+  });
+
   it('uses a different face when the natural one is blocked (port freedom)', () => {
     // 단일 머신. chest 가 남쪽에서 접근(자연스러운 면 = S)하지만, S 포트 줄(y8)과
     // 그 tap 줄(y9)을 전부 막아 S 탭 차단 → E/W/N 다른 면으로 우회 탭해야 covered.
