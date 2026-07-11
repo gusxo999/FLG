@@ -1,3 +1,7 @@
+---
+tags: [factorio-data, auto-layout]
+---
+
 # Tech Tree Resolution
 
 자동완성(Auto-Layout) 시 사용자가 특정 머신/레시피를 지정하면, "이 항목들이 사용 가능하다" 를

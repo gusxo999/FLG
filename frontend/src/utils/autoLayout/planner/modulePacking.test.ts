@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
-import type { IoLine } from "./clusterPortPlanner";
-import { EntityType } from "../../types/layout";
+import type { IoLine } from "../module/clusterPortPlanner";
+import { EntityType } from "../../../types/layout";
+import { faceVector } from "../util/helper";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -71,7 +72,7 @@ describe("packModuleTree", () => {
     const circuit = byId.get("circuit")!;
     const cable = byId.get("coppercable")!;
 
-    // 출력은 부모쪽(W) — 가중치 10 지배.
+    // 출력은 부모쪽(W) — 생성 단계 면=역할 확정((B) 정책, 사후 회전 없음).
     expect(side(circuit.outputPorts[0].anchor, circuit.bbox)).toBe("W");
     expect(side(cable.outputPorts[0].anchor, cable.bbox)).toBe("W");
 
@@ -79,6 +80,26 @@ describe("packModuleTree", () => {
     const fed = circuit.inputPorts.find((p) => p.line.name === "copper-cable")!;
     expect(side(fed.anchor, circuit.bbox)).toBe("E");
     // raw 입력 N/S 는 *약한 선호* — 출력/자식입력 정렬에 져서 항상 보장되지 않음(planner 후속).
+  });
+
+  it("1:1 형태(count=1)도 작동 — 단일 머신 부모/자식, 면=역할 유지", () => {
+    // count=1 은 높이 1짜리 기둥(degenerate). 용량은 reach 기반이라 동일하게 적용.
+    const oneToOne: NodeSpec[] = [
+      { id: "p", depth: 0, machine: M, count: 1, lines: [inL("gear"), outL("widget")] },
+      { id: "c", depth: 1, parentId: "p", machine: M, count: 1, lines: [inL("iron"), outL("gear")] },
+    ];
+    const res = packModuleTree(oneToOne, config);
+    const byId = new Map(res.placements.map((pl) => [pl.id, pl.module]));
+    const parent = byId.get("p")!;
+    const child = byId.get("c")!;
+    // 출력→W, 자식-공급 입력(gear)→E 가 단일 머신에서도 성립.
+    expect(side(parent.outputPorts[0].anchor, parent.bbox)).toBe("W");
+    expect(side(child.outputPorts[0].anchor, child.bbox)).toBe("W");
+    expect(side(parent.inputPorts.find((p) => p.line.name === "gear")!.anchor, parent.bbox)).toBe("E");
+    // 미탭/라우팅 실패 없음 + 홉 1개(gear).
+    for (const pl of res.placements) expect(pl.module.unroutedLines).toHaveLength(0);
+    expect(res.hops).toHaveLength(1);
+    expect(res.hops[0].item).toBe("gear");
   });
 
   it("홉 페어링 = 품목 매칭, 개수 = 자식 수", () => {
@@ -127,7 +148,51 @@ describe("packModuleTree", () => {
     expect(sig(b)).toEqual(sig(a));
   });
 
+  it("exit-lane 예약(조각 6-①) — lanePlan 항상 emit, reserve 시 bbox 마진 프레임 확장", () => {
+    const off = packModuleTree(specs, config);
+    const on = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
+
+    // lanePlan 은 off 경로에서도 계산돼 실린다(②③ 소비용). 살아남은 상자마다 배정 1개.
+    expect(off.lanePlan.assignments.length).toBeGreaterThan(0);
+    const surviving = off.rawPorts.length + 1; // raw 입력 + 루트 출력 1
+    expect(off.lanePlan.assignments).toHaveLength(surviving);
+
+    // off 는 배치/ bbox 무변(게이트 off → 현행 유지).
+    expect(off.bbox).toEqual(unionOf(off));
+
+    // reserve 시 marginNeeds 만큼 bbox 프레임이 정확히 넓어진다.
+    const m = on.lanePlan.marginNeeds;
+    const u = unionOf(on); // 마진 제외 모듈 union
+    expect(on.bbox.x).toBe(u.x - (m.W ? 1 : 0));
+    expect(on.bbox.y).toBe(u.y - (m.N ? 1 : 0));
+    expect(on.bbox.w).toBe(u.w + (m.W ? 1 : 0) + (m.E ? 1 : 0));
+    expect(on.bbox.h).toBe(u.h + (m.N ? 1 : 0) + (m.S ? 1 : 0));
+  });
+
+  it("포트 tapAnchor(⑥B) — machine 끝점 = anchor−2·faceVector, anchor 와 겹치지 않음", () => {
+    // machine-side Routing 끝점으로 anchor(=chest 자리)를 쓰면 chest 끝점과 겹쳐
+    // from==to 가 된다. tapAnchor 가 항상 anchor 에서 2칸 안쪽(≠anchor)이어야 한다.
+    for (const res of [packModuleTree(specs, config), packModuleTree(specs, { ...config, reservePerimeterLanes: true })])
+      for (const pl of res.placements)
+        for (const p of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
+          const fv = faceVector(p.face);
+          expect(p.tapAnchor).toEqual({ x: p.anchor.x - 2 * fv.x, y: p.anchor.y - 2 * fv.y });
+          expect(p.tapAnchor.x === p.anchor.x && p.tapAnchor.y === p.anchor.y).toBe(false);
+        }
+  });
+
   it("렌더 — 전체 트리", () => {
     render(packModuleTree(specs, config));
   });
 });
+
+/** placements 모듈 union extent (마진 제외) — bbox 마진 확장 검증용. */
+function unionOf(res: PackResult): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const pl of res.placements) {
+    const e = moduleExtent(pl.module);
+    minX = Math.min(minX, e.x); minY = Math.min(minY, e.y);
+    maxX = Math.max(maxX, e.x + e.w - 1); maxY = Math.max(maxY, e.y + e.h - 1);
+  }
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}

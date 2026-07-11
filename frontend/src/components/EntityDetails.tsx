@@ -4,11 +4,14 @@ import { useGameDataStore } from '../store/gameDataStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useUiDebugStore } from '../store/uiDebugStore';
 import type { ModuleSlot } from '../types/layout';
-import { EntityType } from '../types/layout';
+import { EntityType, getCell } from '../types/layout';
 import type { InfinityFilter, InfinitySettings, InfinityPipeSettings } from '../types/blueprint';
 import { useT } from '../i18n';
 import { applyEffectsToMachine, sumModuleEffects } from '../utils/moduleEffects';
 import { formatSurfaceConditions } from '../utils/surfaceConditions';
+import { useInspectStore } from '../store/inspectStore';
+import { useWizardStore } from '../store/wizardStore';
+import { computeBeltFlowAt, isBeltLike } from '../utils/beltFlow';
 
 interface Props {
   entity: Entity | null;
@@ -55,6 +58,9 @@ export default function EntityDetails({ entity, instanceId }: Props) {
 
       {/* 무한상자 아이템 / 무한파이프 유체 정보 (입력/출력 모두) */}
       {instanceId && <InfinityContainerInfo instanceId={instanceId} />}
+
+      {/* 벨트류 셀 클릭 시: 그 지점의 정적 흐름량 (inspectStore.cell 이 있을 때만) */}
+      {instanceId && <BeltFlowSection />}
 
       <div className="pt-1 border-t border-gray-700 space-y-0.5">
         <Row label={t('sidebar.details.type')} value={entity.type} />
@@ -1028,6 +1034,107 @@ function RecipeIOList({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** items/sec 표시 포맷 — 소수 둘째 자리까지, 뒤 0 제거. */
+function fmtRate(n: number): string {
+  return `${n.toFixed(2).replace(/\.?0+$/, '')}/s`;
+}
+
+/**
+ * 클릭한 벨트류 셀의 정적 흐름량 섹션. inspectStore.cell(캔버스 클릭 좌표)이 있고
+ * 그 좌표가 벨트류일 때만 렌더. 계산은 beltFlow.computeBeltFlowAt (순수 함수).
+ */
+function BeltFlowSection() {
+  const t = useT();
+  const cell = useInspectStore((s) => s.cell);
+  const grid = useLayoutStore((s) => s.grid);
+  const entityMap = useGameDataStore((s) => s.entityMap);
+  const recipeMap = useGameDataStore((s) => s.recipeMap);
+  const moduleMap = useGameDataStore((s) => s.moduleMap);
+  const inserterOverrides = useWizardStore((s) => s.inserterOverrides);
+
+  const flow = useMemo(() => {
+    if (!cell) return null;
+    const gc = getCell(grid, cell.x, cell.y);
+    if (!gc || !isBeltLike(gc.entityType)) return null;
+    return computeBeltFlowAt(grid, cell.x, cell.y, {
+      entityMap,
+      recipeMap,
+      moduleMap,
+      inserterOverrides,
+    });
+  }, [cell, grid, entityMap, recipeMap, moduleMap, inserterOverrides]);
+
+  if (!cell || !flow) return null;
+
+  const itemLabel =
+    flow.items.length === 0
+      ? t('sidebar.details.beltFlowUnknownItem')
+      : flow.items.length === 1
+        ? flow.items[0]
+        : `${flow.items.join(', ')} ${t('sidebar.details.beltFlowMixed')}`;
+
+  const hasAnyFlow = flow.inflow > 0 || flow.tapsAtCell.length > 0;
+
+  return (
+    <div className="pt-1 border-t border-gray-700 space-y-1">
+      <div className="text-emerald-400 font-semibold">
+        {t('sidebar.details.beltFlowTitle')}{' '}
+        <span className="text-gray-500 font-normal font-mono">({cell.x}, {cell.y})</span>
+      </div>
+
+      {!hasAnyFlow ? (
+        <div className="text-gray-500">{t('sidebar.details.beltFlowNoSource')}</div>
+      ) : (
+        <>
+          <Row label={t('sidebar.details.beltFlowItem')} value={itemLabel} />
+          <Row label={t('sidebar.details.beltFlowIn')} value={fmtRate(flow.inflow)} />
+          <Row
+            label={t('sidebar.details.beltFlowOut')}
+            value={
+              flow.saturated
+                ? `${fmtRate(flow.outflow)} · ${t('sidebar.details.beltFlowSaturated')}`
+                : fmtRate(flow.outflow)
+            }
+          />
+          {flow.capacity > 0 && (
+            <Row label={t('sidebar.details.beltFlowCapacity')} value={fmtRate(flow.capacity)} />
+          )}
+          <Row
+            label={t('sidebar.details.beltFlowUpstreamTaps')}
+            value={`+${flow.upstreamTaps.drops} / −${flow.upstreamTaps.picks}`}
+          />
+
+          {flow.tapsAtCell.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-gray-500">{t('sidebar.details.beltFlowTapsAtCell')}</div>
+              {flow.tapsAtCell.map((tap, i) => (
+                <div key={i} className="flex items-baseline justify-between gap-2 pl-2">
+                  <span className={tap.kind === 'drop' ? 'text-blue-400' : 'text-red-400'}>
+                    {tap.kind === 'drop' ? '▲' : '▼'}{' '}
+                    {tap.kind === 'drop'
+                      ? t('sidebar.details.beltFlowTapDrop')
+                      : t('sidebar.details.beltFlowTapPick')}
+                  </span>
+                  <span className="text-gray-200 text-right truncate font-mono">
+                    {tap.kind === 'drop' ? '+' : '−'}{fmtRate(tap.rate)}
+                    {tap.peerName ? ` · ${tap.peerName}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {flow.machineRateUnknownCount > 0 && (
+            <div className="text-amber-500/80 text-[10px]">
+              ⚠ {t('sidebar.details.beltFlowApprox')} ({flow.machineRateUnknownCount})
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

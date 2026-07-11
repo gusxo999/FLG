@@ -1,3 +1,7 @@
+---
+tags: [factorio-data, blueprint]
+---
+
 # MapPosition 파싱 및 정규화 전략
 
 **작성일**: 2026-04-25

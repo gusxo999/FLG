@@ -1,3 +1,7 @@
+---
+tags: [blueprint]
+---
+
 # Blueprint 메타데이터 커버리지 — 현황 + 확장 계획
 
 **상태:** 추적 문서 (구현 진행 중). 현재 export는 최소 4필드(`entity_number`, `name`, `position`, `direction`)만 채우며, `recipe`만 추가로 바인딩 가능. 게임 내에서 발생할 수 있는 모든 entity 메타데이터를 점진적으로 커버하는 게 목표.

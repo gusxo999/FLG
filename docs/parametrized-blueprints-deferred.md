@@ -1,3 +1,7 @@
+---
+tags: [blueprint, deferred]
+---
+
 # parameter-0 ~ parameter-9 처리 — 보류
 
 **상태:** 인지하고 있음. 현재 export에서 제외하지 않음. 향후 parametrized blueprint 자동완성 기능 구현 시 함께 다룬다.

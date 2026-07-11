@@ -27,9 +27,9 @@ import {
   dragExternalContainer,
   sideOfMachine,
   MIN_EXTERNAL_OFFSET,
-  MAX_EXTERNAL_SEARCH_RADIUS,
   type PerimeterSide,
 } from './areaUnification';
+import { MAX_EXTERNAL_SEARCH_RADIUS } from './util/helper';
 import { AUTO_LAYOUT_COORD_DUMP } from './debugFlags';
 import type { Area, PendingConnection, Routing } from './containerModel';
 import type { RouteOptions } from './routeFallback';

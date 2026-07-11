@@ -1,3 +1,7 @@
+---
+tags: [factorio-data, auto-layout, deferred]
+---
+
 # 표면 제약 처리의 한계 — 모드 의존성과 사용자 위임
 
 **작성일:** 2026-04-29

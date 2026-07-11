@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, placement, routing]
+---
+
 # 우선순위 정리 — 배치·라우팅의 모든 순서 결정점
 
 > **부모 문서:** [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)
@@ -19,8 +23,8 @@
 
 | 층위 | 원리 | 한 줄 |
 |---|---|---|
-| **배치** | **fail-first (제약 큰 것 먼저)** | 여유 없는 연결이 희소 자원(셀)을 선점하게 해, 쉬운 연결이 어려운 연결을 굶기는 것을 막는다. CSP의 MRV(Minimum Remaining Values)·bin packing decreasing 계열. |
-| **라우팅** | **cost-first (싼 경로 먼저)** | 지상 < 지하, 가까운 포트 < 먼 포트, 깔끔한 spine < 감아도는 경로 순으로 시도. |
+| **배치** | **[[용어사전#fail-first|fail-first]] (제약 큰 것 먼저)** | 여유 없는 연결이 희소 자원(셀)을 선점하게 해, 쉬운 연결이 어려운 연결을 굶기는 것을 막는다. [[용어사전#CSP|CSP]]의 [[용어사전#MRV|MRV]](Minimum Remaining Values)·bin packing decreasing 계열. |
+| **라우팅** | **[[용어사전#cost-first|cost-first]] (싼 경로 먼저)** | 지상 < 지하, 가까운 포트 < 먼 포트, 깔끔한 spine < 감아도는 경로 순으로 시도. |
 
 ---
 
@@ -28,23 +32,23 @@
 
 > **분류:** **C** = 정합성 보장(불변, 바꾸면 안 됨) / **Q** = 품질 최적화(교체·개선 가능)
 
-| # | 결정점 | 현재 기준 | 분류 | 코드 |
-|---|---|---|---|---|
-| P1 | **연결 처리 순서** (외부상자 배치) | 삽입 순서 = DFS 노드 → 재료 → 머신, 출력은 입력 뒤 | **Q** | [layeredWizard.ts:530](../frontend/src/utils/autoLayout/layeredWizard.ts#L530), [areaUnification.ts:320](../frontend/src/utils/autoLayout/areaUnification.ts#L320) |
-| P2 | **셀 후보 정렬** (한 연결 내) | `machine.origin`(좌상단 코너) 맨해튼 거리 오름차순, 첫 라우팅 성공 셀 채택 | **Q** | [areaUnification.ts:341](../frontend/src/utils/autoLayout/areaUnification.ts#L341) |
-| P3 | **ring 성장 변 선택** | 실패한 chest의 머신 최근접 변만 +1 (전체 링 성장 회피) | **Q** | [areaUnification.ts:234](../frontend/src/utils/autoLayout/areaUnification.ts#L234) |
-| P4 | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순 | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/routeFallback.ts#L143) |
-| P5 | **멀티소스/싱크 우선 경로** | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전 | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73) |
-| P6 | **경로 탐색 cost** (Dijkstra) | 지상 edge=1, 지하 점프=2 → 지하 우선(O2) | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md) |
-| P7 | **트렁크 seed 점수** | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소 | **Q** | [trunkPath.ts:232](../frontend/src/utils/autoLayout/trunkPath.ts#L232) |
-| P8 | **머지 그룹핑 게이트** | 용량(총수요 ≤ beltCap, 머신별 ≤ tapCap, 크기 ≤ maxTaps) | **C** | [placement-search §7.2](auto-layout-wizard.placement-search.md) |
-| P9 | **후보 정렬 O1** (near-square) | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만 | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md) |
+| #   | 결정점                         | 현재 기준                                               | 분류    | 코드                                                                                                                                                                 |
+| --- | --------------------------- | --------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1  | **연결 처리 순서** (외부상자 배치)      | 삽입 순서 = DFS 노드 → 재료 → 머신, 출력은 입력 뒤                  | **Q** | [layeredWizard.ts:530](../frontend/src/utils/autoLayout/layeredWizard.ts#L530), [areaUnification.ts:320](../frontend/src/utils/autoLayout/areaUnification.ts#L320) |
+| P2  | **셀 후보 정렬** (한 연결 내)        | `machine.origin`(좌상단 코너) 맨해튼 거리 오름차순, 첫 라우팅 성공 셀 채택 | **Q** | [areaUnification.ts:341](../frontend/src/utils/autoLayout/areaUnification.ts#L341)                                                                                 |
+| P3  | **ring 성장 변 선택**            | 실패한 chest의 머신 최근접 변만 +1 (전체 링 성장 회피)                | **Q** | [areaUnification.ts:234](../frontend/src/utils/autoLayout/areaUnification.ts#L234)                                                                                 |
+| P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/routeFallback.ts#L143)                                                                                     |
+| P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73)                                                                                       |
+| P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
+| P7  | **트렁크 seed 점수**             | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소                | **Q** | [trunkPath.ts:232](../frontend/src/utils/autoLayout/trunkPath.ts#L232)                                                                                             |
+| P8  | **머지 그룹핑 게이트**              | 용량(총수요 ≤ beltCap, 머신별 ≤ tapCap, 크기 ≤ maxTaps)       | **C** | [placement-search §7.2](auto-layout-wizard.placement-search.md)                                                                                                    |
+| P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
 
 ---
 
 ## 3. 핵심: 배치의 "제약" 측정 (P1)
 
-진짜 척도 = **그 연결이 라우팅 성공하는 빈 ring 셀의 개수**(MRV). 정확하지만 셀마다 시험 라우팅이 필요해 비싸고, 셀이 소비되면 변하는 **동적** 값이다. 그래서 **싼 정적 프록시**로 근사한다 — 라우팅을 돌려보지 않고 좌표·종류 검사만으로 제약의 크기를 어림잡는다.
+진짜 척도 = **그 연결이 라우팅 성공하는 빈 ring 셀의 개수**(MRV). 정확하지만 셀마다 시험 라우팅이 필요해 비싸고, 셀이 소비되면 변하는 **동적** 값이다. 그래서 **싼 정적 [[용어사전#프록시 (proxy)|프록시]]**로 근사한다 — 라우팅을 돌려보지 않고 좌표·종류 검사만으로 제약의 크기를 어림잡는다.
 
 ### 3.1 코드로 검증된 프록시 요인 — fluid
 
@@ -70,7 +74,7 @@
 동률 : machineId → chestId 사전순 (결정성 tie-break)
 ```
 
-이걸로 부족하면 **동적 MRV**(매 배치 후 남은 연결의 가용 셀 수 재계산, DSATUR 동형)로 승급 — 더 정확하지만 `O(연결² × 셀 × 라우팅)`로 무겁다.
+이걸로 부족하면 **동적 MRV**(매 배치 후 남은 연결의 가용 셀 수 재계산, [[용어사전#DSATUR|DSATUR]] 동형)로 승급 — 더 정확하지만 `O(연결² × 셀 × 라우팅)`로 무겁다.
 
 ---
 
@@ -84,7 +88,7 @@ P2는 `machine.origin`(좌상단 코너) 기준 거리라, 멀티타일 머신(3
 
 ## 5. 결정성 불변식
 
-모든 우선순위 정렬은 [placement-search §8 결정성](auto-layout-wizard.placement-search.md)을 지켜야 한다 — 난수 금지, **안정 정렬 + 명시적 tie-break**. 동일 입력 → 동일 출력을 보장해야 한다. 새 우선순위 키를 추가할 때 동률 처리(예: `machineId → chestId` 사전순)를 반드시 명시한다.
+모든 우선순위 정렬은 [placement-search §8 결정성](auto-layout-wizard.placement-search.md)([[용어사전#결정성 (determinism)|결정성]])을 지켜야 한다 — 난수 금지, **안정 정렬 + 명시적 [[용어사전#tie-break|tie-break]]**. 동일 입력 → 동일 출력을 보장해야 한다. 새 우선순위 키를 추가할 때 동률 처리(예: `machineId → chestId` 사전순)를 반드시 명시한다.
 
 ---
 

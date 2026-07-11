@@ -45,4 +45,5 @@ coverage/
 
 # ---- Claude Code ----
 .claude/settings.local.json
+.mcp.json
 .tmp_*

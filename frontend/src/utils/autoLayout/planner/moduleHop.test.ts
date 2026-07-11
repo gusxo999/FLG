@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import { routeModuleHops, type HopConfig } from "./moduleHop";
-import { faceVector } from "./containerRouting";
-import type { IoLine } from "./clusterPortPlanner";
-import { EntityType } from "../../types/layout";
+import { faceVector } from "../util/helper";
+import type { IoLine } from "../module/clusterPortPlanner";
+import { EntityType } from "../../../types/layout";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -112,9 +112,9 @@ describe("routeModuleHops", () => {
   });
 
   it("[불변식] 지하벨트 활성·멀티홉에서도 belt 체인은 텔레포트하지 않는다", () => {
-    // 회귀: dijkstraWithJumps 가 점프 경로를 내면 emit 이 지하벨트로 materialize 하지
-    // 않고 지상 belt 1칸만 찍어 체인이 끊겼다(아이템이 허공/타 스트림으로 샘). 각 홉
-    // route.cells 는 chain 순서이므로 연속 두 셀은 반드시 직교 인접(거리 1)이어야 한다.
+    // 회귀: 옛 emit 은 점프 경로를 지하벨트로 materialize 하지 못해 체인이 끊겼다.
+    // 지금은 edge-aware(emitItemPath)라, 연속 두 셀은 (a) 직교 인접(거리 1)이거나
+    // (b) 지하 입구→출구 페어(축 정렬·같은 방향·거리 ≤ maxJump)여야 한다.
     const pack = packModuleTree(emSpecs, packConfig);
     const res = routeModuleHops(pack, ugConfig);
     expect(res.failures).toBe(0);
@@ -123,7 +123,13 @@ describe("routeModuleHops", () => {
       for (let i = 0; i + 1 < route.cells.length; i++) {
         const a = route.cells[i], b = route.cells[i + 1];
         const md = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-        expect(md, `홉 ${route.item}: (${a.x},${a.y})→(${b.x},${b.y}) 텔레포트(거리 ${md})`).toBe(1);
+        if (md === 1) continue;
+        const isJumpPair =
+          a.cell.entityType === EntityType.UndergroundBelt && a.cell.undergroundType === "input" &&
+          b.cell.entityType === EntityType.UndergroundBelt && b.cell.undergroundType === "output" &&
+          (a.x === b.x || a.y === b.y) && a.cell.direction === b.cell.direction &&
+          md <= (ugConfig.beltMaxUndergroundDistance ?? 0);
+        expect(isJumpPair, `홉 ${route.item}: (${a.x},${a.y})→(${b.x},${b.y}) 텔레포트(거리 ${md})`).toBe(true);
       }
     }
   });
@@ -138,6 +144,8 @@ describe("routeModuleHops", () => {
     const occ = occupancyOf(pack);
     for (const k of res.strippedCellKeys) occ.delete(k);
     for (const c of res.cells) {
+      // 지하 입구의 하류는 지표가 아니라 터널(페어 출구) — 지표 검사에서 제외.
+      if (c.cell.entityType === EntityType.UndergroundBelt && c.cell.undergroundType === "input") continue;
       const v = DIRVEC[c.cell.direction];
       const nk = `${c.x + v.x},${c.y + v.y}`;
       expect(hopSet.has(nk) || occ.has(nk), `홉 belt (${c.x},${c.y}) 하류가 허공`).toBe(true);
@@ -164,6 +172,70 @@ describe("routeModuleHops", () => {
     const sig = (r: ReturnType<typeof routeModuleHops>) =>
       JSON.stringify(r.cells.map((c) => [c.x, c.y, c.cell.direction]));
     expect(sig(b)).toEqual(sig(a));
+  });
+
+  // ── 지하벨트 (조각 C) ──────────────────────────────────────────────────────
+
+  /** 채널을 세로로 완전히 막는 벽을 pack 에 주입 — 지상 우회 비용 ≫ 점프 비용. */
+  function injectWall(pack: PackResult): { wallX: number } {
+    const hop = pack.hops[0];
+    const wallX = Math.round((hop.from.anchor.x + hop.to.anchor.x) / 2);
+    const template = pack.placements[0].module.cells[0];
+    const cells = pack.placements[0].module.cells;
+    for (let y = -20; y <= 30; y++) {
+      cells.push({ x: wallX, y, cell: { ...template.cell } });
+    }
+    return { wallX };
+  }
+
+  it("지하벨트: 벽에 막히면 점프로 넘고 입/출구·corridor 를 낸다", () => {
+    const pack = packModuleTree(specs, packConfig);
+    const { wallX } = injectWall(pack);
+    const res = routeModuleHops(pack, ugConfig);
+    expect(res.failures).toBe(0);
+
+    const route = res.routes[0];
+    const ug = route.cells.filter((c) => c.cell.entityType === EntityType.UndergroundBelt);
+    const ins = ug.filter((c) => c.cell.undergroundType === "input");
+    const outs = ug.filter((c) => c.cell.undergroundType === "output");
+    expect(ins).toHaveLength(1);
+    expect(outs).toHaveLength(1);
+    // 입구/출구가 벽 양쪽에 있고, 방향이 같고(흐름), 벽 셀 위에는 안 앉는다.
+    const [i0] = ins, [o0] = outs;
+    expect(Math.sign(wallX - i0.x)).toBe(-Math.sign(wallX - o0.x));
+    expect(i0.cell.direction).toBe(o0.cell.direction);
+    expect(i0.x !== wallX && o0.x !== wallX).toBe(true);
+    // corridor 1개가 결과로 나온다(호출자가 Area 에 기록).
+    expect(route.corridors).toHaveLength(1);
+    expect(res.corridors).toHaveLength(1);
+  });
+
+  it("지하벨트 게이트 오프(미선택): 같은 벽에서도 점프 없이 지상으로만 푼다", () => {
+    const pack = packModuleTree(specs, packConfig);
+    injectWall(pack);
+    const res = routeModuleHops(pack, hopConfig); // underground 미지정
+    // 벽이 유한하므로 지상 우회는 가능해야 하고, 지하벨트 셀은 절대 없다.
+    expect(res.failures).toBe(0);
+    expect(res.cells.some((c) => c.cell.entityType === EntityType.UndergroundBelt)).toBe(false);
+    expect(res.corridors).toHaveLength(0);
+  });
+
+  it("지하벨트: 점프가 있어도 하류 연속성 유지(입구→터널→출구→지상)", () => {
+    const pack = packModuleTree(specs, packConfig);
+    injectWall(pack);
+    const res = routeModuleHops(pack, ugConfig);
+    const route = res.routes[0];
+    // route.cells 는 체인 순서 — 입구 다음 원소는 페어 출구, 그다음은 출구 방향 지상 셀.
+    for (let i = 0; i + 1 < route.cells.length; i++) {
+      const a = route.cells[i], b = route.cells[i + 1];
+      if (a.cell.entityType === EntityType.UndergroundBelt && a.cell.undergroundType === "input") {
+        expect(b.cell.entityType).toBe(EntityType.UndergroundBelt);
+        expect(b.cell.undergroundType).toBe("output");
+        // 축 정렬 + 같은 방향.
+        expect(a.x === b.x || a.y === b.y).toBe(true);
+        expect(b.cell.direction).toBe(a.cell.direction);
+      }
+    }
   });
 
   it("렌더 — 모듈 트리 + 홉", () => {

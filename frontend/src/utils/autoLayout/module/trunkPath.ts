@@ -19,9 +19,9 @@
  *   닿지 않는 머신은 `untapped` 로 빼서 ② 스퍼가 처리한다.
  */
 
-import type { Direction } from '../../types/layout';
-import type { PortFace } from './containerModel';
-import { cellKey, faceVector, vectorToDirection } from './containerRouting';
+import type { Direction } from '../../../types/layout';
+import type { PortFace } from '../containerModel';
+import { cellKey, faceVector, vectorToDirection } from '../util/helper';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -75,6 +75,18 @@ export interface TrunkPath {
   covered: TapRecord[];
   /** 직접 탭 실패 → ② 스퍼가 처리할 머신 id 들. */
   untapped: string[];
+  /**
+   * seed 경쟁 우승 근거(디버그·표시용) — computeTrunkPath 가 채운다. 사전식 점수
+   * [untapped, crossSpan(직선성), endPenalty(끝 선호), trunkLen] + 평가 seed 수.
+   * tryGrow 단독 호출 경로에는 없다(optional).
+   */
+  selectionDebug?: {
+    untapped: number;
+    crossSpan: number;
+    endPenalty: number;
+    trunkLen: number;
+    seedsEvaluated: number;
+  };
   /** [진단] 미탭 머신별 후보 통계 (왜 못 탭됐는지). AUTO_LAYOUT_COORD_DUMP 분석용. */
   untappedInfo?: { id: string; cands: number; oobSeatTap: number; noPath: number; oobPath: number }[];
 }
@@ -151,6 +163,13 @@ export interface TrunkInput {
    * 한 클러스터의 여러 트렁크(내부버스·외부)가 서로 다른 슬롯을 받아 충돌을 원천 차단한다.
    */
   faceConstraints?: Map<string, { face?: PortFace; reach?: number }>;
+  /**
+   * 종착(chest=포트) 을 지배축의 어느 **끝**에 둘지 선호 (DOF-B). "min"=축 작은 끝(기둥
+   * 이면 위), "max"=큰 끝(아래). full-tap·직선(crossSpan) 동률인 seed 들 중 선호 끝에
+   * 가까운 chestCell 을 고른다(트렁크 길이보다 우선). 미지정이면 영향 없음(기존 동작).
+   * 합성 단계가 부모↔자식 포트 y 를 마주 보게 정렬(홉 단축)하는 데 쓴다.
+   */
+  endPreference?: "min" | "max";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,22 +247,40 @@ export function computeTrunkPath(input: TrunkInput): TrunkResult {
     }
     return hi - lo;
   };
+  // 선호 끝(DOF-B) 페널티 — 작을수록 선호 끝에 가깝다. 미지정이면 0(무영향).
+  const endPenalty = (p: TrunkPath): number => {
+    if (!input.endPreference) return 0;
+    const a = horizontal ? p.chestCell.x : p.chestCell.y;
+    return input.endPreference === "min" ? a : -a;
+  };
   const seen = new Set<string>();
   let best: TrunkPath | null = null;
-  let bestScore: [number, number, number] | null = null;
+  let bestScore: number[] | null = null;
+  let seedsEvaluated = 0;
   for (const chestCell of [...endSeeds, ...nearest]) {
     const k = key(chestCell);
     if (seen.has(k)) continue;
     seen.add(k);
     const grown = tryGrow(chestCell, order, centroid, baseOcc, cfg, input.terminalOccupied ?? false, horizontal, input.sinkIds, input.bounds, input.faceConstraints);
     if (!grown) continue;
-    const score: [number, number, number] = [grown.untapped.length, crossSpan(grown), grown.trunkCells.length];
+    seedsEvaluated++;
+    // [untapped, 횡축 span, 선호 끝, 트렁크 길이]. 끝 선호는 직선(span) 다음·길이 앞.
+    const score: number[] = [grown.untapped.length, crossSpan(grown), endPenalty(grown), grown.trunkCells.length];
     if (bestScore === null || lexLt(score, bestScore)) {
       best = grown;
       bestScore = score;
     }
   }
-  if (best) return { ok: true, path: best };
+  if (best && bestScore) {
+    best.selectionDebug = {
+      untapped: bestScore[0],
+      crossSpan: bestScore[1],
+      endPenalty: bestScore[2],
+      trunkLen: bestScore[3],
+      seedsEvaluated,
+    };
+    return { ok: true, path: best };
+  }
   return { ok: false, infeasible: 'all-seeds-failed' };
 }
 

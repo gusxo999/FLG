@@ -1,3 +1,7 @@
+---
+tags: [factorio-data, blueprint]
+---
+
 # Direction 인코딩 — Factorio 2.0 16-방향 정렬
 
 **상태:** 마이그레이션 완료 (2026-04-29). 내부 `Direction` 모델이 Factorio 2.0 의 `defines.direction` 인코딩과 동일한 의미체계로 통일됨.

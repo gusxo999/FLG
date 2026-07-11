@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { createEmptyCell, EntityType } from '../../types/layout';
 import type { Area, PlacedCell } from './containerModel';
 import {
-  cellKey,
   collectBeltFlow,
   dijkstraWithJumps,
   type DijkstraInput,
 } from './containerRouting';
+import { cellKey } from './util/helper';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처

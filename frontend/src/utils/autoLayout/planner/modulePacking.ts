@@ -1,0 +1,592 @@
+/**
+ * modulePacking — 모듈 트리를 좌우 계층형으로 패킹한다 (조각 3, 순수·무배선).
+ *
+ * 단일 출처: 본 설계안(클러스터 모듈화 — 합성/패킹).
+ *
+ * 각 노드를 [clusterModule.generateModule] 로 부모-무시 생성한다. 방위는 **생성 단계에서
+ * 면=역할로 확정**(출력→W=부모, 입력→E=자식, (B) 정책 넘침은 잔여 면)되므로 D4 사후 회전
+ * 없이 항등 방위를 쓴다. 그다음 depth 열 × **tidy-tree(RT) 세로 배치**(부모를 자식들 중앙에)로
+ * 배치하고, 부모↔자식 입력 포트를 품목 매칭해 홉 스펙을 낸다.
+ *
+ * ## 변(side) vs face
+ * generateModule 은 포트 `face` 를 트렁크 *축* 방향으로 준다(예: N 레인을 수평으로 달리는
+ * 트렁크의 chest 는 face='W'일 수 있다). 좌우 트리에서 의미 있는 건 포트가 클러스터의
+ * **어느 변**(W/E/N/S)에 붙었나이며, 그 단일 출처는 planner 슬롯(`meta.side`)이다 —
+ * anchor↔bbox 기하 추측(X변 우선)은 N/S 레인의 코너 어깨 chest 를 오분류해 폐기했다.
+ * face 정의는 불변.
+ *
+ * 무배선 — 라이브 회귀 0. 단위 테스트 + 전체 트리 ASCII 로만 검증.
+ */
+
+import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
+import {
+  planChannelGeometry,
+  type ChannelGeometryPlan,
+  type DeliveryInput,
+  type ExportInput,
+} from "./channelGeometryPlanner";
+import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
+import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
+import { segment } from "../util/helper";
+import type { IoLine } from "../module/clusterPortPlanner";
+import type { Container, PlacedCell } from "../containerModel";
+import type { Orientation } from "../module/moduleTransform";
+
+/** 채널 폭 하한(셀). 단일 홉(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
+const MODULE_CHANNEL_MIN = 4;
+const STACK_GAP = 3; // tidy-tree 서브트리 간격 + 4b 겹침 스윕 하한
+
+/** 한 노드의 패킹 입력 — recipe 에서 유도. */
+export interface NodeSpec {
+  id: string;
+  depth: number;
+  parentId?: string;
+  machine: { entityName: string; w: number; h: number };
+  count: number;
+  /** ingredients=input, products=output. */
+  lines: IoLine[];
+}
+
+export interface PackConfig {
+  inserterEntityName: string;
+  beltEntityName: string;
+  longInserter?: { entityName: string; reach: number };
+  /** 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량. */
+  throughput?: { normal: number; long: number };
+  /**
+   * 외부상자 perimeter exit-lane 예약을 켠다(조각 6-①). true 면 채널 폭이 홉 구간에
+   * 더해 lane 세로 구간까지 반영해 넓어지고 bbox 에 N/S/W/E 마진 프레임이 붙는다.
+   * 미지정=off(현행 유지) — 골든/단위 테스트 회귀 0. moduleWizard 가 플래그로 전달.
+   */
+  reservePerimeterLanes?: boolean;
+  /**
+   * 채널 기하 예약(통합 장부) — 예약을 "폭"에서 "기하(누가 어느 트랙)"로 승격한다
+   * (docs/auto-layout-wizard.channel-geometry-reservation.md). true 면 납품(홉)·반출(lane)
+   * 경로의 트랙을 [channelGeometryPlanner] 가 패킹 시점에 배정하고(같은 쪽 판정 + 해소
+   * 사다리), 채널 폭은 그 결과에서 유도(폭 역전), PackResult.channelGeometry 로 방출
+   * 지시를 내린다. 미지정=off(현행 dijkstra/스캔 유지).
+   */
+  channelGeometry?: boolean;
+}
+
+/** 한 노드의 최종 배치 — 절대 좌표로 옮겨진 모듈 + 적용된 방위·이동량. */
+export interface ModulePlacement {
+  id: string;
+  module: GeneratedModule; // 절대 좌표(공유 좌표계)
+  orientation: Orientation;
+  origin: { x: number; y: number }; // extent 좌상단이 놓인 절대 위치
+}
+
+/** 자식 출력 포트 → 부모 입력 포트 (조각 4가 belt-to-belt 라우팅). 절대 좌표. */
+export interface HopSpec {
+  item: string;
+  from: ModulePort; // 자식 출력
+  to: ModulePort; // 부모 입력
+  /** 자식 모듈 id(출력 측 owner). Routing from.containerId 유도용. */
+  fromId: string;
+  /** 부모 모듈 id(입력 측 owner). Routing to.containerId 유도용. */
+  toId: string;
+}
+
+/** 홉의 결정적 방출 지시(절대 좌표) — 통합 장부의 배정을 트랙 index→x 로 변환한 것. */
+export type HopGeometry =
+  | { kind: "straight" }
+  | { kind: "staircase"; trackX: number }
+  | { kind: "columnSwitch"; startTrackX: number; switchY: number; endTrackX: number }
+  | {
+      /** axis="col": crossX 열을 crossRow 에서 가로 점프 / axis="row": 자기 트랙 위 crossRow 를 세로 점프. */
+      kind: "undergroundCrossing";
+      trackX: number;
+      axis: "col" | "row";
+      crossX: number;
+      crossRow: number;
+    };
+
+/** 채널 기하 예약 결과 — moduleHop(납품 방출)·modulePerimeterPass(반출 재생)가 소비. */
+export interface PackChannelGeometry {
+  /** [hopKey] → 방출 지시. 없는 홉 = fallback(기존 dijkstra). */
+  hops: Map<string, HopGeometry>;
+  /** 반출 경로 예약 셀(절대 cellKey) — 폴백 dijkstra 홉이 침범하면 안 되는 자리. */
+  reservedExportCells: Set<string>;
+}
+
+/** HopSpec 식별 키 — PackChannelGeometry.hops 의 조회 키. */
+export function hopKey(fromId: string, toId: string, item: string): string {
+  return `${fromId}→${toId}:${item}`;
+}
+
+export interface PackResult {
+  placements: ModulePlacement[];
+  hops: HopSpec[];
+  /** child 없는 입력 포트 — raw(무한상자 유지). 절대 좌표. */
+  rawPorts: ModulePort[];
+  bbox: { x: number; y: number; w: number; h: number };
+  /** 외부상자 perimeter exit-lane 배정(조각 6-①). ②③(재배치·라우팅)이 소비. */
+  lanePlan: LanePlan;
+  /** 채널 기하 예약(통합 장부) — config.channelGeometry 일 때만. */
+  channelGeometry?: PackChannelGeometry;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 진입점
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
+  const byId = new Map(specs.map((s) => [s.id, s]));
+  const childIdsByParent = new Map<string, string[]>();
+  for (const s of specs) {
+    if (!s.parentId) continue;
+    (childIdsByParent.get(s.parentId) ?? childIdsByParent.set(s.parentId, []).get(s.parentId)!).push(s.id);
+  }
+  /** 노드가 부모에 내보내는 품목(= 출력 라인 이름). */
+  const productOf = (s: NodeSpec): string | undefined =>
+    s.lines.find((l) => l.role === "output")?.name;
+  /** 부모 입력 중 자식-공급인 품목 집합. */
+  const childFedItems = (s: NodeSpec): Set<string> => {
+    const set = new Set<string>();
+    for (const cid of childIdsByParent.get(s.id) ?? []) {
+      const p = productOf(byId.get(cid)!);
+      if (p) set.add(p);
+    }
+    return set;
+  };
+
+  // 노출 끝면(N/S) — count=1 완화의 노출 판정. 세로 순서는 tidy-tree 가 DFS 방문
+  // 순서를 보존하므로(형제 재배열 없음) 좌표 확정 *전에* 열-내 서열로 유도할 수 있다
+  // (스도쿠 닻: 트리 구조가 외생). 열의 첫 모듈 위(N)·마지막 모듈 아래(S)는 전역
+  // 마진뿐 — 그 방향 레인이 형제와 충돌하지 않는다.
+  const dfsByDepth = new Map<number, string[]>();
+  const dfsVisit = (id: string) => {
+    const s = byId.get(id)!;
+    (dfsByDepth.get(s.depth) ?? dfsByDepth.set(s.depth, []).get(s.depth)!).push(id);
+    for (const cid of childIdsByParent.get(id) ?? []) dfsVisit(cid);
+  };
+  for (const s of specs) if (!s.parentId) dfsVisit(s.id);
+  const nsExposureOf = (s: NodeSpec): ("N" | "S")[] | undefined => {
+    if (s.count !== 1) return undefined; // 기둥(count≥2)은 N/S 레인이 끝 머신만 서빙 — 제외.
+    const col = dfsByDepth.get(s.depth)!;
+    const faces: ("N" | "S")[] = [];
+    if (col[0] === s.id) faces.push("N");
+    if (col[col.length - 1] === s.id) faces.push("S");
+    return faces.length ? faces : undefined;
+  };
+
+  // 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위.
+  const IDENTITY: Orientation = { rotation: 0, reflect: false };
+  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule =>
+    generateModule({
+      ...toModuleInput(s, config, childFedItems(s)),
+      lineEnds,
+      nsExposure: nsExposureOf(s),
+    });
+
+  // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
+  const pass1 = new Map<string, GeneratedModule>();
+  for (const s of specs) pass1.set(s.id, gen(s));
+
+  // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
+  //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 홉=raw 거리), 채널 폭(piece 5)이
+  //    부모↔자식 근접을 보상하므로 복원 — 부모를 자식 곁에 두면 교차 구간↓→트랙↓→폭↓.
+  const heightOf = (id: string): number => moduleExtent(pass1.get(id)!).h;
+  const topY = new Map<string, number>();
+  const cursor = { y: 0 };
+  const layoutY = (id: string): number => {
+    const kids = childIdsByParent.get(id) ?? [];
+    if (kids.length === 0) {
+      const top = cursor.y;
+      topY.set(id, top);
+      cursor.y = top + heightOf(id) + STACK_GAP;
+      return top + heightOf(id) / 2;
+    }
+    const centers = kids.map(layoutY);
+    const center = (centers[0] + centers[centers.length - 1]) / 2;
+    topY.set(id, center - heightOf(id) / 2);
+    return center;
+  };
+  for (const s of specs) if (!s.parentId) layoutY(s.id);
+
+  // 2b) 열 단위 겹침 안전 스윕 — 반올림·키 큰 노드가 같은 depth 에서 안 겹치게 아래로 민다.
+  const idsByDepth = new Map<number, string[]>();
+  for (const s of specs) (idsByDepth.get(s.depth) ?? idsByDepth.set(s.depth, []).get(s.depth)!).push(s.id);
+  for (const ids of idsByDepth.values()) {
+    ids.sort((a, b) => topY.get(a)! - topY.get(b)!);
+    let prevBottom = -Infinity;
+    for (const id of ids) {
+      let t = Math.round(topY.get(id)!);
+      if (t < prevBottom + STACK_GAP) t = prevBottom + STACK_GAP;
+      topY.set(id, t);
+      prevBottom = t + heightOf(id);
+    }
+  }
+
+  // 3) 포트 끝(DOF-B) 의도 — 각 홉에서 자식 출력끝·부모 입력끝을 |Δy| 최소 조합으로 고른다.
+  //    끝 후보는 각 기둥의 위끝(min=topY)·아래끝(max=topY+h) 둘. 부모가 자식 위에 겹쳐
+  //    중심이 같아도 같은 쪽 끝을 골라 마주 보게 한다(중심 비교는 겹침에서 degenerate).
+  //    자식별 부모 입력은 품목이 달라 서로 다른 슬롯 → 끝을 독립 선택해도 충돌 없음.
+  const ends = (id: string): Record<"min" | "max", number> => ({
+    min: topY.get(id)!,
+    max: topY.get(id)! + heightOf(id),
+  });
+  const lineEndsById = new Map<string, Map<string, "min" | "max">>();
+  const setEnd = (id: string, key: string, end: "min" | "max") => {
+    (lineEndsById.get(id) ?? lineEndsById.set(id, new Map()).get(id)!).set(key, end);
+  };
+  const EE = ["min", "max"] as const;
+  for (const s of specs) {
+    if (!s.parentId) continue;
+    const product = productOf(s);
+    if (!product) continue;
+    const c = ends(s.id), p = ends(s.parentId);
+    let bestC: "min" | "max" = "min", bestP: "min" | "max" = "min", bestD = Infinity;
+    for (const ce of EE) for (const pe of EE) {
+      const d = Math.abs(c[ce] - p[pe]);
+      if (d < bestD) { bestD = d; bestC = ce; bestP = pe; }
+    }
+    setEnd(s.id, `output:${product}`, bestC);
+    setEnd(s.parentId, `input:${product}`, bestP);
+  }
+
+  // 4) 2차 생성 — 끝 선호 반영(포트가 부모↔자식 방향 끝으로 정렬).
+  const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
+  for (const s of specs) oriented.set(s.id, { module: gen(s, lineEndsById.get(s.id)), orientation: IDENTITY });
+
+  // 5) 열 폭 + 채널 폭(수요 기반) → x 좌표. 채널 d(깊이 d↔d-1)를 가로지르는 홉을 세로
+  //    구간 [min(자식포트y, 부모포트y), max(...)] 으로 모아 left-edge 트랙 수 = 폭의 근거.
+  //    포트 abs-y = 로컬 anchor.y + (topY - ext.y) (colX 무관 → 배치 전 계산 가능). 끝 정렬
+  //    (piece 4)으로 구간이 짧아 트랙↓→폭↓. channelPlanner 코드 무수정(좌표-무지).
+  const maxDepth = Math.max(...specs.map((s) => s.depth), 0);
+  const colWidth = new Array(maxDepth + 1).fill(0);
+  for (const s of specs) colWidth[s.depth] = Math.max(colWidth[s.depth], moduleExtent(oriented.get(s.id)!.module).w);
+
+  const absPortY = (id: string, anchorY: number): number =>
+    anchorY + topY.get(id)! - moduleExtent(oriented.get(id)!.module).y;
+  const intervalsByDepth = new Map<number, { lo: number; hi: number }[]>();
+  // 홉 씨앗 — 기하 예약(5c)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
+  // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
+  const hopSeeds: { depth: number; key: string; startY: number; endY: number; eligible: boolean }[] = [];
+  for (const s of specs) {
+    if (!s.parentId) continue;
+    const product = productOf(s);
+    if (!product) continue;
+    const out = oriented.get(s.id)!.module.outputPorts.find((p) => p.line.name === product);
+    const inp = oriented.get(s.parentId)!.module.inputPorts.find((p) => p.line.name === product);
+    if (!out || !inp) continue;
+    const cy = absPortY(s.id, out.anchor.y);
+    const py = absPortY(s.parentId, inp.anchor.y);
+    const iv = { lo: Math.min(cy, py), hi: Math.max(cy, py) };
+    (intervalsByDepth.get(s.depth) ?? intervalsByDepth.set(s.depth, []).get(s.depth)!).push(iv);
+    hopSeeds.push({
+      depth: s.depth,
+      key: hopKey(s.id, s.parentId, product),
+      startY: cy,
+      endY: py,
+      eligible:
+        out.meta.side === "W" && inp.meta.side === "E" && byId.get(s.parentId)!.depth === s.depth - 1,
+    });
+  }
+
+  // 5b) 외부상자 exit-lane 예약(조각 6-①) — 살아남은 raw 입력·루트 출력 상자를 인접 gap
+  //     으로 빼는 lane 을 planner 에 맡긴다. 채널로 우회하는 lane 의 세로 구간은 위 홉
+  //     구간과 **합쳐** 채널 폭에 반영(결정 A: 폭만 예약, 트랙 index 는 라우터). colX 전이라
+  //     X 없이 abs y+depth 만으로 판정 가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진
+  //     반영은 reservePerimeterLanes 게이트.
+  const lanePlan = planLanes(specs, oriented, topY, byId, childFedItems, maxDepth, absPortY);
+  if (config.reservePerimeterLanes) {
+    for (const [d, ivs] of lanePlan.channelLaneIntervals)
+      for (const iv of ivs) (intervalsByDepth.get(d) ?? intervalsByDepth.set(d, []).get(d)!).push(iv);
+  }
+
+  // 5c) 채널 기하 예약(통합 장부) — 납품·반출 경로를 한 장부에 모아 트랙을 배정한다
+  //     (같은 쪽 판정 + 해소 사다리, docs/…channel-geometry-reservation.md). 폭 역전:
+  //     아래 channelWidth 가 이 배정 결과(trackCount)에서 폭을 유도한다. 부적격 경로
+  //     (스필 홉·N/S 우회 반출)는 폭만 예약(reserveIntervals)하고 기존 dijkstra/스캔에 맡긴다.
+  const geometryPlans = new Map<number, ChannelGeometryPlan>();
+  if (config.channelGeometry) {
+    let gyMin = Infinity, gyMax = -Infinity;
+    for (const s of specs) {
+      const top = topY.get(s.id)!;
+      gyMin = Math.min(gyMin, top);
+      gyMax = Math.max(gyMax, top + moduleExtent(oriented.get(s.id)!.module).h - 1);
+    }
+    for (let d = 1; d <= maxDepth; d++) {
+      const dels: DeliveryInput[] = [];
+      const reserve: Interval[] = [];
+      for (const seed of hopSeeds) {
+        if (seed.depth !== d) continue;
+        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY });
+        else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
+      }
+      const exps: ExportInput[] = [];
+      if (config.reservePerimeterLanes) {
+        for (const a of lanePlan.assignments) {
+          if (a.host.kind !== "channel" || a.host.depth !== d) continue;
+          if (a.entry && (a.exitEdge === "N" || a.exitEdge === "S")) {
+            exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
+          } else if (a.interval) {
+            reserve.push(a.interval); // N/S 우회 등 미지원 진입 — 폭만 예약
+          }
+        }
+      }
+      geometryPlans.set(d, planChannelGeometry(dels, exps, { yMin: gyMin, yMax: gyMax, reserveIntervals: reserve }));
+    }
+  }
+
+  const channelWidth = (d: number): number => {
+    if (config.channelGeometry) {
+      // 폭 역전 — 폭은 기하 배정의 결과(사용 트랙 수)에서 유도된다.
+      return channelWidthFromTracks(geometryPlans.get(d)?.trackCount ?? 0, MODULE_CHANNEL_MIN);
+    }
+    const ivs = intervalsByDepth.get(d) ?? [];
+    return channelWidthFromTracks(assignTracksLeftEdge(ivs).trackCount, MODULE_CHANNEL_MIN);
+  };
+  const colX = new Array(maxDepth + 1).fill(0);
+  for (let d = 1; d <= maxDepth; d++) colX[d] = colX[d - 1] + colWidth[d - 1] + channelWidth(d);
+
+  // 6) 절대 좌표 배치 — 결정적(depth 오름차순, 같은 depth 는 id 순).
+  const placements: ModulePlacement[] = [];
+  const absById = new Map<string, GeneratedModule>();
+  for (const s of [...specs].sort((a, b) => a.depth - b.depth || a.id.localeCompare(b.id))) {
+    const { module, orientation } = oriented.get(s.id)!;
+    const ext = moduleExtent(module);
+    const y = topY.get(s.id)!;
+    const abs = shiftModule(module, colX[s.depth] - ext.x, y - ext.y);
+    placements.push({ id: s.id, module: abs, orientation, origin: { x: colX[s.depth], y } });
+    absById.set(s.id, abs);
+  }
+
+  // 7) 홉 페어링(품목 매칭) + raw 분류.
+  const hops: HopSpec[] = [];
+  const rawPorts: ModulePort[] = [];
+  for (const s of specs) {
+    const mod = absById.get(s.id)!;
+    const fed = childFedItems(s);
+    for (const ip of mod.inputPorts) {
+      if (!fed.has(ip.line.name)) rawPorts.push(ip);
+    }
+    if (!s.parentId) continue;
+    const product = productOf(s);
+    if (!product) continue;
+    const out = mod.outputPorts.find((p) => p.line.name === product);
+    const parentMod = absById.get(s.parentId);
+    const inp = parentMod?.inputPorts.find((p) => p.line.name === product);
+    if (out && inp) hops.push({ item: product, from: out, to: inp, fromId: s.id, toId: s.parentId });
+  }
+
+  const rawBbox = unionExtent(placements);
+
+  // 7b) 기하 예약의 절대좌표 변환 — 트랙 index → 채널 내부 x, 반출 배정 확정(exitEdge
+  //     뒤집힘 반영 + laneX 기록), 반출 예약 셀 산출. marginNeeds 를 갱신할 수 있으므로
+  //     expandBbox 보다 먼저.
+  const channelGeometry = config.channelGeometry
+    ? materializeChannelGeometry({
+        geometryPlans,
+        hopSeeds,
+        lanePlan,
+        placements,
+        channelStartX: (d: number) => colX[d - 1] + colWidth[d - 1],
+        rawBbox,
+        reserveLanes: config.reservePerimeterLanes === true,
+      })
+    : undefined;
+
+  const bbox = config.reservePerimeterLanes ? expandBbox(rawBbox, lanePlan.marginNeeds) : rawBbox;
+  return { placements, hops, rawPorts, bbox, lanePlan, channelGeometry };
+}
+
+/**
+ * 통합 장부의 추상 배정(트랙 index)을 절대좌표 지시로 변환한다.
+ * - 납품: HopGeometry(트랙 x·갈아타는 행·지하 횡단 좌표) — moduleHop 이 탐색 없이 방출.
+ * - 반출: LaneAssignment 에 laneX·(뒤집혔으면) exitEdge 를 기록 — ⑥C 가 그대로 재생.
+ * - 예약 셀: 모든 확정 반출 경로(채널 elbow + self/margin 직선)의 절대 셀 —
+ *   폴백 dijkstra 홉의 침범을 막아 "먼저 깐 경로가 자리를 뺏는" 원래 구멍을 봉인한다.
+ */
+function materializeChannelGeometry(args: {
+  geometryPlans: Map<number, ChannelGeometryPlan>;
+  hopSeeds: { depth: number; key: string; eligible: boolean }[];
+  lanePlan: LanePlan;
+  placements: ModulePlacement[];
+  channelStartX: (d: number) => number;
+  rawBbox: { x: number; y: number; w: number; h: number };
+  reserveLanes: boolean;
+}): PackChannelGeometry {
+  const { geometryPlans, hopSeeds, lanePlan, placements, channelStartX, rawBbox, reserveLanes } = args;
+  const hops = new Map<string, HopGeometry>();
+  for (const seed of hopSeeds) {
+    if (!seed.eligible) continue;
+    const plan = geometryPlans.get(seed.depth)?.deliveries.get(seed.key);
+    if (!plan || plan.kind === "fallback") continue;
+    const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
+    if (plan.kind === "straight") hops.set(seed.key, { kind: "straight" });
+    else if (plan.kind === "staircase") hops.set(seed.key, { kind: "staircase", trackX: tx(plan.track) });
+    else if (plan.kind === "columnSwitch")
+      hops.set(seed.key, {
+        kind: "columnSwitch",
+        startTrackX: tx(plan.startTrack),
+        switchY: plan.switchY,
+        endTrackX: tx(plan.endTrack),
+      });
+    else
+      hops.set(seed.key, {
+        kind: "undergroundCrossing",
+        trackX: tx(plan.track),
+        axis: plan.axis,
+        crossX: tx(plan.crossCol),
+        crossRow: plan.crossRow,
+      });
+  }
+
+  const reservedExportCells = new Set<string>();
+  if (reserveLanes) {
+    // 포트 anchor(절대) — 상자 id 로 조회.
+    const portByChest = new Map<string, ModulePort>();
+    for (const pl of placements)
+      for (const p of [...pl.module.inputPorts, ...pl.module.outputPorts]) portByChest.set(p.chest.id, p);
+    const seatRow = (edge: "N" | "S") => (edge === "N" ? rawBbox.y - 1 : rawBbox.y + rawBbox.h);
+    const seatCol = (edge: "W" | "E") => (edge === "W" ? rawBbox.x - 1 : rawBbox.x + rawBbox.w);
+    const addSeg = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      for (const c of segment(from, to)) reservedExportCells.add(`${c.x},${c.y}`);
+    };
+    for (const a of lanePlan.assignments) {
+      const port = portByChest.get(a.id);
+      if (!port) continue;
+      const anchor = { x: port.anchor.x, y: port.anchor.y };
+      if (a.host.kind === "channel") {
+        const plan = geometryPlans.get(a.host.depth)?.exports.get(a.id);
+        if (plan?.kind !== "elbow") continue; // fallback — 예약 없음(스캔·skip 유지)
+        const laneX = channelStartX(a.host.depth) + 1 + plan.track;
+        a.exitEdge = plan.exitEdge; // 해소 사다리 ①에서 뒤집혔을 수 있다
+        a.laneX = laneX;
+        lanePlan.marginNeeds[plan.exitEdge] = true;
+        const corner = { x: laneX, y: anchor.y };
+        addSeg(anchor, corner);
+        addSeg(corner, { x: laneX, y: seatRow(plan.exitEdge) });
+      } else if (a.exitEdge === "N" || a.exitEdge === "S") {
+        addSeg(anchor, { x: anchor.x, y: seatRow(a.exitEdge) });
+      } else {
+        addSeg(anchor, { x: seatCol(a.exitEdge), y: anchor.y });
+      }
+    }
+  }
+
+  return { hops, reservedExportCells };
+}
+
+/** marginNeeds 만큼 bbox 프레임을 넓힌다(상자 seat 자리 예약, ②가 소비). */
+function expandBbox(
+  b: { x: number; y: number; w: number; h: number },
+  m: { N: boolean; S: boolean; W: boolean; E: boolean },
+): { x: number; y: number; w: number; h: number } {
+  const l = m.W ? 1 : 0, r = m.E ? 1 : 0, t = m.N ? 1 : 0, bt = m.S ? 1 : 0;
+  return { x: b.x - l, y: b.y - t, w: b.w + l + r, h: b.h + t + bt };
+}
+
+/**
+ * 살아남은 외부상자 포트(raw 입력 + 루트 출력)를 모아 exit-lane 을 배정한다.
+ * 모듈 내부를 안 보는 planner 의 입력(변·abs y·depth·열 밴드)만 준비.
+ */
+function planLanes(
+  specs: NodeSpec[],
+  oriented: Map<string, { module: GeneratedModule; orientation: Orientation }>,
+  topY: Map<string, number>,
+  byId: Map<string, NodeSpec>,
+  childFedItems: (s: NodeSpec) => Set<string>,
+  maxDepth: number,
+  absPortY: (id: string, anchorY: number) => number,
+): LanePlan {
+  // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
+  // (X변 우선), N/S 레인의 chest 는 트렁크가 레인을 따라 수평으로 자라 코너 어깨
+  // (x·y 둘 다 bbox 밖)에 앉을 수 있어 W/E 로 오분류된다 — N 레인 상자는 위가 전역
+  // 마진이라 self-N 직진이 정답인데 채널 우회로 배정되는 낭비/실패 위험.
+  const sideOf = (p: ModulePort): ExitEdge => p.meta.side;
+  const ports: LanePortInput[] = [];
+  let gyMin = Infinity, gyMax = -Infinity;
+  const bandsByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
+  for (const s of specs) {
+    const mod = oriented.get(s.id)!.module;
+    const ext = moduleExtent(mod);
+    const top = topY.get(s.id)!;
+    const bottom = top + ext.h - 1;
+    gyMin = Math.min(gyMin, top);
+    gyMax = Math.max(gyMax, bottom);
+    (bandsByDepth.get(s.depth) ?? bandsByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
+    const fed = childFedItems(byId.get(s.id)!);
+    // raw 입력: child-공급 아닌 입력 포트.
+    for (const ip of mod.inputPorts)
+      if (!fed.has(ip.line.name))
+        ports.push({ id: ip.chest.id, role: "input", depth: s.depth, side: sideOf(ip), anchorY: absPortY(s.id, ip.anchor.y) });
+    // 루트 출력: 부모 없는 노드의 출력 포트(홉으로 소비되지 않음).
+    if (!s.parentId)
+      for (const op of mod.outputPorts)
+        ports.push({ id: op.chest.id, role: "output", depth: s.depth, side: sideOf(op), anchorY: absPortY(s.id, op.anchor.y) });
+  }
+  const ctx: LaneContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, bandsByDepth };
+  return planPerimeterLanes(ports, ctx);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extent / 이동 / 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 모듈이 차지하는 실제 범위 = 머신 footprint ∪ 모든 placed 셀(튀어나온 포트 상자 포함). */
+export function moduleExtent(mod: GeneratedModule): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const mk = (x: number, y: number) => {
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  };
+  for (const m of mod.machines) {
+    mk(m.origin.x, m.origin.y);
+    mk(m.origin.x + m.size.w - 1, m.origin.y + m.size.h - 1);
+  }
+  for (const c of mod.cells) mk(c.x, c.y);
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedModule {
+  const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
+  const ctn = (c: Container): Container => ({ ...c, origin: pt(c.origin) });
+  const chestById = new Map<string, Container>();
+  const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
+  const port = (p: ModulePort): ModulePort => ({
+    line: p.line, anchor: pt(p.anchor), tapAnchor: pt(p.tapAnchor), face: p.face,
+    chest: chestById.get(p.chest.id) ?? ctn(p.chest),
+    cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+    meta: p.meta, // 산출 근거 — 좌표 없음(이동 불변).
+  });
+  return {
+    machines: mod.machines.map(ctn),
+    chests,
+    cells: mod.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+    ring: mod.ring.map(pt),
+    inputPorts: mod.inputPorts.map(port),
+    outputPorts: mod.outputPorts.map(port),
+    bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
+    unroutedLines: mod.unroutedLines,
+  };
+}
+
+function unionExtent(placements: ModulePlacement[]): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const pl of placements) {
+    const e = moduleExtent(pl.module);
+    minX = Math.min(minX, e.x); minY = Math.min(minY, e.y);
+    maxX = Math.max(maxX, e.x + e.w - 1); maxY = Math.max(maxY, e.y + e.h - 1);
+  }
+  if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): ModuleInput {
+  return {
+    machine: s.machine,
+    count: s.count,
+    // external = 트리 안 생산자 없는 입력(무한상자로 살아남음) — planner 의 노출
+    // N/S 완화 대상. 내부 간선(홉 대체 예정)·출력은 W/E 유지.
+    lines: s.lines.map((l) => ({ ...l, external: l.role === "input" && !fed.has(l.name) })),
+    inserterEntityName: config.inserterEntityName,
+    beltEntityName: config.beltEntityName,
+    longInserter: config.longInserter,
+    throughput: config.throughput,
+    idPrefix: s.id,
+  };
+}

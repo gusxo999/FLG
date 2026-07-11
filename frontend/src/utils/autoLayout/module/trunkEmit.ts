@@ -18,8 +18,9 @@
  *   - 탭(machine=sink): 픽업 = 트렁크 향(=faceVector(face), 바깥), 드롭 = 머신(안).
  */
 
-import type { ContainerPort, PlacedCell, PortPair } from './containerModel';
-import { faceVector, makeBeltCell, makeInserterCell, vectorToDirection } from './containerRouting';
+import type { ContainerPort, PlacedCell, PortPair } from '../containerModel';
+import { faceVector, vectorToDirection } from '../util/helper';
+import { makeBeltCell, makeInserterCell } from '../util/cellBuilder';
 import type { TapRole, TrunkPath } from './trunkPath';
 
 /**

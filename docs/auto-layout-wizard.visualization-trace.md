@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, visualization]
+---
+
 # 자동완성 위저드 — 후보 생성 시각화 트레이스 체크포인트
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스

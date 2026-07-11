@@ -36,7 +36,13 @@ import {
   hitTestRoutingLine,
   hoveredRoutingId,
   setHoveredRoutingId,
+  hitTestModuleLabel,
+  hoveredModuleKey,
+  setHoveredModuleKey,
 } from './pixi-renderer';
+import { useModuleInspectStore } from '../store/moduleInspectStore';
+import { moduleAtCell } from '../utils/autoLayout/moduleInspect';
+import { isBeltLike } from '../utils/beltFlow';
 
 // ---------------------------------------------------------------------------
 // 이벤트 핸들러
@@ -76,6 +82,14 @@ function handlePointerDown(e: PointerEvent) {
     const { x: gx, y: gy } = canvasToGrid(cx, cy, viewport, tileSize);
     const hitCell = getCell(grid, gx, gy);
 
+    // 모듈 이름표 클릭 → 모듈 정보 패널 (모드 무관·최우선). 라벨은 셀 바깥의
+    // 고유 히트 타깃이라 배치/선택/드래그와 충돌하지 않는다.
+    const labelKey = hitTestModuleLabel(cx, cy);
+    if (labelKey) {
+      useModuleInspectStore.getState().open(labelKey);
+      return;
+    }
+
     // 라우팅 수정 모드: 조립기계 드래그 (최우선)
     if (store.routingEditMode && store.routingEditSession) {
       const machineIds = new Set(
@@ -106,6 +120,9 @@ function handlePointerDown(e: PointerEvent) {
         const hitRoutingId = hitTestRoutingLine(cx, cy);
         if (hitRoutingId) {
           store.setSelectedRouting(hitRoutingId);
+        } else if (hitCell?.entityName && isBeltLike(hitCell.entityType)) {
+          // 벨트류 셀 클릭 → 흐름 정보 포함 엔티티 정보 모달
+          useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
         }
       }
       return; // 라우팅 수정 모드에서는 좌클릭 기본 동작 차단
@@ -117,9 +134,9 @@ function handlePointerDown(e: PointerEvent) {
         hitCell?.entityType !== undefined &&
         isOverwriteAllowed(selectedEntityType, hitCell.entityType);
 
-      // 점유된 셀 클릭 → 정보 모달
+      // 점유된 셀 클릭 → 정보 모달 (벨트류면 클릭 지점 흐름량 표시용 셀 좌표 포함)
       if (hitCell?.entityName && !isOverwrite) {
-        useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId);
+        useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
         return;
       }
       const size = getEntitySizeRotated(selectedEntityType, selectedEntityName, selectedDirection);
@@ -129,6 +146,12 @@ function handlePointerDown(e: PointerEvent) {
         placementDrag.active        = true;
         placementDrag.lastPlacedCell = { x: gx, y: gy };
       }
+      return;
+    }
+
+    // 빈손 모드에서 벨트류 셀 클릭 → 그 지점 흐름 정보 모달 (선택 드래그보다 우선)
+    if (hitCell?.entityName && isBeltLike(hitCell.entityType)) {
+      useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
       return;
     }
 
@@ -151,6 +174,32 @@ function handlePointerMove(e: PointerEvent) {
     routingEditDrag.currentGrid = { x: gx, y: gy };
     renderAll(); // renderGrid(원래 위치 숨김) + renderHoverPreview(새 위치 bbox)
     return;
+  }
+
+  // 모듈 hover (모드 무관, 팬 중 제외) — 이름표 위든 모듈 본체 위든 같은 모듈 키를
+  // active 로 잡아 강조(테두리+포트)를 통일한다. 이름표 위에서만 커서 pointer + 다른
+  // hover 억제(클릭=정보 패널). 본체 위에서는 배치 미리보기와 공존하므로 억제 안 함.
+  if (!inputState.isDragging) {
+    const labelKey = hitTestModuleLabel(cx, cy);
+    if (labelKey) {
+      if (labelKey !== hoveredModuleKey) {
+        setHoveredModuleKey(labelKey);
+        if (hoveredRoutingId !== null) setHoveredRoutingId(null);
+        pixiObjects.appCanvas!.style.cursor = 'pointer';
+        renderGrid();
+      }
+      return;
+    }
+    // 이름표는 아니지만 모듈 본체 bbox 안이면 같은 강조 유지. 이름표에서 벗어나면
+    // 커서 pointer 도 해제(본체는 기본 커서). 아무 모듈도 아니면 강조 제거.
+    const { viewport, tileSize } = useLayoutStore.getState();
+    const { x: gx, y: gy } = canvasToGrid(cx, cy, viewport, tileSize);
+    const bodyKey = moduleAtCell(gx, gy)?.key ?? null;
+    if (bodyKey !== hoveredModuleKey) {
+      setHoveredModuleKey(bodyKey);
+      pixiObjects.appCanvas!.style.cursor = '';
+      renderGrid();
+    }
   }
 
   // 라우팅 수정 모드 (드래그 없음): 연결선 hover 감지

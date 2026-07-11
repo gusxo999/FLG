@@ -30,6 +30,8 @@ import type {
   RoutingKind,
   UndergroundCorridor,
 } from './containerModel';
+import { cellKey, faceVector, vectorToDirection } from './util/helper';
+import { makeBeltCell, makeInserterCell } from './util/cellBuilder';
 
 /**
  * 한 port 페어에 대한 운반체 체인을 깐다. 실패 시 RoutingAttempt 의
@@ -381,8 +383,10 @@ export function routeItemMulti(
  * direction 컨벤션 (Factorio): underground-belt 의 `direction` =
  * *벨트 흐름 방향* (= jump 진행 방향). input/output 모두 동일 direction.
  * 일반 벨트는 *다음 셀로의 진행 방향*. 마지막 셀이 일반 벨트면 consumer 쪽으로.
+ *
+ * export — moduleHop(모듈 간 belt-to-belt 홉)이 같은 규칙으로 재사용한다(단일 출처).
  */
-function emitItemPath(
+export function emitItemPath(
   result: DijkstraResult,
   pair: PortPair,
   options: { beltEntityName: string; undergroundBeltEntityName?: string },
@@ -1204,77 +1208,6 @@ export function corridorFromJump(
   const range: [number, number] = a < b ? [a, b] : [b, a];
   return { axis, line, range, blockGroup, kind };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 셀 / 방향 유틸
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 인서터 1셀 emit. `pickupVec` = 인서터의 *픽업 방향* 단위벡터 (= 손 뻗는 쪽).
- * Factorio 규약: `LuaEntity.direction` = 픽업 방향. prototype 의
- * `inserter_pickup_position` 을 그대로 direction 만큼 회전한 위치가 픽업 셀.
- *
- * 예: direction=0 (N) → 북쪽에서 집고 남쪽에 놓는다.
- *     direction=4 (E) → 동쪽에서 집고 서쪽에 놓는다.
- */
-export function makeInserterCell(
-  cell: { x: number; y: number },
-  pickupVec: { x: number; y: number },
-  inserterEntityName: string,
-  pair: PortPair,
-): PlacedCell {
-  const grid: GridCell = {
-    ...createEmptyCell(),
-    entityId: `r-ins-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
-    entityName: inserterEntityName,
-    entityType: EntityType.Inserter,
-    direction: vectorToDirection(pickupVec.x, pickupVec.y),
-    tileOffset: { x: 0, y: 0 },
-    isOrigin: true,
-  };
-  return { x: cell.x, y: cell.y, cell: grid };
-}
-
-export function makeBeltCell(
-  cell: { x: number; y: number },
-  direction: Direction,
-  beltEntityName: string,
-  pair: PortPair,
-): PlacedCell {
-  const grid: GridCell = {
-    ...createEmptyCell(),
-    entityId: `r-belt-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
-    entityName: beltEntityName,
-    entityType: EntityType.Belt,
-    direction,
-    tileOffset: { x: 0, y: 0 },
-    isOrigin: true,
-  };
-  return { x: cell.x, y: cell.y, cell: grid };
-}
-
-export function faceVector(face: PortFace): { x: number; y: number } {
-  switch (face) {
-    case 'N': return { x: 0, y: -1 };
-    case 'S': return { x: 0, y: 1 };
-    case 'E': return { x: 1, y: 0 };
-    case 'W': return { x: -1, y: 0 };
-  }
-}
-
-export function vectorToDirection(dx: number, dy: number): Direction {
-  if (dx === 0 && dy < 0) return 0;
-  if (dx > 0 && dy === 0) return 4;
-  if (dx === 0 && dy > 0) return 8;
-  if (dx < 0 && dy === 0) return 12;
-  // diagonal/zero — fallback to N (방어, 정상 흐름에서는 발생하지 않음)
-  return 0;
-}
-
-export function cellKey(x: number, y: number): string {
-  return `${x},${y}`;
-}
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 기타

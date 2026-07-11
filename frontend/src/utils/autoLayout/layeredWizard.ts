@@ -78,15 +78,15 @@ import {
   ROW_GAP,
   type ClusterLayout,
   type ShapeCaps,
-} from "./clusterLayout";
+} from "./module/clusterLayout";
 import {
   assignTracksLeftEdge,
   channelWidthFromTracks,
   type Interval,
-} from "./channelPlanner";
+} from "./planner/channelPlanner";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_MODULE_PIPELINE } from "./debugFlags";
 import { inserterReach } from "./inserterThroughput";
-import { tryRunModulePipeline } from "./moduleWizard";
+import { tryRunModulePipeline } from "./planner/moduleWizard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 레이아웃 상수 — 문서 §4 (채널 폭) / §5 (트랙)

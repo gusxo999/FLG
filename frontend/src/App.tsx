@@ -7,6 +7,7 @@ import ToastContainer from './components/ToastContainer';
 import EntityInfoModal from './components/EntityInfoModal';
 import RoutingConnectionModal from './components/RoutingConnectionModal';
 import AutoLayoutSidebar from './components/AutoLayoutModal';
+import ModuleInfoPanel from './components/ModuleInfoPanel';
 import { useInspectStore } from './store/inspectStore';
 import { EntityType, ENTITY_SIZES } from './types/layout';
 import { useLayoutStore } from './store/layoutStore';
@@ -133,6 +134,7 @@ export default function App() {
         {/* Canvas area */}
         <main className="flex-1 relative overflow-hidden bg-[#1a1a2e]">
           <GridCanvas />
+          <ModuleInfoPanel />
           <Tutorial />
 
           {storageWarning && (

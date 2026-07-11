@@ -25,7 +25,8 @@ import type {
   PortPair,
   RoutingAttempt,
 } from './containerModel';
-import { routePorts, routeItemMulti, faceVector } from './containerRouting';
+import { routePorts, routeItemMulti } from './containerRouting';
+import { faceVector } from './util/helper';
 import { inserterReach } from './inserterThroughput';
 import { enumerateContainerPorts, resolvePortPair } from './portInference';
 

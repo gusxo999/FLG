@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EntityType } from '../../types/layout';
+import { EntityType } from '../../../types/layout';
 import { emitTrunk } from './trunkEmit';
 import { computeTrunkPath, type MachineLike, type TrunkPath } from './trunkPath';
 

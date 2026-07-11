@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, placement, routing]
+---
+
 # 레이아웃 자동완성 — 위저드 인터페이스 (parent)
 
 이 문서는 **자동완성 위저드 기능의 부모 문서**다. 위저드는 여러 하위 기능(트리 펼침, 머신 수 산정,
@@ -18,7 +22,7 @@
 
 ## 한 줄 요약
 
-사용자가 (1) 만들 레시피와 (2) 사용할 엔티티 군을 단일 흐름의 위저드로 선택하면, 시스템이 필요한 머신 수를
+사용자가 (1) 만들 레시피와 (2) 사용할 엔티티 군을 단일 흐름의 [[용어사전#위저드 (wizard)|위저드]]로 선택하면, 시스템이 필요한 [[용어사전#머신 (machine)|머신]] 수를
 자동 산출하고 그리드에 직접 배치한다.
 
 레시피 + 사용 엔티티들 → 필요한 조립기/투입기/벨트 카운트 산출 → 격자 packer 로 직접 배치.
@@ -31,12 +35,12 @@
 
 - 사용자가 만들 **타깃 레시피** 1개를 선택한다.
 - 레시피 정보(재료/산출물/카테고리/소요 시간)를 패널에 표시.
-- **수량 모드:**
+- **[[용어사전#수량 모드 (countMode)|수량 모드]]:**
   - **`최소값` (기본)** — "타깃 레시피가 (얼마나 느리든 간에) 일단 만들어지기만 하면 되는" 가장 단순한 구성.
     트리의 모든 비-외부 노드에 조립기 1대씩 둔다. 결과 머신 수 = 트리의 비-외부 노드 수.
     **처리량 균형은 보장되지 않으며, 자식 1대로 부모 요구를 못 채우면 라인이 부분 가동될 수 있다.** 의도된 동작.
   - **사용자 지정** — 타깃 레시피 머신 수를 정수로 입력. 하위 레시피 머신 수는 비례 산정 (`ceil(rate × t_sub / t_target)`).
-- **하위 재료 트리:** 타깃 레시피 → 재료 → 그 재료의 첫 매칭 레시피 → … 를 BFS 로 펼쳐 보여준다.
+- **하위 재료 트리([[용어사전#레시피 트리 (recipe tree)|레시피 트리]]):** 타깃 레시피 → 재료 → 그 재료의 첫 매칭 레시피 → … 를 [[용어사전#BFS|BFS]] 로 펼쳐 보여준다.
   사용자가 트리에서 노드별로 "외부 공급(이 라인에서 만들지 않음)" 으로 토글하면 그 노드와 후손 재료는 라인 입력 벨트로만 수급한다.
 - **선행 기술 사전 체크:** 이 시점에서 `gameDataStore.resolveRequiredTechs()` 로 타깃 + 하위 레시피들의
   필요 기술 closure 를 구해, 다음 단계들에서 "사용자가 자유롭게 골랐다" 고 가정해도 일관성이 깨지지 않도록
@@ -83,7 +87,7 @@
 [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
 
-> **현재 구현 전략 = S-LAYER** ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard`). 레시피 트리를 레이어(열)로 깔고 레이어 사이에 라우팅 채널을 예약해, 백트래킹 없이 결정적으로 후보 1개를 만든다. 흐름은 placement-search [§7](auto-layout-wizard.placement-search.md), 채널 예약은 [s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md). (과거 기준 전략 S-EXH=완전탐색은 롤백되어 코드에 없다. S-DP/S-MEMO 는 미구현 후보.)
+> **현재 구현 전략 = [[용어사전#S-LAYER|S-LAYER]]** ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard`). 레시피 트리를 [[용어사전#레이어 (layer)|레이어]](열)로 깔고 레이어 사이에 라우팅 [[용어사전#채널 (channel)|채널]]을 예약해, [[용어사전#백트래킹|백트래킹]] 없이 결정적으로 후보 1개를 만든다. 흐름은 placement-search [§7](auto-layout-wizard.placement-search.md), 채널 예약은 [s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md). (과거 기준 전략 S-EXH=완전탐색은 롤백되어 코드에 없다. S-DP/S-MEMO 는 미구현 후보.)
 
 ### 입력 — `WizardInput`
 

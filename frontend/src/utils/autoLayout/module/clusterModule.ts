@@ -20,12 +20,11 @@
  * line 도 unrouted. 배선 전이라 레이아웃 회귀 0 — 단위 테스트로만 검증.
  */
 
-import { enumeratePerimeterCells } from "./areaUnification";
 import { planClusterPorts, type IoLine } from "./clusterPortPlanner";
 import { layoutCluster } from "./clusterLayout";
-import type { Container, PlacedCell, PortFace } from "./containerModel";
-import { cellKey, faceVector } from "./containerRouting";
-import { makeContainerCell } from "./externalPlacer";
+import type { Container, ModulePortMeta, PlacedCell, PortFace } from "../containerModel";
+import { cellKey, enumeratePerimeterCells, faceVector } from "../util/helper";
+import { makeContainerCell } from "../util/cellBuilder";
 import { emitTrunk, type TrunkMode } from "./trunkEmit";
 import { computeTrunkPath, type MachineLike, type TrunkPath } from "./trunkPath";
 
@@ -44,10 +43,21 @@ export interface ModulePort {
   line: IoLine;
   /** ring 셀 = 모듈 경계 anchor(= 무한상자가 앉는 자리). */
   anchor: { x: number; y: number };
+  /**
+   * machine-side 탭 셀 = anchor 에서 2칸 안쪽(= 첫 트렁크 belt 셀). anchor 는 chest 가
+   * 앉는 ring 자리라, Routing 의 machine 끝점으로 anchor 를 쓰면 chest 끝점과 겹쳐
+   * from==to 가 된다. tapAnchor 를 machine 끝점으로 써서 선이 chest↔machine 으로
+   * 제대로 이어지게 한다. anchor−2·faceVector(face) 로 결정적·불변(드래그 반전 시
+   * chest-side face 는 chest↔tapAnchor 벡터에서 유도). */
+  tapAnchor: { x: number; y: number };
   /** 바깥 방향 면(클러스터 → ring). 합성 시 부모 쪽으로 회전 정렬할 기준. */
   face: PortFace;
   /** anchor 에 놓인 무한상자(루트 가정의 외부 소스/싱크). 합성 시 벨트 홉으로 교체. */
   chest: Container;
+  /** 이 포트의 트렁크 belt 셀(spine). Routing.placed 로 써서 선이 벨트를 따라가게 한다. */
+  cells: PlacedCell[];
+  /** 산출 근거(planner 슬롯 + 트렁크 seed 점수) — 표시·진단 전용, 좌표 없음. */
+  meta: ModulePortMeta;
 }
 
 export interface GeneratedModule {
@@ -81,8 +91,22 @@ export interface ModuleInput {
   beltEntityName: string;
   /** 긴팔(reach≥2) — 있으면 면당 2레인(용량 4). 없으면 면당 1레인(용량 2). */
   longInserter?: { entityName: string; reach: number };
+  /** 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량. 미지정=등장순서. */
+  throughput?: { normal: number; long: number };
   /** entity id 접두사(결정적). 기본 "mod". */
   idPrefix?: string;
+  /**
+   * 줄별 포트 끝(DOF-B) 선호 — 키 `${role}:${name}`, 값 "min"(축 작은 끝=위) / "max"
+   * (아래). 합성 단계(packModuleTree)가 tidy-tree Y 로 부모↔자식 포트를 마주 보게
+   * 정렬할 때 채운다. 미지정 줄은 기존 동작(끝 무선호).
+   */
+  lineEnds?: Map<string, "min" | "max">;
+  /**
+   * 노출된 끝면(N/S, 선호 순서) — count=1 완화. external 입력이 W-spill 전에 이 면의
+   * 레인을 쓴다(planner E→N/S→W). 노출 판정(열의 끝 + 전역 마진 방향)은 packModuleTree
+   * 가 DFS 열-내 순서에서 유도한다. 미지정=기존 동작(W/E 만).
+   */
+  nsExposure?: ("N" | "S")[];
 }
 
 /**
@@ -140,7 +164,9 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const plan = planClusterPorts({
     lines: beltLines,
     caps: { hasNormal: true, hasLong: !!input.longInserter },
-    perimeterNearSide: "W",
+    outputSide: "W", // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
+    throughput: input.throughput, // depth=운반량 매칭(미지정이면 등장순서).
+    nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
   });
   if (!plan.ok) {
     for (const l of beltLines) unroutedLines.push(l);
@@ -162,6 +188,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       chestCandidates: ring,
       config: { longReach: input.longInserter?.reach },
       faceConstraints,
+      endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
     });
     if (!result.ok || result.path.untapped.length > 0) {
       unroutedLines.push(line); // 슬롯 보장에도 실패하면 위임(진단 신호).
@@ -202,11 +229,25 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       occupancy.add(cellKey(c.x, c.y));
     }
 
+    const face = outwardFace(path);
+    const fv = faceVector(face);
     const port: ModulePort = {
       line,
       anchor: { ...path.chestCell },
-      face: outwardFace(path),
+      // machine-side = anchor 에서 안쪽(−face) 2칸. chest→inserter→belt 순서의 첫 belt.
+      tapAnchor: { x: path.chestCell.x - 2 * fv.x, y: path.chestCell.y - 2 * fv.y },
+      face,
       chest,
+      cells: [...emission.beltCells], // 트렁크 belt spine — Routing.placed 로 belt-following.
+      meta: {
+        item: line.name,
+        side: planned.side,
+        laneDepth: planned.depth,
+        inserter: planned.inserter,
+        amount: line.amount,
+        endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
+        trunkScore: path.selectionDebug,
+      },
     };
     if (line.role === "output") outputPorts.push(port);
     else inputPorts.push(port);

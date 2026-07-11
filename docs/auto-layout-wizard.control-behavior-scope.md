@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, blueprint]
+---
+
 # 자동완성 위저드 — ControlBehavior 추적 범위
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스

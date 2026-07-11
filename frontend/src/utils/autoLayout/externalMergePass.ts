@@ -30,7 +30,7 @@ import {
 import { AUTO_LAYOUT_COORD_DUMP } from './debugFlags';
 import { buildOccupancy, collectBeltFlow } from './containerRouting';
 import type { Area, ContainerPort, PendingConnection, PortFace, Routing } from './containerModel';
-import { makeContainerCell } from './externalPlacer';
+import { makeContainerCell } from './util/cellBuilder';
 import { beltThroughput } from './beltThroughput';
 import { inserterThroughput } from './inserterThroughput';
 import {
@@ -39,8 +39,8 @@ import {
   type MergeCandidate,
   type MergeGroup,
 } from './mergeGrouping';
-import { emitTrunk } from './trunkEmit';
-import { computeTrunkPath, type MachineLike } from './trunkPath';
+import { emitTrunk } from './module/trunkEmit';
+import { computeTrunkPath, type MachineLike } from './module/trunkPath';
 import type { RouteOptions } from './routeFallback';
 
 /** 그룹 1개의 최대 머신 수 (용량과 별개의 안전 cap). */

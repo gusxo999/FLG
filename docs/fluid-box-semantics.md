@@ -1,3 +1,7 @@
+---
+tags: [factorio-data, fluid]
+---
+
 # 유체 상자(FluidBox) 시맨틱스 — `production_type` vs `flow_direction`
 
 **작성일**: 2026-04-25

@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, placement, routing]
+---
+
 # 배치 탐색 알고리즘 — 컨테이너 모델 + 전략 레이어
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
@@ -11,9 +15,9 @@
 
 ## 1. 한 줄 요약
 
-머신과 무한상자·무한파이프를 단일 추상 *컨테이너* 로 묶고, 컨테이너끼리의 입출력을 *벨트(가변길이) + 투입기 페어* (item) 또는 *파이프 + 지하파이프* (fluid) 로 라우팅한다.
+[[용어사전#머신 (machine)|머신]]과 [[용어사전#무한상자 (infinity chest)|무한상자]]·[[용어사전#무한파이프 (infinity pipe)|무한파이프]]를 단일 추상 *[[용어사전#컨테이너|컨테이너]]* 로 묶고, 컨테이너끼리의 입출력을 *[[용어사전#벨트 (belt)|벨트]](가변길이) + [[용어사전#투입기 (inserter)|투입기]] 페어* (item) 또는 *[[용어사전#파이프 (pipe)|파이프]] + [[용어사전#지하파이프 (pipe-to-ground)|지하파이프]]* (fluid) 로 [[용어사전#라우팅 (routing)|라우팅]]한다.
 
-이 컨테이너 모델(§2–4)과 정합성 조건(§6 C1–C3)은 **어떤 배치 전략에서도 변하지 않는 불변 기반**이다. 반면 *머신 좌표를 어떻게 정하고, 무엇을 열거하며, 무엇을 반환하는지* 는 교체 가능한 **배치 전략 레이어(§5.5)** 의 몫이다. **현재 구현된 전략은 계층화 레이아웃 `S-LAYER`** — 레시피 트리를 레이어(열)로 깔고, 레이어 사이에 라우팅 채널을 예약하며, 백트래킹 없이 결정적으로 후보 1개를 만든다(§7).
+이 컨테이너 모델(§2–4)과 [[용어사전#정합성 조건 (C1–C3)|정합성 조건]](§6 C1–C3)은 **어떤 배치 전략에서도 변하지 않는 불변 기반**이다. 반면 *머신 좌표를 어떻게 정하고, 무엇을 열거하며, 무엇을 반환하는지* 는 교체 가능한 **[[용어사전#배치 전략 레이어|배치 전략 레이어]](§5.5)** 의 몫이다. **현재 구현된 전략은 계층화 레이아웃 `[[용어사전#S-LAYER|S-LAYER]]`** — [[용어사전#레시피 트리 (recipe tree)|레시피 트리]]를 [[용어사전#레이어 (layer)|레이어]](열)로 깔고, 레이어 사이에 라우팅 [[용어사전#채널 (channel)|채널]]을 예약하며, [[용어사전#백트래킹|백트래킹]] 없이 결정적으로 후보 1개를 만든다(§7).
 
 ---
 
@@ -31,13 +35,13 @@
 | 무한상자 (infinity chest) | `infinity-chest` (1×1) | 외부 item I/O |
 | 무한파이프 (infinity pipe) | `infinity-pipe` (1×1) | 외부 fluid I/O |
 
-각 컨테이너의 footprint 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
+각 컨테이너의 [[용어사전#footprint|footprint]] 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
 
 구현: [containerModel.ts](../frontend/src/utils/autoLayout/containerModel.ts) `Container`.
 
 ### 2.2 ports
 
-각 컨테이너는 외부와 통하는 셀 집합 = **port 집합** 을 노출한다.
+각 컨테이너는 외부와 통하는 셀 집합 = **[[용어사전#포트 (port)|port]] 집합** 을 노출한다.
 
 | port 종류 | 좌표 출처 | 머신 | 무한상자 | 무한파이프 |
 |---|---|---|---|---|
@@ -59,7 +63,7 @@
 | internal area | 내부 영역 | 머신 + 내부 라우팅 (벨트·파이프·투입기) | 머신 footprint 의 bbox |
 | external area | 외부 영역 | 무한상자·무한파이프 | **internal 영역의 머신+라우팅 bbox 의 perimeter ring** 위 |
 
-**핵심 규칙** — 외부 컨테이너는 *internal bbox 의 perimeter ring* 위에 산다. 별도 좌표계는 없다.
+**핵심 규칙** — 외부 컨테이너는 *internal [[용어사전#bbox|bbox]] 의 [[용어사전#perimeter ring|perimeter ring]]* 위에 산다. 별도 좌표계는 없다.
 
 **알고리즘 순서:**
 1. 외부 컨테이너는 일단 두 영역의 `containers` 에만 *지연 등록* 한다 (`origin` 미정, [externalPlacer.ts](../frontend/src/utils/autoLayout/externalPlacer.ts) `placeExternalContainer`).
@@ -81,7 +85,7 @@
 
 ### 4.1 지하 변형 (underground-belt / pipe-to-ground)
 
-라우팅 경로 탐색은 *Dijkstra* — 지상 인접 edge (cost 1) + 지하 점프 페어 edge (cost 2). 점프 edge 는 한 축 방향으로 `k ∈ [1, max_underground_distance]` 떨어진 셀을 입출구 페어로 emit. 사이 통과 셀 = `k − 1` 칸.
+라우팅 경로 탐색은 *[[용어사전#Dijkstra|Dijkstra]]* — 지상 인접 edge (cost 1) + 지하 점프 페어 edge (cost 2). 점프 edge 는 한 축 방향으로 `k ∈ [1, max_underground_distance]` 떨어진 셀을 입출구 페어로 emit. 사이 통과 셀 = `k − 1` 칸.
 
 **차단 규칙 (Factorio 게임 동작 기준):**
 
@@ -193,14 +197,14 @@ runLayeredWizard(input)
 
 ### 7.1 클러스터 (한 노드 N대)
 
-**클러스터 = 같은 레시피 노드의 N대 동일 머신.** 현재 한 열에 세로로 쌓는 **기둥(column)** 형태로만 배치된다 (`origin.y = baseTop + i*(h + ROW_GAP)`). 클러스터는 트렁크 병합·채널 라우팅·그룹화의 기본 단위다.
+**[[용어사전#클러스터 (cluster)|클러스터]] = 같은 레시피 노드의 N대 동일 머신.** 현재 한 열에 세로로 쌓는 **[[용어사전#기둥 (column)|기둥]](column)** 형태로만 배치된다 (`origin.y = baseTop + i*(h + ROW_GAP)`). 클러스터는 [[용어사전#트렁크 병합|트렁크 병합]]·채널 라우팅·그룹화의 기본 단위다.
 
-- **지배축(dominant axis):** 머신 중심 분포가 넓은 축. 기둥이면 세로축. 방문 순서·그룹 정렬·트렁크 시드가 이 축을 따른다.
+- **[[용어사전#지배축 (dominant axis)|지배축]](dominant axis):** 머신 중심 분포가 넓은 축. 기둥이면 세로축. 방문 순서·그룹 정렬·트렁크 시드가 이 축을 따른다.
 - **포트 기하:** 머신 둘레 셀이 포트. 기둥에서 안쪽 머신은 N/S 면을 이웃에 뺏기고 W·E 면만 남는다 → 포트 수요가 많은(입출력 多·fluid 多) 레시피는 한 열에 다 못 담는다([known-limits.md](auto-layout-wizard.known-limits.md) §1).
 
 ### 7.2 트렁크 벨트 (N:1 병합)
 
-같은 품목을 쓰는 N대를 **공유 belt 1줄 + 머신별 탭 인서터 + 종단(상자 또는 소비자)** 으로 묶는다. 4개 순수 단위로 분해:
+같은 품목을 쓰는 N대를 **공유 belt 1줄 + 머신별 [[용어사전#탭 (tap)|탭]] 인서터 + 종단(상자 또는 소비자)** 으로 묶는다. 4개 순수 단위로 분해:
 
 1. **그룹화 ③** ([mergeGrouping.ts](../frontend/src/utils/autoLayout/mergeGrouping.ts)) — 용량 모델로 게이트. 머신별 수요 `= (crafting_speed/energy_required) × amount`. 조건: 총수요 ≤ beltCap, 머신별 ≤ tapCap(인서터 처리량, 사용자 보정 가능), 크기 ≤ maxTaps. 과수요 머신은 단독(1:1 강제).
 2. **경로 ①** ([trunkPath.ts](../frontend/src/utils/autoLayout/trunkPath.ts) `computeTrunkPath`) — 그리디 성장. chest seed 후보(centroid 근접 + 끝-축 평행)를 *모두 평가* 해 점수 `[untapped, 횡축 span, 길이]` 최소를 채택(한쪽 변 직선 spine 선호). 탭 = `(포트 p, 면 f, reach r)` → tapCell `= p + f×r`. 직선/L 서브경로.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
 import type { IoLine } from "./clusterPortPlanner";
-import { EntityType } from "../../types/layout";
+import { EntityType } from "../../../types/layout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -165,5 +165,76 @@ describe("generateModule", () => {
     for (const p of [...mod.inputPorts, ...mod.outputPorts]) {
       expect(machineCells.has(`${p.anchor.x},${p.anchor.y}`)).toBe(false);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 노출 N/S 완화 — count=1 raw 입력 (방출 수준)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("generateModule — 노출 N/S 완화 (count=1)", () => {
+  const ext = (name: string): IoLine => ({ name, kind: "belt", role: "input", external: true });
+
+  it("N면 2레인 공존 — N2(일반) + N3(긴팔)이 같은 면에서 미탭 0 으로 방출", () => {
+    // external 입력 4개 = W/E 용량(4)을 정확히 채우는 대신 E2, E3, N2, N3 로 분산.
+    const mod = generateModule({
+      machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
+      count: 1,
+      lines: [ext("a"), ext("b"), ext("c"), ext("d")],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      longInserter: { entityName: "long-handed-inserter", reach: 2 },
+      nsExposure: ["N"],
+    });
+    render(mod, "count=1, external 입력 4 (E2 E3 N2 N3)");
+
+    expect(mod.unroutedLines).toHaveLength(0);
+    expect(mod.inputPorts).toHaveLength(4);
+    const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.laneDepth}/${p.meta.inserter}`);
+    expect(slots).toEqual(["E2/normal", "E3/long", "N2/normal", "N3/long"]);
+
+    // 면 교차 충돌 0 — E 레인(세로)과 N 레인(가로)이 코너에서 겹치지 않는다.
+    const seen = new Set<string>();
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      expect(seen.has(k), `중복 셀 ${k}`).toBe(false);
+      seen.add(k);
+    }
+    // N 포트 상자는 머신 위쪽(음수 y 방향)에 있다.
+    const machineTop = 0;
+    for (const p of mod.inputPorts.filter((x) => x.meta.side === "N")) {
+      expect(p.anchor.y).toBeLessThan(machineTop);
+    }
+  });
+
+  it("긴팔 없음 → 면당 1레인 — 노출 N 은 N2(일반)만 제공", () => {
+    // 용량 게이트 = W1+E1 = 2. 입력 2개: E2 다음 external 이라 W-spill 대신 N2.
+    const mod = generateModule({
+      machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
+      count: 1,
+      lines: [ext("a"), ext("b")],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      nsExposure: ["N"],
+    });
+    render(mod, "count=1, 일반만, external 입력 2 (E2 N2)");
+
+    expect(mod.unroutedLines).toHaveLength(0);
+    const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.laneDepth}/${p.meta.inserter}`);
+    expect(slots).toEqual(["E2/normal", "N2/normal"]);
+  });
+
+  it("count≥2 는 nsExposure 를 받아도 packing 이 안 주므로 여기선 미전달 규약만 확인 — nsExposure 미지정 시 기존 W-spill", () => {
+    const mod = generateModule({
+      machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
+      count: 1,
+      lines: [ext("a"), ext("b"), ext("c"), { name: "out", kind: "belt", role: "output" }],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      longInserter: { entityName: "long-handed-inserter", reach: 2 },
+      // nsExposure 미지정 → 기존 동작.
+    });
+    const c = mod.inputPorts.find((p) => p.line.name === "c")!;
+    expect(c.meta.side).toBe("W"); // W-spill (기존)
   });
 });

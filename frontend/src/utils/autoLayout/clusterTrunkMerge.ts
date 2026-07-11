@@ -21,11 +21,12 @@
  */
 
 import type { Area, Container, ContainerPort, PortFace, Routing } from './containerModel';
-import { buildOccupancy, cellKey, collectBeltFlow, faceVector } from './containerRouting';
+import { buildOccupancy, collectBeltFlow } from './containerRouting';
+import { cellKey, faceVector } from './util/helper';
 import { AUTO_LAYOUT_COORD_DUMP } from './debugFlags';
 import type { RouteOptions } from './routeFallback';
-import { emitTrunk } from './trunkEmit';
-import { computeTrunkPath, type MachineLike } from './trunkPath';
+import { emitTrunk } from './module/trunkEmit';
+import { computeTrunkPath, type MachineLike } from './module/trunkPath';
 
 /**
  * 클러스터 N대의 아이템 출력을 단일 트렁크로 병합 시도. 성공 시 병합 결과를 담은

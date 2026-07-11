@@ -1,3 +1,7 @@
+---
+tags: [auto-layout, placement, routing]
+---
+
 # 자동완성 위저드 — 알려진 약점 및 한계
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
@@ -17,12 +21,12 @@
 **우선순위: P1**
 
 **증상:**
-- 같은 레시피 N대(클러스터)가 **무조건 한 열에 세로로만** 쌓인다.
+- 같은 레시피 N대([[용어사전#클러스터 (cluster)|클러스터]])가 **무조건 한 열에 세로로만** 쌓인다.
 - 입출력 포트가 많거나(재료 4종+ 등) **다중 fluid** 인 레시피(정유소 등)는 한 열에서 필요한 면을 다 확보하지 못해 트렁크 병합 실패·1:1 폴백·미관 저하가 발생.
 
 **원인:**
 - [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 5단계가 `origin.x = colX[depth]` 고정, `origin.y` 만 증가시켜 배치. 행/격자/머신+레인 타일 등 다른 형태가 없다.
-- 기둥에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다(포트 기하 한계).
+- [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
 1. **포트 수요 → 형태 선택기(shape selector)**: 노드별 needW/needE/needNS(면별 강제 포트 수 + fluidbox 고정면)를 산정해 컬럼 사다리에 안 들어오면 행/격자로 승급.
@@ -155,7 +159,7 @@
 
 **증상:**
 - S-LAYER 는 결정적 단일 패스라 **후보를 1개만** 반환. 사용자가 여러 배치를 비교·선택할 수 없다.
-- O1(정사각형 근접)은 `squarenessPenalty` 로 *계산만* 되고 선택에 쓰이지 않는다.
+- [[용어사전#O1|O1]](정사각형 근접)은 [[용어사전#squarenessPenalty|`squarenessPenalty`]] 로 *계산만* 되고 선택에 쓰이지 않는다.
 
 **원인:**
 - 설계상 단일 패스([placement-search.md](auto-layout-wizard.placement-search.md) §8). 다수 후보 전략(S-EXH/S-MEMO/S-DP)은 미구현.
@@ -185,7 +189,7 @@
 **우선순위: P3**
 
 **증상:**
-- 전 과정이 결정적이라고 주장하지만 (입력→출력) snapshot 회귀/퍼즈 테스트가 없다. 단위 테스트는 trunkPath·mergeGrouping·channelPlanner 등 모듈 레벨만 존재.
+- 전 과정이 [[용어사전#결정성 (determinism)|결정적]]이라고 주장하지만 (입력→출력) snapshot 회귀/[[용어사전#fuzz 테스트|퍼즈 테스트]]가 없다. 단위 테스트는 trunkPath·mergeGrouping·channelPlanner 등 모듈 레벨만 존재.
 
 **해결 방향:**
 - `runLayeredWizard` 전체에 대한 입력→placed 스냅샷 회귀 테스트 추가.

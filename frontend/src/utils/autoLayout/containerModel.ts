@@ -189,11 +189,53 @@ export type RoutingKind = 'item' | 'fluid';
  * 라우팅 1개 = 컨테이너 1개 (placement-search Q19 a). 처리량이 부족해 한
  * 라우팅으로 못 채우면 컨테이너 *수* 를 늘려 별도 라우팅으로 분할한다.
  */
+/**
+ * 모듈 포트 하나가 **어떻게 산출됐는지** 기록 — 표시(ModuleInfoPanel)·진단 전용,
+ * 라우팅/배치에 영향 없음. 좌표는 넣지 않는다(드래그·재배치로 stale). 좌표는 항상
+ * 라우팅 끝점(현재값)에서 읽는다.
+ *
+ * 산출 3축(직교):
+ *  - 면(side) = 토폴로지: planClusterPorts (B) 정책 — 출력→W(부모 쪽) 먼저 확정.
+ *  - depth(레인) = 운반량: 수요(amount)↓ ↔ 슬롯 throughput↓ zip 매칭.
+ *  - 끝(end) = 합성 정렬: packModuleTree 가 부모↔자식 포트 |Δy| 최소로 지정.
+ * 최종 셀 = computeTrunkPath seed 경쟁(사전식 점수, trunkScore 참조).
+ */
+export interface ModulePortMeta {
+  /** 운반 품목. */
+  item: string;
+  /** planner 가 배정한 면. W=부모 쪽 우선/E=자식 쪽, N/S=노출 끝면(count=1 raw 입력 완화). */
+  side: 'W' | 'E' | 'N' | 'S';
+  /** 머신 면에서 바깥 칸 거리(레인). 2=근접(일반 인서터), 3=원거리(긴팔). */
+  laneDepth: number;
+  /** belt 를 모는 인서터 종류. */
+  inserter?: 'normal' | 'long';
+  /** craft당 수량 = 운반량 프록시(depth 매칭의 수요). */
+  amount?: number;
+  /** DOF-B 끝 선호 — 합성 단계가 부모↔자식 포트를 마주 보게 지정. min=위, max=아래. */
+  endPreference?: 'min' | 'max';
+  /**
+   * 트렁크 seed 경쟁 우승 점수(사전식, 작을수록 좋음):
+   * [미탭 머신 수, 횡축 span(직선성), 끝 선호 페널티, 트렁크 길이].
+   * seedsEvaluated = 성장에 성공해 점수 비교까지 간 seed 수.
+   */
+  trunkScore?: {
+    untapped: number;
+    crossSpan: number;
+    endPenalty: number;
+    trunkLen: number;
+    seedsEvaluated: number;
+  };
+}
+
 export interface Routing {
   id: string;
   kind: RoutingKind;
   from: ContainerPort;
   to: ContainerPort;
+  /** from 끝점이 모듈 포트일 때 그 산출 근거(디버그·표시용). */
+  fromPortMeta?: ModulePortMeta;
+  /** to 끝점이 모듈 포트일 때 그 산출 근거(디버그·표시용). */
+  toPortMeta?: ModulePortMeta;
   /** 라우팅이 깐 셀들 (벨트·투입기·파이프·지하파이프). occupancy 갱신용 */
   placed: PlacedCell[];
   /**
@@ -548,5 +590,8 @@ export interface UnifyResult {
   /** 전체 캔버스 bbox — ghost cell(외부 컨테이너) 포함 모든 placed cell 의 bbox.
    *  렌더러가 이 범위에서 internalBbox 바깥을 초록 외부 영역으로 칠한다. */
   canvasBbox: { x: number; y: number; w: number; h: number } | undefined;
+  /** leaf(layout) 좌표 → 정규화(그리드) 좌표 변환에 실제로 적용한 오프셋.
+   *  `grid = leaf + offset`. containerOriginOffset 의 단일 진실(라우팅 선/드래그 변환). */
+  offset: { x: number; y: number };
 }
 

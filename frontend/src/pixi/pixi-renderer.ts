@@ -22,6 +22,8 @@ import {
   isPipeCell,
   type PipeNetworkResult,
 } from '../utils/pipeNetwork';
+import { collectModules, type ModuleInfo } from '../utils/autoLayout/moduleInspect';
+import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { centerAnchorOrigin, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';
 import { drawPipeShape } from './pixi-draw-pipe';
 import { drawInteractionPoints } from './pixi-draw-entity';
@@ -39,6 +41,8 @@ const ROUTING_EDIT_BOX_COLOR = 0x44aaff;
 const EXTERNAL_INPUT_COLOR   = 0x2266ff;  // 외부 입력 컨테이너 — 파란색
 const EXTERNAL_OUTPUT_COLOR  = 0xff3333;  // 외부 출력 컨테이너 — 빨간색
 const ROUTING_EDIT_MACHINE_GLOW = 0x44ffcc;  // 라우팅 편집 모드 조립기계 하이라이트
+const MODULE_BORDER_COLOR    = 0xffb020;  // 모듈 식별 테두리 — 앰버
+const MODULE_LABEL_COLOR     = 0xffd98a;  // 모듈 레시피 라벨
 
 // ---------------------------------------------------------------------------
 // 공유 PIXI 오브젝트 — pixi-manager.ts 에서 프로퍼티를 직접 mutate
@@ -152,6 +156,74 @@ export function hitTestRoutingLine(cx: number, cy: number, threshold = 10): stri
 export function getCanvasCoords(e: PointerEvent | WheelEvent): { cx: number; cy: number } {
   const rect = pixiObjects.appCanvas!.getBoundingClientRect();
   return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+}
+
+// ---------------------------------------------------------------------------
+// 모듈 이름표 히트 테스트 캐시 (렌더 시점에 그린 라벨의 화면 사각형)
+// ---------------------------------------------------------------------------
+
+export interface ModuleLabelHit {
+  moduleKey: string;
+  /** 화면 픽셀 사각형 (라벨 클릭·hover 판정용) */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export let moduleLabelCache: ModuleLabelHit[] = [];
+export let hoveredModuleKey: string | null = null;
+
+export function setHoveredModuleKey(key: string | null): void {
+  hoveredModuleKey = key;
+}
+
+/** 화면 좌표 (cx,cy) 위의 모듈 이름표 키 반환(없으면 null). */
+export function hitTestModuleLabel(cx: number, cy: number): string | null {
+  for (const h of moduleLabelCache) {
+    if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) return h.moduleKey;
+  }
+  return null;
+}
+
+/**
+ * 모듈 포트 셀 다층 강조 — 이름표 hover·본체 hover·선택이 동일하게 쓰는 공용 렌더.
+ * ①넓은 후광(glow) ②밝은 채움 ③볼드 이중 테두리 ④중심 도트. 라우팅 hover 와 같은
+ * 시각 언어(두꺼운 반투명 → 선명한 심)로 눈이 즉시 끌리게 한다.
+ */
+export function drawModulePortHighlights(
+  g: PIXI.Graphics,
+  module: ModuleInfo,
+  scaledTile: number,
+  offsetX: number,
+  offsetY: number,
+): void {
+  // ① 후광은 먼저 전부 — 인접 포트끼리 후광이 서로의 본체를 덮지 않게.
+  for (const p of module.ports) {
+    const ppx = p.x * scaledTile + offsetX;
+    const ppy = p.y * scaledTile + offsetY;
+    const col = p.role === 'input' ? EXTERNAL_INPUT_COLOR : EXTERNAL_OUTPUT_COLOR;
+    const glow = Math.max(4, scaledTile * 0.35);
+    g.rect(ppx - glow, ppy - glow, scaledTile + glow * 2, scaledTile + glow * 2)
+      .fill({ color: col, alpha: 0.12 });
+  }
+  // ②~④ 본체
+  for (const p of module.ports) {
+    const ppx = p.x * scaledTile + offsetX;
+    const ppy = p.y * scaledTile + offsetY;
+    const col = p.role === 'input' ? EXTERNAL_INPUT_COLOR : EXTERNAL_OUTPUT_COLOR;
+    g.rect(ppx + 1, ppy + 1, scaledTile - 2, scaledTile - 2)
+      .fill({ color: col, alpha: 0.5 });
+    g.rect(ppx + 1, ppy + 1, scaledTile - 2, scaledTile - 2)
+      .stroke({ width: Math.max(5, scaledTile * 0.16), color: col, alpha: 0.35 });
+    g.rect(ppx + 1, ppy + 1, scaledTile - 2, scaledTile - 2)
+      .stroke({ width: 2.5, color: 0xffffff, alpha: 0.95 });
+    const cx0 = ppx + scaledTile / 2;
+    const cy0 = ppy + scaledTile / 2;
+    const r = Math.max(2.5, scaledTile * 0.16);
+    g.circle(cx0, cy0, r).fill({ color: col, alpha: 1 });
+    g.circle(cx0, cy0, r * 0.5).fill({ color: 0xffffff, alpha: 1 });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -450,14 +522,11 @@ export function renderGrid() {
         //  - liveArea 없거나 드래그 중이면 컨테이너 중심끼리 직선 1개.
         const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
         const endpoints: { x: number; y: number }[] = [];
-        let centroid: { x: number; y: number };
 
         if (liveR && !isDraggingThis && liveR.placed.length > 0) {
           const pts = liveR.placed.map(pc => cellCenterPx(pc.x, pc.y));
           const degree = new Array(liveR.placed.length).fill(0);
-          let cx = 0, cy = 0;
           for (let a = 0; a < liveR.placed.length; a++) {
-            cx += pts[a].x; cy += pts[a].y;
             for (let b = a + 1; b < liveR.placed.length; b++) {
               const md = Math.abs(liveR.placed[a].x - liveR.placed[b].x)
                        + Math.abs(liveR.placed[a].y - liveR.placed[b].y);
@@ -471,7 +540,6 @@ export function renderGrid() {
           for (let a = 0; a < liveR.placed.length; a++) {
             if (degree[a] <= 1) endpoints.push(pts[a]);
           }
-          centroid = { x: cx / pts.length, y: cy / pts.length };
         } else {
           const a = {
             x: (fromC.origin.x + coox + fdx + fromC.size.w / 2) * scaledTile + offsetX,
@@ -483,7 +551,6 @@ export function renderGrid() {
           };
           segments.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
           endpoints.push(a, b);
-          centroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         }
 
         routingLineCache.push({ routingId: routing.id, segments, endpoints });
@@ -511,9 +578,21 @@ export function renderGrid() {
           for (const ep of endpoints) {
             lineGfx.circle(ep.x, ep.y, dotR).fill({ color: lineColor, alpha: 1.0 });
           }
-          // 중심점 (클릭 가능 표시) — 모든 셀의 무게중심
-          lineGfx.circle(centroid.x, centroid.y, 7).fill({ color: 0xffffff, alpha: 0.15 });
-          lineGfx.circle(centroid.x, centroid.y, 7).stroke({ width: 1.5, color: lineColor, alpha: 0.9 });
+          // 경로 전체를 감싸는 노란 직사각형 — segments 의 실제 min/max bbox
+          if (segments.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const s of segments) {
+              minX = Math.min(minX, s.x1, s.x2);
+              minY = Math.min(minY, s.y1, s.y2);
+              maxX = Math.max(maxX, s.x1, s.x2);
+              maxY = Math.max(maxY, s.y1, s.y2);
+            }
+            // segments 좌표는 셀 중심이므로 반 셀만큼 키워 셀 테두리에 맞춘다.
+            const pad = scaledTile / 2;
+            lineGfx
+              .rect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2)
+              .stroke({ width: 1.5, color: 0xffff00, alpha: 0.9 });
+          }
         } else {
           tracePath();
           lineGfx.stroke({ width: 1.5, color: lineColor, alpha: 0.65 });
@@ -587,6 +666,60 @@ export function renderGrid() {
 
     // 텍스트는 맨 위에 렌더
     for (const t of ioTexts) gridContainer.addChild(t);
+  }
+
+  // ── 모듈 경계 테두리 — 같은 클러스터의 머신 그룹을 앰버 사각형으로 식별 ──────────
+  //    이름표(레시피 라벨)는 클릭 가능한 히트 타깃 → 화면 사각형을 moduleLabelCache 에 기록.
+  const moduleBounds = collectModules();
+  moduleLabelCache = [];
+  if (moduleBounds.length > 0) {
+    const selectedModuleKey = useModuleInspectStore.getState().moduleKey;
+    const modGfx = new PIXI.Graphics();
+    gridContainer.addChild(modGfx);
+    const pad = Math.max(1.5, scaledTile * 0.08);
+    for (const mb of moduleBounds) {
+      const active = mb.key === hoveredModuleKey || mb.key === selectedModuleKey;
+      const bx = mb.bbox.x * scaledTile + offsetX - pad;
+      const by = mb.bbox.y * scaledTile + offsetY - pad;
+      const bw = mb.bbox.w * scaledTile + pad * 2;
+      const bh = mb.bbox.h * scaledTile + pad * 2;
+      modGfx
+        .rect(bx, by, bw, bh)
+        .stroke({ width: active ? 2.5 : 2, color: MODULE_BORDER_COLOR, alpha: active ? 1 : 0.85 });
+
+      // active(이름표 hover·본체 hover·선택) 모듈은 포트 셀도 강조 — 세 경로 강조 통일.
+      if (active) drawModulePortHighlights(modGfx, mb, scaledTile, offsetX, offsetY);
+
+      // 레시피 라벨 — 모듈 좌상단. 너무 축소되면 생략(라벨 없으면 히트 타깃도 없음).
+      if (mb.recipe && scaledTile >= 14) {
+        const label = new PIXI.Text({
+          text: mb.recipe,
+          style: {
+            fontSize:   Math.max(9, Math.floor(scaledTile * 0.34)),
+            fill:       active ? 0x1a1a2e : MODULE_LABEL_COLOR,
+            fontWeight: 'bold',
+          },
+        });
+        const lx = bx + 2;
+        const ly = by - label.height - 1;
+        // 이름표 배경 — hover/선택 시 강조(앰버 채움), 평소엔 은은한 어두운 배경.
+        const bgPad = 2;
+        modGfx
+          .rect(lx - bgPad, ly - bgPad / 2, label.width + bgPad * 2, label.height + bgPad)
+          .fill({ color: active ? MODULE_BORDER_COLOR : 0x1a1a2e, alpha: active ? 0.95 : 0.55 });
+        label.x = lx;
+        label.y = ly;
+        gridContainer.addChild(label);
+
+        moduleLabelCache.push({
+          moduleKey: mb.key,
+          x: lx - bgPad,
+          y: ly - bgPad / 2,
+          w: label.width + bgPad * 2,
+          h: label.height + bgPad,
+        });
+      }
+    }
   }
 
   // 지하 터널 짝 시각화
@@ -730,6 +863,9 @@ export function renderHoverPreview(
     }
     return;
   }
+
+  // 모듈 포트 강조는 renderGrid 가 active 모듈(이름표/본체 hover·선택) 기준으로 그린다
+  // — 이름표 hover 와 본체 hover 의 강조가 완전히 동일하도록 단일 경로로 통일.
 
   const actualType = overrideType ?? selectedEntityType;
   const actualName = overrideName ?? selectedEntityName;

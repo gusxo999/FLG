@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cellKey,
   dijkstraWithJumps,
   type DijkstraInput,
   type JumpEdge,
 } from './containerRouting';
+import { cellKey } from './util/helper';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // turnPenalty — 곧은 벨트 선호 + 장애물 직진 점프(우회 회피)

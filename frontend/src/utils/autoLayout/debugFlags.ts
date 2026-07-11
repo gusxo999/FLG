@@ -37,3 +37,29 @@ export let AUTO_LAYOUT_MODULE_PIPELINE = true;
 export function setAutoLayoutModulePipeline(v: boolean): void {
   AUTO_LAYOUT_MODULE_PIPELINE = v;
 }
+
+/**
+ * AUTO_LAYOUT_PERIMETER_PASS — 모듈 경로 후처리(modulePerimeterPass) 스위치.
+ * true(기본)면 합성 후 살아남은 외부상자를 전역 perimeter 로 트렁크 spine 연장 재배치.
+ * false 면 그 단계를 건너뛴다(상자가 로컬 모듈 ring 에 남음). 진단/회귀 격리용.
+ */
+export let AUTO_LAYOUT_PERIMETER_PASS = true;
+
+export function setAutoLayoutPerimeterPass(v: boolean): void {
+  AUTO_LAYOUT_PERIMETER_PASS = v;
+}
+
+/**
+ * AUTO_LAYOUT_CHANNEL_GEOMETRY — 채널 기하 예약(통합 장부) 스위치.
+ * (docs/auto-layout-wizard.channel-geometry-reservation.md)
+ *
+ * true(기본)면 packModuleTree 가 납품(홉)·반출(lane) 경로의 트랙을 패킹 시점에 배정하고
+ * (같은 쪽 판정 + 해소 사다리), 채널 폭을 그 결과에서 유도한다(폭 역전). moduleHop 은
+ * 배정 좌표를 탐색 없이 방출하고 dijkstra 는 최후 폴백(예약 침범 금지)으로만 남는다.
+ * false 면 옛 동작 — 폭만 예약 + dijkstra/스캔. 진단/회귀 격리용.
+ */
+export let AUTO_LAYOUT_CHANNEL_GEOMETRY = true;
+
+export function setAutoLayoutChannelGeometry(v: boolean): void {
+  AUTO_LAYOUT_CHANNEL_GEOMETRY = v;
+}

@@ -19,7 +19,9 @@ import type {
 } from './containerModel';
 import { commitRouting } from './containerRouting';
 import { AUTO_LAYOUT_COORD_DUMP } from './debugFlags';
-import { expandBbox, makeContainerCell } from './externalPlacer';
+import { expandBbox } from './externalPlacer';
+import { enumeratePerimeterCells, MAX_EXTERNAL_SEARCH_RADIUS } from './util/helper';
+import { makeContainerCell } from './util/cellBuilder';
 import { routeWithFallback, type RouteOptions } from './routeFallback';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,7 +64,8 @@ export function unifyAreas(internal: Area, external: Area): UnifyResult {
     }));
     let canvasBbox: NonNullable<Area['bbox']> | undefined;
     for (const p of placed) canvasBbox = expandBbox(canvasBbox, p.x, p.y, 1, 1);
-    return { placed, internalBbox: undefined, canvasBbox };
+    // 머신 없음 분기는 셀을 시프트하지 않으므로 offset 은 항등(0,0).
+    return { placed, internalBbox: undefined, canvasBbox, offset: { x: 0, y: 0 } };
   }
 
   // offset: fullPlacedBbox(chest 인서터 포함) 기준으로 산정.
@@ -96,7 +99,9 @@ export function unifyAreas(internal: Area, external: Area): UnifyResult {
   };
   for (const p of placed) canvasBbox = expandBbox(canvasBbox, p.x, p.y, 1, 1);
 
-  return { placed, internalBbox, canvasBbox };
+  // offset = leaf → 정규화 변환(placed 셀에 적용한 것과 동일). 라우팅 선/드래그가
+  // 그리드 셀과 정확히 겹치려면 containerOriginOffset 이 이 값과 같아야 한다.
+  return { placed, internalBbox, canvasBbox, offset: { x: offsetX, y: offsetY } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,8 +126,6 @@ export function computeMachineRoutingBbox(
 // wrapExternalsAroundPerimeter — 후처리
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
-
 /**
  * 외부상자 드래그 재라우팅에서 쓰는 벨트 꺾임 penalty. 양수면 곧은 벨트를 선호해
  * 계단/대각형 벨트를 줄이고, 상자 같은 장애물을 *우회* 대신 *직진 점프* 로 넘긴다
@@ -131,35 +134,6 @@ export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
  */
 export const DRAG_BELT_TURN_PENALTY = 2;
 
-/**
- * bbox 바깥 minRadius~maxRadius 칸 전체 외부 영역의 셀 좌표 목록.
- * 각 반경(ring)을 시계 방향 N → E → S → W 로 열거한다.
- * wrapExternalsAroundPerimeter 가 머신 기준 manhattan 거리로 재정렬하므로
- * 가까운 ring 부터 열거해 정렬 비용을 줄인다.
- *
- * minRadius 기본값 = 2 — chest 와 머신 사이 1 셀 gap 확보. 그 gap 셀에
- * 단일 인서터를 두면 chest ↔ machine 직결이 가능하다 (routeItem 의 단일
- * 인서터 모드). r=1 에 chest 를 두면 인서터 자리가 없어 라우팅이 chest
- * 위쪽으로 우회하고 internalBbox 가 chest 까지 확장되는 시각 버그가 생긴다.
- */
-export function enumeratePerimeterCells(
-  bbox: { x: number; y: number; w: number; h: number },
-  maxRadius = MAX_EXTERNAL_SEARCH_RADIUS,
-  minRadius = 2,
-): { x: number; y: number }[] {
-  const cells: { x: number; y: number }[] = [];
-  for (let r = minRadius; r <= maxRadius; r++) {
-    const x0 = bbox.x - r;
-    const y0 = bbox.y - r;
-    const x1 = bbox.x + bbox.w - 1 + r;
-    const y1 = bbox.y + bbox.h - 1 + r;
-    for (let x = x0; x <= x1; x++) cells.push({ x, y: y0 });           // N
-    for (let y = y0 + 1; y <= y1; y++) cells.push({ x: x1, y });       // E
-    for (let x = x1 - 1; x >= x0; x--) cells.push({ x, y: y1 });      // S
-    for (let y = y1 - 1; y >= y0 + 1; y--) cells.push({ x: x0, y });  // W
-  }
-  return cells;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 변별 독립 perimeter — 직사각형(네 직선 변)이되 변마다 깊이가 다를 수 있다.
@@ -1103,6 +1077,9 @@ export function cloneRouting(r: Routing): Routing {
       cell: { ...p.cell, tileOffset: { ...p.cell.tileOffset } },
     })),
     corridors: r.corridors.map((c) => ({ ...c, range: [c.range[0], c.range[1]] })),
+    // 포트 산출 메타 — 불변 결정 데이터라 참조 공유로 충분(드래그 후에도 유지).
+    fromPortMeta: r.fromPortMeta,
+    toPortMeta: r.toPortMeta,
   };
 }
 

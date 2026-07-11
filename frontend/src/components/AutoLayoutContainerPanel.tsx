@@ -240,7 +240,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
   }
 
   function handleApplyCandidate(leaf: CandidateLeaf) {
-    const { placed, internalBbox, canvasBbox } = unifyAreas(leaf.internal, leaf.external);
+    const { placed, internalBbox, canvasBbox, offset } = unifyAreas(leaf.internal, leaf.external);
 
     if (AUTO_LAYOUT_COORD_DUMP) {
       // 레이아웃 좌표를 dump 하기 전에 그 레이아웃이 생성된 *런타임 환경* 을 먼저 출력한다.
@@ -335,18 +335,20 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       showToast('빈 후보 — 적용할 셀 없음', 'warning');
       return;
     }
-    // container.origin (layout space) → 그리드 좌표 오프셋 계산.
-    // unifyAreas는 셀을 (internalBbox.x, internalBbox.y) 로 이동시키지만
-    // container.origin은 그대로이므로 이 값이 기본 오프셋이 된다.
-    // applyPlacedCells 내부에서도 음수 좌표 정규화를 하므로 그 sx/sy도 포함한다.
+    // container.origin (layout space) → 그리드 좌표 오프셋.
+    // unifyAreas 가 placed 셀(=그리드 입력)에 실제로 적용한 offset 과 **동일** 해야
+    // 라우팅 선(liveArea 원본 좌표 + offset)이 그리드 벨트 위에 정확히 겹친다.
+    // (과거엔 machineBbox 기준 internalBbox 로 계산해, 머신 왼쪽/위로 셀이 튀어나온
+    //  모듈 경로에서 fullPlacedBbox 기준 정규화와 어긋나 선이 옆으로 밀렸다.)
+    // applyPlacedCells 가 음수 정규화 셀을 sx/sy 만큼 추가 시프트하므로 그 분도 포함한다.
     let minCellX = 0, minCellY = 0;
     for (const { x, y } of cells) {
       if (x < minCellX) minCellX = x;
       if (y < minCellY) minCellY = y;
     }
     const containerOriginOffset = {
-      x: (internalBbox?.x ?? 0) + Math.max(0, -minCellX),
-      y: (internalBbox?.y ?? 0) + Math.max(0, -minCellY),
+      x: offset.x + Math.max(0, -minCellX),
+      y: offset.y + Math.max(0, -minCellY),
     };
     applyPlacedCells(cells);
     applyLayoutBboxes(internalBbox, canvasBbox);
