@@ -21,6 +21,7 @@ import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
+import { chooseMachineDirection } from "../module/fluidPorts";
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
@@ -57,12 +58,51 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const { input, metas, parentOf, order, makeId } = args;
   const { recipeMap, entityMap } = useGameDataStore.getState();
 
-  // 0) 적격성 — 전부 item(유체 0). 하나라도 유체면 즉시 폴백.
+  const options = buildRoutingOptions(input);
+
+  // 자식이 부모에게 **무엇을 먹여주나** — 그 품목은 외부 공급이 아니다(홉으로 온다).
+  const fedItemsOf = new Map<RecipeTreeNode, Set<string>>();
+  for (const node of order) fedItemsOf.set(node, new Set());
+  for (const node of order) {
+    const parent = parentOf.get(node);
+    if (parent) fedItemsOf.get(parent)!.add(node.itemName);
+  }
+
+  // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md)
+  //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
+  //    거절 사유가 다 다르므로 각각 이유를 남긴다(진단).
+  const fluidTrunkOf = new Map<RecipeTreeNode, NodeSpec["fluidTrunk"]>();
   for (const node of order) {
     const recipe = recipeMap.get(node.recipeName!);
     if (!recipe) return null;
-    const io = [...recipe.ingredients, ...recipe.products];
-    if (io.some((p) => p.type === "fluid")) return null;
+    const m = metas.get(node)!;
+
+    // 유체 **출력**(자식→부모 유체 홉 / 루트 유체 반출) — moduleHop·반출이 벨트만 안다.
+    if (recipe.products.some((p) => p.type === "fluid")) return null;
+
+    const fluidIngredients = recipe.ingredients.filter((i) => i.type === "fluid");
+    if (fluidIngredients.length === 0) continue; // 아이템 전용 노드 — 회전 없음.
+    if (fluidIngredients.length > 1) return null; // v1 은 유체 줄 1개까지.
+
+    const fluid = fluidIngredients[0];
+    // 자식이 만들어 주는 유체면 홉이 필요하다 — v1 미지원.
+    if (fedItemsOf.get(node)!.has(fluid.name)) return null;
+    // 회전은 footprint 를 안 바꾼다는 전제 위에 있다 → 정사각형 머신만(§3).
+    if (m.w !== m.h) return null;
+    if (!options.pipeEntityName) return null;
+
+    const entity = entityMap.get(m.entityName);
+    if (!entity) return null;
+    // 유체 입구가 **입력 면(E)** 을 보게 하는 회전을 데이터에서 고른다(§3).
+    // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
+    const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
+    if (!chosen) return null; // 어느 각도로 돌려도 E 에 유체 입구가 안 온다.
+
+    fluidTrunkOf.set(node, {
+      direction: chosen.direction,
+      side: "E",
+      pipeEntityName: options.pipeEntityName,
+    });
   }
 
   // 1) NodeSpec — 트리에서 유도. id 는 노드별 결정적(order 인덱스 + 레시피).
@@ -76,9 +116,11 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const specs: NodeSpec[] = order.map((node) => {
     const m = metas.get(node)!;
     const recipe = recipeMap.get(node.recipeName!)!;
+    // 운반체 = 품목 종류. 유체는 파이프, 아이템은 벨트.
+    const carrier = (type: string) => (type === "fluid" ? ("pipe" as const) : ("belt" as const));
     const lines: IoLine[] = [
-      ...recipe.ingredients.map((i) => ({ name: i.name, kind: "belt" as const, role: "input" as const, amount: i.amount })),
-      ...recipe.products.map((p) => ({ name: p.name, kind: "belt" as const, role: "output" as const, amount: p.amount })),
+      ...recipe.ingredients.map((i) => ({ name: i.name, kind: carrier(i.type), role: "input" as const, amount: i.amount })),
+      ...recipe.products.map((p) => ({ name: p.name, kind: carrier(p.type), role: "output" as const, amount: p.amount })),
     ];
     const parent = parentOf.get(node) ?? undefined;
     return {
@@ -88,10 +130,10 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       machine: { entityName: m.entityName, w: m.w, h: m.h },
       count: m.count,
       lines,
+      fluidTrunk: fluidTrunkOf.get(node),
     };
   });
 
-  const options = buildRoutingOptions(input);
   // 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량(piece 3).
   const ov = input.inserterOverrides;
   const normalTp = inserterThroughput(entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
@@ -140,6 +182,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     ? relocateChestsToPerimeter(pack, hopRes.strippedChestIds, hopRes.cells, {
         beltEntityName: options.beltEntityName,
         inserterEntityName: options.inserterEntityName,
+        pipeEntityName: options.pipeEntityName, // 유체 포트는 파이프로 반출한다.
       })
     : null;
   const droppedKeys = perim?.droppedCellKeys ?? new Set<string>();
@@ -223,16 +266,23 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     for (const chest of pl.module.chests) {
       if (stripChests.has(chest.id)) continue; // boxless 로 떼인 경계 상자는 제외.
       const port = [...pl.module.inputPorts, ...pl.module.outputPorts].find((p) => p.chest.id === chest.id);
+      // 유체 포트의 라우팅은 kind=fluid — 선 색·라벨·드래그 재라우팅이 이걸 본다.
+      const isFluid = port?.line.kind === "pipe";
+      const mkPort = (containerId: string, cell: { x: number; y: number }, face: PortFace): ContainerPort =>
+        isFluid
+          ? { containerId, cell, face, kind: { fluid: chest.content! } }
+          : itemPort(containerId, cell, face);
       // perimeter 로 이사했으면 chest 끝점 = 새 origin, placed = 트렁크 spine + 이사 belt.
       const origin = relocOrigin.get(chest.id) ?? chest.origin;
       // machine 끝점 cell = tapAnchor(anchor 안쪽 2칸). anchor 를 쓰면 chest 끝점과 겹쳐
       // from==to 가 되어 선이 사라진다(⑥B). chest 는 origin, machine 은 tapAnchor 로 분리.
-      const machine = itemPort(`${pl.id}-m0`, port?.tapAnchor ?? origin, port?.face ?? "N");
-      const chestPort = itemPort(chest.id, origin, port?.face ?? "N");
+      const machine = mkPort(`${pl.id}-m0`, port?.tapAnchor ?? origin, port?.face ?? "N");
+      const chestPort = mkPort(chest.id, origin, port?.face ?? "N");
       const placed = [...(port?.cells ?? []), ...(relocBelts.get(chest.id) ?? [])]; // 트렁크 spine + 이사 belt → belt-following 선.
+      const kind = isFluid ? ("fluid" as const) : ("item" as const);
       // raw 입력: 상자→머신(input), 루트 출력: 머신→상자(output). 포트 메타는 머신 끝점 쪽.
-      if (chest.role === "input") routings.push({ id: makeId("r"), kind: "item", from: chestPort, to: machine, placed, corridors: [], toPortMeta: port?.meta });
-      else routings.push({ id: makeId("r"), kind: "item", from: machine, to: chestPort, placed, corridors: [], fromPortMeta: port?.meta });
+      if (chest.role === "input") routings.push({ id: makeId("r"), kind, from: chestPort, to: machine, placed, corridors: [], toPortMeta: port?.meta });
+      else routings.push({ id: makeId("r"), kind, from: machine, to: chestPort, placed, corridors: [], fromPortMeta: port?.meta });
     }
   }
 

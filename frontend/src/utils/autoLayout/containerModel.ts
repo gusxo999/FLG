@@ -8,7 +8,7 @@
  * 별도 파일로 추가된다.
  */
 
-import type { GridCell } from '../../types/layout';
+import type { Direction, GridCell } from '../../types/layout';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §2. 컨테이너
@@ -41,6 +41,17 @@ export interface Container {
   origin: { x: number; y: number };
   /** footprint 폭/높이 (Entity.tile_width × tile_height) */
   size: { w: number; h: number };
+  /**
+   * 머신 회전(Factorio 16방향: 0=N, 4=E, 8=S, 12=W). 미지정=0.
+   *
+   * **아이템 전용 머신은 돌릴 이유가 없다** — 인서터는 어느 면에나 붙는다. 회전이 필요한 건
+   * **유체**뿐이다: 유체 입구 칸이 프로토타입에 박혀 있어서, 기둥에서 그 면이 이웃 머신에
+   * 막히면 파이프를 꽂을 자리가 아예 없다. 머신을 돌려 유체 입구가 노출된 면(W/E)을 보게 한다.
+   * → docs/auto-layout-wizard.trunk-pipe.md §3
+   *
+   * footprint 는 회전해도 그대로 쓴다 — v1 은 **정사각형 머신만** 회전 대상이다(§5).
+   */
+  direction?: Direction;
   /**
    * 머신 컨테이너에 부속된 레시피. 무한상자/무한파이프는 undefined.
    */

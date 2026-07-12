@@ -22,14 +22,79 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
     expect(plan).toEqual({ ok: true, lines: [] });
   });
 
-  it("유체 줄이 있으면 complex 위임(미구현)", () => {
+  // ── 트렁크 파이프(유체) — docs/auto-layout-wizard.trunk-pipe.md ──
+
+  it("유체 줄인데 pipeSide 가 없으면 complex — 면은 우리가 못 고른다", () => {
+    // 유체가 붙을 면은 머신 fluid_box 가 정한다. 호출자가 회전을 풀어 pipeSide 를 넘겨야
+    // 한다 — 못 풀었으면 지어내지 않고 옛 경로로 위임한다.
     const plan = planClusterPorts({
       lines: [item("iron", "input"), fluid("water", "input")],
       caps: longCaps,
       outputSide: "W",
     });
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("pipe-not-yet-supported");
+    if (!plan.ok) expect(plan.reason).toBe("pipe-side-unresolved");
+  });
+
+  it("다이렉트 인서팅은 유체를 못 다룬다 — 인서터로 유체를 옮길 수 없다", () => {
+    const plan = planClusterPorts({
+      lines: [fluid("water", "input")],
+      caps: longCaps,
+      outputSide: "W",
+      pipeSide: "E",
+      slotsPerFace: { WE: 3, NS: 3 }, // 1:1(다이렉트) 모드
+    });
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toBe("fluid-requires-trunk-pipe");
+  });
+
+  it("유체 = depth 1 · 인서터 없음. 그 면의 아이템은 케이스 B(긴팔 d=4) 한 줄뿐", () => {
+    // 화학 공장 꼴: 유체 입력 1 + 아이템 입력 1 + 아이템 출력 1.
+    const lines = [
+      fluid("petroleum-gas", "input"),
+      item("coal", "input"),
+      item("plastic-bar", "output"),
+    ];
+    const plan = planClusterPorts({ lines, caps: longCaps, outputSide: "W", pipeSide: "E" });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const by = (n: string) => plan.lines.find((l) => l.line.name === n)!;
+
+    // 파이프: E 면(머신이 정함), depth 1(머신에 닿아야 한다), 인서터 없음.
+    expect(by("petroleum-gas")).toMatchObject({ side: "E", depth: 1, inserter: undefined });
+    // 아이템 입력도 입력면(E) — 다만 depth 1 이 파이프라 케이스 B 로 밀린다.
+    expect(by("coal")).toMatchObject({ side: "E", depth: 4, inserter: "long" });
+    // 출력은 평소대로 출력면(W) 가까운 레인.
+    expect(by("plastic-bar")).toMatchObject({ side: "W", depth: 2, inserter: "normal" });
+  });
+
+  it("파이프 면은 아이템 레인이 하나뿐 — 둘째 아이템 입력은 출력면으로 밀린다", () => {
+    const lines = [
+      fluid("petroleum-gas", "input"),
+      item("coal", "input"),
+      item("iron-plate", "input"),
+      item("thing", "output"),
+    ];
+    const plan = planClusterPorts({ lines, caps: longCaps, outputSide: "W", pipeSide: "E" });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const sides = plan.lines.map((l) => `${l.line.name}:${l.side}${l.depth}`);
+    // E 면 레인은 케이스 B 하나뿐 → coal 이 쓰고, iron-plate 는 W 잔여 레인으로.
+    expect(sides).toEqual([
+      "petroleum-gas:E1",
+      "coal:E4",
+      "iron-plate:W3",
+      "thing:W2",
+    ]);
+  });
+
+  it("긴팔이 없으면 파이프 면에 아이템을 못 놓는다 — 케이스 B 는 긴팔 전용", () => {
+    // 일반 인서터는 depth 1 에 앉아야 하는데 그 자리가 파이프다.
+    const lines = [fluid("water", "input"), item("a", "input"), item("b", "input"), item("c", "output")];
+    const plan = planClusterPorts({ lines, caps: regularCaps, outputSide: "W", pipeSide: "E" });
+    // W 면 레인 1개(일반) 뿐 → 아이템 3줄을 못 담는다.
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toBe("belt-demand-exceeds-capacity");
   });
 
   it("긴팔 보유 → 출력=W(near→far), 입력=E(near→far)", () => {

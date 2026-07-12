@@ -31,7 +31,9 @@ function makeMachineCell(c: Container, dx: number, dy: number): PlacedCell {
     entityId: c.id,
     entityName: c.entityName,
     entityType: machineEntityType(c.entityName),
-    direction: 0 satisfies Direction,
+    // 머신 회전 — 유체 레시피는 fluid_box 가 원하는 면을 보도록 머신을 돌린다
+    // (docs/auto-layout-wizard.trunk-pipe.md §3). 아이템 전용 머신은 늘 0.
+    direction: (c.direction ?? 0) satisfies Direction,
     tileOffset: { x: dx, y: dy },
     isOrigin: dx === 0 && dy === 0,
     recipe: c.recipeName,

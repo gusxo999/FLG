@@ -37,7 +37,7 @@
 import type { ModulePort } from "../module/clusterModule";
 import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
-import { makeBeltCell, makeInserterCell, makeContainerCell } from "../util/cellBuilder";
+import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
 import { moduleExtent, type PackResult } from "./modulePacking";
 import type { LaneAssignment } from "./perimeterLanePlanner";
 import { routePortToPerimeter, type Rect } from "./perimeterRouter";
@@ -46,6 +46,8 @@ import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 export interface PerimeterPassConfig {
   beltEntityName: string;
   inserterEntityName: string;
+  /** 파이프 prototype — 유체 포트 반출에 쓴다. 유체가 없으면 안 쓰인다. */
+  pipeEntityName?: string;
 }
 
 /** 상자 하나의 이사 결과 — moduleWizard 가 Area/routing 에 반영한다. */
@@ -115,6 +117,25 @@ function layPath(
   // 건드리지 않고 새 좌표는 반환값(chestCell 위치 = relocation.origin)으로 넘긴다.
   const chestCell = makeContainerCell(chest, chestPos);
   return { belts, feeder, chestCell };
+}
+
+/**
+ * 유체 포트의 반출 — **파이프 한 줄**로 외곽까지, 끝에 무한파이프.
+ *
+ * 아이템과 뭐가 다른가: **인서터(feeder)가 없다.** 유체는 인서터로 못 옮긴다. 그래서 경로
+ * 전체가 파이프이고(옛 anchor 자리까지 포함), 마지막 칸에 무한파이프가 앉는다. 흐름 방향도
+ * 없다 — 압력이 알아서 흐르므로 input/output 을 구분할 필요가 없다.
+ * → docs/auto-layout-wizard.trunk-pipe.md §1
+ */
+function layPipePath(
+  path: { x: number; y: number }[],
+  chest: Container,
+  pipeEntityName: string,
+): { belts: PlacedCell[]; feeder: PlacedCell | null; chestCell: PlacedCell } {
+  const pair = pairFor(chest.id);
+  const n = path.length - 1; // 무한파이프가 앉는 index
+  const belts = path.slice(0, n).map((cell) => makePipeCell(cell, pipeEntityName, pair));
+  return { belts, feeder: null, chestCell: makeContainerCell(chest, path[n]) };
 }
 
 /** makeBeltCell/makeInserterCell 의 entityId 생성용 최소 PortPair. */
@@ -225,24 +246,29 @@ export function relocateChestsToPerimeter(
     });
     if (!res.ok) { fail(port.chest.id, `reservation not emittable: ${res.reason}`); continue; }
 
+    const isFluid = port.line.kind === "pipe";
     // layPath 입력 = [anchor, ...외곽경로]. anchor(옛 상자 자리)만 비운다 — seat 인서터는
     // 남아서 이 자리에 깔릴 belt 에서 집어 머신에 넣는다(픽업 셀 불변).
     // 벨트가 최소 1칸은 있어야 인서터가 집을 대상이 belt 다(길이 2 미만이면 anchor 가
     // feeder 로 덮여 인서터가 인서터를 집게 된다) → 그런 배정은 예약 위반으로 skip.
-    if (res.path.length < 2) { fail(port.chest.id, `perimeter too close (${res.path.length})`); continue; }
+    // **유체는 이 제약이 없다** — feeder 가 아예 없어서 경로 전체가 파이프다(길이 1도 유효).
+    if (!isFluid && res.path.length < 2) { fail(port.chest.id, `perimeter too close (${res.path.length})`); continue; }
     const path = [anchor, ...res.path];
 
     const isInput = port.line.role === "input";
-    const { belts, feeder, chestCell } = layPath(path, seat, isInput, port.chest, config);
+    if (isFluid && !config.pipeEntityName) { fail(port.chest.id, "no pipe prototype"); continue; }
+    const { belts, feeder, chestCell } = isFluid
+      ? layPipePath(path, port.chest, config.pipeEntityName!)
+      : layPath(path, seat, isInput, port.chest, config);
 
     // ── 설명 축적(모듈 그래프 미변형) ──
     // 옛 chest ghost(@anchor)·feeder(@anchor−fv) 는 떼어낼 좌표로, 새 belt/feeder/chest 셀은
     // 놓을 셀로, 상자 새 위치·belt 는 relocation 으로 반환한다. occ 는 로컬로만 갱신해
     // 뒤 상자가 앞 상자의 belt 를 피하게 한다(결정성).
     droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost 만. seat 인서터는 유지.
-    addedCells.push(...belts, feeder, chestCell);
+    addedCells.push(...belts, ...(feeder ? [feeder] : []), chestCell);
     for (const b of belts) occ.add(cellKey(b.x, b.y));
-    occ.add(cellKey(feeder.x, feeder.y));
+    if (feeder) occ.add(cellKey(feeder.x, feeder.y));
     occ.add(cellKey(chestCell.x, chestCell.y));
 
     relocations.push({

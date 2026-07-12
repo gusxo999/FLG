@@ -59,6 +59,28 @@ export function makeBeltCell(
 }
 
 /**
+ * 파이프 1셀 emit. **방향이 없다** — 파이프는 이웃한 파이프/유체상자와 자동으로 이어지고,
+ * 벨트처럼 흐름 방향을 갖지 않는다(그래서 `direction: 0` 고정). 인서터도 필요 없다.
+ * → docs/auto-layout-wizard.trunk-pipe.md §1
+ */
+export function makePipeCell(
+  cell: { x: number; y: number },
+  pipeEntityName: string,
+  pair: PortPair,
+): PlacedCell {
+  const grid: GridCell = {
+    ...createEmptyCell(),
+    entityId: `r-pipe-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
+    entityName: pipeEntityName,
+    entityType: EntityType.Pipe,
+    direction: 0 satisfies Direction,
+    tileOffset: { x: 0, y: 0 },
+    isOrigin: true,
+  };
+  return { x: cell.x, y: cell.y, cell: grid };
+}
+
+/**
  * 컨테이너 셀 1개 생성. `at` 좌표에 박아넣음.
  */
 export function makeContainerCell(

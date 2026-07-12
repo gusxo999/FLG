@@ -16,10 +16,11 @@
  *  - 아이템 belt: 가까운 레인 = 2칸(일반 인서터 seat 1칸), 먼 레인 = 3칸(긴팔 seat
  *    1칸, 가까운 belt 위로 넘김). 1칸이 파이프면 → 긴팔 seat 2칸·belt 4칸(케이스 B).
  *
- * ## 1단계 범위 (현재)
- * **아이템 belt 만.** 면당 레인 모델(P1 `columnTapCapacity` 와 동치) 재현. 유체(pipe)
- * 줄이 있으면 미구현이므로 `complex` 로 위임한다 — 본 결과는 아직 emit 에 연결되지
- * 않아(레이아웃 회귀 동등) 유체 클러스터는 종전대로 1:1 폴백으로 처리된다.
+ * ## 유체(pipe) 줄
+ * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) — 면을 **우리가 못 고른다**.
+ * 머신 `fluid_box` 가 정하고, 호출자가 머신을 돌려 그 면을 W/E 로 맞춘 결과가 [PortPlannerInput.pipeSide]
+ * 다. depth 는 늘 1(파이프는 팔이 없어 머신에 닿아야 한다). 그 면의 아이템 벨트는 케이스 B
+ * (긴팔 seat 2칸·belt 4칸)로만 놓이므로 레인이 **하나로 준다**. v1 은 유체 줄 1개까지.
  */
 
 /** 컬럼의 좌/우 면. */
@@ -120,6 +121,17 @@ export interface PortPlannerInput {
    * 파이프라인이 무너진다.
    */
   slotsPerFace?: { WE: number; NS: number };
+  /**
+   * [트렁크 파이프](../../../../docs/용어사전.md)가 차지하는 면 — **우리가 못 고른다.**
+   * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
+   * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
+   *
+   * 이 면은 **depth 1 이 파이프로 채워진다.** 그래서 이 면의 아이템 벨트는
+   * [케이스 B](../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)로만 놓을 수 있다 —
+   * 긴팔이 depth 2 에 앉아 파이프를 넘어 depth 4 에서 집는다. 일반 인서터는 depth 1 에
+   * 앉아야 하는데 그 자리가 파이프라 **못 쓴다** → 이 면의 아이템 레인은 **하나뿐**이다.
+   */
+  pipeSide?: PortSide;
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -147,12 +159,26 @@ function laneSlots(caps: PortPlannerCaps): { depth: number; inserter: InserterRo
 export function planClusterPorts(input: PortPlannerInput): PortPlan {
   const { lines, caps } = input;
 
-  // 유체(pipe) 미구현 — 있으면 complex 로 위임(emit 미연결 → 레이아웃 회귀 동등).
-  if (lines.some((l) => l.kind === "pipe")) {
-    return { ok: false, complex: true, reason: "pipe-not-yet-supported" };
-  }
-
   if (lines.length === 0) return { ok: true, lines: [] };
+
+  // ── 유체(pipe) 줄 — [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md) ──
+  // 면을 우리가 못 고른다(머신 fluid_box 가 정한다). 호출자가 머신을 돌려 그 면을 W/E 로
+  // 맞춘 결과가 `pipeSide` 다. depth 는 늘 1 — 파이프는 팔이 없어 머신에 닿아야 한다.
+  const pipeLines = lines.filter((l) => l.kind === "pipe");
+  const beltLines = lines.filter((l) => l.kind === "belt");
+  if (pipeLines.length > 0) {
+    // 다이렉트 인서팅은 유체를 다룰 수 없다 — 상자와 머신을 인서터로 잇는 방식인데
+    // 유체엔 인서터가 없다. 유체는 **파이프로만** 연결된다 → 트렁크 파이프가 유일한 길.
+    if (input.slotsPerFace) {
+      return { ok: false, complex: true, reason: "fluid-requires-trunk-pipe" };
+    }
+    if (!input.pipeSide) {
+      return { ok: false, complex: true, reason: "pipe-side-unresolved" };
+    }
+    if (pipeLines.length > 1) {
+      return { ok: false, complex: true, reason: "multi-fluid-not-supported" }; // v1 범위(§5)
+    }
+  }
 
   const lanes = laneSlots(caps);
   if (!input.slotsPerFace && lanes.length === 0) {
@@ -167,6 +193,12 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   type Slot = { side: PlannedSide; depth: number; inserter: InserterRole };
   const rim = input.slotsPerFace;
   const slotsOf = (side: PlannedSide): Slot[] => {
+    // 트렁크 파이프가 지나가는 면 — depth 1 이 파이프다. 아이템은 케이스 B 로만 놓인다:
+    // 긴팔이 depth 2 에 앉아 파이프를 넘어 depth 4 에서 집는다. 일반 인서터는 depth 1 에
+    // 앉아야 하는데 그 자리가 파이프라 못 쓴다 → **이 면의 아이템 레인은 하나뿐**.
+    if (side === input.pipeSide) {
+      return caps.hasLong ? [{ side, depth: 4, inserter: "long" as InserterRole }] : [];
+    }
     if (!rim) return lanes.map((lane) => ({ side, ...lane }));
     const n = side === "W" || side === "E" ? rim.WE : rim.NS;
     return Array.from({ length: Math.max(0, n) }, () => ({
@@ -182,8 +214,16 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // complex 판정 보수 유지).
   const nsPool = (input.nsFaces ?? []).flatMap((f) => slotsOf(f));
 
-  if (lines.length > outPool.length + inPool.length) {
+  // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(depth 1)를 따로 쓰고 인서터 레인을
+  // 소비하지 않는다. 대신 그 면의 레인 수를 이미 케이스 B(1개)로 깎았다(slotsOf).
+  if (beltLines.length > outPool.length + inPool.length) {
     return { ok: false, complex: true, reason: "belt-demand-exceeds-capacity" };
+  }
+
+  const assigned = new Map<IoLine, PlannedLine>();
+  // 유체 줄 먼저 — 자리가 강제돼 **선택의 여지가 없다**. 자유도 없는 것부터 못박는다.
+  for (const line of pipeLines) {
+    assigned.set(line, { line, side: input.pipeSide!, depth: 1, inserter: undefined });
   }
 
   // (B) 정책: 출력 먼저 출력면 확정(넘치면 입력면 잔여), 입력은 입력면 우선. 입력이
@@ -192,8 +232,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 각 풀은 near→far 로 소비. 결과는 등장 순서를 보존해 낸다.
   const take = (primary: Slot[], secondary: Slot[]): Slot =>
     (primary.length ? primary.shift() : secondary.shift())!;
-  const assigned = new Map<IoLine, PlannedLine>();
-  for (const line of lines.filter((l) => l.role === "output")) {
+  for (const line of beltLines.filter((l) => l.role === "output")) {
     const slot = take(outPool, inPool);
     assigned.set(line, { line, side: slot.side, depth: slot.depth, inserter: slot.inserter });
   }
@@ -207,8 +246,8 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // external 입력은 **홉이 없다** — 그냥 perimeter 로 나가면 그만이라 W 로 밀려도 안전하다.
   // 그러니 밀려날 자격이 있는 건 external 쪽이다(제약 센 것에 좋은 자리를 먼저).
   const inputsChildFedFirst = [
-    ...lines.filter((l) => l.role === "input" && !l.external),
-    ...lines.filter((l) => l.role === "input" && l.external),
+    ...beltLines.filter((l) => l.role === "input" && !l.external),
+    ...beltLines.filter((l) => l.role === "input" && l.external),
   ];
   for (const line of inputsChildFedFirst) {
     const slot =
@@ -226,7 +265,8 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     const capOf = (r?: InserterRole) => (r === "long" ? tp.long : tp.normal);
     const demandOf = (l: IoLine) => l.amount ?? 0;
     for (const face of [outputSide, inputSide, ...(input.nsFaces ?? [])] as PlannedSide[]) {
-      const faceLines = lines.filter((l) => assigned.get(l)!.side === face);
+      // 유체 줄은 제외 — depth 가 1 로 강제돼 있고 인서터가 없어 재배정 대상이 아니다.
+      const faceLines = beltLines.filter((l) => assigned.get(l)!.side === face);
       if (faceLines.length <= 1) continue;
       const slots = faceLines
         .map((l) => { const p = assigned.get(l)!; return { depth: p.depth, inserter: p.inserter }; })
@@ -334,8 +374,10 @@ export function insertingPlanner(
   const tapPlan = planClusterPorts(tapInput);
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
 
-  // 간단한 레시피로 판명났다 → 벨트·인서터 처리량만 남는다.
+  // 간단한 레시피로 판명났다 → 벨트·인서터 처리량만 남는다. 유체 줄은 벨트가 아니라
+  // 파이프로 흐르므로 이 검사의 대상이 아니다(파이프 처리량은 아직 안 잰다 — trunk-pipe §8).
   for (const line of input.lines) {
+    if (line.kind !== "belt") continue;
     const why = determineBeltCount(line, machineCount, capacity);
     if (why) return direct(`belt: ${why}`);
   }

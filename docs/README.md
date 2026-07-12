@@ -29,6 +29,7 @@ tags: [moc]
 | [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ S-LAYER 의 레이어 간 라우팅 채널 예약 | `#placement` `#routing` |
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[진행]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
+| [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[진행]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인) | `#placement` `#fluid` |
 | [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | ↳ **[계획]** 1:1 의 채널 예약 결함(지상 배정 all-or-nothing)과 수리 계획 + 지하 실패 시각화 — 트렁크 복귀로 긴급성 하락 | `#placement` `#routing` |
 | [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
 | [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |

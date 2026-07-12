@@ -45,6 +45,12 @@ export interface NodeSpec {
   count: number;
   /** ingredients=input, products=output. */
   lines: IoLine[];
+  /**
+   * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
+   * 있는 노드만. 머신 회전 각도 + 파이프가 달릴 면. `fluid_boxes` 를 봐야 알 수 있어서
+   * 게임데이터에 닿는 moduleWizard 가 계산해 넣는다.
+   */
+  fluidTrunk?: ModuleInput["fluidTrunk"];
 }
 
 export interface PackConfig {
@@ -667,6 +673,9 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     longInserter: config.longInserter,
     throughput: config.throughput,
     idPrefix: s.id,
+    // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(moduleWizard)가 이미
+    // 풀어서 spec 에 실어 보낸다. module/ 는 store 를 안 본다(순수).
+    fluidTrunk: s.fluidTrunk,
   };
 }
 
