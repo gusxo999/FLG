@@ -30,6 +30,7 @@
  */
 
 import type { Interval } from "./channelPlanner";
+import type { PortFace } from "../containerModel";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
@@ -49,6 +50,36 @@ export interface LanePortInput {
   side: ExitEdge;
   /** 포트 anchor 의 abs y (topY 반영). */
   anchorY: number;
+  /**
+   * [ModulePort.moduleWayOuts] — 이 상자가 **모듈 몸통에 안 막히고** 나갈 수 있는 방향들.
+   * 모듈이 자기 자신에 대해 답한 것이라, 여기선 모듈 내부를 안 보고 이 목록만 믿는다.
+   *
+   * **불변식:** 배정된 출구의 모듈 진출 방향은 반드시 이 안에 있어야 한다. 옛 코드는
+   * `side`(= meta.side) 만 보고 배정해서, 코너 어깨 상자처럼 그 방향이 형제 트렁크에
+   * 막힌 경우에도 **못 쓰는 채널 우회를 예약**했다(폭만 낭비 + 방출은 탐색 폴백에 의존).
+   */
+  wayOuts: PortFace[];
+}
+
+/**
+ * 한 상자가 쓸 수 있는 출구 하나. **모듈 진출 방향(`wayOut`)이 wayOuts 안에 있음이 보장**
+ * 되므로, 이 출구로 예약하면 모듈 몸통에 막혀 실패할 일이 없다.
+ *
+ * 여러 개를 후보로 들고 다니는 이유: 출구 선택은 **자유도**다. 나중에 더 까다로운 제약
+ * (절단선이 납품 경로를 가둠·채널 트랙 부족 등)을 가진 장부가 **양보를 요구**할 수 있으므로,
+ * planner 가 하나로 못박지 않고 후보를 남겨 장부가 고르게 한다(스도쿠: 제약 센 곳부터).
+ */
+export interface LaneOption {
+  exitEdge: ExitEdge;
+  host: LaneHost;
+  /** 이 출구가 모듈을 빠져나가는 방향 — 반드시 wayOuts 에 포함. */
+  wayOut: PortFace;
+  /** channel host 일 때의 세로 점유 구간(트랙 풀 합류용). */
+  interval?: Interval;
+  /** channel host 일 때의 진입 벽/행(장부의 반출 경로 입력). */
+  entry?: { y: number; wall: "W" | "E" };
+  /** 이 출구가 채널 트랙을 먹는가(= 폭을 넓히는가). margin/self 는 false. */
+  usesChannelTrack: boolean;
 }
 
 /** 한 depth 열의 모듈 세로 밴드(abs y) — 자기-열 막힘 판정용. */
@@ -69,6 +100,12 @@ export interface LaneContext {
 export interface LaneAssignment {
   id: string;
   role: "input" | "output";
+  /**
+   * 쓸 수 있는 출구 후보들(선호 순, 전부 wayOuts 를 만족). 아래 평평한 필드
+   * (exitEdge/host/interval/entry)는 **현재 확정** = 기본값 `options[0]`.
+   * 장부가 제약 때문에 다른 후보로 **양보**시킬 수 있다 — 그때 확정 필드도 함께 갱신한다.
+   */
+  options: LaneOption[];
   exitEdge: ExitEdge;
   host: LaneHost;
   /** host 가 channel 일 때의 세로 점유 구간(트랙 풀 합류용). */
@@ -135,73 +172,130 @@ function divertChannel(depth: number, maxDepth: number): number | null {
 }
 
 /**
- * exit-lane 배정. 순수·결정적. 모듈 내부를 안 본다.
+ * 한 포트가 쓸 수 있는 출구 후보를 **선호 순**으로 전부 나열한다.
+ *
+ * 모든 후보는 `wayOut ∈ p.wayOuts` 를 만족한다 — 즉 **모듈 몸통에 막히지 않음이 보장**된
+ * 출구만 나온다. 이것이 "예약한 경로는 항상 방출 가능"이라는 예약 철학의 핵심이다.
+ *
+ * 선호 순서는 **자유도**다(무엇을 먼저 놓든 정합성은 안 깨짐). 여기선 회귀를 줄이려고
+ * 옛 규칙(side 기반)을 1순위로 재현하고, 그게 막혔을 때 나머지 가능한 출구로 흘린다.
+ * 나중에 폭 최소화 등 다른 기준으로 재정렬해도 되고, 장부가 뒤 후보로 양보시켜도 된다.
+ */
+function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
+  const gy = ctx.globalY;
+  const can = (d: PortFace) => p.wayOuts.includes(d);
+  const opts: LaneOption[] = [];
+
+  /** 자기 열 직진(N/S 마진 행으로). 채널 트랙 안 먹음. */
+  const selfOpt = (e: "N" | "S"): LaneOption | null =>
+    can(e) && !selfBlocked(p.depth, p.anchorY, e, ctx)
+      ? { exitEdge: e, host: { kind: "self" }, wayOut: e, usesChannelTrack: false }
+      : null;
+
+  /** 바깥 W/E 마진 직출 — 끝 열에서만. 채널 트랙 안 먹음. */
+  const marginOpt = (e: "W" | "E"): LaneOption | null => {
+    if (!can(e)) return null;
+    if (e === "W" && p.depth !== 0) return null;
+    if (e === "E" && p.depth !== ctx.maxDepth) return null;
+    return { exitEdge: e, host: { kind: "margin", edge: e }, wayOut: e, usesChannelTrack: false };
+  };
+
+  /**
+   * 인접 채널로 우회 → 채널 안에서 N/S 변으로. 채널 트랙을 하나 먹는다(폭 +).
+   * wayOut=W 면 왼쪽 채널(depth), wayOut=E 면 오른쪽 채널(depth+1).
+   * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 wayOut 의 반대.
+   */
+  const channelOpts = (wayOut: "W" | "E"): LaneOption[] => {
+    if (!can(wayOut)) return [];
+    const depth = wayOut === "W" ? p.depth : p.depth + 1;
+    if (wayOut === "W" && p.depth < 1) return []; // 최좌 열의 왼쪽엔 채널이 없다(마진).
+    if (wayOut === "E" && p.depth >= ctx.maxDepth) return []; // 최우 열의 오른쪽도 마찬가지.
+    const wall: "W" | "E" = wayOut === "W" ? "E" : "W";
+    const near = nearerNS(p.anchorY, gy);
+    const far: "N" | "S" = near === "N" ? "S" : "N";
+    return [near, far].map((e) => ({
+      exitEdge: e,
+      host: { kind: "channel", depth } as LaneHost,
+      wayOut,
+      interval: {
+        lo: Math.min(p.anchorY, edgeY(e, gy)),
+        hi: Math.max(p.anchorY, edgeY(e, gy)),
+      } as Interval,
+      entry: { y: p.anchorY, wall },
+      usesChannelTrack: true,
+    }));
+  };
+
+  // ── 1순위: 옛 규칙 재현(회귀 최소) ──
+  if (p.side === "N" || p.side === "S") {
+    opts.push(...[selfOpt(p.side)].filter((o): o is LaneOption => !!o));
+    // 막히면 채널 우회 — 옛 divertChannel: depth≥1 이면 왼쪽, 아니면 오른쪽.
+    opts.push(...(p.depth >= 1 ? channelOpts("W") : channelOpts("E")));
+    opts.push(...[selfOpt(p.side === "N" ? "S" : "N")].filter((o): o is LaneOption => !!o));
+  } else if (p.side === "W") {
+    opts.push(...[marginOpt("W")].filter((o): o is LaneOption => !!o));
+    opts.push(...channelOpts("W"));
+  } else {
+    opts.push(...[marginOpt("E")].filter((o): o is LaneOption => !!o));
+    opts.push(...channelOpts("E"));
+  }
+
+  // ── 2순위: 그래도 없거나 부족하면, 남은 모든 가능한 출구(자유도 최대화·고립 방지) ──
+  // 코너 어깨 상자(face 가 N/S인데 side 가 E/W)가 여기서 구제된다 — 옛 규칙의 채널
+  // 우회는 wayOuts 에 막혀 후보가 안 되고, 뚫린 face 쪽 self/margin 이 잡힌다.
+  for (const e of ["N", "S"] as const) opts.push(...[selfOpt(e)].filter((o): o is LaneOption => !!o));
+  for (const e of ["W", "E"] as const) opts.push(...[marginOpt(e)].filter((o): o is LaneOption => !!o));
+  opts.push(...channelOpts("W"), ...channelOpts("E"));
+
+  // 중복 제거(선호 순 보존).
+  const seen = new Set<string>();
+  return opts.filter((o) => {
+    const k = `${o.host.kind}:${o.host.kind === "channel" ? o.host.depth : o.host.kind === "margin" ? o.host.edge : ""}:${o.exitEdge}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * exit-lane 배정. 순수·결정적. 모듈 내부를 안 본다(모듈이 답해준 `wayOuts` 만 믿는다).
+ *
+ * 각 상자마다 **쓸 수 있는 출구 후보**를 나열하고 `options[0]` 을 기본 확정으로 삼는다.
+ * 폭/마진 수요는 **확정된 출구 하나**에서만 계산한다(후보 전부가 아니라) — 안 쓸 출구를
+ * 위해 채널을 넓히던 옛 낭비가 여기서 사라진다.
+ *
+ * 나갈 길이 하나도 없는 상자는 **배정을 만들지 않는다** → 예약도 0, 재배치도 skip(로컬 ring
+ * 유지). 못 쓸 경로를 예약해 폭만 잡아먹는 것보다 정직하다.
  */
 export function planPerimeterLanes(ports: ReadonlyArray<LanePortInput>, ctx: LaneContext): LanePlan {
   const assignments: LaneAssignment[] = [];
   const channelLaneIntervals = new Map<number, Interval[]>();
   const marginNeeds = { N: false, S: false, W: false, E: false };
-  const gy = ctx.globalY;
-
-  const pushChannel = (depth: number, iv: Interval) => {
-    (channelLaneIntervals.get(depth) ?? channelLaneIntervals.set(depth, []).get(depth)!).push(iv);
-  };
-  const toChannel = (
-    p: LanePortInput,
-    depth: number,
-    edge: "N" | "S",
-    wall?: "W" | "E",
-  ): LaneAssignment => {
-    const iv: Interval = { lo: Math.min(p.anchorY, edgeY(edge, gy)), hi: Math.max(p.anchorY, edgeY(edge, gy)) };
-    pushChannel(depth, iv);
-    marginNeeds[edge] = true; // 상자 seat 는 N/S 마진 행.
-    return {
-      id: p.id,
-      role: p.role,
-      exitEdge: edge,
-      host: { kind: "channel", depth },
-      interval: iv,
-      entry: wall ? { y: p.anchorY, wall } : undefined,
-    };
-  };
 
   // 결정적: id 오름차순.
   const sorted = [...ports].sort((a, b) => a.id.localeCompare(b.id));
   for (const p of sorted) {
-    if (p.side === "N" || p.side === "S") {
-      const edge = p.side; // 변 그대로 나감
-      if (!selfBlocked(p.depth, p.anchorY, edge, ctx)) {
-        marginNeeds[edge] = true;
-        assignments.push({ id: p.id, role: p.role, exitEdge: edge, host: { kind: "self" } });
-      } else {
-        const ch = divertChannel(p.depth, ctx.maxDepth);
-        if (ch === null) {
-          // 단일 열 + 막힘 — 반대 N/S 로 self 폴백(둘 다 막힐 일은 없음: 최상단/최하단 존재).
-          const alt = edge === "N" ? "S" : "N";
-          marginNeeds[alt] = true;
-          assignments.push({ id: p.id, role: p.role, exitEdge: alt, host: { kind: "self" } });
-        } else {
-          assignments.push(toChannel(p, ch, nearerNS(p.anchorY, gy)));
-        }
-      }
-    } else if (p.side === "W") {
-      if (p.depth === 0) {
-        marginNeeds.W = true;
-        assignments.push({ id: p.id, role: p.role, exitEdge: "W", host: { kind: "margin", edge: "W" } });
-      } else {
-        // 왼쪽 채널 — 모듈이 그 채널의 동쪽 열이므로 E벽에서 진입.
-        assignments.push(toChannel(p, p.depth, nearerNS(p.anchorY, gy), "E"));
-      }
+    const options = enumerateOptions(p, ctx);
+    if (options.length === 0) continue; // 나갈 길 없음 — 예약 0, 계획된 skip.
+    const chosen = options[0];
+
+    if (chosen.host.kind === "channel" && chosen.interval) {
+      const d = chosen.host.depth;
+      (channelLaneIntervals.get(d) ?? channelLaneIntervals.set(d, []).get(d)!).push(chosen.interval);
+      marginNeeds[chosen.exitEdge] = true; // 상자 seat 는 N/S 마진 행.
     } else {
-      // side === "E"
-      if (p.depth === ctx.maxDepth) {
-        marginNeeds.E = true;
-        assignments.push({ id: p.id, role: p.role, exitEdge: "E", host: { kind: "margin", edge: "E" } });
-      } else {
-        // 오른쪽 채널 — 모듈이 그 채널의 서쪽 열이므로 W벽에서 진입.
-        assignments.push(toChannel(p, p.depth + 1, nearerNS(p.anchorY, gy), "W"));
-      }
+      marginNeeds[chosen.exitEdge] = true;
     }
+
+    assignments.push({
+      id: p.id,
+      role: p.role,
+      options,
+      exitEdge: chosen.exitEdge,
+      host: chosen.host,
+      interval: chosen.interval,
+      entry: chosen.entry,
+    });
   }
 
   return { assignments, channelLaneIntervals, marginNeeds };

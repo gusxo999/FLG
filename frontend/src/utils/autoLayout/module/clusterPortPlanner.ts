@@ -99,6 +99,27 @@ export interface PortPlannerInput {
    * 열의 끝 + 전역 마진 방향)은 호출자 책임. 미지정=기존 동작(W/E 만).
    */
   nsFaces?: ("N" | "S")[];
+  /**
+   * **면당 슬롯 수** — 그 면에 줄을 몇 개 세울 수 있나. 주면 아래 "탭 인서팅" 대신
+   * 이 수를 쓴다(용어: docs/용어사전.md §D).
+   *
+   * 두 모델이 있고, 세는 대상이 다르다:
+   *
+   *  - **탭 인서팅**(Tap Inserting, 미지정 = 기존 동작): 면을 belt 한 줄이 세로로 훑고
+   *    머신들이 그 belt 를 인서터로 탭한다. 그래서 한 면이 품는 줄 수 = **인서터 종류 수**
+   *    (일반=가까운 레인, 긴팔=먼 레인) → 최대 2. `caps` 에서 유도([laneSlots]).
+   *
+   *  - **다이렉트 인서팅**(Direct Inserting, 1:1, 트렁크 비활성): belt 가 없다. 머신
+   *    둘레 칸마다 `[인서터][상자]` 를 따로 세우므로 한 면이 품는 줄 수 = **그 면의
+   *    둘레 칸 수**(W/E=머신 높이, N/S=머신 폭) → 3×3 머신이면 3. depth 는 늘 2
+   *    (인서터 1 + 상자 1), 인서터는 늘 일반.
+   *
+   * 탭 인서팅을 1:1 에 그대로 쓰면 **면 용량을 3이 아니라 2로 세어** 세 번째 입력이
+   * 출력면(W)으로 넘친다. 그 포트는 부모 반대편에 태어나 홉이 모듈을 빙 돌아야 하고,
+   * 그 우회 belt 가 반출 레인을 가로질러 끊는다 — 채널 장부가 손도 못 대는 곳에서
+   * 파이프라인이 무너진다.
+   */
+  slotsPerFace?: { WE: number; NS: number };
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -107,8 +128,8 @@ export type PortPlan =
   | { ok: false; complex: true; reason: string };
 
 /**
- * 면당 belt 레인 — 인서터 능력으로 결정. 가까운 레인(2칸, 일반) + 먼 레인(3칸, 긴팔).
- * 긴팔은 거리 1을 못 집어 가까운 레인은 일반 전용, 먼 레인은 긴팔 전용.
+ * 탭 인서팅(Tap Inserting)의 면당 belt 레인 — 인서터 능력으로 결정. 가까운 레인(2칸, 일반)
+ * + 먼 레인(3칸, 긴팔). 긴팔은 거리 1을 못 집어 가까운 레인은 일반 전용, 먼 레인은 긴팔 전용.
  * 합계 슬롯 수(= 2면 × 레인수)는 `columnTapCapacity` 와 정확히 일치한다.
  */
 function laneSlots(caps: PortPlannerCaps): { depth: number; inserter: InserterRole }[] {
@@ -134,15 +155,26 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   if (lines.length === 0) return { ok: true, lines: [] };
 
   const lanes = laneSlots(caps);
-  if (lanes.length === 0) {
+  if (!input.slotsPerFace && lanes.length === 0) {
     return { ok: false, complex: true, reason: "no-inserter" };
   }
 
-  // 면별 슬롯 풀(near→far). 각 면 = lanes.length 슬롯.
+  // 면별 슬롯 풀. 탭 인서팅 = near→far(인서터 종류당 1). 다이렉트 인서팅 = 그 면의 둘레
+  // 칸 수만큼 똑같은 슬롯(depth 2 = 인서터 1 + 상자 1, 일반 인서터) — 1:1 은 레인이 없어
+  // depth 가 안 자란다.
   const outputSide = input.outputSide;
   const inputSide: PortSide = outputSide === "W" ? "E" : "W";
   type Slot = { side: PlannedSide; depth: number; inserter: InserterRole };
-  const slotsOf = (side: PlannedSide): Slot[] => lanes.map((lane) => ({ side, ...lane }));
+  const rim = input.slotsPerFace;
+  const slotsOf = (side: PlannedSide): Slot[] => {
+    if (!rim) return lanes.map((lane) => ({ side, ...lane }));
+    const n = side === "W" || side === "E" ? rim.WE : rim.NS;
+    return Array.from({ length: Math.max(0, n) }, () => ({
+      side,
+      depth: 2,
+      inserter: "normal" as InserterRole,
+    }));
+  };
   const outPool = slotsOf(outputSide); // 출력 우선 면(부모 쪽)
   const inPool = slotsOf(inputSide); // 입력 우선 면(자식 쪽)
   // 노출 끝면 풀 — external 입력 전용 완화. 용량 게이트엔 안 넣는다(N/S 는 W/E 로
@@ -198,4 +230,89 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   }
 
   return { ok: true, lines: lines.map((l) => assigned.get(l)!) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공급 방식 판정 — 탭 인서팅으로 합칠 수 있나, 아니면 다이렉트 인서팅으로 남기나
+// (docs/auto-layout-wizard.trunk-redesign.md §10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 트렁크 한 줄이 감당할 수 있는 양(items/sec). 미지정 항목은 무제한으로 본다. */
+export interface SupplyCapacity {
+  /** 벨트 한 줄의 초당 운반량. 이걸 넘는 품목은 한 줄로 못 나른다. */
+  beltCapacity?: number;
+  /** 인서터 하나(탭 하나)의 초당 처리량. 머신 한 대의 수요가 이걸 넘으면 못 먹인다. */
+  tapCapacity?: number;
+  /**
+   * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
+   * 미지정이면 용량 게이트는 **건너뛴다** — 없는 숫자를 지어내지 않는다(레인 게이트만 적용).
+   */
+  lineRates?: Map<string, number>;
+}
+
+/** 공급 방식 판정 결과. `plan` 은 그 방식으로 배정한 슬롯이다. */
+export interface SupplyDecision {
+  /** "tap" = 벨트 한 줄 + 머신별 탭. "direct" = 머신마다 상자+인서터(1:1). */
+  mode: "tap" | "direct";
+  /** direct 로 떨어진 사유(진단·계측용). mode==="tap" 이면 undefined. */
+  reason?: string;
+  plan: PortPlan;
+}
+
+/** 품목 하나가 트렁크 한 줄로 성립하는지 — 안 되면 사유를 낸다. */
+function trunkRejectReason(
+  line: IoLine,
+  machineCount: number,
+  cap: SupplyCapacity,
+): string | undefined {
+  const rate = cap.lineRates?.get(`${line.role}:${line.name}`);
+  if (rate === undefined) return undefined; // 수치 없음 → 판정 보류(게이트 미적용)
+  if (cap.beltCapacity !== undefined && rate > cap.beltCapacity) {
+    // 한 줄로 못 나른다. v1 은 거절(→1:1). 후속에서 ceil(rate÷beltCap) 로 줄을 쪼갠다.
+    return `demand>beltCap (${line.name})`;
+  }
+  if (cap.tapCapacity !== undefined && machineCount > 0 && rate / machineCount > cap.tapCapacity) {
+    // 머신 한 대가 자기 몫을 인서터 하나로 못 받는다 — 탭을 늘려야 하는데 v1 은 탭 1개/머신.
+    return `perMachine>tapCap (${line.name})`;
+  }
+  return undefined;
+}
+
+/**
+ * **이 클러스터를 트렁크로 합칠 수 있는가**를 판정하고, 되는 쪽의 슬롯 배정을 함께 낸다.
+ *
+ * 두 관문을 차례로 통과해야 "tap" 이다:
+ *
+ *  1. **레인 관문** — 탭 인서팅의 면 용량(면당 인서터 종류 수, 최대 2 × 2면 = 4)에 줄이
+ *     다 들어가나. 안 들어가면 `planClusterPorts` 가 `complex` 를 낸다.
+ *  2. **용량 관문** — 품목마다: 클러스터 전체 수요가 벨트 한 줄을 넘지 않고, 머신 한 대의
+ *     몫이 인서터 하나를 넘지 않는가([SupplyCapacity.lineRates] 가 있을 때만 검사).
+ *
+ * 하나라도 걸리면 **모듈 전체가 다이렉트 인서팅으로 물러난다**(v1 결정, §10.4-1).
+ * 부분 병합(한 면은 트렁크, 다른 면은 1:1)은 같은 면에서 벨트와 상자가 자리를 다투므로
+ * 보류했다 — 되돌아갈 곳(1:1)이 **항상 유효**하다는 게 이 설계의 안전망이다(§2-②).
+ */
+export function planClusterSupply(
+  input: PortPlannerInput & { slotsPerFace: { WE: number; NS: number } },
+  machineCount: number,
+  capacity: SupplyCapacity = {},
+): SupplyDecision {
+  const direct = (reason: string): SupplyDecision => ({
+    mode: "direct",
+    reason,
+    plan: planClusterPorts(input), // slotsPerFace 있음 = 다이렉트 인서팅
+  });
+
+  // 1. 레인 관문 — slotsPerFace 를 빼면 탭 인서팅(면당 인서터 종류 수).
+  const { slotsPerFace: _drop, ...tapInput } = input;
+  const tapPlan = planClusterPorts(tapInput);
+  if (!tapPlan.ok) return direct(`lane: ${tapPlan.reason}`);
+
+  // 2. 용량 관문 — 품목마다.
+  for (const line of input.lines) {
+    const why = trunkRejectReason(line, machineCount, capacity);
+    if (why) return direct(`capacity: ${why}`);
+  }
+
+  return { mode: "tap", plan: tapPlan };
 }

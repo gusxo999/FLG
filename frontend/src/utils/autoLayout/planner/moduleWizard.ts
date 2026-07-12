@@ -107,6 +107,12 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     reservePerimeterLanes: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
     channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
+    // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeModuleHops 의
+    // maxJump 산식과 같아야 한다** — 지하벨트 prototype 이 없으면 방출기는 어차피 지상
+    // 전용이므로, 장부도 0(지하 불가)으로 봐야 계획과 방출이 어긋나지 않는다.
+    beltMaxUndergroundDistance: options.undergroundBeltEntityName
+      ? options.beltMaxUndergroundDistance
+      : 0,
   };
 
   const pack = packModuleTree(specs, packConfig);

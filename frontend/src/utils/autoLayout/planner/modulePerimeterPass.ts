@@ -1,4 +1,4 @@
-/**
+﻿/**
  * modulePerimeterPass — 합성 후처리(조각 6-C). 모듈 트리를 전부 배치한 뒤, **살아남은
  * 외부상자**(raw 입력 + 루트 출력)를 각자의 *로컬* 모듈 ring 에서 **조립된 블루프린트의
  * 전역 perimeter** 로 옮긴다.
@@ -36,7 +36,7 @@
 
 import type { ModulePort } from "../module/clusterModule";
 import type { Container, PlacedCell, PortPair } from "../containerModel";
-import { cellKey, faceVector, vectorToDirection } from "../util/helper";
+import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell } from "../util/cellBuilder";
 import { moduleExtent, type PackResult } from "./modulePacking";
 import type { LaneAssignment } from "./perimeterLanePlanner";
@@ -149,9 +149,10 @@ function unionBounds(pack: PackResult): { minX: number; minY: number; maxX: numb
   return { minX, minY, maxX, maxY };
 }
 
-/** 전역 union 을 한 줄 바깥으로 확장한 perimeter 사각형(seat 이 앉는 변). */
+/** 전역 union 을 [PERIMETER_MARGIN] 칸 바깥으로 확장한 perimeter 사각형(상자가 앉는 변). */
 function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number }): Rect {
-  return { minX: u.minX - 1, minY: u.minY - 1, maxX: u.maxX + 1, maxY: u.maxY + 1 };
+  const m = PERIMETER_MARGIN;
+  return { minX: u.minX - m, minY: u.minY - m, maxX: u.maxX + m, maxY: u.maxY + m };
 }
 
 /**
@@ -203,41 +204,42 @@ export function relocateChestsToPerimeter(
 
     const fv = faceVector(port.face);
     const anchor = { x: port.anchor.x, y: port.anchor.y };
-    // 안쪽 방향(트렁크쪽) = −fv. 트렁크 헤드(tapAnchor) = anchor − 2·fv, 그 사이 셀 = anchor − fv.
-    const trunkNeighbor = { x: anchor.x - 2 * fv.x, y: anchor.y - 2 * fv.y };
-    // p0 = anchor−fv(옛 feeder 자리, 트렁크에 붙음). anchor(옛 chest 자리)와 함께 비워 belt 로 재사용.
-    const p0 = { x: anchor.x - fv.x, y: anchor.y - fv.y };
+    // seat = anchor−fv = **머신에 물건을 넣는(빼는) 인서터**. 1:1 방출에선 이게 유일한
+    // 투입 수단이라 **절대 덮으면 안 된다**(덮으면 머신이 굶는다). 옛 트렁크 시절엔 이
+    // 자리를 belt 로 재사용했지만, 이제는 anchor(옛 상자 자리) 하나만 비워 belt 로 쓴다.
+    const seat = { x: anchor.x - fv.x, y: anchor.y - fv.y };
 
-    // 순수 라우터로 anchor→perimeter 경로 산정(lanePlan 배정을 hint 로 재현).
-    let res = routePortToPerimeter({
+    // 예약 배정을 **그대로 재생**한다(탐색 없음).
+    //
+    // 여기서 탐색 폴백을 두지 않는 것이 핵심이다. 예약은 [ModulePort.moduleWayOuts] 로
+    // "모듈 몸통에 안 막히는 방향"만 골라 배정하고([perimeterLanePlanner]), 채널 구간은
+    // 장부가 비워두므로 — **예약된 경로는 항상 방출 가능**해야 한다(예약 철학).
+    // 따라서 실패는 "탐색으로 우회할 일"이 아니라 **예약 불변식이 깨졌다는 신호**다.
+    // 가짜 물류를 만드느니 그 상자만 skip 해 로컬 ring 에 남기고(회귀 0), 사유를 남긴다.
+    const res = routePortToPerimeter({
       anchor,
       face: port.face,
       perimeter,
       obstacles: occ,
       hint: { exitEdge: asg.exitEdge, host: asg.host, laneX: asg.laneX },
     });
-    // 예약 배정이 막힌 경우(예: 코너 어깨 상자 face=N/S 의 채널 우회가 자기 트렁크를
-    // 관통 — planPerimeterLanes 는 좌표 확정 전이라 이를 못 봄) occ 를 실제로 보는 auto
-    // 탐색으로 폴백한다. auto 는 face 변 직진을 먼저 시도하므로 대개 뚫린 face 로 나간다.
-    // 홉의 dijkstra 최후폴백과 대칭 — skip 을 재배치로만 바꾸고(occ 검사라 겹침 0) 기존
-    // 재배치는 건드리지 않는다. 그래도 막히면 skip(로컬 ring 유지, 회귀 0).
-    if (!res.ok) {
-      res = routePortToPerimeter({ anchor, face: port.face, perimeter, obstacles: occ });
-    }
-    if (!res.ok) { fail(port.chest.id, res.reason); continue; }
+    if (!res.ok) { fail(port.chest.id, `reservation not emittable: ${res.reason}`); continue; }
 
-    // layPath 입력 = [p0, anchor, ...외곽경로]. p0/anchor 는 비운 자리(검사 제외됨).
-    const path = [p0, anchor, ...res.path];
+    // layPath 입력 = [anchor, ...외곽경로]. anchor(옛 상자 자리)만 비운다 — seat 인서터는
+    // 남아서 이 자리에 깔릴 belt 에서 집어 머신에 넣는다(픽업 셀 불변).
+    // 벨트가 최소 1칸은 있어야 인서터가 집을 대상이 belt 다(길이 2 미만이면 anchor 가
+    // feeder 로 덮여 인서터가 인서터를 집게 된다) → 그런 배정은 예약 위반으로 skip.
+    if (res.path.length < 2) { fail(port.chest.id, `perimeter too close (${res.path.length})`); continue; }
+    const path = [anchor, ...res.path];
 
     const isInput = port.line.role === "input";
-    const { belts, feeder, chestCell } = layPath(path, trunkNeighbor, isInput, port.chest, config);
+    const { belts, feeder, chestCell } = layPath(path, seat, isInput, port.chest, config);
 
     // ── 설명 축적(모듈 그래프 미변형) ──
     // 옛 chest ghost(@anchor)·feeder(@anchor−fv) 는 떼어낼 좌표로, 새 belt/feeder/chest 셀은
     // 놓을 셀로, 상자 새 위치·belt 는 relocation 으로 반환한다. occ 는 로컬로만 갱신해
     // 뒤 상자가 앞 상자의 belt 를 피하게 한다(결정성).
-    droppedCellKeys.add(cellKey(anchor.x, anchor.y));
-    droppedCellKeys.add(cellKey(p0.x, p0.y));
+    droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost 만. seat 인서터는 유지.
     addedCells.push(...belts, feeder, chestCell);
     for (const b of belts) occ.add(cellKey(b.x, b.y));
     occ.add(cellKey(feeder.x, feeder.y));
@@ -253,3 +255,4 @@ export function relocateChestsToPerimeter(
 
   return { ok: true, relocated, skipped, reason: lastReason, droppedCellKeys, addedCells, relocations };
 }
+

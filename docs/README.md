@@ -28,12 +28,16 @@ tags: [moc]
 | [.placement-search](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(현재=S-LAYER) | `#placement` `#routing` |
 | [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ S-LAYER 의 레이어 간 라우팅 채널 예약 | `#placement` `#routing` |
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
+| [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[진행]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
+| [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | ↳ **[계획]** 1:1 의 채널 예약 결함(지상 배정 all-or-nothing)과 수리 계획 + 지하 실패 시각화 — 트렁크 복귀로 긴급성 하락 | `#placement` `#routing` |
 | [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
 | [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | ↳ 배치·라우팅 순서 결정점 등록부 (부모=placement-search) | `#placement` `#routing` |
 | [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) | ↳ count=1 raw 입력의 노출 N/S 면 슬롯 (E→N/S→W, W-spill 갇힘 원인 치료) | `#placement` `#routing` |
+| [.module-way-outs](auto-layout-wizard.module-way-outs.md) | ↳ **moduleWayOuts** — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다. 예약이 막힌 방향을 안 잡게 해 탐색 폴백 제거 + 폭 낭비 제거 | `#placement` `#routing` |
 | [.control-behavior-scope](auto-layout-wizard.control-behavior-scope.md) | ↳ 추적하는 ControlBehavior 필드 범위 | `#blueprint` |
 | [.visualization-trace](auto-layout-wizard.visualization-trace.md) | ↳ 후보 생성 시각화 트레이스 체크포인트 (`emit` 마커 규칙) | `#visualization` |
+| [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | ↳ **계측기** — 같은 트리를 같은 자로 재는 도구 + 1:1 기준선 수치. 갈아타기 판정은 면적 아닌 "실패 0 + 채널 폭" | `#auto-layout` |
 | [.code-folders](auto-layout-wizard.code-folders.md) | ↳ 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`

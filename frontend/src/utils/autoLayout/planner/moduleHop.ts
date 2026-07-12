@@ -1,4 +1,4 @@
-/**
+﻿/**
  * moduleHop — 모듈 간 홉 (조각 4, 순수·무상자 belt-to-belt).
  *
  * 단일 출처: 본 설계안(모듈 출력 경계 / ⑤ 핸드오프 = 벨트-투-벨트 무상자).
@@ -104,6 +104,17 @@ function portGeometry(port: ModulePort): {
   return { chest, seat, trunkStart };
 }
 
+/** p 가 축정렬 구간 a→b 위에 있나(양끝 포함). */
+function onSegment(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  p: { x: number; y: number },
+): boolean {
+  if (a.x === b.x && p.x === a.x) return (p.y - a.y) * (p.y - b.y) <= 0;
+  if (a.y === b.y && p.y === a.y) return (p.x - a.x) * (p.x - b.x) <= 0;
+  return false;
+}
+
 /** makeBeltCell 의 entityId 생성용 최소 PortPair. */
 function synthPair(producerId: string, consumerId: string): PortPair {
   const port = (containerId: string): ContainerPort => ({
@@ -134,6 +145,12 @@ function buildOccupancy(pack: PackResult): Set<string> {
  */
 export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopResult {
   const base = buildOccupancy(pack);
+  // 탐색 경계 — 전체 배치 bbox(반출 마진 포함). 홉은 배치 안에서 끝나므로 밖으로 나갈
+  // 이유가 없고, 안 가두면 막힌 폴백이 무한 격자를 훑다 터진다.
+  const bounds = {
+    x0: pack.bbox.x, y0: pack.bbox.y,
+    x1: pack.bbox.x + pack.bbox.w - 1, y1: pack.bbox.y + pack.bbox.h - 1,
+  };
   const hopBelts = new Set<string>(); // 이미 깐 홉 belt(지하 입/출구 포함)
   const cells: PlacedCell[] = [];
   const corridors: UndergroundCorridor[] = []; // 홉 간 누적 — 같은 직선 위 페어링 절단 방지
@@ -160,7 +177,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   const plannedChains = new Map<string, DijkstraResult>();
   if (geo) {
     for (const hop of pack.hops) {
-      const k = hopKey(hop.fromId, hop.toId, hop.item);
+      const k = hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
       const g = geo.hops.get(k);
       if (!g) continue;
       if (g.kind === "undergroundCrossing" && maxJump < 2) continue; // 지하 미허용 — dijkstra 로
@@ -173,7 +190,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     reservedHop.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
 
   for (const hop of pack.hops) {
-    const k = hopKey(hop.fromId, hop.toId, hop.item);
+    const k = hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
     const chain = plannedChains.get(k);
     let route: HopRoute;
     if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop)) {
@@ -184,11 +201,11 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
       // 다른 예약 자리(반출 lane + 다른 계획 홉)는 dijkstra 도 침범 금지.
       const extra = new Set<string>(reservedExport);
       for (const [k2, cells] of reservedHop) if (k2 !== k) for (const c of cells) extra.add(c);
-      route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, extra);
+      route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, bounds, extra);
       if (!route.ok && extra.size > 0) {
         // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(홉 실패 = 트리 전체
         // 폴백이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
-        route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config);
+        route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, bounds);
       }
     }
     routes.push(route);
@@ -209,16 +226,18 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures };
 }
 
-/** 한 홉이 떼는 셀 좌표 — 양끝 chest(ghost) + 양끝 seat(인서터). */
+/**
+ * 한 홉이 떼는 셀 좌표 — **양끝 chest(ghost) 뿐.** 인서터(seat)는 **남긴다.**
+ *
+ * 1:1 방출(트렁크 비활성)에서 포트는 `[상자][인서터][머신]` 두 칸이다. 그 인서터가
+ * **머신에 재료를 넣는 유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔면
+ * 인서터는 그 belt 에서 집어(픽업 셀 = 상자 자리 = 그대로) 머신에 넣는다 — 픽업 방향이
+ * 바뀌지 않으므로 인서터를 그대로 두면 된다.
+ */
 function stripKeys(hop: HopSpec): string[] {
   const g0 = portGeometry(hop.from);
   const g1 = portGeometry(hop.to);
-  return [
-    cellKey(g0.chest.x, g0.chest.y),
-    cellKey(g0.seat.x, g0.seat.y),
-    cellKey(g1.chest.x, g1.chest.y),
-    cellKey(g1.seat.x, g1.seat.y),
-  ];
+  return [cellKey(g0.chest.x, g0.chest.y), cellKey(g1.chest.x, g1.chest.y)];
 }
 
 function routeOneHop(
@@ -229,6 +248,13 @@ function routeOneHop(
   maxJump: number,
   blockGroup: string,
   config: HopConfig,
+  /**
+   * 탐색 경계 = 전체 배치 bbox(마진 포함). **없으면 dijkstra 가 무한 격자로 새어나가
+   * 폭주한다** — 1:1 방출로 홉이 머신 수만큼 늘고 예약 셀이 길을 좁히면, 막힌 폴백이
+   * 바깥으로 끝없이 우회하며 Map 이 터진다(실측: count 4/4/2 에서 46초 후 OOM).
+   * 홉은 정의상 배치 안에서 끝나므로 여기에 가둔다.
+   */
+  bounds: { x0: number; y0: number; x1: number; y1: number },
   extraBlocked?: ReadonlySet<string>,
 ): HopRoute {
   const from = portGeometry(hop.from); // 자식 출력(collect)
@@ -259,6 +285,7 @@ function routeOneHop(
     // 향해 아이템이 다른 칸으로 샘 = 누수).
     requiredStartJump: { dx: fvFrom.x, dy: fvFrom.y },
     requiredEndJump: { dx: -fvTo.x, dy: -fvTo.y },
+    bounds,
   });
   if (!result) {
     return { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-path" };
@@ -272,17 +299,12 @@ function routeOneHop(
  * dijkstra 결과와 기하 예약의 결정적 체인이 같은 꼬리를 탄다(단일 출처).
  */
 function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): HopRoute {
-  const from = portGeometry(hop.from);
-  const to = portGeometry(hop.to);
   const fvTo = faceVector(hop.to.face);
 
-  // 새 체인: seat_from → [경로 셀들(chest_from..chest_to)] → seat_to. 양 끝 이음매는
-  // 정의상 surface(seat↔chest 는 인접 1칸)라 edge 'surface' 로 붙인다.
-  const ext: DijkstraResult = {
-    cells: [from.seat, ...result.cells, to.seat],
-    edges: ["surface", ...result.edges, "surface"],
-    cost: result.cost,
-  };
+  // 체인 = chest_from … chest_to 그대로. seat(인서터)은 양끝에 **그대로 남아** 있으므로
+  // 벨트로 덮지 않는다 — 출력 인서터가 chest_from 자리 belt 에 놓고, 입력 인서터가
+  // chest_to 자리 belt 에서 집어 머신에 넣는다.
+  const ext: DijkstraResult = result;
 
   // INVARIANT: 체인은 텔레포트하지 않는다 — surface edge 는 인접 1칸, jump edge 는
   // 축 정렬 + 거리 k 여야 한다. emitItemPath 는 edge 를 신뢰하므로 어긋난 결과를
@@ -320,7 +342,7 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
 /**
  * 기하 예약의 방출 지시 → 결정적 체인(chest_from..chest_to, 탐색 없음).
  * 계단꼴 = 가로 진입·세로 주행·가로 진출, 열 갈아타기 = 중간 트랙 변경 1회,
- * 지하 횡단 = 절단선(반출 트랙) 셀 하나를 점프(k=2)로 건너뜀.
+ * 지하 횡단 = 계단꼴 + 남의 셀 밑을 건너는 점프 여러 개.
  * 축 정렬이 깨진 지시(예: straight 인데 행이 다름)는 null — 호출자가 dijkstra 폴백.
  */
 function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null {
@@ -334,18 +356,6 @@ function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null 
       cells.push(c);
       edges.push("surface");
     }
-  };
-  // 지하 횡단(가로) — (crossX+1) → (crossX-1), 서쪽 진행(자식 E → 부모 W) 점프.
-  const jumpWest = (row: number, crossX: number) => {
-    push({ x: crossX + 1, y: row });
-    cells.push({ x: crossX - 1, y: row });
-    edges.push({ dx: -1, dy: 0, k: 2 });
-  };
-  // 지하 횡단(세로) — 세로 주행 도중 crossRow 를 진행 방향(dir)으로 점프.
-  const jumpVertical = (col: number, crossRow: number, dir: 1 | -1) => {
-    push({ x: col, y: crossRow - dir });
-    cells.push({ x: col, y: crossRow + dir });
-    edges.push({ dx: 0, dy: dir, k: 2 });
   };
 
   switch (g.kind) {
@@ -365,25 +375,38 @@ function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null 
       push({ x: g.endTrackX, y: e.y });
       push(e);
       break;
-    case "undergroundCrossing":
-      if (g.axis === "row") {
-        // 세로 주행 도중 반출의 가로 진입 행(crossRow)을 세로 점프.
-        if (!(Math.min(s.y, e.y) < g.crossRow && g.crossRow < Math.max(s.y, e.y))) return null;
-        push({ x: g.trackX, y: s.y });
-        jumpVertical(g.trackX, g.crossRow, e.y > s.y ? 1 : -1);
-        push({ x: g.trackX, y: e.y });
-      } else if (g.crossRow === s.y) {
-        // 가로 진입 도중 반출의 세로 주행 열(crossX)을 가로 점프.
-        jumpWest(s.y, g.crossX);
-        push({ x: g.trackX, y: s.y });
-        push({ x: g.trackX, y: e.y });
-      } else {
-        push({ x: g.trackX, y: s.y });
-        push({ x: g.trackX, y: e.y });
-        jumpWest(e.y, g.crossX);
-      }
-      push(e);
+    case "undergroundCrossing": {
+      // 계단꼴의 세 꼭짓점을 순서대로 걷되, 점프 입구를 만나면 지상 대신 지하로 건넌다.
+      // 장부가 낸 점프는 계단꼴 위에 순서대로 놓여 있으므로(같은 셀 순서열에서 뽑았다)
+      // 여기서 재정렬하지 않는다 — 어긋나면 아래 연속성 검증이 잡아 폴백시킨다.
+      const corners = [
+        { x: g.trackX, y: s.y },
+        { x: g.trackX, y: e.y },
+        { ...e },
+      ];
+      const jumps = [...g.jumps];
+      const walkTo = (target: { x: number; y: number }) => {
+        for (;;) {
+          const cur = cells[cells.length - 1];
+          const j = jumps[0];
+          // 이 구간(cur→target) 위에서 지하 입구를 만나나?
+          if (j && onSegment(cur, target, j.from)) {
+            push(j.from);
+            cells.push({ ...j.to });
+            const dx = Math.sign(j.to.x - j.from.x);
+            const dy = Math.sign(j.to.y - j.from.y);
+            edges.push({ dx, dy, k: Math.abs(j.to.x - j.from.x) + Math.abs(j.to.y - j.from.y) });
+            jumps.shift();
+            continue; // 같은 구간에 점프가 또 있을 수 있다
+          }
+          push(target);
+          return;
+        }
+      };
+      for (const c of corners) walkTo(c);
+      if (jumps.length > 0) return null; // 다 못 쓴 점프 = 계단꼴 위에 없던 지시 → 폐기
       break;
+    }
   }
 
   // segment() 는 축 정렬 입력만 안전 — 연속성 검증에 실패한 지시는 폐기(폴백).

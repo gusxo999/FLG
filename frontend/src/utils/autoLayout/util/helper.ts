@@ -58,6 +58,26 @@ export function segment(
 export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
 
 /**
+ * 전역 외곽(perimeter)이 모듈 union 에서 몇 칸 바깥인가 — **반출 상자가 앉는 변까지의 거리.**
+ *
+ * 반출 체인은 모듈 경계에서 바깥으로 이렇게 간다:
+ *
+ *     [머신][인서터][anchor=벨트] … [인서터][상자]
+ *                    ↑ 옛 상자 자리      ↑ 마진        ↑ 외곽 변
+ *
+ * anchor(옛 상자 자리)는 모듈 extent 의 가장자리이고, 거기서 **벨트 → 인서터 → 상자** 로
+ * 최소 두 칸이 더 필요하다. 그래서 2.
+ *
+ * 옛 트렁크 시절엔 1이었다 — 그땐 anchor 안쪽의 feeder 인서터 자리를 벨트로 **재활용**해
+ * 한 칸을 벌었기 때문이다. 1:1 에선 그 자리에 **머신을 먹이는 인서터**가 앉아 있어 덮을 수
+ * 없다(덮으면 머신이 굶는다) → 한 칸을 바깥에서 돌려받아야 한다.
+ *
+ * **세 곳이 이 값을 공유해야 한다**(어긋나면 예약과 방출이 다른 변을 가리킨다):
+ * modulePacking 의 `expandBbox`·`seatRow/seatCol`, modulePerimeterPass 의 `perimeterOf`.
+ */
+export const PERIMETER_MARGIN = 2;
+
+/**
  * bbox 바깥 minRadius~maxRadius 칸 전체 외부 영역의 셀 좌표 목록.
  * 각 반경(ring)을 시계 방향 N → E → S → W 로 열거한다.
  * wrapExternalsAroundPerimeter 가 머신 기준 manhattan 거리로 재정렬하므로

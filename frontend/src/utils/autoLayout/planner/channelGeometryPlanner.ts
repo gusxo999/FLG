@@ -59,10 +59,38 @@ export interface GeometryContext {
   /** 전역 모듈 밴드(abs y) — 반출 세로 주행이 이 밖(±1 = perimeter seat 행)까지 달린다. */
   yMin: number;
   yMax: number;
+  /**
+   * 지하벨트 점프 거리 상한(입구↔출구 셀 거리). 0(기본) = 지하 불가 = 지상만.
+   *
+   * **납품 경로에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
+   * 지하로 도망갈 수 없다 — 그래서 반출이 **제약이 센 쪽**이고, 배정에서 먼저 자리를
+   * 잡는다(제약 센 것부터). 납품은 [moduleHop] 이 지하벨트를 방출할 수 있어 막히면
+   * 밑으로 건널 수 있다.
+   */
+  maxJump?: number;
   /** 폭만 예약할 잔여 세로 구간(부적격 홉·미지원 반출 등) — trackCount 에만 반영. */
   reserveIntervals?: Interval[];
-  /** 트랙 수 상한. 기본 8. */
+  /**
+   * 트랙 수 상한. 미지정이면 **경로 수**에서 유도한다(아래 planChannelGeometry).
+   *
+   * 옛 상한 8은 트렁크 시절의 값이다 — 품목당 포트가 하나뿐이라 한 채널을 지나는 경로가
+   * 품목 수(≤ 몇 개)였다. 1:1 에선 포트가 (머신 × 품목) 이라 한 채널에 경로가 수십 개
+   * 들어올 수 있고, 상한에 걸린 경로는 전부 fallback → dijkstra 로 떨어져 채널 밖을 돌다
+   * 반출 레인을 끊는다. 최악의 경우 경로마다 자기 트랙이 필요하므로 상한 = 경로 수면 족하다.
+   */
   trackCap?: number;
+}
+
+/**
+ * 지하 점프 하나 — `from`(지하 입구)에서 `to`(지하 출구)까지, **그 사이 셀들 밑으로** 간다.
+ * 두 셀은 축이 같고(같은 행 또는 같은 열) 둘 다 **지상 belt** 다. 거리 = |Δ| ≥ 2.
+ * 좌표계는 계획과 같은 추상 (열, 행) — 열 = 트랙 index, 행 = abs y.
+ */
+export interface Jump {
+  fromCol: number;
+  fromRow: number;
+  toCol: number;
+  toRow: number;
 }
 
 export type DeliveryPlan =
@@ -71,15 +99,22 @@ export type DeliveryPlan =
   | { kind: "columnSwitch"; startTrack: number; switchY: number; endTrack: number }
   | {
       /**
-       * 절단선 밑 지하 횡단 — 계단꼴이되 절단선과 만나는 셀 하나를 지하벨트로 건넌다.
-       * axis="col": 반출의 세로 주행(crossCol 열)을 crossRow 행에서 가로로 점프.
-       * axis="row": 반출의 가로 진입(crossRow 행)을 자기 트랙 위에서 세로로 점프.
+       * 지하 횡단 — 계단꼴이되, 길을 막는 **다른 경로의 셀들** 밑을 지하벨트로 건넌다.
+       *
+       * 왜 여러 개인가: 1:1 방출에서 납품 경로는 서로 **반드시 교차한다**. 부모 열 서쪽,
+       * 자식 둘(위·아래)이 동쪽인 채널을 생각해 보라 — 위 자식에서 아래 부모 머신으로
+       * 가는 벨트와, 아래 자식에서 위 부모 머신으로 가는 벨트는 채널 테두리 위에서 끝점이
+       * **엇갈려** 있다. 원판 안에서 끝점이 엇갈린 두 곡선은 반드시 만난다(Jordan). 즉
+       * 교차는 배정을 잘해서 없앨 수 있는 게 아니라 **기하학적으로 불가피**하고, 지상에서
+       * 벨트는 교차할 수 없으니 **지하가 유일한 답**이다. 채널을 지나는 납품이 늘수록
+       * 한 경로가 건너야 할 남의 세로선도 늘어난다 → 점프가 여러 개.
+       *
+       * 세로 주행(track)은 늘 지상이다 — 빈 트랙을 골랐기 때문. 점프는 가로선(진입·진출)
+       * 위에서 남의 세로선을 건너거나, 세로선 위에서 남의 가로선을 건널 때 생긴다.
        */
       kind: "undergroundCrossing";
       track: number;
-      axis: "col" | "row";
-      crossCol: number;
-      crossRow: number;
+      jumps: Jump[];
     }
   | { kind: "fallback"; reason: string };
 
@@ -129,9 +164,10 @@ interface Shape {
   v: VSeg[];
 }
 
-const DEFAULT_TRACK_CAP = 8;
+/** trackCap 미지정 시의 하한 — 경로가 적어도 이만큼의 트랙은 골라 쓸 수 있게. */
+const MIN_TRACK_CAP = 8;
 /** 백트래킹 탐색 노드 예산 — 소진 시 탐욕 단계로 넘어간다(결정적). */
-const SEARCH_BUDGET = 20000;
+const SEARCH_BUDGET = 200000;
 
 function hseg(row: number, a: number, b: number): HSeg {
   return { row, c1: Math.min(a, b), c2: Math.max(a, b) };
@@ -196,43 +232,153 @@ function elbowShape(x: ExportInput, track: number, exit: NsEdge, ctx: GeometryCo
   };
 }
 
-/**
- * 지하 횡단: 계단꼴이되 절단선과 만나는 셀 하나를 건너뛴다(그 셀은 반출 경로 소유).
- * axis="col" — 가로선이 crossCol 열을 건너뜀(반출 세로 주행 밑). 실제 점프가 성립하려면
- * 그 가로선이 crossCol 을 실제로 지나야 하며, 아니면 분할이 안 일어나 충돌로 기각된다.
- * axis="row" — 세로 주행이 crossRow 행을 건너뜀(반출 가로 진입 밑). 동일 원리.
- */
-function undergroundShape(
-  d: DeliveryInput,
-  track: number,
-  axis: "col" | "row",
-  crossCol: number,
-  crossRow: number,
-  capCol: number,
-): Shape {
+// ─────────────────────────────────────────────────────────────────────────────
+// 지하 횡단 — 막힌 셀 밑을 건너 계단꼴을 성립시킨다 (문서 §4.4 사다리 ②)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Cell {
+  col: number;
+  row: number;
+}
+
+/** 계단꼴을 **셀 순서열**로 편다: E벽 → 트랙(가로) → 세로 주행 → W벽(가로). 코너 중복 없음. */
+function staircaseCells(d: DeliveryInput, track: number, capCol: number): Cell[] {
+  const cells: Cell[] = [];
+  const push = (col: number, row: number) => {
+    const last = cells[cells.length - 1];
+    if (last && last.col === col && last.row === row) return;
+    cells.push({ col, row });
+  };
+  for (let c = capCol; c >= track; c--) push(c, d.startY); // 가로 진입(동→서)
+  const step = d.endY >= d.startY ? 1 : -1;
+  for (let r = d.startY; r !== d.endY + step; r += step) push(track, r); // 세로 주행
+  for (let c = track; c >= -1; c--) push(c, d.endY); // 가로 진출(→W벽)
+  return cells;
+}
+
+/** placedShapes 를 셀 집합으로 편다 — 점프 계산은 셀 단위라야 거리(k)가 정확하다. */
+function occupiedCells(shapes: ReadonlyArray<Shape>): Set<string> {
+  const occ = new Set<string>();
+  for (const s of shapes) {
+    for (const h of s.h) for (let c = h.c1; c <= h.c2; c++) occ.add(`${c},${h.row}`);
+    for (const v of s.v) for (let r = v.r1; r <= v.r2; r++) occ.add(`${v.col},${r}`);
+  }
+  return occ;
+}
+
+/** 지상에 남는 셀들(점프 구간 제외)을 축정렬 조각으로 되접어 Shape 으로. */
+function shapeFromCells(cells: ReadonlyArray<Cell>, underground: ReadonlyArray<boolean>): Shape {
   const s: Shape = { h: [], v: [] };
-  const pushH = (row: number, a: number, b: number) => {
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    if (axis === "col" && row === crossRow && lo < crossCol && crossCol < hi) {
-      s.h.push(hseg(row, lo, crossCol - 1), hseg(row, crossCol + 1, hi));
-    } else {
-      s.h.push(hseg(row, lo, hi));
+  let run: Cell[] = [];
+  const flush = () => {
+    let i = 0;
+    while (i < run.length) {
+      let j = i;
+      while (j + 1 < run.length && run[j + 1].row === run[i].row) j++;
+      if (j > i) {
+        s.h.push(hseg(run[i].row, run[i].col, run[j].col));
+        i = j;
+        continue;
+      }
+      let k = i;
+      while (k + 1 < run.length && run[k + 1].col === run[i].col) k++;
+      if (k > i) {
+        s.v.push(vseg(run[i].col, run[i].row, run[k].row));
+        i = k;
+        continue;
+      }
+      s.h.push(hseg(run[i].row, run[i].col, run[i].col)); // 외톨이 셀
+      i++;
     }
+    run = [];
   };
-  const pushV = (col: number, a: number, b: number) => {
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    if (axis === "row" && col === track && lo < crossRow && crossRow < hi) {
-      s.v.push(vseg(col, lo, crossRow - 1), vseg(col, crossRow + 1, hi));
-    } else {
-      s.v.push(vseg(col, lo, hi));
-    }
-  };
-  pushH(d.startY, track, capCol);
-  pushV(track, d.startY, d.endY);
-  pushH(d.endY, -1, track);
+  for (let i = 0; i < cells.length; i++) {
+    if (underground[i]) flush();
+    else run.push(cells[i]);
+  }
+  flush();
   return s;
+}
+
+/**
+ * 납품 하나를 **막힌 셀 밑을 건너서** 배치한다 — 지상 배정이 실패한 경로의 해법.
+ *
+ * 트랙을 오름차순으로 훑으며, 그 트랙의 계단꼴을 셀 순서열로 펴고 **막힌 구간마다 점프**를
+ * 만든다. 점프가 성립하려면:
+ *  - 세로 주행이 통째로 비어 있어야 한다(트랙은 지상 전용 — 몸통이 지하로 숨으면 다른
+ *    경로가 그 위를 지나가도 되는지 알 수 없다).
+ *  - 막힌 구간의 **양 끝 바깥 셀**(지하 입구·출구)이 비어 있어야 한다.
+ *  - 입구·출구가 **같은 축**이어야 한다 — 코너를 물면 지하벨트가 못 꺾어 기각.
+ *  - 거리가 지하벨트 한계(maxJump) 안이어야 한다.
+ *  - 체인 양 끝(상자 자리)은 점프로 못 덮는다.
+ */
+function placeWithJumps(
+  d: DeliveryInput,
+  placed: ReadonlyArray<Shape>,
+  cap: number,
+  capCol: number,
+  maxJump: number,
+): { track: number; jumps: Jump[]; shape: Shape } | null {
+  if (maxJump < 2) return null; // 지하벨트 없음 — 건널 방법이 없다.
+  const occ = occupiedCells(placed);
+  const free = (c: Cell) => !occ.has(`${c.col},${c.row}`);
+
+  const lo = Math.min(d.startY, d.endY);
+  const hi = Math.max(d.startY, d.endY);
+
+  for (let t = 0; t < cap; t++) {
+    // 세로 주행은 **지상 전용**이다 — 다른 세로선이 같은 트랙의 같은 행에 있으면 후보 탈락.
+    // (남의 *가로선* 이 내 세로선을 가로지르는 건 괜찮다 — 그건 아래 점프가 건넌다.)
+    const trackTaken = placed.some((p) => p.v.some((v) => v.col === t && v.r1 <= hi && lo <= v.r2));
+    if (trackTaken) continue;
+
+    const cells = staircaseCells(d, t, capCol);
+    const blocked = cells.map((c) => !free(c));
+    if (blocked[0] || blocked[cells.length - 1]) continue; // 상자 자리가 막힘
+
+    const jumps: Jump[] = [];
+    const underground = new Array(cells.length).fill(false);
+    let ok = true;
+    for (let i = 0; i < cells.length && ok; ) {
+      if (!blocked[i]) { i += 1; continue; }
+      // 지하 입구는 **지상 belt** 여야 한다. 셀 순서열의 첫 칸은 E벽 마진(capCol)이고,
+      // 그 열이 입구가 되면 절대 x 로 옮길 근거가 없다(capCol 은 가상 열이라 트랙처럼
+      // 1:1 로 대응되지 않는다) → 거부. 반대로 **마지막 칸(-1)은 진짜 채널 셀**이다
+      // (tx(-1) = 채널 첫 열). 상자는 그보다 한 칸 더 서쪽이라 순서열에 없다 — 그래서
+      // 출구가 -1 이어도 상자를 덮지 않는다. 여기를 막으면 "트랙 바로 서쪽이 막힌" 흔한
+      // 반출-납품 교차가 통째로 폴백으로 샌다.
+      if (i - 1 === 0) { ok = false; break; }
+
+      // 출구 자리 고르기. 지하벨트는 **위에 뭐가 있든 상관없이** 입구에서 출구까지
+      // 통째로 지나간다 — 그래서 막힌 칸만 딱 맞춰 건널 이유가 없고, 필요하면 빈 칸
+      // 밑으로도 지나간다. 출구는 두 조건을 만족하는 첫 칸이다:
+      //   ① 그 칸이 비어 있다(지상 belt 를 놓을 자리).
+      //   ② 바로 다음 칸이 막혀 있지 않다.
+      // ②가 없으면 이 점프의 **출구와 다음 점프의 입구가 같은 칸**이 된다 — 한 칸에
+      // 지하벨트 두 개는 못 놓는다. 그래서 "빈 칸 하나만 두고 또 막힌" 배치는 두 번
+      // 나눠 건너지 못하고 **한 번에 길게** 건넌다(그래서 아래 dist 가 자란다).
+      let e = i;
+      while (e < cells.length && (blocked[e] || (e + 1 < cells.length && blocked[e + 1]))) e += 1;
+      if (e >= cells.length) { ok = false; break; } // 끝까지 막힘 — 나갈 자리가 없다
+
+      const from = cells[i - 1];
+      const to = cells[e];
+      const straight = from.col === to.col || from.row === to.row;
+      const dist = Math.abs(to.col - from.col) + Math.abs(to.row - from.row);
+      // 코너를 물면 입구·출구가 축이 어긋나거나(straight 실패) 거리가 셀 수와 안 맞는다.
+      const spansCorner = dist !== e - i + 1;
+      if (!straight || spansCorner || dist > maxJump) { ok = false; break; }
+      jumps.push({ fromCol: from.col, fromRow: from.row, toCol: to.col, toRow: to.row });
+      for (let m = i; m < e; m++) underground[m] = true;
+      i = e;
+    }
+    if (!ok || jumps.length === 0) continue;
+
+    const shape = shapeFromCells(cells, underground);
+    if (conflictsAny(shape, placed)) continue; // 방어 — 위 판정이 놓친 겹침
+    return { track: t, jumps, shape };
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,8 +390,12 @@ export function planChannelGeometry(
   exportsIn: ReadonlyArray<ExportInput>,
   ctx: GeometryContext,
 ): ChannelGeometryPlan {
-  const cap = ctx.trackCap ?? DEFAULT_TRACK_CAP;
-  const capCol = cap; // E벽 마진의 추상 열 번호(트랙 index 는 항상 < cap)
+  // 경로마다 자기 트랙을 줘도 충분하다는 것이 상한의 근거(세로선은 트랙이 다르면 절대
+   // 안 겹친다). 폭은 여기서 안 정해진다 — 배정 결과(trackCount)에서 나온다(폭 역전).
+  const cap = ctx.trackCap ?? Math.max(MIN_TRACK_CAP, deliveriesIn.length + exportsIn.length);
+  // E벽 마진의 추상 열. **트랙보다 두 칸 위**에 둔다 — 그래야 "가장 동쪽 트랙"이 막혀도
+  // 지하 입구가 그 동쪽의 *실재하는* 채널 셀에 앉는다(capCol 자신은 가상 열이라 안 됨).
+  const capCol = cap + 1;
   const deliveries = [...deliveriesIn].sort((a, b) => a.id.localeCompare(b.id));
   const exports_ = [...exportsIn].sort((a, b) => a.id.localeCompare(b.id));
 
@@ -368,42 +518,29 @@ export function planChannelGeometry(
     }
   }
 
-  // ── ③ 지하 횡단(사다리 2단) — 가둔 반출의 확정 트랙 밑을 좌표 배정으로 건넌다 ──
+  // ── ③ 지하 횡단(사다리 2단) — 지상에 자리가 없는 납품은 막힌 셀 **밑으로** 건넌다 ──
+  //
+  // 지상 배정(②)이 못 앉힌 납품은 두 부류다: 반출의 절단선에 갇힌 것(①이 cutOff 로
+  // 표시), 그리고 **다른 납품과 교차하는 것**. 1:1 에선 후자가 압도적으로 많다 — 교차는
+  // 불가피하기 때문이다(DeliveryPlan.undergroundCrossing 주석의 Jordan 논증). 둘을 구분할
+  // 이유가 없다: 어느 쪽이든 "내 길을 막은 셀 밑을 건넌다"는 같은 해법이다.
+  //
+  // 반출은 여기 안 온다 — [perimeterRouter] 가 지상 belt 로만 깔아 지하로 못 도망간다.
+  // 그래서 반출이 ②에서 먼저 자리를 잡고, 납품이 그 밑을 건넌다(제약 센 것부터).
+  const maxJump = ctx.maxJump ?? 0;
   for (const d of deliveries) {
-    const xid = cutOff.get(d.id);
-    if (!xid) continue;
-    const xPlan = exportPlans.get(xid);
-    const x = exports_.find((e) => e.id === xid)!;
-    if (!xPlan || xPlan.kind !== "elbow") {
-      // 가둔 반출 자체가 fallback — 절단선이 확정되지 않았으니 납품도 dijkstra 로.
-      deliveryPlans.set(d.id, { kind: "fallback", reason: "cut-different-side" });
-      continue;
+    const cur = deliveryPlans.get(d.id);
+    if (cur && cur.kind !== "fallback") continue;
+    const res = placeWithJumps(d, placedShapes, cap, capCol, maxJump);
+    if (res) {
+      deliveryPlans.set(d.id, { kind: "undergroundCrossing", track: res.track, jumps: res.jumps });
+      placedShapes.push(res.shape);
+    } else {
+      deliveryPlans.set(d.id, {
+        kind: "fallback",
+        reason: cutOff.has(d.id) ? "cut-different-side" : "crossing-needs-underground",
+      });
     }
-    const inside = (wall: ChannelWall, y: number): boolean =>
-      wall === x.entryWall && (xPlan.exitEdge === "N" ? y <= x.entryY : y >= x.entryY);
-    // 갇힌 끝(안쪽 ①)의 가로선 행 — axis="col" 변형이 이 행에서 반출 세로 주행을 건넌다.
-    const trappedRow = inside("E", d.startY) ? d.startY : d.endY;
-    let planted = false;
-    for (let t = 0; t < cap && !planted; t++) {
-      // (a) 반출의 세로 주행(트랙 열)을 가로 점프 / (b) 반출의 가로 진입(접점 행)을 세로 점프.
-      // 어느 변형이 성립하는지는 트랙이 절단선의 어느 쪽이냐가 정한다 — 분할이 실제로
-      // 일어나지 않은 모양은 절단선 셀을 포함해 충돌 검사에서 저절로 기각된다.
-      const variants: { axis: "col" | "row"; crossCol: number; crossRow: number }[] = [
-        { axis: "col", crossCol: xPlan.track, crossRow: trappedRow },
-        { axis: "row", crossCol: t, crossRow: x.entryY },
-      ];
-      for (const vr of variants) {
-        if (vr.axis === "col" && t === vr.crossCol) continue;
-        const shape = undergroundShape(d, t, vr.axis, vr.crossCol, vr.crossRow, capCol);
-        if (!conflictsAny(shape, placedShapes)) {
-          deliveryPlans.set(d.id, { kind: "undergroundCrossing", track: t, axis: vr.axis, crossCol: vr.crossCol, crossRow: vr.crossRow });
-          placedShapes.push(shape);
-          planted = true;
-          break;
-        }
-      }
-    }
-    if (!planted) deliveryPlans.set(d.id, { kind: "fallback", reason: "cut-different-side" });
   }
 
   // ── ④ 폭 예약(phantom) — fallback 경로·잔여 구간도 세로 구간만큼 트랙을 확보해,

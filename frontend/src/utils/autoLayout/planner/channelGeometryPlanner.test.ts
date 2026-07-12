@@ -72,13 +72,19 @@ describe("planChannelGeometry — 지상 배정", () => {
       { id: "dB", startY: 8, endY: 9 },
     ];
     const exps: ExportInput[] = [{ id: "x", entryY: 5, entryWall: "E", preferredExit: "N" }];
-    const plan = planChannelGeometry(dels, exps, ctx);
+    const plan = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4 });
     const a = plan.deliveries.get("dA")!;
     expect(a.kind).toBe("undergroundCrossing");
     if (a.kind === "undergroundCrossing") {
-      // 반출의 가로 진입 행(entryY=5)을 자기 트랙 위에서 세로로 점프.
-      expect(a.axis).toBe("row");
-      expect(a.crossRow).toBe(5);
+      // 반출이 그은 절단선을 지하로 건넌다 — 점프 하나, 입구·출구는 축이 같고 거리 ≥ 2.
+      expect(a.jumps.length).toBeGreaterThanOrEqual(1);
+      for (const j of a.jumps) {
+        const sameAxis = j.fromCol === j.toCol || j.fromRow === j.toRow;
+        const dist = Math.abs(j.toCol - j.fromCol) + Math.abs(j.toRow - j.fromRow);
+        expect(sameAxis, "지하벨트는 직선이다").toBe(true);
+        expect(dist).toBeGreaterThanOrEqual(2);
+        expect(dist).toBeLessThanOrEqual(4);
+      }
     }
     expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
     const x = plan.exports.get("x")!;
