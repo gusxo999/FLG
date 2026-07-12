@@ -47,3 +47,10 @@ coverage/
 .claude/settings.local.json
 .mcp.json
 .tmp_*
+# 정션: Claude 자동 메모리 폴더. 세션마다 자동 로딩되므로 저장소에 둘 필요 없음
+docs/memory/
+
+# ---- Obsidian ----
+.obsidian/workspace.json
+# 플러그인 번들 + data.json(REST API 키·비밀키 보관). 저장소에 들어가면 안 됨
+.obsidian/plugins/

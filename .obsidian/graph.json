@@ -1,0 +1,58 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": true,
+  "showOrphans": false,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "tag:#moc",
+      "color": {
+        "a": 1,
+        "rgb": 16711680
+      }
+    },
+    {
+      "query": "tag:#deferred",
+      "color": {
+        "a": 1,
+        "rgb": 16753152
+      }
+    },
+    {
+      "query": "tag:#auto-layout",
+      "color": {
+        "a": 1,
+        "rgb": 5017087
+      }
+    },
+    {
+      "query": "tag:#blueprint",
+      "color": {
+        "a": 1,
+        "rgb": 10711543
+      }
+    },
+    {
+      "query": "tag:#factorio-data",
+      "color": {
+        "a": 1,
+        "rgb": 4176208
+      }
+    }
+  ],
+  "collapse-display": true,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": false,
+  "centerStrength": 0.518713248970312,
+  "repelStrength": 10,
+  "linkStrength": 1,
+  "linkDistance": 250,
+  "scale": 0.4061496711336462,
+  "close": false
+}
