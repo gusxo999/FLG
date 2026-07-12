@@ -21,17 +21,17 @@
  */
 
 import {
-  planClusterPorts,
-  planClusterSupply,
+  insertingPlanner,
   type IoLine,
+  type PlannedLine,
   type PlannedSide,
   type SupplyCapacity,
-  type SupplyDecision,
+  type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
-import { cellKey, enumeratePerimeterCells, faceVector } from "../util/helper";
-import { makeContainerCell, makeInserterCell } from "../util/cellBuilder";
+import { cellKey, enumeratePerimeterCells, faceVector, vectorToDirection } from "../util/helper";
+import { makeBeltCell, makeContainerCell, makeInserterCell } from "../util/cellBuilder";
 
 /**
  * 모듈 머신 사이 세로 gap = 0(밀착). 모듈은 **간단 레시피**(W/E 두 면만으로 모든 I/O 를
@@ -97,11 +97,11 @@ export interface GeneratedModule {
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
   /**
-   * 이 모듈의 공급 방식 판정([planClusterSupply]) — "tap"(트렁크로 합칠 수 있다) 또는
-   * "direct"(1:1 로 남는다) + 거절 사유. **방출기(③) 도착 전까지 판정은 보고만 되고
-   * 실제 방출은 늘 다이렉트다** — 계측기가 "몇 모듈이 트렁크가 될 수 있나"를 세는 데 쓴다.
+   * 이 모듈의 판정([insertingPlanner]) — "tap"(트렁크로 합칠 수 있다) 또는 "direct"
+   * (1:1 로 남는다) + 거절 사유. **방출기(③) 도착 전까지 판정은 보고만 되고 실제 방출은
+   * 늘 다이렉트다** — 계측기가 "몇 모듈이 트렁크가 될 수 있나"를 세는 데 쓴다.
    */
-  supply?: SupplyDecision;
+  supply?: InsertingDecisionResult;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
 }
@@ -135,8 +135,8 @@ export interface ModuleInput {
    */
   nsExposure?: ("N" | "S")[];
   /**
-   * 트렁크(탭 인서팅) 용량 — 있으면 [planClusterSupply] 의 용량 관문이 켜진다.
-   * 미지정이면 레인 관문만 본다(없는 숫자를 지어내지 않는다).
+   * 트렁크(탭 인서팅) 용량 — 있으면 [insertingPlanner] 의 [determineBeltCount] 검사가
+   * 켜진다. 미지정이면 간단한 레시피 판별만 본다(없는 숫자를 지어내지 않는다).
    */
   supplyCapacity?: SupplyCapacity;
 }
@@ -205,33 +205,44 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
     slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
   };
-  const supply: SupplyDecision = planClusterSupply(
+  const supply: InsertingDecisionResult = insertingPlanner(
     plannerInput,
     machines.length,
     input.supplyCapacity,
   );
 
-  // ③(트렁크 방출기)이 아직 없다 — 판정이 "tap" 이어도 **지금 깔 줄은 다이렉트다.**
-  // 판정은 결과에 실어 보고만 한다(계측기가 "몇 모듈이 트렁크가 될 수 있나"를 센다).
-  // ③이 들어오면 이 세 줄이 `supply.mode` 로 갈라진다.
-  const plan = supply.mode === "direct" ? supply.plan : planClusterPorts(plannerInput);
+  const plan = supply.plan;
   if (!plan.ok) {
     for (const l of beltLines) unroutedLines.push(l);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
-  // ── 1:1 방출 ────────────────────────────────────────────────────────────────
-  // 트렁크(여러 머신이 벨트 한 줄을 나눠 탭)는 **비활성**이다. 머신 하나하나가 품목마다
-  // 자기 상자·자기 인서터를 갖는다(docs/auto-layout-wizard.trunk-redesign.md).
+  // ── 방출 ────────────────────────────────────────────────────────────────────
+  // [insertingPlanner] 의 판정에 따라 갈라진다:
   //
+  //  - **탭 인서팅**(트렁크): 면을 belt 한 줄이 훑고 머신들이 그 줄을 인서터로 나눠 집는다.
+  //    포트 = 벨트 끝 하나 → 모듈 경계 포트가 **품목당 1개**로 준다.
+  //  - **다이렉트 인서팅**(1:1): 머신마다 자기 상자+인서터. 포트 = 머신 × 품목.
+  //
+  // 어느 쪽이든 **탐색이 없다** — 자리는 planner 가 이미 못박았고 방출기는 깔기만 한다.
+  if (supply.mode === "tap") {
+    emitTapInserting({
+      plan, machines, input, prefix, occupancy,
+      cells, chests, inputPorts, outputPorts, unroutedLines,
+    });
+    fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
+  }
+
+  // ── 다이렉트 인서팅(1:1) 방출 ───────────────────────────────────────────────
   // 한 (머신, 품목) = 두 칸뿐이다:
   //     [상자] [인서터] [머신 …]      (W 면 예: x=-2, x=-1, x=0..2)
   // 같은 면의 줄들은 **서로 다른 행**(슬롯)을 쓰므로 절대 부딪히지 않는다 — 자리 잡기가
   // 곧 성공이고, 탐색이 없고, 실패 케이스가 존재하지 않는다. 상자 바깥쪽은 늘 비어 있어
   // **모든 포트의 바깥 탈출로가 구성으로 보장**된다(우선순위 ②).
   //
-  // 트렁크는 나중에 **이 1:1 경로들을 합치는 최적화**로 되돌아온다 — 그때 이 방출기는
-  // 병합기의 입력이 되므로 버려지지 않는다. 그래서 일부러 멍청하게 유지한다.
+  // 트렁크가 이 경로를 대체하지 **않는다** — 트렁크가 거절되면(복잡한 레시피·용량 초과)
+  // 언제나 여기로 돌아온다. 그게 "거절은 항상 안전하다"의 실체다.
   const slotOnFace = new Map<PlannedSide, number>(); // 면별로 소비한 행/열 슬롯 수
   let seq = 0;
   for (const planned of plan.lines) {
@@ -369,6 +380,238 @@ function fillModuleWayOuts(
       if (clear) wayOuts.push(face);
     }
     port.moduleWayOuts = wayOuts;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 탭 인서팅 방출 — 트렁크 belt 한 줄 + 머신마다 탭 인서터 1개
+// (docs/auto-layout-wizard.trunk-redesign.md §10.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 면(face)의 depth `d` 칸 — 머신 면에서 바깥으로 d 칸, 그 면을 따라 `t` 위치.
+ * `d=0` 은 머신 자신의 가장자리, `d=1` 은 인서터 좌석, `d≥2` 는 belt 레인.
+ * W/E 면이면 `t` 는 y(행), N/S 면이면 `t` 는 x(열)다.
+ */
+function faceCell(
+  ext: { x0: number; y0: number; x1: number; y1: number },
+  face: PortFace,
+  d: number,
+  t: number,
+): { x: number; y: number } {
+  switch (face) {
+    case "W": return { x: ext.x0 - d, y: t };
+    case "E": return { x: ext.x1 + d, y: t };
+    case "N": return { x: t, y: ext.y0 - d };
+    case "S": return { x: t, y: ext.y1 + d };
+  }
+}
+
+/** 먼 레인(depth 3)은 가까운 belt 를 **넘어서** 집어야 하므로 긴팔이어야 한다. */
+function tapInserterName(input: ModuleInput, planned: PlannedLine): string {
+  return planned.inserter === "long" && input.longInserter
+    ? input.longInserter.entityName
+    : input.inserterEntityName;
+}
+
+/**
+ * **탭 인서팅 방출** — 품목 줄마다 belt 한 줄을 머신 기둥 전체에 직선으로 깔고, 머신마다
+ * 탭 인서터를 하나씩 붙인다. 포트는 **벨트 끝 하나뿐**이라 모듈 경계 포트가 품목당 1개가 된다.
+ *
+ * ## 기하 (W 면 · 3×3 머신 2대 · 가까운 레인 d=2)
+ * ```
+ *        x=-2 -1  0  1  2       d = 머신 면에서 바깥 칸 수
+ *  y=-2    C   .  .  .  .       C = 포트 상자(anchor)  ← belt 열 위, 기둥 밖 2칸
+ *  y=-1    I   .  .  .  .       I = 포트 인서터(seat)
+ *  y= 0    B   i  M  M  M       B = 트렁크 belt (d=2)
+ *  y= 1    B   .  M  M  M       i = 탭 인서터 (d=1)
+ *  y= 2    B   .  M  M  M
+ *  y= 3    B   i  M  M  M
+ *  y= 4    B   .  M  M  M
+ *  y= 5    B   .  M  M  M
+ * ```
+ *
+ * ## 왜 이 배치인가 — [moduleHop] 의 포트 계약을 코드 수정 없이 만족시킨다
+ * `moduleHop.portGeometry` 는 포트 기하를 **anchor 와 face 만으로** 유도한다:
+ * `chest = anchor` · `seat = anchor − faceVec` · `trunkStart = anchor − 2·faceVec`.
+ * 그래서 트렁크 끝에서 바깥으로 `[인서터][상자]` 를 일직선으로 세우고 `face` 를 **그 나가는
+ * 방향**(N/S)으로 주면 홉이 그대로 붙는다. 홉이 상자를 떼고 그 자리에 belt 를 깔면 —
+ * 출력 인서터가 그 belt 에 놓고, 입력 인서터가 그 belt 에서 집는다(양끝 인서터는 보존됨).
+ *
+ * `meta.side`(W/E)는 유지된다 — 채널 장부·반출 계획이 보는 건 **어느 변**이냐이고,
+ * `face`(N/S)는 **어느 쪽으로 나가느냐**다. 둘은 다르다(모듈 머리말 "변 vs face" 참고).
+ *
+ * ## 왜 [untapped](../../../../docs/용어사전.md) 가 생길 수 없나
+ * belt 가 기둥 **전체를 직선으로** 지나므로 모든 머신의 그 면 행이 belt 와 맞닿는다.
+ * 옛 트렁크(씨앗에서 그리디로 성장)처럼 "둘러싸여 못 닿는 머신"이 **구성상** 없다.
+ */
+function emitTapInserting(args: {
+  plan: { ok: true; lines: PlannedLine[] };
+  machines: Container[];
+  input: ModuleInput;
+  prefix: string;
+  occupancy: Set<string>;
+  cells: PlacedCell[];
+  chests: Container[];
+  inputPorts: ModulePort[];
+  outputPorts: ModulePort[];
+  unroutedLines: IoLine[];
+}): void {
+  const { plan, machines, input, prefix, occupancy, cells, chests } = args;
+
+  // 머신 기둥의 실제 extent — belt 가 덮어야 할 범위.
+  const ext = {
+    x0: Math.min(...machines.map((m) => m.origin.x)),
+    y0: Math.min(...machines.map((m) => m.origin.y)),
+    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
+    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
+  };
+
+  // 면별로 이미 쓴 탭 좌석 행. 같은 면의 두 줄(가까운/먼 레인)은 belt 열은 다르지만
+  // **좌석은 같은 d=1 열**에 앉으므로, 줄마다 다른 행을 줘야 겹치지 않는다.
+  const slotOnFace = new Map<PlannedSide, number>();
+  let seq = 0;
+
+  /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준(아래 참고). */
+  const endKey = (p: PlannedLine): string =>
+    `${p.side}:${(input.lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min")}`;
+  const maxDepthAtEnd = new Map<string, number>();
+  for (const p of plan.lines) {
+    const k = endKey(p);
+    maxDepthAtEnd.set(k, Math.max(maxDepthAtEnd.get(k) ?? 0, p.depth));
+  }
+
+  for (const planned of plan.lines) {
+    const line = planned.line;
+    const face = planned.side as PortFace;
+    const fv = faceVector(face); // 바깥 방향(머신 → 면)
+    const d = planned.depth; // belt 레인 깊이(가까운=2, 먼=3)
+
+    const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
+    const slot = slotOnFace.get(planned.side) ?? 0;
+    if (slot >= lateralCap) {
+      args.unroutedLines.push(line); // 좌석 행 없음 — planner 용량과 어긋난 것(안전망).
+      continue;
+    }
+    slotOnFace.set(planned.side, slot + 1);
+
+    // 트렁크가 달리는 축(W/E 면 → 세로, N/S 면 → 가로)과 포트가 나가는 끝.
+    const vertical = face === "W" || face === "E";
+    const t0 = vertical ? ext.y0 : ext.x0;
+    const t1 = vertical ? ext.y1 : ext.x1;
+    // 끝 선호 — 합성 단계(packModuleTree)가 부모↔자식 포트를 마주 보게 정렬해 넣어준다.
+    const atMin = (input.lineEnds?.get(`${line.role}:${line.name}`) ?? "min") === "min";
+    const exitFace: PortFace = vertical ? (atMin ? "N" : "S") : atMin ? "W" : "E";
+    const ev = faceVector(exitFace);
+
+    // **끝을 어긋나게 한다(stagger) — 안쪽 레인일수록 더 멀리 뽑는다.**
+    //
+    // 같은 면의 두 줄이 끝을 나란히 맞추면, 바깥 레인(d=3)의 belt 열이 안쪽 레인(d=2)
+    // 상자의 **옆구리를 막아** 그 상자가 바깥으로 못 나간다(2026-07-12 실측: n2 의
+    // copper-cable 상자가 동쪽으로 못 나가 skip). 바깥 레인의 열은 상자·좌석·belt 가
+    // 연속이라 **어디를 밀어도 여전히 옆을 막는다** — 바깥을 더 뽑는 건 답이 아니다.
+    //
+    // 답은 반대다: **안쪽 레인을 바깥 레인의 끝보다 더 멀리** 뽑아, 안쪽 상자가 바깥 열이
+    // 끝난 지점 너머에 앉게 한다. 그러면 안쪽 상자의 옆이 비어 길이 열린다.
+    // belt·seat·chest 는 여전히 일직선·연속이라 [moduleHop] 계약은 그대로다.
+    const stagger = (maxDepthAtEnd.get(endKey(planned)) ?? d) - d;
+    const tBeltEnd = atMin ? t0 - stagger : t1 + stagger;
+
+    const beltEnd = faceCell(ext, face, d, tBeltEnd); // 트렁크의 포트 쪽 끝(= trunkStart)
+    const seat = { x: beltEnd.x + ev.x, y: beltEnd.y + ev.y }; // 포트 인서터
+    const chestAt = { x: beltEnd.x + 2 * ev.x, y: beltEnd.y + 2 * ev.y }; // 포트 상자(anchor)
+
+    const chestId = `${prefix}-${line.role}-${line.name}-${seq++}`;
+    const chest: Container = {
+      id: chestId,
+      kind: "infinity-chest",
+      entityName: "infinity-chest",
+      origin: { ...chestAt },
+      size: { w: 1, h: 1 },
+      content: line.name,
+      role: line.role,
+    };
+    chests.push(chest);
+
+    // belt 흐름 — 출력(collect)은 머신들이 놓은 것이 **포트 쪽으로** 모여 흐르고,
+    // 입력(supply)은 포트로 들어온 것이 **기둥 안쪽으로** 퍼진다. 정반대다.
+    const flow = line.role === "output" ? ev : { x: -ev.x, y: -ev.y };
+    const beltDir = vectorToDirection(flow.x, flow.y);
+
+    const beltPair: PortPair = {
+      producer: {
+        containerId: line.role === "input" ? chestId : machines[0].id,
+        cell: { ...beltEnd }, face, kind: "item",
+      },
+      consumer: {
+        containerId: line.role === "input" ? machines[0].id : chestId,
+        cell: { ...beltEnd }, face, kind: "item",
+      },
+    };
+
+    // ── 트렁크 belt 한 줄 — 기둥 전체(+stagger)를 직선으로. 탐색 0. ──
+    const beltCells: PlacedCell[] = [];
+    const lo = Math.min(t0, tBeltEnd);
+    const hi = Math.max(t1, tBeltEnd);
+    for (let t = lo; t <= hi; t++) {
+      const at = faceCell(ext, face, d, t);
+      if (occupancy.has(cellKey(at.x, at.y))) continue; // 안전망(구성상 발생 안 함)
+      beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, beltPair));
+    }
+
+    // ── 포트 인서터 + 상자 — 트렁크 끝 바깥에 일직선 ──
+    // 집는 쪽: 입력이면 상자(바깥 +ev), 출력이면 트렁크(안쪽 −ev).
+    const portPickup = line.role === "input" ? ev : { x: -ev.x, y: -ev.y };
+    const portCells: PlacedCell[] = [
+      makeContainerCell(chest, chestAt),
+      makeInserterCell(seat, portPickup, input.inserterEntityName, beltPair),
+    ];
+
+    // ── 탭 인서터 — 머신마다 하나. 한 belt 를 나눠 집는다. ──
+    const tapCells: PlacedCell[] = [];
+    for (const m of machines) {
+      const t = (vertical ? m.origin.y : m.origin.x) + slot;
+      const tapAt = faceCell(ext, face, 1, t);
+      if (occupancy.has(cellKey(tapAt.x, tapAt.y))) continue;
+      // 집는 쪽: 입력이면 belt(바깥 +fv), 출력이면 머신(안쪽 −fv). 1:1 과 같은 규약.
+      const pickup = line.role === "input" ? fv : { x: -fv.x, y: -fv.y };
+      const pair: PortPair = {
+        producer: {
+          containerId: line.role === "input" ? chestId : m.id,
+          cell: { ...tapAt }, face, kind: "item",
+        },
+        consumer: {
+          containerId: line.role === "input" ? m.id : chestId,
+          cell: { ...tapAt }, face, kind: "item",
+        },
+      };
+      tapCells.push(makeInserterCell(tapAt, pickup, tapInserterName(input, planned), pair));
+    }
+
+    for (const c of [...beltCells, ...portCells, ...tapCells]) {
+      cells.push(c);
+      occupancy.add(cellKey(c.x, c.y));
+    }
+
+    const port: ModulePort = {
+      line,
+      anchor: { ...chestAt },
+      tapAnchor: { ...beltEnd }, // = anchor − 2·faceVec(exitFace). moduleHop 계약.
+      face: exitFace, // **나가는 방향**(N/S) — 변(meta.side, W/E)과 다르다.
+      moduleWayOuts: [], // 전 포트 emit 후 fillModuleWayOuts 가 채운다.
+      chest,
+      cells: beltCells, // 트렁크 spine — Routing 선이 벨트를 따라간다.
+      meta: {
+        item: line.name,
+        side: planned.side, // 채널 장부·반출 계획이 보는 값 — 어느 **변**이냐.
+        laneDepth: d,
+        inserter: planned.inserter ?? "normal",
+        amount: line.amount,
+        endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
+      },
+    };
+    if (line.role === "output") args.outputPorts.push(port);
+    else args.inputPorts.push(port);
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import type { IoLine } from "../module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
-import { faceVector } from "../util/helper";
+import { faceVector, PERIMETER_MARGIN } from "../util/helper";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -111,10 +111,12 @@ describe("packModuleTree", () => {
     expect(res.hops[0].to.line.name).toBe("copper-cable");
   });
 
-  it("raw 포트 = child 없는 입력 (iron-plate + copper-plate)", () => {
+  it("raw 포트 = 짝 못 지은 포트 **전부** (child 없는 입력 + 루트 출력)", () => {
     const res = packModuleTree(specs, config);
     const names = res.rawPorts.map((p) => p.line.name).sort();
-    expect(names).toEqual(["copper-plate", "iron-plate"]);
+    // 입력이면 외부 공급 무한상자, 출력이면 무한 sink — **둘 다 perimeter 로 나가야 한다.**
+    // 그래서 raw 는 "입력"이 아니라 "짝 없는 포트"다(루트 출력 electronic-circuit 포함).
+    expect(names).toEqual(["copper-plate", "electronic-circuit", "iron-plate"]);
   });
 
   it("배치 겹침 0 — 모든 모듈의 placed 셀이 고유 좌표", () => {
@@ -153,20 +155,23 @@ describe("packModuleTree", () => {
     const on = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
 
     // lanePlan 은 off 경로에서도 계산돼 실린다(②③ 소비용). 살아남은 상자마다 배정 1개.
+    // rawPorts 가 **루트 출력까지 포함**하므로(짝 없는 포트 전부) 여기 +1 은 없다.
     expect(off.lanePlan.assignments.length).toBeGreaterThan(0);
-    const surviving = off.rawPorts.length + 1; // raw 입력 + 루트 출력 1
-    expect(off.lanePlan.assignments).toHaveLength(surviving);
+    expect(off.lanePlan.assignments).toHaveLength(off.rawPorts.length);
 
     // off 는 배치/ bbox 무변(게이트 off → 현행 유지).
     expect(off.bbox).toEqual(unionOf(off));
 
     // reserve 시 marginNeeds 만큼 bbox 프레임이 정확히 넓어진다.
+    // 한 변당 [PERIMETER_MARGIN] 칸 — 벨트 1칸 + 인서터 1칸. 상자 자리 인서터는 머신을
+    // 먹이는 상주 인서터라 벨트로 재사용할 수 없어서 2다(옛 트렁크 시절엔 1이었다).
     const m = on.lanePlan.marginNeeds;
+    const g = PERIMETER_MARGIN;
     const u = unionOf(on); // 마진 제외 모듈 union
-    expect(on.bbox.x).toBe(u.x - (m.W ? 1 : 0));
-    expect(on.bbox.y).toBe(u.y - (m.N ? 1 : 0));
-    expect(on.bbox.w).toBe(u.w + (m.W ? 1 : 0) + (m.E ? 1 : 0));
-    expect(on.bbox.h).toBe(u.h + (m.N ? 1 : 0) + (m.S ? 1 : 0));
+    expect(on.bbox.x).toBe(u.x - (m.W ? g : 0));
+    expect(on.bbox.y).toBe(u.y - (m.N ? g : 0));
+    expect(on.bbox.w).toBe(u.w + (m.W ? g : 0) + (m.E ? g : 0));
+    expect(on.bbox.h).toBe(u.h + (m.N ? g : 0) + (m.S ? g : 0));
   });
 
   it("포트 tapAnchor(⑥B) — machine 끝점 = anchor−2·faceVector, anchor 와 겹치지 않음", () => {

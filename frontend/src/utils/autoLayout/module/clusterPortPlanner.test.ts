@@ -175,13 +175,23 @@ describe("planClusterPorts — 노출 N/S 완화 (E → N/S → W)", () => {
     expect(byName.get("i3")!.inserter).toBe("normal");
   });
 
-  it("내부(external 아님) 입력은 N/S 를 건너뛰고 W 잔여로 (홉 기하 불변)", () => {
+  it("내부(external 아님) 입력이 자식 쪽 면(E)을 먼저 갖고, external 이 밀려난다", () => {
     const lines = [item("out", "output"), ext("i1"), ext("i2"), item("hop", "input")];
     const plan = planClusterPorts({ lines, caps: longCaps, outputSide: "W", nsFaces: ["N"] });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const byName = new Map(plan.lines.map((l) => [l.line.name, l]));
-    expect(byName.get("hop")!.side).toBe("W");
+
+    // 자식-공급(홉) 입력은 **자식 쪽 면(E)** 을 갖는다. 등장 순서상 마지막이지만 먼저 배정된다.
+    // 이게 밀려나 출력면(W)에 태어나면 그 홉이 모듈을 빙 돌아와 다른 포트의 탈출로를 끊는다
+    // (2026-07-12 실측: 반출 skip 3건의 원인).
+    expect(byName.get("hop")!.side).toBe("E");
+
+    // 홉 기하 불변: 자식-공급 입력은 **절대 N/S 에 앉지 않는다**(홉은 W/E 축으로만 오간다).
+    expect(["W", "E"]).toContain(byName.get("hop")!.side);
+
+    // 밀려나는 건 external 쪽 — 홉이 없어 perimeter 로 나가면 그만이라 안전하다.
+    expect(["N", "W"]).toContain(byName.get("i2")!.side);
   });
 
   it("nsFaces 미지정 → 기존 동작(external 이어도 W 잔여)", () => {

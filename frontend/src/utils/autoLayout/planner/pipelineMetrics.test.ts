@@ -68,10 +68,23 @@ describe("파이프라인 계측기 — 1:1 기준선", () => {
     }
   });
 
-  it("포트 수 = 머신 × 줄 — 1:1 의 대가가 여기 있다(트렁크가 줄여야 할 값)", () => {
+  // 트렁크(탭 인서팅)의 **구조적 이득**을 못 박는다 — 이게 갈아탄 이유이므로, 조용히
+  // 되돌아가면(예: 어떤 모듈이 다이렉트로 폴백) 여기서 잡힌다.
+  // 판정 기준은 면적이 아니다(§4 함정) — 실패 0 + 머신 수에 안 따라 커지는 것들이다.
+  it("모듈 경계 포트 = O(품목) — 머신 수가 늘어도 안 는다", () => {
+    // 줄 수 합계 = 4 + 4 + 3 = 11. 트렁크는 (머신 × 줄) 을 (줄) 로 접는다.
+    for (const [tag, m] of rows) expect(m.ports, tag).toBe(11);
+  });
+
+  it("채널 폭이 머신 수에 안 따라 커진다 — 1:1 은 4→13 으로 벌어졌다", () => {
+    for (const [tag, m] of rows)
+      for (const w of m.channelWidths) expect(w, `${tag} 채널 폭`).toBeLessThanOrEqual(6);
+  });
+
+  it("물류가 성립한다 — 홉 실패 0 · 반출 skip 0 (우선순위 ①②)", () => {
     for (const [tag, m] of rows) {
-      const [a, b, c] = tag.split("/").map(Number);
-      expect(m.ports, tag).toBe(a * 4 + b * 4 + c * 3);
+      expect(m.hopFailures, `${tag} 홉 실패`).toBe(0);
+      expect(m.exportSkips, `${tag} 반출 skip`).toBe(0);
     }
   });
 });

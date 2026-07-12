@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 
@@ -88,11 +89,14 @@ describe("relocateChestsToPerimeter", () => {
     expect(survivingChests(pack, hop.strippedChestIds)).toEqual(survBefore);
     expect(JSON.stringify(pack.placements.map((pl) => pl.module.cells.length))).toBe(cellsBefore);
 
-    // 이사한 상자의 새 origin(relocations)은 전역 외곽 한 줄 바깥에 앉는다.
+    // 이사한 상자의 새 origin(relocations)은 전역 외곽에서 [PERIMETER_MARGIN] 칸 바깥 변에
+    // 앉는다([modulePerimeterPass.perimeterOf]). 마진이 2인 이유: 벨트 1칸 + 인서터 1칸 —
+    // 상자 자리 인서터는 머신을 먹이는 상주 인서터라 벨트로 재사용할 수 없다.
+    const m = PERIMETER_MARGIN;
     for (const r of res.relocations) {
       const onOuter =
-        r.origin.y === u.minY - 1 || r.origin.y === u.maxY + 1 ||
-        r.origin.x === u.minX - 1 || r.origin.x === u.maxX + 1;
+        r.origin.y === u.minY - m || r.origin.y === u.maxY + m ||
+        r.origin.x === u.minX - m || r.origin.x === u.maxX + m;
       expect(onOuter, `${r.chestId} @(${r.origin.x},${r.origin.y}) not on outer perimeter`).toBe(true);
     }
   });
@@ -130,8 +134,11 @@ describe("relocateChestsToPerimeter", () => {
       const old = survBefore.get(r.chestId)!;
       expect(res.droppedCellKeys.has(`${old.x},${old.y}`)).toBe(true);
     }
-    // 상자별 2칸(ghost+feeder)씩 떼어낸다.
-    expect(res.droppedCellKeys.size).toBe(res.relocated * 2);
+    // 상자별 **1칸(옛 상자 ghost)만** 떼어낸다 — seat 인서터는 **남긴다.**
+    // 그게 머신에 물건을 넣는(빼는) 유일한 수단이라 덮으면 머신이 굶는다. 옛 트렁크
+    // 시절엔 그 자리를 belt 로 재사용해 2칸을 뗐지만, 지금은 anchor 한 칸만 비워 belt 로
+    // 쓴다([modulePerimeterPass] 주석 + PERIMETER_MARGIN=2 의 이유).
+    expect(res.droppedCellKeys.size).toBe(res.relocated);
   });
 
   it("결정적 — 같은 입력 → 같은 relocations", () => {

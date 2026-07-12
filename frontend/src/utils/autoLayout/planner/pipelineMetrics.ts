@@ -48,7 +48,7 @@ export interface PipelineMetrics {
   rawPorts: number;
 
   /**
-   * [planClusterSupply] 가 **트렁크로 합칠 수 있다고 판정한** 모듈 수 / 전체 모듈 수.
+   * [insertingPlanner] 가 **트렁크로 합칠 수 있다고 판정한** 모듈 수 / 전체 모듈 수.
    * ③(트렁크 방출기) 도착 전까지 판정은 보고만 되고 실제 방출은 다이렉트다 — 그러니
    * 이 값은 "트렁크가 들어오면 몇 모듈이 실제로 합쳐지나"의 **예고**다.
    */

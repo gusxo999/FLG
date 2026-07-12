@@ -23,12 +23,19 @@ const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "i
 const outL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
+/** production(moduleWizard)과 **같은** 지하벨트 설정. 안 주면 홉이 지상으로만 풀려 배치가 달라진다. */
+const UNDERGROUND = {
+  undergroundBeltEntityName: "underground-belt",
+  beltMaxUndergroundDistance: 4,
+};
+
 const config: PackConfig = {
   inserterEntityName: "inserter",
   beltEntityName: "transport-belt",
   longInserter: { entityName: "long-handed-inserter", reach: 2 },
   reservePerimeterLanes: true,
   channelGeometry: true,
+  beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
 
 /** advanced-circuit 동형 분기 트리 — count 를 키우면 코너 어깨 상자가 생긴다. */
@@ -46,7 +53,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
   for (const [c0, c1, c2] of COUNTS) {
     it(`${c0}/${c1}/${c2} — 예약(hint) 재생만으로 모든 상자가 방출된다`, () => {
       const pack = packModuleTree(mk(c0, c1, c2), config);
-      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
+      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
       expect(hop.failures).toBe(0);
 
       // modulePerimeterPass 와 동형의 occ/perimeter 재현.
@@ -91,7 +98,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
 
     it(`${c0}/${c1}/${c2} — 재배치 skip 0 (탐색 폴백 없이)`, () => {
       const pack = packModuleTree(mk(c0, c1, c2), config);
-      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
+      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
       const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
         beltEntityName: "transport-belt",
         inserterEntityName: "inserter",

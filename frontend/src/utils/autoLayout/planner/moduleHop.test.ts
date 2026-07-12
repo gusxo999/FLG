@@ -210,12 +210,18 @@ describe("routeModuleHops", () => {
     expect(res.corridors).toHaveLength(1);
   });
 
-  it("지하벨트 게이트 오프(미선택): 같은 벽에서도 점프 없이 지상으로만 푼다", () => {
+  it("지하벨트 게이트 오프(미선택): 막힌 벽을 **뚫지 않는다** — 지하 셀 0, 대신 실패", () => {
     const pack = packModuleTree(specs, packConfig);
     injectWall(pack);
     const res = routeModuleHops(pack, hopConfig); // underground 미지정
-    // 벽이 유한하므로 지상 우회는 가능해야 하고, 지하벨트 셀은 절대 없다.
-    expect(res.failures).toBe(0);
+
+    // 이 벽은 배치 bbox 를 세로로 가로막는다. 홉 dijkstra 는 bbox 안에 갇혀 있으므로
+    // (routeOneHop 의 bounds — 없으면 무한 격자를 탐색하다 OOM), **지상 우회로가 없다.**
+    // 지하가 유일한 답인데 게이트가 꺼져 있으니 → 정직하게 실패한다.
+    // 이게 이 테스트가 지키는 불변식이다: **게이트가 꺼지면 지하벨트를 절대 안 깐다.**
+    // (교차가 기하학적으로 불가피하다는 것과 같은 이야기 —
+    //  docs/auto-layout-wizard.trunk-redesign.md §7)
+    expect(res.failures).toBe(1);
     expect(res.cells.some((c) => c.cell.entityType === EntityType.UndergroundBelt)).toBe(false);
     expect(res.corridors).toHaveLength(0);
   });
