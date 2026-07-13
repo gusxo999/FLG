@@ -60,6 +60,19 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
 
   const options = buildRoutingOptions(input);
 
+  /**
+   * 모듈 경로 포기 — **왜** 포기했는지 반드시 남긴다.
+   *
+   * 조용히 `null` 을 내면 호출자가 옛 경로로 폴백하고, 화면에는 "그냥 옛날 레이아웃"이
+   * 나온다. 새 기능이 안 켜진 건지 안 만든 건지 구분이 안 되고, 실측 로그로도 알 수 없다
+   * (2026-07-13: 유체 트리가 폴백했는데 사유를 몰라 추적 불가였다).
+   */
+  const reject = (why: string): null => {
+    // eslint-disable-next-line no-console
+    console.info(`[autoLayout] 모듈 경로 포기 → 옛 경로 폴백: ${why}`);
+    return null;
+  };
+
   // 자식이 부모에게 **무엇을 먹여주나** — 그 품목은 외부 공급이 아니다(홉으로 온다).
   const fedItemsOf = new Map<RecipeTreeNode, Set<string>>();
   for (const node of order) fedItemsOf.set(node, new Set());
@@ -74,29 +87,35 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const fluidTrunkOf = new Map<RecipeTreeNode, NodeSpec["fluidTrunk"]>();
   for (const node of order) {
     const recipe = recipeMap.get(node.recipeName!);
-    if (!recipe) return null;
+    if (!recipe) return reject(`레시피 없음: ${node.recipeName}`);
     const m = metas.get(node)!;
+    const at = `${node.recipeName}`;
 
     // 유체 **출력**(자식→부모 유체 홉 / 루트 유체 반출) — moduleHop·반출이 벨트만 안다.
-    if (recipe.products.some((p) => p.type === "fluid")) return null;
+    if (recipe.products.some((p) => p.type === "fluid")) return reject(`유체 출력 미지원 (${at})`);
 
     const fluidIngredients = recipe.ingredients.filter((i) => i.type === "fluid");
     if (fluidIngredients.length === 0) continue; // 아이템 전용 노드 — 회전 없음.
-    if (fluidIngredients.length > 1) return null; // v1 은 유체 줄 1개까지.
+    if (fluidIngredients.length > 1) return reject(`유체 입력 2개 이상 미지원 (${at})`);
 
     const fluid = fluidIngredients[0];
     // 자식이 만들어 주는 유체면 홉이 필요하다 — v1 미지원.
-    if (fedItemsOf.get(node)!.has(fluid.name)) return null;
+    if (fedItemsOf.get(node)!.has(fluid.name)) return reject(`유체 홉(자식 공급) 미지원 (${at}←${fluid.name})`);
     // 회전은 footprint 를 안 바꾼다는 전제 위에 있다 → 정사각형 머신만(§3).
-    if (m.w !== m.h) return null;
-    if (!options.pipeEntityName) return null;
+    if (m.w !== m.h) return reject(`비정사각형 머신은 회전 불가 (${m.entityName} ${m.w}×${m.h})`);
+    if (!options.pipeEntityName) return reject("파이프 prototype 없음");
 
     const entity = entityMap.get(m.entityName);
-    if (!entity) return null;
+    if (!entity) return reject(`엔티티 게임데이터 없음: ${m.entityName}`);
     // 유체 입구가 **입력 면(E)** 을 보게 하는 회전을 데이터에서 고른다(§3).
     // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
     const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
-    if (!chosen) return null; // 어느 각도로 돌려도 E 에 유체 입구가 안 온다.
+    if (!chosen) {
+      return reject(
+        `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} 입력 유체 상자가 E 면에 안 온다` +
+          ` (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
+      );
+    }
 
     fluidTrunkOf.set(node, {
       direction: chosen.direction,
@@ -160,7 +179,10 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const pack = packModuleTree(specs, packConfig);
   // 미탭(과용량 등) 있는 모듈 → 폴백.
   for (const pl of pack.placements) {
-    if (pl.module.unroutedLines.length > 0) return null;
+    if (pl.module.unroutedLines.length > 0) {
+      const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
+      return reject(`${pl.id} 의 줄을 못 놓음 [${names}] — ${pl.module.supply?.reason ?? "사유 없음"}`);
+    }
   }
 
   const hopRes = routeModuleHops(pack, {
@@ -168,7 +190,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     beltMaxUndergroundDistance: options.beltMaxUndergroundDistance,
     undergroundBeltEntityName: options.undergroundBeltEntityName,
   });
-  if (hopRes.failures > 0) return null;
+  if (hopRes.failures > 0) return reject(`모듈 사이 납품 경로 실패 ${hopRes.failures}건`);
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
   //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A lanePlan 배정대로 예약된

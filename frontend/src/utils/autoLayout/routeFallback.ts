@@ -113,8 +113,8 @@ export function routeWithFallback(
   //    아래 기존 그리디+enumeration 으로 폴백(코너 케이스·fluid·드래그 재라우팅 보존).
   if (kind === 'item' && !pickBest) {
     const multi = routeItemMulti(
-      constrainPorts(producer, enumerateContainerPorts(producer, kind)),
-      constrainPorts(consumer, enumerateContainerPorts(consumer, kind)),
+      constrainPorts(producer, enumerateContainerPorts(producer, kind, 'producer')),
+      constrainPorts(consumer, enumerateContainerPorts(consumer, kind, 'consumer')),
       area,
       options,
       external,
@@ -162,8 +162,10 @@ export function routeWithFallback(
   }
 
   // 2. 모든 port 조합 enumerate, 그리디 페어는 제외 후 manhattan 거리 오름차순.
-  const producerPorts = constrainPorts(producer, enumerateContainerPorts(producer, kind));
-  const consumerPorts = constrainPorts(consumer, enumerateContainerPorts(consumer, kind));
+  // 유체는 **재료 칸과 결과물 칸이 다르다** — enumeration 폴백도 역할을 지켜야 한다.
+  // 안 지키면 "어떤 조합이든 라우팅만 되면 성공"이라 재료 파이프가 출력 칸에 꽂힌다.
+  const producerPorts = constrainPorts(producer, enumerateContainerPorts(producer, kind, 'producer'));
+  const consumerPorts = constrainPorts(consumer, enumerateContainerPorts(consumer, kind, 'consumer'));
   if (producerPorts.length === 0 || consumerPorts.length === 0) {
     if (best !== null) return best;
     return { ok: false, reason: 'no-port-pair', tried: greedy ? [greedy] : [] };
