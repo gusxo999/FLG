@@ -21,7 +21,7 @@ import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
-import { chooseMachineDirection } from "../module/fluidPorts";
+import { CARDINAL_DIRECTIONS, chooseMachineDirection, fluidPortSlots } from "../module/fluidPorts";
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
@@ -111,6 +111,18 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
     const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
     if (!chosen) {
+      // 회전이 데이터에서 나오므로(§3), 실패했으면 **데이터를 봐야** 안다.
+      // 회전이 아예 안 먹으면(=positions 가 4방향 배열이 아니면) 네 방향의 면이 전부 같게 찍힌다.
+      // eslint-disable-next-line no-console
+      console.info(`[autoLayout] 유체 회전 실패 — ${m.entityName} / ${fluid.name}`, {
+        positionsLen: entity.fluid_boxes?.map((fb) => fb.connections.map((c) => c.positions?.length ?? 0)),
+        byDirection: Object.fromEntries(
+          CARDINAL_DIRECTIONS.map((d) => [
+            d,
+            fluidPortSlots(entity, { w: m.w, h: m.h }, d).map((s) => `${s.productionType}:${s.face}${s.offset}`),
+          ]),
+        ),
+      });
       return reject(
         `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} 입력 유체 상자가 E 면에 안 온다` +
           ` (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
