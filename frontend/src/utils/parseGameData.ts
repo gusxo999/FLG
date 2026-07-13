@@ -104,6 +104,7 @@ interface RawEntity {
     filter?: string;
     connections?: Array<{
       positions?: Vec2[];
+      direction?: number;
       flow_direction?: string;
       connection_type?: string;
       max_underground_distance?: number;
@@ -215,6 +216,7 @@ function parseFluidBoxes(
         positions: toArray(c.positions as unknown as Vec2[] | Record<string, Vec2> | undefined)
           .map(normalizeVec2)
           .filter((v): v is Vec2 => v !== undefined),
+        direction: c.direction,
         flow_direction: c.flow_direction,
         connection_type: c.connection_type,
         max_underground_distance: c.max_underground_distance,

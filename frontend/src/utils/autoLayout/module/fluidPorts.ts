@@ -14,14 +14,24 @@
  * 좌표 배열이다(scripts/export-gamedata.lua `extract_fluid_boxes`). 그래서 회전 = 배열 인덱스
  * 하나다: `positions[direction / 4]`. 삼각함수도, 부호 뒤집기도 없다.
  *
- * ## 좌표 변환의 함정
- * `positions` 는 머신 **중심 기준의 경계 좌표**(0.5 타일 단위)다. `floor(center + pos)` 를
- * 그냥 하면 머신 **안쪽 칸**으로 떨어지는 경우가 흔하다. 그래서 **부호로 면을 먼저 정하고**
- * 그 면 바깥 칸으로 매핑한다 — portInference 의 `portFromFluidBoxPosition` 과 같은 규칙이며,
- * 여기서는 절대 좌표가 아니라 **머신-로컬 오프셋**을 낸다(모듈이 로컬 좌표로 산다).
+ * ## 면은 좌표에서 못 뽑는다 — 데이터가 직접 알려준다 (2026-07-13)
+ * 한동안 우리는 좌표의 **부호와 크기**로 면을 역추정했다(`|y| ≥ |x|` 면 N/S, 아니면 E/W).
+ * 이건 **틀린 방법**이다. 화학 공장의 유체 상자 좌표는 회전 0에서 `(-1,-1)`, 즉 3×3 의
+ * **왼쪽 위 모서리 칸**이다. 모서리는 `|x| = |y|` 라서 그 연결이 **위로 나가는지 옆으로
+ * 나가는지 좌표에 정보가 없다.** 회전 0에서 답이 맞아 보인 건 우연이었다(동점이면 N/S 로
+ * 보내는데 마침 입력이 위, 출력이 아래였다). 머신을 돌리는 순간 우연이 깨져서 **E 면이
+ * 영원히 안 나왔고**, 그래서 트렁크 파이프가 한 번도 못 섰다.
+ *
+ * 진짜 답은 `PipeConnection.direction` 이다 — 그 연결이 **밖으로 뻗는 쪽**을 게임이 직접
+ * 알려준다. 머신을 `d` 만큼 돌리면 면은 `(conn.direction + d) % 16` 이다. 추정 없음.
+ *
+ * ## 그럼 좌표는 어디에 쓰나
+ * **면 위에서 몇 번째 칸이냐**(offset)에만 쓴다. 면에 **나란한** 성분만 보므로(N/S 면이면
+ * x, E/W 면이면 y) 좌표가 안쪽 칸이든 바깥 연결점이든 답이 같다 — 모호한 건 수직 성분뿐인데
+ * 그건 안 본다.
  */
 
-import type { Entity } from "../../../store/gameDataStore";
+import type { Entity, PipeConnection } from "../../../store/gameDataStore";
 import type { Direction } from "../../../types/layout";
 import type { PortFace } from "../containerModel";
 
@@ -63,16 +73,11 @@ export function fluidPortSlots(
 ): FluidPortSlot[] {
   const boxes = entity.fluid_boxes;
   if (!boxes) return [];
-  const posIndex = CARDINAL_DIRECTIONS.indexOf(direction);
-  if (posIndex < 0) return []; // 대각선 방향 — 유체 머신엔 없다.
 
   const slots: FluidPortSlot[] = [];
   boxes.forEach((fb, boxIndex) => {
     for (const conn of fb.connections) {
-      // 4방향 배열이 없는(=회전 정보 미제공) 데이터면 0번(북쪽)으로 폴백한다.
-      const pos = conn.positions?.[posIndex] ?? conn.positions?.[0];
-      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-      const placed = faceAndOffset(pos, size);
+      const placed = resolveFluidConnection(conn, size, direction);
       if (!placed) continue;
       slots.push({
         boxIndex,
@@ -86,23 +91,40 @@ export function fluidPortSlots(
   return slots;
 }
 
-/** 중심 기준 경계 좌표 → (면, 면 위 오프셋). 부호로 면을 먼저 정한다(머리말 참고). */
-function faceAndOffset(
-  pos: { x: number; y: number },
+/** Factorio 방향 → 면. 직각 네 개만 유체 연결에 나온다. */
+const FACE_BY_DIRECTION: Record<number, PortFace> = { 0: "N", 4: "E", 8: "S", 12: "W" };
+
+/**
+ * 연결 하나 → (면, 면 위 오프셋). **portInference 와 공유한다** — 유체 상자의 면을 읽는
+ * 규칙이 두 벌 있으면 한쪽만 고쳐지고 다른 쪽이 조용히 틀린다.
+ *
+ * - **면**: `conn.direction` + 머신 회전. 좌표에서 추정하지 않는다(머리말 참고).
+ * - **오프셋**: 회전된 좌표의 **면에 나란한 성분**만 본다.
+ *
+ * 구버전 게임데이터(`direction` 미포함)면 null — 호출자가 유체 상자를 못 쓴다고 보게 한다.
+ * 없는 정보를 추측으로 메우면 재료가 출력 칸에 꽂혀도 **조용하다**(docs/fluid-box-semantics.md).
+ */
+export function resolveFluidConnection(
+  conn: PipeConnection,
   size: { w: number; h: number },
+  direction: Direction,
 ): { face: PortFace; offset: number } | null {
+  const posIndex = CARDINAL_DIRECTIONS.indexOf(direction);
+  if (posIndex < 0) return null; // 대각선 방향 — 유체 머신엔 없다.
+  if (conn.direction === undefined) return null;
+
+  const face = FACE_BY_DIRECTION[(((conn.direction + direction) % 16) + 16) % 16];
+  if (!face) return null; // 대각선 연결 — 우리 모델(4면)에 없다.
+
+  const pos = conn.positions?.[posIndex] ?? conn.positions?.[0];
+  if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return null;
+
   const { w, h } = size;
-  if (Math.abs(pos.y) >= Math.abs(pos.x)) {
-    if (pos.y === 0) return null; // 중심 — 일반 fluid_box 에선 안 나온다.
-    return {
-      face: pos.y < 0 ? "N" : "S",
-      offset: clamp(Math.floor(w / 2 + pos.x), 0, w - 1),
-    };
-  }
-  return {
-    face: pos.x < 0 ? "W" : "E",
-    offset: clamp(Math.floor(h / 2 + pos.y), 0, h - 1),
-  };
+  const offset =
+    face === "N" || face === "S"
+      ? clamp(Math.floor(w / 2 + pos.x), 0, w - 1)
+      : clamp(Math.floor(h / 2 + pos.y), 0, h - 1);
+  return { face, offset };
 }
 
 function clamp(v: number, lo: number, hi: number): number {

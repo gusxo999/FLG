@@ -21,7 +21,7 @@ import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
-import { CARDINAL_DIRECTIONS, chooseMachineDirection, fluidPortSlots } from "../module/fluidPorts";
+import { chooseMachineDirection } from "../module/fluidPorts";
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
@@ -68,7 +68,6 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
    * (2026-07-13: 유체 트리가 폴백했는데 사유를 몰라 추적 불가였다).
    */
   const reject = (why: string): null => {
-    // eslint-disable-next-line no-console
     console.info(`[autoLayout] 모듈 경로 포기 → 옛 경로 폴백: ${why}`);
     return null;
   };
@@ -111,23 +110,19 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
     const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
     if (!chosen) {
-      // 회전이 데이터에서 나오므로(§3), 실패했으면 **원본 좌표를 봐야** 안다.
-      // positions 는 "4 cardinal direction connection points"(런타임 API 문서)지만 **순서가 명시돼
-      // 있지 않다.** 그래서 면 이름만으론 배열 순서 문제인지 좌표→면 변환 문제인지 안 갈린다.
-      // eslint-disable-next-line no-console
-      console.info(`[autoLayout] 유체 회전 실패 — ${m.entityName} / ${fluid.name}`, {
-        raw: entity.fluid_boxes?.map((fb) => ({
-          use: fb.production_type,
-          positions: fb.connections.map((c) => c.positions?.map((p) => `${p.x},${p.y}`).join(" | ")),
-        })),
-        positionsLen: entity.fluid_boxes?.map((fb) => fb.connections.map((c) => c.positions?.length ?? 0)),
-        byDirection: Object.fromEntries(
-          CARDINAL_DIRECTIONS.map((d) => [
-            d,
-            fluidPortSlots(entity, { w: m.w, h: m.h }, d).map((s) => `${s.productionType}:${s.face}${s.offset}`),
-          ]),
-        ),
-      });
+      // 유체 상자의 면은 게임데이터의 `PipeConnection.direction` 에서만 나온다 — 좌표로는
+      // 못 정한다(모서리 칸이라 안 갈린다. → module/fluidPorts.ts 머리말). 그 필드가 없는
+      // **구버전 export** 면 어느 각도로 돌려도 슬롯이 하나도 안 나오므로, 두 실패를 구분해
+      // 알려준다. 안 그러면 "머신이 이상하다"로 오진한다.
+      const hasDirection = entity.fluid_boxes?.some((fb) =>
+        fb.connections.some((c) => c.direction !== undefined),
+      );
+      if (!hasDirection) {
+        return reject(
+          `게임데이터가 낡았다 — ${m.entityName} 의 유체 연결에 direction 이 없다.` +
+            ` scripts/export-gamedata.lua 로 다시 뽑아야 유체 면을 알 수 있다`,
+        );
+      }
       return reject(
         `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} 입력 유체 상자가 E 면에 안 온다` +
           ` (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,

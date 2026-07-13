@@ -16,6 +16,7 @@
 
 import { useGameDataStore } from '../../store/gameDataStore';
 import type { Entity } from '../../store/gameDataStore';
+import { resolveFluidConnection } from './module/fluidPorts';
 import type {
   Container,
   ContainerPort,
@@ -152,57 +153,37 @@ function fluidPorts(
     // "input-output" 은 양쪽 다 가능(보일러 가열 모드 등) → 통과. docs/fluid-box-semantics.md
     if (role && !fluidBoxAllows(fb.production_type, role)) continue;
     for (const conn of fb.connections) {
-      const pos = conn.positions?.[0];
-      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-      const port = portFromFluidBoxPosition(c, pos, fluidName);
-      if (port) ports.push(port);
+      const placed = resolveFluidConnection(conn, c.size, c.direction ?? 0);
+      if (!placed) continue;
+      ports.push(portFromFace(c, placed.face, placed.offset, fluidName));
     }
   }
   return ports;
 }
 
 /**
- * fluid_box position 을 컨테이너 외부 셀 + face 로 변환.
+ * (면, 면 위 오프셋) → 컨테이너 *바로 바깥* 셀.
  *
- * **Factorio 의 fluid_box.connections[].positions** 는 entity center 기준의
- * *boundary 좌표* (= 0.5 타일 단위) 다. 단순히 `floor(center + pos)` 하면
- * entity 의 *내부 셀* 로 떨어지는 경우가 흔하다 (예: chemical-plant 의 코너
- * 입력). 따라서 **pos 의 부호** 로 어느 면인지 먼저 결정하고, 그 면 외부의
- * 적절한 셀로 매핑한다:
- *
- *  - `|pos.y| ≥ |pos.x|` : N (pos.y < 0) 또는 S (pos.y > 0). 셀 x 는 center +
- *    pos.x 가 가리키는 footprint 안의 한 칸으로 결정 (corner 케이스 포함).
- *  - 그 외             : W (pos.x < 0) 또는 E (pos.x > 0). 셀 y 는 center +
- *    pos.y 가 가리키는 footprint 안의 한 칸.
- *
- * 결과 셀은 항상 footprint *바로 바깥* 에 있고 face 와 일치.
+ * 면과 오프셋은 `resolveFluidConnection` 이 낸다 — 면은 게임데이터의
+ * `PipeConnection.direction` 에서 그대로 오고, 좌표에서 추정하지 않는다.
+ * (왜 추정이 불가능한지는 module/fluidPorts.ts 머리말: 유체 상자는 **모서리 칸**이라
+ *  좌표만으론 위로 나가는지 옆으로 나가는지 갈리지 않는다.)
  */
-function portFromFluidBoxPosition(
+function portFromFace(
   c: Container,
-  pos: { x: number; y: number },
+  face: PortFace,
+  offset: number,
   fluidName: string,
-): ContainerPort | null {
+): ContainerPort {
   const { x: ox, y: oy } = c.origin;
   const { w, h } = c.size;
-  const portKind: PortKind = { fluid: fluidName };
-
-  if (Math.abs(pos.y) >= Math.abs(pos.x)) {
-    // N / S 면 — pos.y 의 부호로 결정.
-    const localX = clamp(Math.floor(w / 2 + pos.x), 0, w - 1);
-    if (pos.y < 0) {
-      return { containerId: c.id, cell: { x: ox + localX, y: oy - 1 }, face: 'N', kind: portKind };
-    }
-    if (pos.y > 0) {
-      return { containerId: c.id, cell: { x: ox + localX, y: oy + h }, face: 'S', kind: portKind };
-    }
-    return null; // pos.y === 0 && |pos.x| ≤ |pos.y| === 0 → 중앙. 일반 fluid_box 에서 발생하지 않음.
-  }
-  // W / E 면 — pos.x 의 부호로 결정.
-  const localY = clamp(Math.floor(h / 2 + pos.y), 0, h - 1);
-  if (pos.x < 0) {
-    return { containerId: c.id, cell: { x: ox - 1, y: oy + localY }, face: 'W', kind: portKind };
-  }
-  return { containerId: c.id, cell: { x: ox + w, y: oy + localY }, face: 'E', kind: portKind };
+  const kind: PortKind = { fluid: fluidName };
+  const cell =
+    face === 'N' ? { x: ox + offset, y: oy - 1 }
+    : face === 'S' ? { x: ox + offset, y: oy + h }
+    : face === 'W' ? { x: ox - 1, y: oy + offset }
+    : { x: ox + w, y: oy + offset };
+  return { containerId: c.id, cell, face, kind };
 }
 
 /**
@@ -222,10 +203,6 @@ function fluidBoxAllows(
   if (!productionType || productionType === 'none') return true;
   if (productionType === 'input-output') return true; // 보일러 가열 모드 등 — 양쪽 다.
   return role === 'producer' ? productionType === 'output' : productionType === 'input';
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }
 
 function containerCenter(c: Container): { x: number; y: number } {

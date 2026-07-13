@@ -15,12 +15,17 @@ import { useGameDataStore } from "../../store/gameDataStore";
 import { enumerateContainerPorts, resolvePortPair } from "./portInference";
 import type { Container } from "./containerModel";
 
-/** 화학 공장 꼴 3×3 — 유체 입력은 N면, 출력은 S면(회전 0 기준). */
+/**
+ * 화학 공장 3×3 — 실측 게임데이터 모양. 유체 입력은 N면, 출력은 S면(회전 0 기준).
+ *
+ * 좌표 `(-1,-1)` 은 머신 **안쪽 왼위 모서리 칸**이라 좌표만으론 면을 못 정한다.
+ * 면은 `direction` 이 답한다(입력 0=N, 출력 8=S). → module/fluidPorts.ts 머리말
+ */
 const CHEM = {
   name: "chemical-plant",
   fluid_boxes: [
-    { index: 1, production_type: "input", connections: [{ positions: [{ x: -1, y: -2 }] }] },
-    { index: 2, production_type: "output", connections: [{ positions: [{ x: -1, y: 2 }] }] },
+    { index: 1, production_type: "input", connections: [{ direction: 0, positions: [{ x: -1, y: -1 }] }] },
+    { index: 2, production_type: "output", connections: [{ direction: 8, positions: [{ x: -1, y: 1 }] }] },
   ],
 };
 

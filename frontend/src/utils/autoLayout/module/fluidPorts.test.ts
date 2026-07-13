@@ -11,9 +11,15 @@ import { chooseMachineDirection, fluidPortSlots } from "./fluidPorts";
 import type { Entity } from "../../../store/gameDataStore";
 
 /**
- * 화학 공장 꼴 3×3 — 유체 **입력 2개가 N 면**, **출력 2개가 S 면**.
- * `positions` 는 게임데이터가 이미 N/E/S/W 로 돌려 둔 배열이다(export-gamedata.lua).
- * 중심 기준 경계 좌표라 N 입력은 y=-2, 시계 90° 돌면 x=+2 로 간다.
+ * 화학 공장 3×3 — **실측 게임데이터 그대로**(2026-07-13 브라우저 덤프).
+ *
+ * 좌표는 머신 중심 기준이고 **머신 안쪽 모서리 칸**을 가리킨다. 회전 0에서 입력 상자는
+ * `(-1,-1)`·`(1,-1)` = 위쪽 두 모서리, 출력은 `(-1,1)`·`(1,1)` = 아래쪽 두 모서리다.
+ * `positions` 는 그 좌표를 N/E/S/W 로 돌려 둔 배열이라 `(x,y) → (−y,x)` 로 순환한다.
+ *
+ * **모서리라서 좌표만으론 면을 못 정한다** — `(-1,-1)` 이 위로 나가는지 왼쪽으로 나가는지
+ * `|x|`·`|y|` 로는 안 갈린다. 면은 오직 `direction` 이 답한다(입력=0=N, 출력=8=S).
+ * 이 fixture 를 좌표만으로 지어내면 실제 데이터와 다른 걸 시험하게 된다.
  */
 const chemicalPlant = {
   name: "chemical-plant",
@@ -21,22 +27,34 @@ const chemicalPlant = {
     {
       index: 1,
       production_type: "input",
-      connections: [{ positions: [
-        { x: -1, y: -2 }, // N (direction 0)
-        { x: 2, y: -1 },  // E (direction 4)
-        { x: 1, y: 2 },   // S (direction 8)
-        { x: -2, y: 1 },  // W (direction 12)
-      ] }],
+      connections: [{
+        direction: 0, // 위로 나간다
+        positions: [{ x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }],
+      }],
     },
     {
       index: 2,
+      production_type: "input",
+      connections: [{
+        direction: 0,
+        positions: [{ x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }, { x: -1, y: -1 }],
+      }],
+    },
+    {
+      index: 3,
       production_type: "output",
-      connections: [{ positions: [
-        { x: -1, y: 2 },  // N 기준 S 면
-        { x: -2, y: -1 }, // E 로 돌리면 W 면
-        { x: 1, y: -2 },
-        { x: 2, y: 1 },
-      ] }],
+      connections: [{
+        direction: 8, // 아래로 나간다
+        positions: [{ x: -1, y: 1 }, { x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }],
+      }],
+    },
+    {
+      index: 4,
+      production_type: "output",
+      connections: [{
+        direction: 8,
+        positions: [{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: -1, y: -1 }, { x: 1, y: -1 }],
+      }],
     },
   ],
 } as unknown as Entity;
@@ -44,15 +62,34 @@ const chemicalPlant = {
 const SIZE = { w: 3, h: 3 };
 
 describe("fluidPorts — 유체 입구가 어느 면에 오나", () => {
-  it("안 돌리면(0) 입력은 N, 출력은 S — 프로토타입 그대로", () => {
+  it("안 돌리면(0) 입력은 N 두 칸, 출력은 S 두 칸 — 프로토타입 그대로", () => {
     const slots = fluidPortSlots(chemicalPlant, SIZE, 0);
-    expect(slots.map((s) => `${s.productionType}:${s.face}`)).toEqual(["input:N", "output:S"]);
+    expect(slots.map((s) => `${s.productionType}:${s.face}${s.offset}`)).toEqual([
+      "input:N0", "input:N2", "output:S0", "output:S2",
+    ]);
   });
 
   it("시계 90°(4) 돌리면 입력이 E, 출력이 W — 우리 규칙과 같은 방향", () => {
     // 이게 트렁크 파이프의 전제다: 기둥에서 N/S 는 이웃 머신에 막히고 W/E 만 노출된다.
     const slots = fluidPortSlots(chemicalPlant, SIZE, 4);
-    expect(slots.map((s) => `${s.productionType}:${s.face}`)).toEqual(["input:E", "output:W"]);
+    expect(slots.map((s) => `${s.productionType}:${s.face}${s.offset}`)).toEqual([
+      "input:E0", "input:E2", "output:W0", "output:W2",
+    ]);
+  });
+
+  it("면은 좌표가 아니라 direction 이 정한다 — 모서리 칸은 좌표로 안 갈린다", () => {
+    // 회귀 못: 한때 `|y| ≥ |x|` 면 N/S 로 보내는 규칙을 썼다. 모서리는 |x| = |y| 라 늘
+    // N/S 가 이겼고, 그래서 **어느 각도로 돌려도 E 가 안 나왔다**(트렁크 파이프가 못 섰다).
+    for (const direction of [0, 4, 8, 12] as const) {
+      const faces = new Set(fluidPortSlots(chemicalPlant, SIZE, direction).map((s) => s.face));
+      expect(faces.size).toBe(2); // 입력 면 하나 + 출력 면 하나 — 늘 서로 반대
+    }
+    // direction 없는 구버전 데이터면 지어내지 않는다 — 슬롯이 아예 안 나온다.
+    const legacy = {
+      name: "legacy",
+      fluid_boxes: [{ index: 1, production_type: "input", connections: [{ positions: [{ x: -1, y: -1 }] }] }],
+    } as unknown as Entity;
+    expect(fluidPortSlots(legacy, SIZE, 0)).toEqual([]);
   });
 
   it("입력을 E 면으로 받으려면 어느 각도냐 → 데이터가 4 라고 답한다", () => {
@@ -75,11 +112,11 @@ describe("fluidPorts — 유체 입구가 어느 면에 오나", () => {
       fluid_boxes: [
         {
           index: 1, production_type: "input", filter: "water",
-          connections: [{ positions: [{ x: -1, y: -2 }, { x: 2, y: -1 }, { x: 1, y: 2 }, { x: -2, y: 1 }] }],
+          connections: [{ direction: 0, positions: [{ x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }] }],
         },
         {
           index: 2, production_type: "input", filter: "steam",
-          connections: [{ positions: [{ x: 1, y: -2 }, { x: 2, y: 1 }, { x: -1, y: 2 }, { x: -2, y: -1 }] }],
+          connections: [{ direction: 0, positions: [{ x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }, { x: -1, y: -1 }] }],
         },
       ],
     } as unknown as Entity;

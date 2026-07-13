@@ -94,6 +94,15 @@ export interface CollisionBox {
 export interface PipeConnection {
   /** 4방향 회전별 좌표 (보통 길이 4) */
   positions: Vec2[];
+  /**
+   * 이 연결이 **엔티티 밖으로 뻗는 쪽** (0=N, 4=E, 8=S, 12=W; 엔티티 회전 0 기준).
+   * 엔티티를 `d` 만큼 돌리면 실제 면은 `(direction + d) % 16`.
+   *
+   * `positions` 좌표만으론 면을 알 수 없다 — 화학 공장의 유체 상자 좌표는 (-1,-1) 같은
+   * **모서리 칸**이라 위로 나가는지 옆으로 나가는지 부호로 갈리지 않는다.
+   * 구버전 export 에는 없을 수 있어 optional.
+   */
+  direction?: number;
   /** "input" | "output" | "input-output" */
   flow_direction?: string;
   /** "normal" | "underground" | "linked" */

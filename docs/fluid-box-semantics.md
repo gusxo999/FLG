@@ -187,6 +187,27 @@ mod 제작자들이 공식 범위를 벗어나 사용한 경우. 우리 로직�
 면"으로 후보를 좁히는데, **유체는 fluid_box 가 면을 강제**한다. 둘이 부딪히면 후보가 0개가
 되어 `null` 이 난다. 그래서 유체는 면을 좁히지 않는다(용도로 이미 걸렀으니 후보가 적다).
 
+## 세 번째 방향 필드 — `connection.direction` (2026-07-13)
+
+위의 두 필드는 "이 유체가 **들어오냐 나가냐**"를 말한다. 둘 다 **어느 면이냐**는 말하지 않는다.
+그건 세 번째 필드가 답한다.
+
+```
+FluidBoxInfo
+ ├─ production_type   ← 게임플레이 용도 (재료냐 결과물이냐)
+ └─ connections[]
+     ├─ flow_direction ← 물리 흐름 (파이프가 어느 쪽으로 흐르냐)
+     └─ direction      ← **면** (이 연결이 머신 밖 어느 쪽으로 뻗냐) 0=N,4=E,8=S,12=W
+```
+
+**좌표(`positions`)로 면을 역추정하면 안 된다.** 화학 공장의 유체 상자 좌표는 `(-1,-1)` 처럼
+머신 **안쪽 모서리 칸**이라 `|x| = |y|` 이고, 위로 나가는지 옆으로 나가는지 좌표에 정보가 없다.
+자세한 사례와 그 대가는 [auto-layout-wizard.trunk-pipe.md §3](auto-layout-wizard.trunk-pipe.md)
+("유체 상자의 면은 좌표에서 못 뽑는다") 참고.
+
+머신을 `d` 만큼 돌리면 실제 면은 `(direction + d) % 16` 이다. 읽는 규칙은
+[`resolveFluidConnection`](../frontend/src/utils/autoLayout/module/fluidPorts.ts) 한 곳에 있다.
+
 ## 향후 고려 사항
 
 1. **한 fluidbox 내 서로 다른 `flow_direction`을 가진 연결이 있을 경우**: 현재 상세 패널은 `connections[0]`을 대표로 삼음. 여러 방향을 가진 fluidbox가 나타나면 "mixed" 표시로 개선 필요.

@@ -142,6 +142,10 @@ local function extract_fluid_boxes(e)
         end
         connections[#connections + 1] = {
           positions = positions,
+          -- 이 연결이 **머신 밖으로 뻗는 쪽** (0=N, 4=E, 8=S, 12=W; 회전 0 기준).
+          -- positions 좌표만으론 면을 알 수 없다: 화학 공장의 유체 상자는 (-1,-1) 처럼
+          -- **모서리 칸**이라 위로 나가는지 옆으로 나가는지 부호로 갈리지 않는다.
+          direction = conn.direction,
           flow_direction = conn.flow_direction,
           connection_type = conn.connection_type,
           max_underground_distance = conn.max_underground_distance,
