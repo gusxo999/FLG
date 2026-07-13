@@ -111,10 +111,15 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
     const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
     if (!chosen) {
-      // 회전이 데이터에서 나오므로(§3), 실패했으면 **데이터를 봐야** 안다.
-      // 회전이 아예 안 먹으면(=positions 가 4방향 배열이 아니면) 네 방향의 면이 전부 같게 찍힌다.
+      // 회전이 데이터에서 나오므로(§3), 실패했으면 **원본 좌표를 봐야** 안다.
+      // positions 는 "4 cardinal direction connection points"(런타임 API 문서)지만 **순서가 명시돼
+      // 있지 않다.** 그래서 면 이름만으론 배열 순서 문제인지 좌표→면 변환 문제인지 안 갈린다.
       // eslint-disable-next-line no-console
       console.info(`[autoLayout] 유체 회전 실패 — ${m.entityName} / ${fluid.name}`, {
+        raw: entity.fluid_boxes?.map((fb) => ({
+          use: fb.production_type,
+          positions: fb.connections.map((c) => c.positions?.map((p) => `${p.x},${p.y}`).join(" | ")),
+        })),
         positionsLen: entity.fluid_boxes?.map((fb) => fb.connections.map((c) => c.positions?.length ?? 0)),
         byDirection: Object.fromEntries(
           CARDINAL_DIRECTIONS.map((d) => [
