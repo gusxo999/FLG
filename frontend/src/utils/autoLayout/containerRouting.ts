@@ -564,6 +564,15 @@ const PIPE_BLOCK_GROUP = 'pipe-to-ground';
  * *지상 입구가 향하는 방향* (= 표면 연결 측). 터널은 그 반대 방향으로 진행.
  *  - entrance: 터널이 jump 진행 방향으로 나아가므로 surface = `-jump`.
  *  - exit:    터널이 jump 진행 방향에서 들어오므로 surface = `+jump`.
+ *
+ * ## Deprecated Dijkstra Guard
+ * **여기서 깔리는 파이프는 합류 가드를 안 거친다.** 파이프는 방향이 없어 닿기만 하면
+ * 남의 관망과 합쳐지는데(다른 유체면 오염, 남의 머신 출력 상자를 스치면 생산물 유실),
+ * 그 가드(`collectPipeFlow`/`PipeFlow`)는 **새 모듈 파이프라인에만** 걸려 있다. 여기는
+ * 폐기 예정인 옛 경로라 골든 스냅샷 회귀를 피하려고 **일부러** 안 걸었다.
+ *
+ * 유체 배치에서 원인 모를 오염·유실이 보이면 이 표식(`Deprecated Dijkstra Guard`)으로
+ * 코드와 [docs/auto-layout-wizard.known-limits.md] 를 함께 grep 할 것.
  */
 function emitFluidPath(
   result: DijkstraResult,

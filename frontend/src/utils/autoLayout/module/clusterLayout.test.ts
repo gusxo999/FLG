@@ -50,27 +50,34 @@ describe('layoutCluster (P0 기둥)', () => {
 });
 
 describe('columnTapCapacity (탭 용량)', () => {
-  it('일반만(긴팔 없음) → 면당 1레인 × 2면 = 2', () => {
-    expect(columnTapCapacity({ hasNormal: true, hasLong: false })).toBe(2);
+  it('reach {1} → 면당 1벨트 × 2면 = 2', () => {
+    expect(columnTapCapacity({ reaches: [1] })).toBe(2);
   });
 
-  it('일반 AND 긴팔 → 면당 2레인 × 2면 = 4', () => {
-    expect(columnTapCapacity({ hasNormal: true, hasLong: true })).toBe(4);
+  it('reach {1,2} → 면당 2벨트 × 2면 = 4', () => {
+    expect(columnTapCapacity({ reaches: [1, 2] })).toBe(4);
   });
 
-  it('긴팔만(일반 없음) → 거리 1 못 집어 면당 1레인 = 2', () => {
-    // 긴팔은 reach 1 을 못 집으므로 일반 없이는 2레인 불가.
-    expect(columnTapCapacity({ hasNormal: false, hasLong: true })).toBe(2);
+  it('reach {2} 한 종 → 면당 1벨트 = 2', () => {
+    expect(columnTapCapacity({ reaches: [2] })).toBe(2);
   });
 
-  it('둘 다 없음 → 0', () => {
-    expect(columnTapCapacity({ hasNormal: false, hasLong: false })).toBe(0);
+  it('중복 reach 는 벨트를 못 늘린다 — {1,1} → 2', () => {
+    expect(columnTapCapacity({ reaches: [1, 1] })).toBe(2);
+  });
+
+  it('reach 종류가 늘면 그만큼 — {1,2,3} → 6', () => {
+    expect(columnTapCapacity({ reaches: [1, 2, 3] })).toBe(6);
+  });
+
+  it('인서터 없음 → 0', () => {
+    expect(columnTapCapacity({ reaches: [] })).toBe(0);
   });
 });
 
 describe('pickClusterShape (P1 기둥 + overflow)', () => {
-  const longCaps = { hasNormal: true, hasLong: true }; // 용량 4
-  const regularCaps = { hasNormal: true, hasLong: false }; // 용량 2
+  const longCaps = { reaches: [1, 2] }; // 용량 4
+  const regularCaps = { reaches: [1] }; // 용량 2
 
   it('항상 기둥을 반환', () => {
     expect(pickClusterShape({ beltDemand: 2, pipeDemand: 0 }, longCaps).shape).toBe('column');

@@ -254,9 +254,11 @@ export const runLayeredWizard: RunContainerWizard = async (
   // 면당 레인은 인서터 종류로 정해진다: 일반(reach 1, 가까운 belt) + 긴팔(reach≥2, 앞
   // belt 건너 먼 belt). 긴팔은 거리 1을 못 집으므로 2레인은 둘 다 있어야 성립.
   const reaches = input.selectedInserters.map((name) => inserterReach(entityMap.get(name)));
+  // 서로 다른 reach 하나당 [ClusterBelt] 한 줄(reach `r` → clusterBeltDepth `1+r`). 인서터를
+  // 아무것도 안 골랐으면 기본 인서터(reach 1)가 있다고 본다.
+  const usableReaches = reaches.filter((r) => r >= 1);
   const shapeCaps: ShapeCaps = {
-    hasNormal: reaches.some((r) => r === 1) || reaches.length === 0, // 기본 인서터는 reach-1
-    hasLong: reaches.some((r) => r >= 2),
+    reaches: usableReaches.length > 0 ? usableReaches : [1],
   };
   const clusters = new Map<RecipeTreeNode, ClusterLayout>();
   const overflowNodes: { recipe: string; beltDemand: number; pipeDemand: number; capacity: number }[] = [];

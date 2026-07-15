@@ -208,6 +208,62 @@ FluidBoxInfo
 머신을 `d` 만큼 돌리면 실제 면은 `(direction + d) % 16` 이다. 읽는 규칙은
 [`resolveFluidConnection`](../frontend/src/utils/autoLayout/module/fluidPorts.ts) 한 곳에 있다.
 
+## 상자에 들어갈 유체의 **이름** — 그건 머신이 아니라 레시피가 안다 (2026-07-13)
+
+위의 세 필드는 전부 **머신 프로토타입** 쪽 정보다. 그런데 "이 상자에 무슨 유체가 흐르나"는
+머신만 봐선 알 수 없다 — 화학 공장의 유체 상자는 `filter` 가 비어 있고, **레시피가 정한다.**
+
+답은 **레시피 쪽 네 번째 필드**에 있다:
+
+- [`FluidIngredientPrototype.fluidbox_index`](https://lua-api.factorio.com/latest/types/FluidIngredientPrototype.html)
+- [`FluidProductPrototype.fluidbox_index`](https://lua-api.factorio.com/latest/types/FluidProductPrototype.html)
+
+> "Used to specify which `CraftingMachinePrototype::fluid_boxes` this ingredient should use.
+> It will use this one fluidbox. The index is **1-based and separate for input and output fluidboxes**."
+
+**기본값이 `0`(미지정)이고, 그때의 동작이 핵심이다.** 개발자(boskid)가
+[포럼](https://forums.factorio.com/viewtopic.php?p=689913)에서 못박은 대로, 미지정이면 그 유체는
+해당 역할의 상자 **전부**에 들어갈 수 있다("falling back into usage of all input fluid boxes").
+
+그래서 **화학 공장이 입력 상자를 두 개 갖고 있으면서 유체 하나짜리 레시피(예: 플라스틱)에서
+양쪽 다 파이프를 받는다.** 개발자가 든 대비 예시: 경유 분해는 두 입력 상자가 **다른 유체**를
+받고(각 재료가 index 를 명시), 윤활유 레시피는 두 상자가 **같은 유체**를 받는다(미지정).
+
+### 규칙
+
+```
+상자 하나 → 유체 이름 "하나"가 아니라 이름의 "집합".
+
+  상자에 프로토타입 filter 가 있으면        → 그 유체 하나.
+  없으면, 그 상자가 (production_type 별로 따로 세는) 입력 상자 몇 번째인지 구하고:
+    fluidbox_index = k 인 재료   → k번 입력 상자에만
+    fluidbox_index = 0 인 재료   → 모든 입력 상자에
+  산출물과 출력 상자도 똑같이.
+```
+
+### 실데이터로 확인한 것 (2026-07-14, 재추출본)
+
+exporter 를 고쳐 `fluidbox_index` 를 뽑은 뒤 실제 게임데이터를 확인했다.
+
+- **미지정이 압도적으로 많다.** 전체 레시피 중 이 필드를 가진 건 **딱 둘**이다. 나머지는
+  전부 미지정 → 그 역할의 상자 **전부**에 들어간다. 즉 "상자 하나 → 유체 이름 **집합**"은
+  예외가 아니라 **보통**이다.
+  - `plastic-bar` 의 석유 가스 → 미지정. 화학 공장의 입력 상자 **둘 다** 받는다.
+  - `light-oil-cracking` 의 물·경유 → **둘 다 미지정**. 개발자가 "입력 상자가 갈리는 예"로
+    든 레시피인데도 이 데이터(모드팩)에선 안 갈린다. **문서의 예를 데이터라고 믿지 말 것.**
+- **위의 "미검증 가정"은 이제 검증됐다.** 필드를 가진 두 레시피가 둘 다 규칙과 맞는다:
+  - `basic-oil-processing` 산출물 석유 가스 = `3`. 정유소 상자는 1·2=입력, 3·4·5=출력이니
+    "출력끼리 따로 세서 3번째" = 프로토타입 5번 상자 — 바닐라에서 석유 가스가 나오는 그 칸이다.
+  - `kr-restore-used-pollution-filter` 재료 물 = `1`. kr-bio-lab 상자는 1·2=입력, 3=출력이니
+    "입력끼리 따로 세서 1번째" = 프로토타입 1번 상자.
+  - 다만 `basic-oil-processing` 하나만 놓고 보면 "역할별로 센 3번째"와 "배열 전체의 3번째"가
+    **같은 칸을 가리켜** 구분이 안 된다. 두 사례를 합쳐야 역할별 계수가 맞는다는 게 보인다.
+- **화학 공장의 유체 상자엔 `filter` 가 없다.** 즉 유체 이름은 프로토타입이 아니라
+  **레시피에서만** 나온다는 게 다시 확인됐다.
+
+`0` 은 데이터에 절대 안 나온다 — 미지정이면 Lua 가 `nil` 을 주고 JSON 에서 **키가 통째로
+빠진다**. 그래서 코드는 `fluidbox_index === 0` 이 아니라 **"없으면 전부"** 로 읽어야 한다.
+
 ## 향후 고려 사항
 
 1. **한 fluidbox 내 서로 다른 `flow_direction`을 가진 연결이 있을 경우**: 현재 상세 패널은 `connections[0]`을 대표로 삼음. 여러 방향을 가진 fluidbox가 나타나면 "mixed" 표시로 개선 필요.

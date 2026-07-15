@@ -168,6 +168,53 @@ describe("generateModule", () => {
   });
 });
 
+describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
+  /** copper-plate 가 머신당 인서터 하나로 못 받는 고수요 픽스처. */
+  const highDemand: ModuleInput = {
+    ...copperCable,
+    count: 3,
+    supplyCapacity: {
+      beltCapacity: 100,
+      tapCapacity: 5,
+      // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. copper-cable(출력)은 수치 없음 → 1.
+      lineRates: new Map([["input:copper-plate", 30]]),
+    },
+  };
+
+  // 기하: outputSide=W → 입력 copper-plate 는 **E 면**. 머신 x=0..2, E 면 depth 1(좌석) = x=3,
+  // depth 2(near 벨트) = x=4.
+  it("고수요 입력이 머신마다 탭 인서터 2개로 집힌다", () => {
+    const mod = generateModule(highDemand);
+    expect(mod.supply?.mode).toBe("tap");
+    expect(mod.unroutedLines).toHaveLength(0);
+
+    const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
+    // 각 머신의 E 면 좌석 열(x=3)에 탭 인서터가 2행 앉는다(= tapsPerMachine 2).
+    for (const m of mod.machines) {
+      const seatCol = inserters.filter(
+        (c) => c.x === 3 && c.y >= m.origin.y && c.y < m.origin.y + m.size.h,
+      );
+      expect(seatCol.length, `머신 ${m.id} 좌석 열`).toBe(2);
+    }
+  });
+
+  it("탭이 늘어도 벨트는 여전히 한 줄 · 포트는 품목당 1개", () => {
+    const mod = generateModule(highDemand);
+    expect(mod.inputPorts.filter((p) => p.line.name === "copper-plate")).toHaveLength(1);
+    // copper-plate 벨트 열(E near, x=4)은 한 줄 그대로 — 머신 기둥 전체를 덮는다.
+    const plateBelts = mod.cells.filter(
+      (c) => c.cell.entityType === EntityType.Belt && c.x === 4,
+    );
+    expect(plateBelts.length).toBeGreaterThan(0);
+  });
+
+  it("결정적 — 같은 고수요 입력은 같은 셀", () => {
+    const a = generateModule(highDemand);
+    const b = generateModule(highDemand);
+    expect(JSON.stringify(b.cells)).toEqual(JSON.stringify(a.cells));
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 노출 N/S 완화 — count=1 raw 입력 (방출 수준)
 // ─────────────────────────────────────────────────────────────────────────────

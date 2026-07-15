@@ -4,19 +4,23 @@
  *
  * 판정 순서: ① 간단한 레시피인가(기둥 클러스터로 표현 가능 — `planClusterPorts` 의
  * ok/complex 가 곧 이 판별이다, 별도 "레인 검사"를 새로 만들지 않는다) ②
- * `determineBeltCount`(벨트 한 줄·인서터 하나가 감당하나). 하나라도 걸리면 **모듈
- * 전체가 다이렉트 인서팅으로 물러난다** — 거절은 항상 안전하다(1:1 은 구성으로 성립).
+ * `determineTapsPerMachine`(벨트 한 줄이 감당하나 + 머신당 탭 몇 개 — Parallel Inserting)
+ * + 좌석 예산. 하나라도 걸리면 **모듈 전체가 다이렉트 인서팅으로 물러난다** — 거절은
+ * 항상 안전하다(1:1 은 구성으로 성립).
  */
 import { describe, it, expect } from "vitest";
 import { insertingPlanner, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
+import type { SpecInserter } from "../buildSpec";
 
 const inL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
 const outL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });
 
-/** 3×3 머신 기준 — 다이렉트는 면당 3칸, 탭은 면당 레인 수(긴팔 있으면 2). */
+const insR = (reach: number): SpecInserter => ({ entityName: `i${reach}`, reach, throughput: 0 });
+
+/** 3×3 머신 기준 — 다이렉트는 면당 3칸, 탭은 면당 벨트 수(reach 종류 수, 긴팔 있으면 2). */
 const base = (lines: IoLine[], hasLong = true) => ({
   lines,
-  caps: { hasNormal: true, hasLong },
+  inserters: hasLong ? [insR(1), insR(2)] : [insR(1)],
   outputSide: "W" as const,
   slotsPerFace: { WE: 3, NS: 3 },
 });
@@ -44,14 +48,20 @@ describe("① 간단한 레시피 판별 — 기둥 클러스터로 표현 가�
   });
 });
 
-describe("② determineBeltCount — 벨트 한 줄 · 인서터 하나가 감당하나", () => {
+describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", () => {
   const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
 
-  it("수치를 안 주면 건너뛴다 — 없는 숫자를 지어내지 않는다", () => {
-    expect(insertingPlanner(base(lines), 3, {}).mode).toBe("tap");
+  /** plan 에서 한 줄의 tapsPerMachine 조회(탭 모드 전용). */
+  const tapsOf = (d: ReturnType<typeof insertingPlanner>, name: string): number | undefined =>
+    d.plan.ok ? d.plan.lines.find((l) => l.line.name === name)?.tapsPerMachine : undefined;
+
+  it("수치를 안 주면 건너뛴다 — 탭 1개(없는 숫자를 지어내지 않는다)", () => {
+    const d = insertingPlanner(base(lines), 3, {});
+    expect(d.mode).toBe("tap");
+    expect(tapsOf(d, "a")).toBe(1);
   });
 
-  it("클러스터 수요가 벨트 한 줄을 넘으면 거절 (v1: 분할 대신 1:1)", () => {
+  it("클러스터 수요가 벨트 한 줄을 넘으면 거절 (탭으론 못 푼다 → 1:1)", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 15,
       lineRates: new Map([["input:a", 20]]), // 20 > 15
@@ -61,24 +71,39 @@ describe("② determineBeltCount — 벨트 한 줄 · 인서터 하나가 감�
     expect(d.reason).toContain("demand>beltCap");
   });
 
-  it("머신 한 대 몫이 인서터 하나를 넘으면 거절", () => {
+  it("머신 한 대 몫이 인서터 하나를 넘으면 Parallel Inserting — 탭을 늘린다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
       tapCapacity: 5,
-      lineRates: new Map([["input:a", 30]]), // 30 / 3대 = 10 > 5
+      lineRates: new Map([["input:a", 30]]), // 30 / 3대 = 10, ceil(10/5) = 탭 2개
     };
     const d = insertingPlanner(base(lines), 3, cap);
-    expect(d.mode).toBe("direct");
-    expect(d.reason).toContain("perMachine>tapCap");
+    expect(d.mode).toBe("tap"); // 옛 모델은 여기서 거절했다 — 이제 탭으로 감당
+    expect(tapsOf(d, "a")).toBe(2);
+    expect(tapsOf(d, "b")).toBe(1); // 수치 없는 줄은 1
   });
 
-  it("머신을 늘리면 머신당 몫이 줄어 같은 수요가 통과한다", () => {
+  it("머신을 늘리면 머신당 몫이 줄어 탭이 1개로 준다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
       tapCapacity: 5,
-      lineRates: new Map([["input:a", 30]]), // 30 / 8대 = 3.75 ≤ 5
+      lineRates: new Map([["input:a", 30]]), // 30 / 8대 = 3.75 ≤ 5 → 탭 1개
     };
-    expect(insertingPlanner(base(lines), 8, cap).mode).toBe("tap");
+    const d = insertingPlanner(base(lines), 8, cap);
+    expect(d.mode).toBe("tap");
+    expect(tapsOf(d, "a")).toBe(1);
+  });
+
+  it("좌석이 모자라면(총 탭 > 면 좌석 행) 다이렉트로 거른다", () => {
+    // a 혼자 E 면에서 탭 4개를 요구 — 3×3 면 좌석 3행을 넘는다.
+    const cap: SupplyCapacity = {
+      beltCapacity: 100,
+      tapCapacity: 5,
+      lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 탭 4개 > 3행
+    };
+    const d = insertingPlanner(base([inL("a"), outL("z")]), 3, cap);
+    expect(d.mode).toBe("direct");
+    expect(d.reason).toContain("seats");
   });
 
   it("벨트 상한은 머신 수와 무관하다 — 합산 수요가 넘으면 몇 대든 거절", () => {

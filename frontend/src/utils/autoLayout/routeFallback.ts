@@ -14,7 +14,6 @@
  * 의 드래그 재시도) 양쪽에서 사용된다.
  */
 
-import { useGameDataStore, type Entity } from '../../store/gameDataStore';
 import type {
   Area,
   Container,
@@ -27,26 +26,18 @@ import type {
 } from './containerModel';
 import { routePorts, routeItemMulti } from './containerRouting';
 import { faceVector } from './util/helper';
-import { inserterReach } from './inserterThroughput';
+import { makeBuildSpec, type BuildSpec } from './buildSpec';
 import { enumerateContainerPorts, resolvePortPair } from './portInference';
 
-export interface RouteOptions {
-  beltEntityName: string;
-  inserterEntityName: string;
-  /**
-   * 긴팔(long inserter) 엔티티 + 집기 거리. 트렁크 병합이 앞 belt 를 건너뛰어
-   * 뒷 belt 를 탭하는 2번째 레인에 쓴다(용량 4). 사용자가 reach≥2 인서터를 하나도
-   * 안 골랐으면 undefined — 긴팔 미사용(reach-1 만). 거리(reach)는 처리량처럼
-   * prototype 데이터(`inserter_pickup_position`)에서 산출해 흐른다.
-   */
-  longInserter?: { entityName: string; reach: number };
-  pipeEntityName: string;
-  undergroundPipeEntityName?: string;
-  undergroundBeltEntityName?: string;
-  /** 지하파이프 입출구 좌표 차이 한계. undefined / 0 이면 점프 비활성. */
-  pipeMaxUndergroundDistance?: number;
-  /** 지하벨트 입출구 좌표 차이 한계. undefined / 0 이면 점프 비활성. */
-  beltMaxUndergroundDistance?: number;
+/**
+ * 옛 경로(Dijkstra 탐색)의 옵션 = [BuildSpec](./buildSpec.ts) **+ 탐색 전용 손잡이**.
+ *
+ * 둘을 갈라 둔 이유: BuildSpec("무엇으로 지을 수 있나")은 탐색과 무관해서 **예약 경로도**
+ * 본다. 아래 필드들(`turnPenalty`·`routingBounds`·`inwardPortFace`·`preferUnderground`)은
+ * **탐색기에게만 뜻이 있다** — 예약 경로엔 탐색이 없으므로 아무 의미가 없다.
+ * 그래서 새 경로는 `RouteOptions` 가 아니라 `BuildSpec` 만 import 한다.
+ */
+export interface RouteOptions extends BuildSpec {
   preferUnderground: boolean;
   /**
    * 지상 벨트 꺾임 1회당 추가 cost. 양수면 꺾임이 적은(더 곧은) 경로를 선호한다 —
@@ -206,74 +197,17 @@ function samePort(a: ContainerPort, b: ContainerPort): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 위저드 입력으로부터 라우팅 옵션을 빌드. 사용자가 선택한 첫 underground
- * pipe / belt prototype 의 entityName 과 `max_underground_distance` 를
- * gameDataStore 에서 lookup 한다.
+ * 옛 경로용 옵션 = [makeBuildSpec](./buildSpec.ts) + 탐색 전용 손잡이.
  *
- * 점프 비활성 (= maxDistance=0) 조건:
- *  - 사용자가 underground pipe / belt 를 하나도 선택 안 함, OR
- *  - 선택한 entity 가 prototype 사전에 없음, OR
- *  - max_underground_distance 가 0 / 미정.
+ * `preferUnderground` 만 여기서 유도한다(지하 변형을 하나라도 골랐으면 켠다) — 나머지
+ * 탐색 손잡이(`turnPenalty`·`routingBounds`·`inwardPortFace`)는 호출자가 상황에 따라 얹는다.
  *
- * 배치 전략(S-LAYER) 진입부와 편집 파이프라인(드래그 핸들러) 양쪽에서 호출한다.
+ * **새 경로(예약)는 이 함수를 부르지 않는다** — `makeBuildSpec` 을 직접 부른다.
  */
 export function buildRoutingOptions(input: ContainerWizardInput): RouteOptions {
-  const { entityMap } = useGameDataStore.getState();
-  const beltEntityName =
-    input.primaryBelt ?? input.selectedBelts[0] ?? 'transport-belt';
-  const inserterEntityName =
-    input.primaryInserter ?? input.selectedInserters[0] ?? 'inserter';
-
-  // 긴팔 = 사용자가 고른 인서터 중 reach≥2 인 첫 엔티티. 거리는 처리량처럼 데이터에서
-  // 흐른다(inserterReach). 없으면 undefined → 트렁크가 reach-1 만 사용(오늘과 동일).
-  const longInserter = (() => {
-    for (const name of input.selectedInserters) {
-      const reach = inserterReach(entityMap.get(name));
-      if (reach >= 2) return { entityName: name, reach };
-    }
-    return undefined;
-  })();
-
-  const undergroundPipeEntityName = input.selectedUndergroundPipes[0];
-  const undergroundBeltEntityName = input.selectedUndergroundBelts[0];
-
-  const pipeMaxUndergroundDistance = undergroundPipeEntityName
-    ? lookupPipeUndergroundDistance(entityMap.get(undergroundPipeEntityName))
-    : 0;
-  const beltMaxUndergroundDistance = undergroundBeltEntityName
-    ? (entityMap.get(undergroundBeltEntityName)?.max_underground_distance ?? 0)
-    : 0;
-
+  const spec = makeBuildSpec(input);
   return {
-    beltEntityName,
-    inserterEntityName,
-    longInserter,
-    pipeEntityName: 'pipe',
-    undergroundPipeEntityName,
-    undergroundBeltEntityName,
-    pipeMaxUndergroundDistance,
-    beltMaxUndergroundDistance,
-    preferUnderground: !!(
-      undergroundPipeEntityName || undergroundBeltEntityName
-    ),
-    inserterOverride: input.inserterOverrides?.[inserterEntityName],
+    ...spec,
+    preferUnderground: !!(spec.undergroundPipeEntityName || spec.undergroundBeltEntityName),
   };
-}
-
-/**
- * pipe-to-ground 의 underground 거리 추출. Factorio 2.0 prototype API 가
- * connection 별 거리를 두지만 (`fluid_boxes[].connections[].max_underground_distance`),
- * 최상위 `Entity.max_underground_distance` 도 호환용으로 채워진다.
- * connection 우선, 없으면 최상위 fallback.
- */
-function lookupPipeUndergroundDistance(entity: Entity | undefined): number {
-  if (!entity) return 0;
-  for (const fb of entity.fluid_boxes ?? []) {
-    for (const c of fb.connections ?? []) {
-      if (c.connection_type === 'underground' && c.max_underground_distance) {
-        return c.max_underground_distance;
-      }
-    }
-  }
-  return entity.max_underground_distance ?? 0;
 }

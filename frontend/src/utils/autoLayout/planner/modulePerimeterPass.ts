@@ -41,6 +41,7 @@ import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from 
 import { moduleExtent, type PackResult } from "./modulePacking";
 import type { LaneAssignment } from "./perimeterLanePlanner";
 import { routePortToPerimeter, type Rect } from "./perimeterRouter";
+import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../module/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 
 export interface PerimeterPassConfig {
@@ -48,7 +49,17 @@ export interface PerimeterPassConfig {
   inserterEntityName: string;
   /** 파이프 prototype — 유체 포트 반출에 쓴다. 유체가 없으면 안 쓰인다. */
   pipeEntityName?: string;
+  /**
+   * [파이프 합류 가드](../module/pipeFlow.ts) — **유체 이름별** 금지 칸 지도. 반출 파이프가
+   * 남의 관망·남의 머신 유체 상자에 닿는 걸 막는다(파이프는 방향이 없어 닿으면 무조건 합쳐진다).
+   * 유체마다 지도가 다른 이유: **같은 유체는 닿아도 무해**하다(처리량 무한).
+   * 없으면 검사를 안 한다(유체가 없는 트리 · 옛 테스트).
+   */
+  pipeFlow?: ReadonlyMap<string, PipeFlow>;
 }
+
+/** 지도가 안 넘어왔을 때(유체 없는 트리·옛 테스트) — 아무 칸도 안 막는다. */
+const EMPTY_PIPE_FLOW: PipeFlow = { blockedTilesHard: new Set(), blockedTilesSoft: new Set() };
 
 /** 상자 하나의 이사 결과 — moduleWizard 가 Area/routing 에 반영한다. */
 export interface ChestRelocation {
@@ -198,6 +209,8 @@ export function relocateChestsToPerimeter(
   const droppedCellKeys = new Set<string>();
   const addedCells: PlacedCell[] = [];
   const relocations: ChestRelocation[] = [];
+  /** 이 패스가 이미 깐 반출 파이프 — 뒤에 나가는 **다른 유체**가 여기 붙지 않게 한다. */
+  const laidPipes: PipeFlowPipe[] = [];
   let relocated = 0;
   let skipped = 0;
   let lastReason: string | undefined;
@@ -257,6 +270,23 @@ export function relocateChestsToPerimeter(
 
     const isInput = port.line.role === "input";
     if (isFluid && !config.pipeEntityName) { fail(port.chest.id, "no pipe prototype"); continue; }
+
+    // [파이프 합류 가드] — 이 반출 파이프가 **이으면 안 될 것**에 닿는지 깔기 전에 본다.
+    // 두 출처를 겹쳐 본다: (1) 배치 시점의 지도(남의 트렁크·남의 머신 유체 상자), (2) 이
+    // 패스가 **방금 깐** 다른 유체의 반출 파이프. (2)를 빼먹으면 먼저 나간 유체 옆에
+    // 나중 유체가 나란히 붙어 두 관망이 하나가 된다.
+    // 걸리면 그 상자만 skip — 로컬 ring 에 트렁크째 남으므로 물류는 정상이다(회귀 0).
+    if (isFluid) {
+      const fluid = port.line.name;
+      const hit =
+        (config.pipeFlow ? pipeFlowConflict(path, config.pipeFlow.get(fluid) ?? EMPTY_PIPE_FLOW) : null) ??
+        pipeFlowConflict(path, collectPipeFlow({ fluidName: fluid, pipes: laidPipes, machines: [] }));
+      if (hit) {
+        fail(port.chest.id, `pipe merge guard: ${fluid} @(${hit.cell.x},${hit.cell.y}) [${hit.rule}]`);
+        continue;
+      }
+    }
+
     const { belts, feeder, chestCell } = isFluid
       ? layPipePath(path, port.chest, config.pipeEntityName!)
       : layPath(path, seat, isInput, port.chest, config);
@@ -267,6 +297,7 @@ export function relocateChestsToPerimeter(
     // 뒤 상자가 앞 상자의 belt 를 피하게 한다(결정성).
     droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost 만. seat 인서터는 유지.
     addedCells.push(...belts, ...(feeder ? [feeder] : []), chestCell);
+    if (isFluid) for (const c of path) laidPipes.push({ x: c.x, y: c.y, fluid: port.line.name });
     for (const b of belts) occ.add(cellKey(b.x, b.y));
     if (feeder) occ.add(cellKey(feeder.x, feeder.y));
     occ.add(cellKey(chestCell.x, chestCell.y));

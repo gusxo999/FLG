@@ -351,22 +351,29 @@ end
 -- 레시피 추출
 -- ---------------------------------------------------------------------------
 for n, r in pairs(prototypes.recipe) do
+  -- fluidbox_index — 이 유체가 머신의 *몇 번째* 유체 상자로 들어가는지. 1-based 이며
+  -- 입력 상자와 출력 상자를 **따로** 센다. 0(= 미지정)이면 그 유체는 해당 역할의 상자
+  -- **전부**에 들어갈 수 있다(개발자 확인: "falling back into usage of all input fluid
+  -- boxes"). 화학 공장이 입력 상자 2개를 갖고도 유체 하나짜리 레시피에서 양쪽 다 파이프를
+  -- 받는 이유. 아이템 재료엔 없는 필드라 nil 로 나온다.
   local ingredients = {}
   for _, v in pairs(r.ingredients) do
     ingredients[#ingredients + 1] = {
-      type   = v.type,
-      name   = v.name,
-      amount = v.amount,
+      type           = v.type,
+      name           = v.name,
+      amount         = v.amount,
+      fluidbox_index = safe_get(function() return v.fluidbox_index end),
     }
   end
 
   local products = {}
   for _, v in pairs(r.products) do
     products[#products + 1] = {
-      type        = v.type,
-      name        = v.name,
-      amount      = v.amount,
-      probability = v.probability,
+      type           = v.type,
+      name           = v.name,
+      amount         = v.amount,
+      probability    = v.probability,
+      fluidbox_index = safe_get(function() return v.fluidbox_index end),
     }
   end
 

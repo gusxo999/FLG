@@ -10,18 +10,23 @@
  * trunk(`clusterTrunkMerge`)·pipe spine(후속) emitter 가 담당한다. 경로 추적
  * (`containerRouting`)과 역할이 분리되므로 이름이 `...Planner` 다.
  *
- * ## depth 규약 (머신 면에서 바깥으로 N칸)
+ * ## ClusterBeltDepth 규약 (머신 면에서 바깥으로 N칸 — 용어: docs/용어사전.md §D)
  *  - 0칸 = 머신 자신의 가장자리(인서터가 떨구는 목적지).
- *  - 1칸 = 인접 칸. 유체 파이프는 머신 fluid_box 에 닿아야 하므로 **항상 1칸**.
- *  - 아이템 belt: 가까운 레인 = 2칸(일반 인서터 seat 1칸), 먼 레인 = 3칸(긴팔 seat
- *    1칸, 가까운 belt 위로 넘김). 1칸이 파이프면 → 긴팔 seat 2칸·belt 4칸(케이스 B).
+ *  - 1칸 = 좌석 줄. 인서터가 여기 앉는다. 유체 파이프는 머신 fluid_box 에 닿아야 하므로
+ *    **여기 온다**(팔이 없어 머신에 닿아야 한다).
+ *  - 2..(1+최대 reach)칸 = [ClusterBelt] 자리. reach `r` 인서터가 좌석(1칸)에 앉아 `1+r`칸의
+ *    벨트를 집는다. 그래서 한 면에 세울 수 있는 ClusterBelt 수 = **고른 인서터들의 서로 다른
+ *    reach 값 개수**(하드코딩 아님). 1칸이 파이프면 인서터 좌석이 2칸으로 밀려 `2+r`칸에서
+ *    집는다(케이스 B).
  *
  * ## 유체(pipe) 줄
  * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) — 면을 **우리가 못 고른다**.
  * 머신 `fluid_box` 가 정하고, 호출자가 머신을 돌려 그 면을 W/E 로 맞춘 결과가 [PortPlannerInput.pipeSide]
- * 다. depth 는 늘 1(파이프는 팔이 없어 머신에 닿아야 한다). 그 면의 아이템 벨트는 케이스 B
- * (긴팔 seat 2칸·belt 4칸)로만 놓이므로 레인이 **하나로 준다**. v1 은 유체 줄 1개까지.
+ * 다. clusterBeltDepth 는 늘 1(파이프는 팔이 없어 머신에 닿아야 한다). 그 면의 아이템 벨트는
+ * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다. v1 은 유체 줄 1개까지.
  */
+
+import type { SpecInserter } from "../buildSpec";
 
 /** 컬럼의 좌/우 면. */
 export type PortSide = "W" | "E";
@@ -33,9 +38,6 @@ export type PortSide = "W" | "E";
  * 여부(열의 끝 + 그 방향 전역 마진)는 호출자(packModuleTree)가 판정해 넘긴다.
  */
 export type PlannedSide = PortSide | "N" | "S";
-
-/** belt 를 모는 인서터 종류. */
-export type InserterRole = "normal" | "long";
 
 /** I/O 줄의 운반체 종류 — 아이템=belt(인서터 탭), 유체=pipe(스파인, 인서터 없음). */
 export type LineKind = "belt" | "pipe";
@@ -64,36 +66,42 @@ export interface IoLine {
 export interface PlannedLine {
   line: IoLine;
   side: PlannedSide;
-  /** 머신 면에서 바깥 칸 거리. pipe=1, belt 가까운=2, 먼=3, 파이프 위 넘김=4. */
-  depth: number;
-  /** belt 를 모는 인서터. pipe 는 인서터가 없어 undefined. */
-  inserter?: InserterRole;
-}
-
-/** 배정에 쓸 인서터 능력 — `ShapeCaps` 와 동형. */
-export interface PortPlannerCaps {
-  /** reach 1(거리 1) 일반 인서터 보유. */
-  hasNormal: boolean;
-  /** reach≥2 긴팔 인서터 보유. */
-  hasLong: boolean;
+  /**
+   * [ClusterBeltDepth](../../../../docs/용어사전.md) — 머신 면에서 바깥 칸 거리.
+   * pipe=1, 벨트=`1+reach`(케이스 B 면 `2+reach`).
+   */
+  clusterBeltDepth: number;
+  /**
+   * 이 줄을 집는 인서터의 **reach**. reach `r` 인서터가 좌석에 앉아 `1+r`칸(케이스 B 면
+   * `2+r`칸)의 벨트를 집는다. pipe 는 인서터가 없어 undefined.
+   */
+  reach?: number;
+  /**
+   * **[Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting)** — 머신 한 대가
+   * 이 줄을 탭 인서터 몇 개로 집나. 머신당 수요가 인서터 하나 처리량을 넘으면 좌석을 더 써서
+   * 같은 [ClusterBelt] 를 여러 번 집는다. [insertingPlanner] 가 [SupplyCapacity] 로 채운다.
+   * 미지정 = 1(단일 탭). `planClusterPorts` 자체는 채우지 않는다(용량을 안 본다).
+   */
+  tapsPerMachine?: number;
 }
 
 export interface PortPlannerInput {
   /** 배정할 I/O 줄들(아이템 + 유체). */
   lines: IoLine[];
-  caps: PortPlannerCaps;
+  /**
+   * 고른 인서터들([BuildSpec.inserters](../buildSpec.ts)) — reach 오름차순, 같은 reach 는
+   * 하나만. **ClusterBelt 수를 이게 정한다**: 서로 다른 reach 하나당 벨트 한 줄
+   * (reach `r` → clusterBeltDepth `1+r`). 옛 `caps.hasNormal/hasLong` 이진값을 대체했다 —
+   * reach 가 2종을 넘어도 벨트 줄이 그만큼 는다(하드코딩 아님). throughput 은
+   * depth=운반량 매칭의 슬롯 용량으로 쓴다.
+   */
+  inserters: SpecInserter[];
   /**
    * 출력 라인이 향할 면(부모 방향). 입력 라인은 반대 면을 우선한다. 좌우 계층형에서
    * 부모는 항상 왼쪽이므로 기본 "W". (B) 정책: 출력을 이 면에 **먼저 확정(항상 보장)**,
    * 입력은 반대 면에 채우다 넘치면 이 면의 잔여 슬롯으로 흘린다.
    */
   outputSide: PortSide;
-  /**
-   * 인서터별 실제 throughput(items/sec). depth(레인) 배정 = **면 안에서 라인 운반량
-   * (amount) 내림차순 ↔ 슬롯 용량(이 throughput) 내림차순 매칭**. reach 순서를 가정하지
-   * 않고 실제 throughput 으로 정렬(사장님 단서). 미지정이면 depth 는 (B) 등장순서 유지.
-   */
-  throughput?: { normal: number; long: number };
   /**
    * 노출된 끝면(N/S) — 선호 순서. `external` 입력이 E 를 다 쓰고도 남으면 W 로
    * spill 하기 **전에** 이 면들의 레인을 소비한다(E → N/S → W). 노출 판정(count=1 +
@@ -107,8 +115,8 @@ export interface PortPlannerInput {
    * 두 모델이 있고, 세는 대상이 다르다:
    *
    *  - **탭 인서팅**(Tap Inserting, 미지정 = 기존 동작): 면을 belt 한 줄이 세로로 훑고
-   *    머신들이 그 belt 를 인서터로 탭한다. 그래서 한 면이 품는 줄 수 = **인서터 종류 수**
-   *    (일반=가까운 레인, 긴팔=먼 레인) → 최대 2. `caps` 에서 유도([laneSlots]).
+   *    머신들이 그 belt 를 인서터로 탭한다. 그래서 한 면이 품는 줄 수 = **고른 인서터들의
+   *    서로 다른 reach 값 개수**(reach `r` → clusterBeltDepth `1+r`). `inserters` 에서 유도([laneSlots]).
    *
    *  - **다이렉트 인서팅**(Direct Inserting, 1:1, 트렁크 비활성): belt 가 없다. 머신
    *    둘레 칸마다 `[인서터][상자]` 를 따로 세우므로 한 면이 품는 줄 수 = **그 면의
@@ -126,12 +134,26 @@ export interface PortPlannerInput {
    * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
    * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
    *
-   * 이 면은 **depth 1 이 파이프로 채워진다.** 그래서 이 면의 아이템 벨트는
-   * [케이스 B](../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)로만 놓을 수 있다 —
-   * 긴팔이 depth 2 에 앉아 파이프를 넘어 depth 4 에서 집는다. 일반 인서터는 depth 1 에
-   * 앉아야 하는데 그 자리가 파이프라 **못 쓴다** → 이 면의 아이템 레인은 **하나뿐**이다.
+   * 이 면의 아이템 벨트가 어떻게 놓이는지는 [isJumpableToClusterPipe] 가 가른다:
+   *
+   *  - **점프 가능**(true): 파이프는 머신 유체 상자 칸 **하나만** 먹고
+   *    [pipeJumpToClusterPipe](../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
+   *    [ClusterPipe] 로 나간다. 좌석 줄의 나머지 칸이 살아서 이 면은 **일반 면과 같은**
+   *    벨트를 세운다(상자 행만 좌석에서 빠진다 — 그 판정은 호출자가 이 불리언에 접었다).
+   *
+   *  - **점프 불가**(false/미지정, 옛 동작): clusterBeltDepth 1(좌석 줄) **전체가** 파이프
+   *    스파인으로 채워진다 → 아이템 벨트는 [케이스 B](../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)
+   *    로만 놓인다 — reach `r` 인서터가 좌석을 2칸으로 밀어 앉아 파이프를 넘어 `2+r`칸에서
+   *    집는다. reach 1 인서터는 1칸에 앉아야 하는데 그 자리가 파이프라 **못 쓴다** →
+   *    이 면의 아이템 벨트는 **reach≥2 인서터만** 세울 수 있다.
    */
   pipeSide?: PortSide;
+  /**
+   * **이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있는가** — 호출자(generateModule)가
+   * 계산해 넘긴다: 지하파이프 보유 + 점프 거리 충분 + (면 좌석 수 − 상자 행 1) ≥ 벨트 수.
+   * planner 는 지하파이프 역학을 모른다 — 이 불리언으로 [pipeSide] 의 슬롯 모양만 가른다.
+   */
+  isJumpableToClusterPipe?: boolean;
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -140,24 +162,23 @@ export type PortPlan =
   | { ok: false; complex: true; reason: string };
 
 /**
- * 탭 인서팅(Tap Inserting)의 면당 belt 레인 — 인서터 능력으로 결정. 가까운 레인(2칸, 일반)
- * + 먼 레인(3칸, 긴팔). 긴팔은 거리 1을 못 집어 가까운 레인은 일반 전용, 먼 레인은 긴팔 전용.
- * 합계 슬롯 수(= 2면 × 레인수)는 `columnTapCapacity` 와 정확히 일치한다.
+ * 탭 인서팅(Tap Inserting)의 면당 [ClusterBelt] 목록 — **고른 인서터의 reach 로 결정**.
+ * reach `r` 인서터 하나 → 좌석(1칸)에 앉아 clusterBeltDepth `1+r`칸의 벨트 한 줄. 서로 다른
+ * reach 하나당 벨트 한 줄이라, 벨트 줄 수 = **서로 다른 reach 값 개수**(하드코딩 아님).
+ * `inserters` 는 이미 reach 오름차순·중복 제거돼 있다([makeBuildSpec]) → near→far 순.
+ * 합계 슬롯 수(= 2면 × 벨트 줄 수)는 `columnTapCapacity` 와 정확히 일치한다.
  */
-function laneSlots(caps: PortPlannerCaps): { depth: number; inserter: InserterRole }[] {
-  const lanes: { depth: number; inserter: InserterRole }[] = [];
-  if (caps.hasNormal) lanes.push({ depth: 2, inserter: "normal" });
-  if (caps.hasLong) lanes.push({ depth: 3, inserter: "long" });
-  return lanes;
+function laneSlots(inserters: SpecInserter[]): { clusterBeltDepth: number; reach: number }[] {
+  return inserters.map((i) => ({ clusterBeltDepth: 1 + i.reach, reach: i.reach }));
 }
 
 /**
- * 클러스터 I/O 줄을 면·depth·인서터에 배정. 1단계: **아이템 belt 만** — 면당 레인
- * 모델 재현. 유체 줄이 있으면 미구현이라 `complex` 위임. 결정적((B) 정책: 출력→출력면
- * 먼저 확정, 입력→반대 면 우선·넘치면 출력면 잔여; 각 면 near→far, 등장 순서 보존).
+ * 클러스터 I/O 줄을 면·clusterBeltDepth·reach 에 배정. 벨트 줄 수는 [laneSlots] 가 고른
+ * 인서터의 reach 로 정한다(하드코딩 아님). 결정적((B) 정책: 출력→출력면 먼저 확정,
+ * 입력→반대 면 우선·넘치면 출력면 잔여; 각 면 near→far, 등장 순서 보존).
  */
 export function planClusterPorts(input: PortPlannerInput): PortPlan {
-  const { lines, caps } = input;
+  const { lines, inserters } = input;
 
   if (lines.length === 0) return { ok: true, lines: [] };
 
@@ -180,31 +201,34 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     }
   }
 
-  const lanes = laneSlots(caps);
+  const lanes = laneSlots(inserters);
   if (!input.slotsPerFace && lanes.length === 0) {
     return { ok: false, complex: true, reason: "no-inserter" };
   }
 
-  // 면별 슬롯 풀. 탭 인서팅 = near→far(인서터 종류당 1). 다이렉트 인서팅 = 그 면의 둘레
-  // 칸 수만큼 똑같은 슬롯(depth 2 = 인서터 1 + 상자 1, 일반 인서터) — 1:1 은 레인이 없어
-  // depth 가 안 자란다.
+  // 면별 슬롯 풀. 탭 인서팅 = near→far([ClusterBelt] reach 종류당 1). 다이렉트 인서팅 = 그 면의
+  // 둘레 칸 수만큼 똑같은 슬롯(clusterBeltDepth 2 = 인서터 1 + 상자 1, reach 1) — 1:1 은
+  // 벨트가 없어 깊이가 안 자란다.
   const outputSide = input.outputSide;
   const inputSide: PortSide = outputSide === "W" ? "E" : "W";
-  type Slot = { side: PlannedSide; depth: number; inserter: InserterRole };
+  type Slot = { side: PlannedSide; clusterBeltDepth: number; reach: number };
   const rim = input.slotsPerFace;
   const slotsOf = (side: PlannedSide): Slot[] => {
-    // 트렁크 파이프가 지나가는 면 — depth 1 이 파이프다. 아이템은 케이스 B 로만 놓인다:
-    // 긴팔이 depth 2 에 앉아 파이프를 넘어 depth 4 에서 집는다. 일반 인서터는 depth 1 에
-    // 앉아야 하는데 그 자리가 파이프라 못 쓴다 → **이 면의 아이템 레인은 하나뿐**.
-    if (side === input.pipeSide) {
-      return caps.hasLong ? [{ side, depth: 4, inserter: "long" as InserterRole }] : [];
+    // 유체가 붙는 면 — [isJumpableToClusterPipe] 가 두 모양을 가른다.
+    //  - 점프 가능: 파이프가 상자 칸 하나만 먹고 지하로 벨트를 넘어 ClusterPipe 로 나간다
+    //    → 좌석이 살아 **일반 면과 같은** 벨트 목록(아래 lanes 폴스루).
+    //  - 점프 불가(옛 스파인): 좌석 줄 전체가 파이프 → 케이스 B(reach≥2 만, 좌석 2칸·벨트 2+r칸).
+    if (side === input.pipeSide && !input.isJumpableToClusterPipe) {
+      return inserters
+        .filter((i) => i.reach >= 2)
+        .map((i) => ({ side, clusterBeltDepth: 2 + i.reach, reach: i.reach }));
     }
     if (!rim) return lanes.map((lane) => ({ side, ...lane }));
     const n = side === "W" || side === "E" ? rim.WE : rim.NS;
     return Array.from({ length: Math.max(0, n) }, () => ({
       side,
-      depth: 2,
-      inserter: "normal" as InserterRole,
+      clusterBeltDepth: 2,
+      reach: 1,
     }));
   };
   const outPool = slotsOf(outputSide); // 출력 우선 면(부모 쪽)
@@ -214,8 +238,8 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // complex 판정 보수 유지).
   const nsPool = (input.nsFaces ?? []).flatMap((f) => slotsOf(f));
 
-  // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(depth 1)를 따로 쓰고 인서터 레인을
-  // 소비하지 않는다. 대신 그 면의 레인 수를 이미 케이스 B(1개)로 깎았다(slotsOf).
+  // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(clusterBeltDepth 1)를 따로 쓰고
+  // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 벨트 줄을 이미 케이스 B(reach≥2만)로 깎았다(slotsOf).
   if (beltLines.length > outPool.length + inPool.length) {
     return { ok: false, complex: true, reason: "belt-demand-exceeds-capacity" };
   }
@@ -223,7 +247,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   const assigned = new Map<IoLine, PlannedLine>();
   // 유체 줄 먼저 — 자리가 강제돼 **선택의 여지가 없다**. 자유도 없는 것부터 못박는다.
   for (const line of pipeLines) {
-    assigned.set(line, { line, side: input.pipeSide!, depth: 1, inserter: undefined });
+    assigned.set(line, { line, side: input.pipeSide!, clusterBeltDepth: 1, reach: undefined });
   }
 
   // (B) 정책: 출력 먼저 출력면 확정(넘치면 입력면 잔여), 입력은 입력면 우선. 입력이
@@ -234,7 +258,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     (primary.length ? primary.shift() : secondary.shift())!;
   for (const line of beltLines.filter((l) => l.role === "output")) {
     const slot = take(outPool, inPool);
-    assigned.set(line, { line, side: slot.side, depth: slot.depth, inserter: slot.inserter });
+    assigned.set(line, { line, side: slot.side, clusterBeltDepth: slot.clusterBeltDepth, reach: slot.reach });
   }
   // 입력 처리 **순서**: 자식-공급(내부 간선) 먼저, external(raw) 나중.
   //
@@ -254,30 +278,32 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
       inPool.length ? inPool.shift()!
       : line.external && nsPool.length ? nsPool.shift()!
       : outPool.shift()!;
-    assigned.set(line, { line, side: slot.side, depth: slot.depth, inserter: slot.inserter });
+    assigned.set(line, { line, side: slot.side, clusterBeltDepth: slot.clusterBeltDepth, reach: slot.reach });
   }
 
-  // depth(레인) = 운반량순 — (B) 가 정한 면은 유지하고, 같은 면 안에서 depth/inserter 만
-  // 재배정: 라인 수요(amount) 내림차순 ↔ 슬롯 용량(throughput) 내림차순 zip. throughput
-  // 미지정이면 건너뜀(= (B) 등장순서 depth 유지, 하위호환).
-  const tp = input.throughput;
-  if (tp) {
-    const capOf = (r?: InserterRole) => (r === "long" ? tp.long : tp.normal);
+  // clusterBeltDepth = 운반량순 — (B) 가 정한 면은 유지하고, 같은 면 안에서 깊이/reach 만
+  // 재배정: 라인 수요(amount) 내림차순 ↔ 슬롯 용량(인서터 throughput) 내림차순 zip. **수요
+  // 신호(amount)가 하나도 없으면 건너뜀**(= (B) 등장순서 = near→far 유지). reach 순서를
+  // 가정하지 않고 실제 throughput 으로 정렬한다(사장님 단서).
+  const throughputByReach = new Map(inserters.map((i) => [i.reach, i.throughput]));
+  const hasDemand = beltLines.some((l) => l.amount !== undefined);
+  if (hasDemand) {
+    const capOf = (r?: number) => (r === undefined ? 0 : throughputByReach.get(r) ?? 0);
     const demandOf = (l: IoLine) => l.amount ?? 0;
     for (const face of [outputSide, inputSide, ...(input.nsFaces ?? [])] as PlannedSide[]) {
-      // 유체 줄은 제외 — depth 가 1 로 강제돼 있고 인서터가 없어 재배정 대상이 아니다.
+      // 유체 줄은 제외 — clusterBeltDepth 가 1 로 강제돼 있고 인서터가 없어 재배정 대상이 아니다.
       const faceLines = beltLines.filter((l) => assigned.get(l)!.side === face);
       if (faceLines.length <= 1) continue;
       const slots = faceLines
-        .map((l) => { const p = assigned.get(l)!; return { depth: p.depth, inserter: p.inserter }; })
-        .sort((a, b) => capOf(b.inserter) - capOf(a.inserter));
+        .map((l) => { const p = assigned.get(l)!; return { clusterBeltDepth: p.clusterBeltDepth, reach: p.reach }; })
+        .sort((a, b) => capOf(b.reach) - capOf(a.reach));
       const byDemand = [...faceLines].sort(
         (a, b) => demandOf(b) - demandOf(a) || lines.indexOf(a) - lines.indexOf(b),
       );
       byDemand.forEach((l, i) => {
         const p = assigned.get(l)!;
-        p.depth = slots[i].depth;
-        p.inserter = slots[i].inserter;
+        p.clusterBeltDepth = slots[i].clusterBeltDepth;
+        p.reach = slots[i].reach;
       });
     }
   }
@@ -299,7 +325,7 @@ export interface SupplyCapacity {
   tapCapacity?: number;
   /**
    * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
-   * 미지정이면 [determineBeltCount] 는 **건너뛴다** — 없는 숫자를 지어내지 않는다.
+   * 미지정이면 [determineTapsPerMachine] 는 **탭 1개로 본다** — 없는 숫자를 지어내지 않는다.
    */
   lineRates?: Map<string, number>;
 }
@@ -313,29 +339,36 @@ export interface InsertingDecisionResult {
   plan: PortPlan;
 }
 
+/** [determineTapsPerMachine] 결과 — 감당 가능하면 머신당 탭 수, 아니면 거절 사유. */
+export type TapDecision = { taps: number } | { reject: string };
+
 /**
- * 벨트·인서터가 이 품목을 감당하는지 판정 — 안 되면 사유를 낸다.
+ * 이 품목을 벨트 한 줄로 감당할 수 있나, 그러려면 **머신당 탭 인서터가 몇 개** 필요한가.
  *
- * **v1 은 거절만 한다**(→ [insertingPlanner] 가 모듈 전체를 다이렉트로 되돌린다).
- * 후속 단계에서 여기가 `ceil(수요÷벨트용량)` 로 벨트 줄 수를 나눠 감당하게 하는
- * 자리가 될 것 — 분할 처리를 다른 곳이 아니라 **여기서** 하는 게 적절해 보인다는
- * 평가를 남긴다(2026-07-12, 사용자).
+ * 두 축은 다르다:
+ *  - **벨트 처리량**(`demand>beltCap`) — 클러스터 전체 수요가 벨트 한 줄을 넘으면 거절한다.
+ *    이건 탭을 늘려도 안 풀린다(벨트가 못 나른다) → 벨트 **줄 수**를 나눠야 하는데 그건
+ *    다른 기능(나중, `ceil(수요÷벨트용량)`). v1 은 거절.
+ *  - **인서터 처리량**([Parallel Inserting](docs/용어사전.md#parallel-inserting)) — 머신 한
+ *    대의 몫이 인서터 하나를 넘으면 **탭을 `ceil(머신당수요 ÷ tapCap)` 개**로 늘린다. 좌석은
+ *    보통 남는다(면 좌석 ≥ 벨트 열 수). 좌석이 모자라면 [insertingPlanner] 가 거른다.
+ *
+ * `lineRates` 가 없으면 숫자를 지어내지 않고 **탭 1개**로 본다(판정 보류).
  */
-function determineBeltCount(
+function determineTapsPerMachine(
   line: IoLine,
   machineCount: number,
   cap: SupplyCapacity,
-): string | undefined {
+): TapDecision {
   const rate = cap.lineRates?.get(`${line.role}:${line.name}`);
-  if (rate === undefined) return undefined; // 수치 없음 → 판정 보류
+  if (rate === undefined) return { taps: 1 }; // 수치 없음 → 단일 탭
   if (cap.beltCapacity !== undefined && rate > cap.beltCapacity) {
-    return `demand>beltCap (${line.name})`;
+    return { reject: `demand>beltCap (${line.name})` };
   }
-  if (cap.tapCapacity !== undefined && machineCount > 0 && rate / machineCount > cap.tapCapacity) {
-    // 머신 한 대가 자기 몫을 인서터 하나로 못 받는다 — 탭을 늘려야 하는데 v1 은 탭 1개/머신.
-    return `perMachine>tapCap (${line.name})`;
+  if (cap.tapCapacity !== undefined && cap.tapCapacity > 0 && machineCount > 0) {
+    return { taps: Math.max(1, Math.ceil(rate / machineCount / cap.tapCapacity)) };
   }
-  return undefined;
+  return { taps: 1 };
 }
 
 /**
@@ -351,8 +384,9 @@ function determineBeltCount(
  * 판별을 한다(`ok` vs `complex`) — 새로 안 만든다. [복잡한 레시피](용어사전.md#복잡한-레시피)면
  * 정의상 다이렉트(1:1)로 간다.
  *
- * 그다음 [determineBeltCount] — 품목마다 벨트 한 줄·인서터 하나가 양을 감당하는가
- * ([SupplyCapacity.lineRates] 가 있을 때만 검사).
+ * 그다음 [determineTapsPerMachine] — 품목마다 벨트 한 줄이 감당하는가 + 머신당 탭 몇 개가
+ * 필요한가([SupplyCapacity.lineRates] 가 있을 때만). 그리고 면별 총 탭 수가 좌석 행을 넘지
+ * 않는지 본다([Parallel Inserting] 좌석 예산).
  *
  * 하나라도 걸리면 **모듈 전체가 다이렉트 인서팅으로 물러난다**(v1 결정, §10.4-1).
  * 부분 병합(한 면은 트렁크, 다른 면은 1:1)은 같은 면에서 벨트와 상자가 자리를 다투므로
@@ -374,12 +408,32 @@ export function insertingPlanner(
   const tapPlan = planClusterPorts(tapInput);
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
 
-  // 간단한 레시피로 판명났다 → 벨트·인서터 처리량만 남는다. 유체 줄은 벨트가 아니라
-  // 파이프로 흐르므로 이 검사의 대상이 아니다(파이프 처리량은 아직 안 잰다 — trunk-pipe §8).
-  for (const line of input.lines) {
-    if (line.kind !== "belt") continue;
-    const why = determineBeltCount(line, machineCount, capacity);
-    if (why) return direct(`belt: ${why}`);
+  // 줄마다 **머신당 탭 수**를 정한다([Parallel Inserting]). 유체 줄은 벨트가 아니라 파이프로
+  // 흐르므로 대상이 아니다(파이프 처리량은 아직 안 잰다 — trunk-pipe §8). 벨트 처리량 초과는
+  // 탭으로 못 풀어 거절 → 다이렉트.
+  for (const planned of tapPlan.lines) {
+    if (planned.line.kind !== "belt") continue;
+    const decided = determineTapsPerMachine(planned.line, machineCount, capacity);
+    if ("reject" in decided) return direct(`belt: ${decided.reject}`);
+    planned.tapsPerMachine = decided.taps;
+  }
+
+  // **좌석 예산** — 한 면의 총 탭 수가 그 면의 좌석 행을 넘으면 탭 인서팅으로 못 앉힌다 →
+  // 다이렉트로 거른다(안전망). 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell]이 먹으므로 −1.
+  const jumpBeltOnPipeSide =
+    !!input.isJumpableToClusterPipe &&
+    tapPlan.lines.some((p) => p.line.kind === "belt" && p.side === input.pipeSide);
+  const rowsOf = (side: PlannedSide): number => {
+    const base = side === "W" || side === "E" ? input.slotsPerFace.WE : input.slotsPerFace.NS;
+    return side === input.pipeSide && jumpBeltOnPipeSide ? base - 1 : base;
+  };
+  const tapsOnFace = new Map<PlannedSide, number>();
+  for (const p of tapPlan.lines) {
+    if (p.line.kind !== "belt") continue;
+    tapsOnFace.set(p.side, (tapsOnFace.get(p.side) ?? 0) + (p.tapsPerMachine ?? 1));
+  }
+  for (const [side, used] of tapsOnFace) {
+    if (used > rowsOf(side)) return direct(`seats: ${side} ${used}탭 > ${rowsOf(side)}행`);
   }
 
   return { mode: "tap", plan: tapPlan };

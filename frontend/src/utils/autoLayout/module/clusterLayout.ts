@@ -74,12 +74,14 @@ export interface PortDemand {
   pipeDemand: number;
 }
 
-/** 형태 선택에 필요한 인서터 능력. */
+/** 형태 선택에 필요한 인서터 능력 = **고른 인서터들의 reach 값**(≥1). */
 export interface ShapeCaps {
-  /** reach 1(거리 1)을 집을 수 있는 일반 인서터 보유 — 가까운 belt 레인. */
-  hasNormal: boolean;
-  /** reach≥2 긴팔 인서터 보유 — 앞 belt 위로 넘겨 먼 belt 레인. */
-  hasLong: boolean;
+  /**
+   * 고른 인서터들의 reach 값 목록. **서로 다른 reach 하나당 [ClusterBelt] 한 줄**
+   * (reach `r` → clusterBeltDepth `1+r`). 중복은 무시된다(같은 reach 는 벨트를 못 늘림).
+   * 옛 `{hasNormal, hasLong}` 이진값을 대체했다.
+   */
+  reaches: number[];
 }
 
 export type ClusterShape = "column";
@@ -87,14 +89,13 @@ export type ClusterShape = "column";
 /**
  * 기둥 클러스터의 탭 용량 = 서빙 가능한 *서로 다른 belt* 수.
  *
- * = 한 축의 면 수(2: 좌·우 또는 상·하) × 면당 레인 수. 면당 레인 = 일반@거리1(앞 belt)
- * + 긴팔@거리2(앞 belt 건너 뒷 belt). **긴팔은 거리 1을 못 집으므로 2레인은 일반 AND
- * 긴팔 둘 다 있어야 성립** → `면당 레인 = (hasNormal?1:0)+(hasLong?1:0)`. 둘 다 2, 하나만
- * 1. 면 길이와 무관(긴 면은 탭/seat 수만 늘릴 뿐 레인 수는 인서터 종류가 정한다).
- * vanilla 긴팔 reach=2 가 상한이라 최대 4(=2면×2레인).
+ * = 한 축의 면 수(2: 좌·우 또는 상·하) × 면당 [ClusterBelt] 수. 면당 벨트 수 = **고른
+ * 인서터들의 서로 다른 reach 값 개수**(reach `r` 인서터가 좌석에 앉아 `1+r`칸의 벨트를 집는다).
+ * 면 길이와 무관(긴 면은 탭/seat 수만 늘릴 뿐 벨트 줄 수는 reach 종류가 정한다).
+ * vanilla 는 reach {1,2} 두 종이라 최대 4(=2면×2벨트)지만, reach 종류가 늘면 그만큼 는다.
  */
 export function columnTapCapacity(caps: ShapeCaps): number {
-  return 2 * ((caps.hasNormal ? 1 : 0) + (caps.hasLong ? 1 : 0));
+  return 2 * new Set(caps.reaches.filter((r) => r >= 1)).size;
 }
 
 export interface ShapeDecision {

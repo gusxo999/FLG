@@ -2,10 +2,19 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { t } from '../i18n';
 
+/**
+ * 이 유체가 머신의 **몇 번째 유체 상자**로 들어가는지. **1-based** 이며 입력 상자와 출력
+ * 상자를 **따로** 센다. `0`/미지정이면 그 유체는 해당 역할의 상자 **전부**에 들어갈 수 있다
+ * (화학 공장이 입력 상자 2개를 갖고도 유체 하나짜리 레시피에서 양쪽 다 파이프를 받는 이유).
+ * 아이템 재료엔 없는 필드. → docs/fluid-box-semantics.md
+ */
+type FluidBoxIndex = number;
+
 export interface RecipeIngredient {
   name: string;
   amount: number;
   type: 'item' | 'fluid';
+  fluidbox_index?: FluidBoxIndex;
 }
 
 export interface RecipeProduct {
@@ -13,6 +22,7 @@ export interface RecipeProduct {
   amount: number;
   probability?: number;
   type: 'item' | 'fluid';
+  fluidbox_index?: FluidBoxIndex;
 }
 
 /**

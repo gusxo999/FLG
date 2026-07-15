@@ -22,7 +22,7 @@ placer 입력으로도 받지 않는다.
 | **A. [[용어사전#변환기|변환기]]** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin + `tile_width×tile_height` footprint (가변) | `machine` (통과 불가) | 회전 0 고정 ([known-limits §6](auto-layout-wizard.known-limits.md)); [[용어사전#EntityType|EntityType]] 단순화(전부 Assembler) |
 | **B. [[용어사전#핸드오프|핸드오프]]** | `inserter` 와 변형, `loader` | 머신 면 셀(seat)에 인서터 1셀, direction=픽업 방향 | `inserter` (통과 불가) | 머신 수 산정에 [[용어사전#처리량 (throughput)|throughput]] 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
 | **C. [[용어사전#고체 운반|고체 운반]]** | `transport-belt`, `underground-belt`, `splitter` | router([[용어사전#Dijkstra|Dijkstra]])가 깐 belt + 지하벨트 점프 경로 | 모든 belt 셀 통과 불가([[용어사전#mixing|mixing]] 미구현) | belt/pipe mixing ([§5](auto-layout-wizard.known-limits.md)), splitter 자동 분기 미사용 |
-| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 fluid_boxes positions(회전 0) + router(Dijkstra)가 깐 파이프/지하파이프 | 모든 pipe 셀 통과 불가 | fluid 트렁크 병합 미지원(1:1만, [§3](auto-layout-wizard.known-limits.md)), fluidbox 고정면 제약([§6](auto-layout-wizard.known-limits.md)), pump 자동배치 미사용 |
+| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 `fluid_boxes` 연결 칸(면은 `PipeConnection.direction`) + [트렁크 파이프](auto-layout-wizard.trunk-pipe.md) 기둥 / 옛 경로는 Dijkstra | 모든 pipe 셀 통과 불가 + [합류 가드](pipe-semantics.md#5-잘못-이어지면-조용하다--그래서-가드가-필요하다) 금지 칸 | 유체 **출력**(홉·반출) 미지원 → 옛 경로 폴백, 옛 경로는 가드 무방비([§12](auto-layout-wizard.known-limits.md)), pump 자동배치 미사용 |
 
 ---
 
@@ -81,22 +81,29 @@ occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패
 이미 배치된 벨트를 보고 우회하므로 순서와 무관하게 성립한다.
 
 > **참고(파이프):** D 의 파이프는 방향과 무관하게 4면 인접이면 자동 연결되므로 이 흐름-인접 모델이
-> 아니라 **인접 자체**가 합류다(다른 fluid 간). 현재는 occupancy 겹침 금지로만 분리하며, 파이프
-> 인접-합류 방지는 본 벨트 불변식의 무방향 버전으로 후속 확장 대상이다.
+> 아니라 **인접 자체**가 합류다. 그 무방향 버전의 가드가 [`collectPipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts)
+> 다(2026-07-14 구현, 새 모듈 경로 한정). 벨트와의 차이 전부는 [pipe-semantics](pipe-semantics.md).
 
 ---
 
 ## D. 액체 운반 (파이프)
 
-벨트의 fluid 버전. **현재 위저드는 fluid 를 1:1 파이프로 라우팅한다** ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routeFluid`).
+**벨트의 fluid 버전이 아니다.** 규칙이 근본적으로 다르고 그 차이가 배치의 거의 모든 선택을 바꾼다 —
+전부는 **[pipe-semantics](pipe-semantics.md)** 에 있다(벨트와 항목별로 대조). 요약:
 
-- **pipe** (1×1): 인접한 fluid_box 와 **자동으로** 연결. direction 의미 없음(0 고정).
-- **pipe-to-ground** (1×1 두 개): 지하 점프 페어. router 의 Dijkstra 가 `pipe-to-ground` blockGroup 으로 처리.
+- **pipe** (1×1): **방향이 없다**(0 고정). 직교로 닿으면 **무조건** 한 관망이 된다.
+- **처리량 무한**(우리 모델의 결정) → 유체판 `determineBeltCount` 가 없고, **같은 유체 합류는 무해**하다.
+- 파이프는 머신 벽 아무 데나가 아니라 **유체 상자의 연결 칸**에만 붙는다 → 유체 줄의 면은 우리가 고르는
+  게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseMachineDirection](../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
+  그 칸이 어디인지는 좌표가 아니라 `PipeConnection.direction` 이 답한다 → [fluid-box-semantics](fluid-box-semantics.md).
+- **pipe-to-ground** (1×1 두 개): prototype 무관 **전부** 간섭(벨트와 다르다) → 단일 blockGroup.
 - **[[용어사전#pump (펌프)|pump]]** (1×2): **자동 배치 미사용**.
-- **fluid mixing 금지** — C3. 다른 fluid 라우팅끼리 셀이 겹치지 않게 한다.
-- **머신 fluid_box 위치는 회전별 고정** — `fluid_boxes[].connections[].positions`. 현재 회전 0 positions 만 사용([portInference.ts](../frontend/src/utils/autoLayout/portInference.ts) `fluidPorts`).
+- **합류 가드**: [`collectPipeFlow` / `PipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts) — 다른 유체
+  파이프의 사방 + 머신 유체 상자의 연결 칸. 새 모듈 경로(트렁크·반출)에만 걸려 있다.
 
-**남은 한계:** fluid 클러스터는 **트렁크 병합 대상이 아니라 항상 1:1**(아이템 전용 게이트, [known-limits §3](auto-layout-wizard.known-limits.md)). fluidbox 고정면 때문에 기둥 클러스터에서 다중 fluid 머신 서빙이 제약된다([§6](auto-layout-wizard.known-limits.md)).
+**남은 한계:** 유체 **입력**은 [트렁크 파이프](auto-layout-wizard.trunk-pipe.md)로 합쳐지지만(2026-07-13),
+유체 **출력**(자식→부모 유체 홉 / 유체 반출)은 아직 모듈 경로가 거절하고 옛 경로로 폴백한다.
+옛 경로의 파이프는 합류 가드가 없다 → [known-limits §12 Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md).
 
 ### 본 역할이 자동으로 흡수하지 *않는* 인접 항목
 

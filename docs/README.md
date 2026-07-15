@@ -47,7 +47,8 @@ Factorio API/데이터의 비직관적 동작과 그 해석.
 
 | 문서 | 주제 | 태그 |
 |------|------|------|
-| [fluid-box-semantics](fluid-box-semantics.md) | 유체 상자의 `production_type` vs `flow_direction` 차이 및 앱의 선택 | `#fluid` |
+| [pipe-semantics](pipe-semantics.md) | **파이프의 작동 방식 — 벨트와 항목별 대조**(방향 없음·처리량 무한·유체 상자 연결 칸·합류 가드) | `#fluid` `#routing` |
+| [fluid-box-semantics](fluid-box-semantics.md) | 유체 상자의 `production_type` vs `flow_direction` 차이, 상자의 **면**(`direction`)과 **받는 유체 이름**(`fluidbox_index`) | `#fluid` |
 | [map-position-parsing](map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태 문제와 3중 방어 정규화 | `#blueprint` |
 | [direction-encoding](direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향 인코딩으로 통일 (1.x ×2 자동 업그레이드) | `#blueprint` |
 | [tech-tree-resolution](tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 자동 산출 | `#auto-layout` |

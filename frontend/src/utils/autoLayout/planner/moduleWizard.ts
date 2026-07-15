@@ -22,13 +22,22 @@ import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
 import { chooseMachineDirection } from "../module/fluidPorts";
+import {
+  collectPipeFlow,
+  pipeFlowConflict,
+  type PipeFlow,
+  type PipeFlowMachine,
+  type PipeFlowPipe,
+} from "../module/pipeFlow";
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
-import { buildRoutingOptions } from "../routeFallback";
+// 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
+// [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
+import { makeBuildSpec } from "../buildSpec";
 import { makeEmptyArea } from "../wizardUtils";
 import { commitContainer } from "../machinePlacer";
 
@@ -58,7 +67,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const { input, metas, parentOf, order, makeId } = args;
   const { recipeMap, entityMap } = useGameDataStore.getState();
 
-  const options = buildRoutingOptions(input);
+  const options = makeBuildSpec(input);
 
   /**
    * 모듈 경로 포기 — **왜** 포기했는지 반드시 남긴다.
@@ -84,6 +93,8 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
   //    거절 사유가 다 다르므로 각각 이유를 남긴다(진단).
   const fluidTrunkOf = new Map<RecipeTreeNode, NodeSpec["fluidTrunk"]>();
+  /** 노드 → 그 모듈이 다루는 유체 이름. v1 은 노드당 최대 1개(외부 공급 입력). */
+  const fluidOf = new Map<RecipeTreeNode, string>();
   for (const node of order) {
     const recipe = recipeMap.get(node.recipeName!);
     if (!recipe) return reject(`레시피 없음: ${node.recipeName}`);
@@ -133,7 +144,13 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       direction: chosen.direction,
       side: "E",
       pipeEntityName: options.pipeEntityName,
+      // [pipeJumpToClusterPipe] 재료 — 상자 연결 칸의 면 위 위치 + 지하파이프 능력(BuildSpec).
+      // generateModule 이 이 셋으로 isJumpableToClusterPipe 를 판정한다(부족하면 옛 스파인).
+      fluidboxOffset: chosen.slot.offset,
+      undergroundPipeEntityName: options.undergroundPipeEntityName,
+      pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
     });
+    fluidOf.set(node, fluid.name);
   }
 
   // 1) NodeSpec — 트리에서 유도. id 는 노드별 결정적(order 인덱스 + 레시피).
@@ -197,6 +214,74 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     }
   }
 
+  // 1b) [파이프 합류 가드](../module/pipeFlow.ts) — 파이프는 **방향이 없어서** 직교로 닿기만
+  //     하면 두 관망이 하나가 된다. 다른 유체끼리 이어지면 오염되고, 남의 머신 **출력** 유체
+  //     상자에 스치면 그 머신의 생산물이 내 관망으로 **조용히 샌다** — 화면상으론 멀쩡하고
+  //     라우팅도 "성공"이라 보고한다. 그래서 파이프를 깔기 전에 금지 칸 지도를 만들어 둔다.
+  //     유체마다 지도가 다르다 — **같은 유체는 닿아도 무해**하기 때문이다(처리량 무한).
+  const fluidOfPlacement = new Map<string, string>(); // spec id → 그 모듈의 유체 이름
+  for (const node of order) {
+    const f = fluidOf.get(node);
+    if (f) fluidOfPlacement.set(idOf.get(node)!, f);
+  }
+  const pipeFlowByFluid = new Map<string, PipeFlow>();
+  if (fluidOfPlacement.size > 0) {
+    // 유체 머신 — 프로토타입(`fluid_boxes`)이 상자의 **연결 칸**을, 레시피가 그 칸이 **받는
+    // 유체 이름**을 정한다(→ docs/fluid-box-semantics.md). 유체 상자가 없는 머신(조립기)은 뺀다.
+    const fluidRows = (rows: readonly { type: string; name: string; fluidbox_index?: number }[]) =>
+      rows.filter((r) => r.type === "fluid").map((r) => ({ name: r.name, fluidbox_index: r.fluidbox_index }));
+    const machines: PipeFlowMachine[] = [];
+    for (const pl of pack.placements) {
+      const recipe = recipeMap.get(recipeOfId.get(pl.id)!)!;
+      const recipeFluids = {
+        ingredients: fluidRows(recipe.ingredients),
+        products: fluidRows(recipe.products),
+      };
+      for (const m of pl.module.machines) {
+        const entity = entityMap.get(m.entityName);
+        if (!entity?.fluid_boxes?.length) continue;
+        machines.push({ origin: m.origin, size: m.size, direction: m.direction ?? 0, entity, recipeFluids });
+      }
+    }
+    // 이미 놓인 파이프류 셀 — 모듈의 트렁크/ClusterPipe + 포트 무한파이프 + 지하파이프 **끝**
+    // (fluidboxPipeCell·ClusterPipeTapCell — 끝 칸은 표면에 노출돼 접촉 합류가 생긴다.
+    // 지하 통과 구간은 타일을 점유하지 않으므로 안 센다). 그 모듈의 유체를 나른다.
+    const pipes: PipeFlowPipe[] = [];
+    for (const pl of pack.placements) {
+      const fluid = fluidOfPlacement.get(pl.id);
+      if (!fluid) continue;
+      for (const c of pl.module.cells)
+        if (
+          c.cell.entityType === EntityType.Pipe ||
+          c.cell.entityType === EntityType.InfinityPipe ||
+          c.cell.entityType === EntityType.PipeUnderground
+        )
+          pipes.push({ x: c.x, y: c.y, fluid });
+    }
+    for (const fluid of new Set(fluidOfPlacement.values()))
+      pipeFlowByFluid.set(fluid, collectPipeFlow({ fluidName: fluid, pipes, machines }));
+
+    // 트렁크 검사 — 기둥은 자기 머신의 **입력** 상자를 지나가라고 깐 것이므로(같은 유체 →
+    // 안 막힘) 여기서 걸리는 건 진짜 사고다: 자기 머신의 출력 상자를 같이 스쳤거나, 옆
+    // 모듈의 다른 유체 관망에 붙었거나. 거절은 **항상 안전하다** — 옛 경로로 폴백할 뿐이다.
+    for (const pl of pack.placements) {
+      const fluid = fluidOfPlacement.get(pl.id);
+      if (!fluid) continue;
+      const ownPipes = pl.module.cells.filter(
+        (c) =>
+          c.cell.entityType === EntityType.Pipe ||
+          c.cell.entityType === EntityType.InfinityPipe ||
+          c.cell.entityType === EntityType.PipeUnderground,
+      );
+      const hit = pipeFlowConflict(ownPipes, pipeFlowByFluid.get(fluid)!);
+      if (hit)
+        return reject(
+          `[파이프 합류 가드] ${pl.id} 의 트렁크 파이프(${fluid})가 (${hit.cell.x},${hit.cell.y}) 에서` +
+            ` 이으면 안 될 것과 이어진다 (${hit.rule} 규칙)`,
+        );
+    }
+  }
+
   const hopRes = routeModuleHops(pack, {
     beltEntityName: options.beltEntityName,
     beltMaxUndergroundDistance: options.beltMaxUndergroundDistance,
@@ -217,6 +302,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
         beltEntityName: options.beltEntityName,
         inserterEntityName: options.inserterEntityName,
         pipeEntityName: options.pipeEntityName, // 유체 포트는 파이프로 반출한다.
+        pipeFlow: pipeFlowByFluid, // [파이프 합류 가드] — 반출 파이프가 밟으면 안 되는 칸.
       })
     : null;
   const droppedKeys = perim?.droppedCellKeys ?? new Set<string>();

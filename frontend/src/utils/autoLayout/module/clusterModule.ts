@@ -29,11 +29,18 @@ import {
   type SupplyCapacity,
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
+import type { SpecInserter } from "../buildSpec";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
 import { cellKey, enumeratePerimeterCells, faceVector, vectorToDirection } from "../util/helper";
-import { makeBeltCell, makeContainerCell, makeInserterCell, makePipeCell } from "../util/cellBuilder";
+import {
+  makeBeltCell,
+  makeContainerCell,
+  makeInserterCell,
+  makePipeCell,
+  makeUndergroundPipeCell,
+} from "../util/cellBuilder";
 
 /**
  * 모듈 머신 사이 세로 gap = 0(밀착). 모듈은 **간단 레시피**(W/E 두 면만으로 모든 I/O 를
@@ -150,10 +157,21 @@ export interface ModuleInput {
   fluidTrunk?: {
     /** 이 각도라야 유체 입구가 `side` 면을 본다. 머신 Container.direction 으로 내려간다. */
     direction: Direction;
-    /** 파이프가 세로로 달리는 면(W 또는 E). 그 면의 depth 1 을 파이프가 통째로 먹는다. */
+    /** 파이프가 붙는 면(W 또는 E). 점프 가능하면 상자 칸만, 불가면 depth 1 을 통째로 먹는다. */
     side: PortSide;
     /** 파이프 prototype(예: "pipe"). */
     pipeEntityName: string;
+    /**
+     * **머신 유체 상자 연결 칸의 footprint 내 위치** — `side` 면 위에서 몇 번째 행/열인가
+     * (W/E 면이면 dy, N/S 면이면 dx. = [FluidPortSlot.offset], `chooseMachineDirection` 이
+     * 고른 slot 에서 나온다). [pipeJumpToClusterPipe] 는 이 행에서만 점프한다 — 머신마다
+     * 자기 행이라 corridor 끼리 안 부딪힌다. 미지정이면 점프 불가(옛 스파인 폴백).
+     */
+    fluidboxOffset?: number;
+    /** 지하파이프 prototype(예: "pipe-to-ground"). 미지정이면 점프 불가(옛 스파인 폴백). */
+    undergroundPipeEntityName?: string;
+    /** 지하파이프 입출구 좌표 차이 한계([BuildSpec] 동명 필드). 0/미지정 = 점프 불가. */
+    pipeMaxUndergroundDistance?: number;
   };
 }
 
@@ -216,14 +234,43 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // `lateral`(슬롯 상한)과 **같아야** 한다 — 어긋나면 planner 가 없는 자리를 배정하거나
   // (미탭) 있는 자리를 안 쓴다(스필). 탭 인서팅(면당 2)을 1:1 에 쓰면 3×3 머신의 셋째
   // 입력이 자리가 남는데도 출력면(W)으로 넘친다. (용어: docs/용어사전.md §D)
+  // ModuleInput 의 이진 인서터 필드(reach 1 기본 + 긴팔 하나)를 planner 가 먹는 reach
+  // 목록으로 번역한다. planner 는 서로 다른 reach 하나당 [ClusterBelt] 한 줄을 세운다 —
+  // 지금은 최대 2종(1·긴팔)이라 옛 동작과 동일하지만, 여기 목록이 늘면 벨트 줄도 는다.
+  // (BuildSpec.inserters 를 ModuleInput 까지 직접 통과시키는 일은 후속.)
+  const plannerInserters: SpecInserter[] = [
+    { entityName: input.inserterEntityName, reach: 1, throughput: input.throughput?.normal ?? 0 },
+    ...(input.longInserter
+      ? [{
+          entityName: input.longInserter.entityName,
+          reach: input.longInserter.reach,
+          throughput: input.throughput?.long ?? 0,
+        }]
+      : []),
+  ];
+  // [isJumpableToClusterPipe] — "유체 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
+  // 셋 다 성립해야 true (하나라도 어긋나면 옛 스파인 = 케이스 B 로 **연속적 저하**):
+  //  ① 상자 칸 위치를 안다(fluidboxOffset) + 지하파이프를 골랐다.
+  //  ② 점프 거리가 최악 폭을 감당한다 — 입구 d1 → 출구 d(2+최대reach), 좌표 차 = 최대reach+1.
+  //     (실제 폭은 그 면에 배정된 벨트로 정해져 더 좁을 수 있다 — 여기선 보수적으로 최악.)
+  //  ③ 좌석 줄에서 상자 행 1개를 빼고도 벨트 좌석이 남는다: 벨트 수 ≤ 면 좌석 − 1.
+  const ft = input.fluidTrunk;
+  const maxReach = plannerInserters.reduce((a, i) => Math.max(a, i.reach), 0);
+  const isJumpableToClusterPipe =
+    !!ft &&
+    ft.fluidboxOffset !== undefined &&
+    !!ft.undergroundPipeEntityName &&
+    (ft.pipeMaxUndergroundDistance ?? 0) >= maxReach + 1 &&
+    plannerInserters.length <= input.machine.h - 1;
+
   const plannerInput = {
     lines: plannedLines,
-    caps: { hasNormal: true, hasLong: !!input.longInserter },
+    inserters: plannerInserters,
     outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
-    throughput: input.throughput, // depth=운반량 매칭(미지정이면 등장순서).
     nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
     slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
-    pipeSide: input.fluidTrunk?.side, // 트렁크 파이프가 먹는 면 — 그 면은 케이스 B.
+    pipeSide: input.fluidTrunk?.side, // 유체가 붙는 면.
+    isJumpableToClusterPipe, // true=좌석 살림(일반 면), false=옛 스파인(케이스 B).
   };
   const supply: InsertingDecisionResult = insertingPlanner(
     plannerInput,
@@ -249,6 +296,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     emitTapInserting({
       plan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
+      isJumpableToClusterPipe,
     });
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
@@ -433,27 +481,30 @@ function faceCell(
   }
 }
 
-/** 먼 레인(depth 3)은 가까운 belt 를 **넘어서** 집어야 하므로 긴팔이어야 한다. */
+/**
+ * reach≥2 [ClusterBelt](docs/용어사전.md)는 가까운 벨트를 **넘어서** 집어야 하므로 긴팔이어야
+ * 한다. (ModuleInput 이 긴팔 하나만 담는 v1: reach≥2 → 그 긴팔, reach 1 → 기본 인서터.)
+ */
 function tapInserterName(input: ModuleInput, planned: PlannedLine): string {
-  return planned.inserter === "long" && input.longInserter
+  return (planned.reach ?? 1) >= 2 && input.longInserter
     ? input.longInserter.entityName
     : input.inserterEntityName;
 }
 
 /**
- * **탭 인서터가 앉는 depth** — 벨트 레인 깊이에서 인서터의 팔 길이를 뺀 값.
+ * **탭 인서터가 앉는 clusterBeltDepth** — 벨트 깊이에서 인서터의 팔 길이(reach)를 뺀 값.
  *
- * 인서터는 자기 자리에서 팔 길이만큼 **바깥에서 집고 안쪽에 놓는다**. 그러니 `벨트 깊이 −
- * 팔 길이` 가 곧 앉을 자리다. 세 경우가 한 식에서 나온다:
+ * 인서터는 자기 자리에서 reach 만큼 **바깥에서 집고 안쪽에 놓는다**. 그러니 `벨트 깊이 − reach`
+ * 가 곧 앉을 자리다. 세 경우가 한 식에서 나온다:
  *
- * | 레인 | 벨트 depth | 팔 | 좌석 depth |
+ * | 벨트 | clusterBeltDepth | reach | 좌석 |
  * |---|---|---|---|
- * | 가까운(일반)          | 2 | 1 | **1** |
- * | 먼(긴팔)              | 3 | 2 | **1** |
+ * | 가까운(reach 1)       | 2 | 1 | **1** |
+ * | 먼(reach 2)           | 3 | 2 | **1** |
  * | 케이스 B(파이프 넘김) | 4 | 2 | **2** ← 1칸은 트렁크 파이프가 먹었다 |
  */
 function tapSeatDepth(planned: PlannedLine): number {
-  return planned.depth - (planned.inserter === "long" ? 2 : 1);
+  return planned.clusterBeltDepth - (planned.reach ?? 1);
 }
 
 /**
@@ -498,6 +549,8 @@ function emitTapInserting(args: {
   inputPorts: ModulePort[];
   outputPorts: ModulePort[];
   unroutedLines: IoLine[];
+  /** generateModule 이 계산한 [isJumpableToClusterPipe] — planner 와 같은 값을 봐야 한다. */
+  isJumpableToClusterPipe: boolean;
 }): void {
   const { plan, machines, input, prefix, occupancy, cells, chests } = args;
 
@@ -514,33 +567,58 @@ function emitTapInserting(args: {
   const slotOnFace = new Map<PlannedSide, number>();
   let seq = 0;
 
+  // ── [pipeJumpToClusterPipe] 모드 — 유체 줄이 좌석 줄 대신 바깥 [ClusterPipe] 로 ──
+  //
+  // 점프 가능 판정(isJumpableToClusterPipe)이 참이어도, 그 면에 **벨트가 하나도 안 앉았으면**
+  // 넘을 것이 없다 → 옛 스파인(d=1)이 그대로 최선이라 점프하지 않는다(폭 낭비 0).
+  //
+  // ClusterPipe 깊이 = 그 면 벨트 최대 깊이 + 2:
+  //   +1 = [ClusterPipeTapCell] — 지하파이프는 **지하 방향으로만** 합류하고 옆(수직)으론
+  //        못 이어서, 탭이 ClusterPipe 줄 위에 앉으면 세로 연속이 끊긴다 → 1칸 안쪽.
+  //   +2 = ClusterPipe 본체(일반 파이프 세로줄).
+  // (나중에: 벨트를 지하벨트로 접으면 탭·ClusterPipe 를 더 안쪽으로 당길 수 있다 — 최적화 보류.)
+  const pipeFaceBeltMax = plan.lines.reduce(
+    (a, p) =>
+      p.line.kind === "belt" && p.side === input.fluidTrunk?.side
+        ? Math.max(a, p.clusterBeltDepth)
+        : a,
+    0,
+  );
+  const pipeJumpMode = args.isJumpableToClusterPipe && pipeFaceBeltMax > 0;
+  const clusterPipeDepth = pipeFaceBeltMax + 2;
+  /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 ClusterPipe 깊이, 아니면 계획값 그대로. */
+  const emitDepthOf = (p: PlannedLine): number =>
+    p.line.kind === "pipe" && pipeJumpMode ? clusterPipeDepth : p.clusterBeltDepth;
+
   /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준(아래 참고). */
   const endKey = (p: PlannedLine): string =>
     `${p.side}:${(input.lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min")}`;
   const maxDepthAtEnd = new Map<string, number>();
   for (const p of plan.lines) {
     const k = endKey(p);
-    maxDepthAtEnd.set(k, Math.max(maxDepthAtEnd.get(k) ?? 0, p.depth));
+    maxDepthAtEnd.set(k, Math.max(maxDepthAtEnd.get(k) ?? 0, emitDepthOf(p)));
   }
 
   for (const planned of plan.lines) {
     const line = planned.line;
     const face = planned.side as PortFace;
     const fv = faceVector(face); // 바깥 방향(머신 → 면)
-    const d = planned.depth; // 레인 깊이(파이프=1, 가까운 belt=2, 먼=3, 케이스 B=4)
+    const d = emitDepthOf(planned); // 가까운 belt=2, 먼=3, 케이스 B=4. 파이프=1 또는 ClusterPipe 깊이.
     const isPipe = line.kind === "pipe";
 
     // 좌석 행 배정은 **인서터가 있는 줄만** 한다 — 트렁크 파이프는 인서터가 없어서 좌석
-    // 행을 안 먹는다(머신 유체 입구에 직접 닿는다).
+    // 행을 안 먹는다(머신 유체 입구에 직접 닿는다). [Parallel Inserting]: 한 줄이 머신마다
+    // 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
+    const taps = isPipe ? 0 : Math.max(1, planned.tapsPerMachine ?? 1);
     let slot = 0;
     if (!isPipe) {
       const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
       slot = slotOnFace.get(planned.side) ?? 0;
-      if (slot >= lateralCap) {
-        args.unroutedLines.push(line); // 좌석 행 없음 — planner 용량과 어긋난 것(안전망).
+      if (slot + taps > lateralCap) {
+        args.unroutedLines.push(line); // 좌석 행 부족 — planner 용량과 어긋난 것(안전망).
         continue;
       }
-      slotOnFace.set(planned.side, slot + 1);
+      slotOnFace.set(planned.side, slot + taps);
     }
 
     // 트렁크가 달리는 축(W/E 면 → 세로, N/S 면 → 가로)과 포트가 나가는 끝.
@@ -626,29 +704,80 @@ function emitTapInserting(args: {
         : makeInserterCell(seat, portPickup, input.inserterEntityName, beltPair),
     ];
 
-    // ── 탭 인서터 — 머신마다 하나. 한 belt 를 나눠 집는다. 파이프는 탭이 없다. ──
+    // ── 탭 인서터 — 머신마다 [taps]개. 한 belt 를 나눠 집는다. 파이프는 탭이 없다. ──
+    //
+    // [Parallel Inserting]: 머신당 수요가 인서터 하나를 넘으면 좌석을 더 써서 **같은
+    // ClusterBelt 를 여러 번** 집는다. taps 개를 slot..slot+taps−1 연속 행에 앉힌다.
+    //
+    // 점프 모드의 유체 면: 좌석 줄(d=1)에서 **상자 행 하나는 [fluidboxPipeCell] 자리**다.
+    // 벨트 좌석은 그 행을 건너뛰어 앉는다 — 이게 "머신 유체 상자에 닿아야 하는 칸을 제외한
+    // 남는 공간을 활용한다"의 실체다. (용량은 insertingPlanner 좌석 예산이 이미 보장.)
+    const skipRow =
+      pipeJumpMode && planned.side === input.fluidTrunk?.side
+        ? input.fluidTrunk!.fluidboxOffset!
+        : undefined;
+    const remapRow = (r: number) => (skipRow !== undefined && r >= skipRow ? r + 1 : r);
     const tapCells: PlacedCell[] = [];
     const seatDepth = tapSeatDepth(planned);
     for (const m of isPipe ? [] : machines) {
-      const t = (vertical ? m.origin.y : m.origin.x) + slot;
-      const tapAt = faceCell(ext, face, seatDepth, t);
-      if (occupancy.has(cellKey(tapAt.x, tapAt.y))) continue;
-      // 집는 쪽: 입력이면 belt(바깥 +fv), 출력이면 머신(안쪽 −fv). 1:1 과 같은 규약.
-      const pickup = line.role === "input" ? fv : { x: -fv.x, y: -fv.y };
-      const pair: PortPair = {
-        producer: {
-          containerId: line.role === "input" ? chestId : m.id,
-          cell: { ...tapAt }, face, kind: "item",
-        },
-        consumer: {
-          containerId: line.role === "input" ? m.id : chestId,
-          cell: { ...tapAt }, face, kind: "item",
-        },
-      };
-      tapCells.push(makeInserterCell(tapAt, pickup, tapInserterName(input, planned), pair));
+      for (let k = 0; k < taps; k++) {
+        const seatRow = remapRow(slot + k);
+        const t = (vertical ? m.origin.y : m.origin.x) + seatRow;
+        const tapAt = faceCell(ext, face, seatDepth, t);
+        if (occupancy.has(cellKey(tapAt.x, tapAt.y))) continue;
+        // 집는 쪽: 입력이면 belt(바깥 +fv), 출력이면 머신(안쪽 −fv). 1:1 과 같은 규약.
+        const pickup = line.role === "input" ? fv : { x: -fv.x, y: -fv.y };
+        const pair: PortPair = {
+          producer: {
+            containerId: line.role === "input" ? chestId : m.id,
+            cell: { ...tapAt }, face, kind: "item",
+          },
+          consumer: {
+            containerId: line.role === "input" ? m.id : chestId,
+            cell: { ...tapAt }, face, kind: "item",
+          },
+        };
+        tapCells.push(makeInserterCell(tapAt, pickup, tapInserterName(input, planned), pair));
+      }
     }
 
-    for (const c of [...beltCells, ...portCells, ...tapCells]) {
+    // ── [pipeJumpToClusterPipe] — 머신마다 상자 칸에서 지하로 벨트들을 넘어 ClusterPipe 로 ──
+    //
+    //   머신 | d1 fluidboxPipeCell | d2..dN 벨트(지하로 통과) | dN+1 ClusterPipeTapCell | dN+2 ClusterPipe
+    //
+    // 각 머신은 **자기 상자 행**에서만 점프한다 — 행이 서로 달라 corridor 끼리 안 부딪힌다.
+    // 지하파이프 direction = **지상 입구가 향하는 방향**(표면 연결 측, containerRouting 컨벤션):
+    //  - fluidboxPipeCell: 표면이 머신 유체 상자를 향한다(−fv). 터널은 +fv 로 진행.
+    //  - ClusterPipeTapCell: 표면이 바깥 ClusterPipe 를 향한다(+fv).
+    const jumpCells: PlacedCell[] = [];
+    if (isPipe && pipeJumpMode) {
+      const fbOffset = input.fluidTrunk!.fluidboxOffset!;
+      const tapDepth = clusterPipeDepth - 1;
+      for (const m of machines) {
+        const row = (vertical ? m.origin.y : m.origin.x) + fbOffset;
+        const boxCell = faceCell(ext, face, 1, row);
+        const tapCell = faceCell(ext, face, tapDepth, row);
+        if (occupancy.has(cellKey(boxCell.x, boxCell.y)) || occupancy.has(cellKey(tapCell.x, tapCell.y))) {
+          continue; // 안전망(구성상 발생 안 함 — 좌석 remap 이 상자 행을 비워 둔다).
+        }
+        jumpCells.push(
+          makeUndergroundPipeCell(
+            boxCell,
+            vectorToDirection(-fv.x, -fv.y),
+            input.fluidTrunk!.undergroundPipeEntityName!,
+            beltPair,
+          ),
+          makeUndergroundPipeCell(
+            tapCell,
+            vectorToDirection(fv.x, fv.y),
+            input.fluidTrunk!.undergroundPipeEntityName!,
+            beltPair,
+          ),
+        );
+      }
+    }
+
+    for (const c of [...beltCells, ...portCells, ...tapCells, ...jumpCells]) {
       cells.push(c);
       occupancy.add(cellKey(c.x, c.y));
     }
@@ -665,7 +794,11 @@ function emitTapInserting(args: {
         item: line.name,
         side: planned.side, // 채널 장부·반출 계획이 보는 값 — 어느 **변**이냐.
         laneDepth: d,
-        inserter: planned.inserter, // 트렁크 파이프는 인서터가 없다 → undefined.
+        // meta.inserter 는 소비자(채널 장부·골든)가 보는 'normal'|'long' 라벨이다 — planner 의
+        // reach 를 여기서 이진 라벨로 접는다. 파이프는 인서터가 없어 undefined. (reach>2 가
+        // ModuleInput 까지 흘러오면 이 라벨은 무손실이 아니게 되나, v1 은 1·긴팔뿐이라 안전.)
+        inserter:
+          planned.reach === undefined ? undefined : planned.reach >= 2 ? "long" : "normal",
         amount: line.amount,
         endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
       },

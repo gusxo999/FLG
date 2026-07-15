@@ -81,6 +81,32 @@ export function makePipeCell(
 }
 
 /**
+ * 지하파이프(pipe-to-ground) 1셀 emit. `direction` = **지상 입구가 향하는 방향**(표면 연결 측).
+ * 터널은 그 반대로 진행한다(containerRouting emitFluidPath 와 같은 컨벤션 — pipeNetwork.ts:226).
+ *
+ * 지하파이프는 표면에서 `direction` **한 면으로만** 연결된다 — 옆(수직 방향)으론 안 이어진다.
+ * 그래서 [ClusterPipeTapCell](../../../../docs/용어사전.md)은 ClusterPipe 줄 **위가 아니라
+ * 1칸 안쪽**에 앉는다(줄 위에 앉히면 세로 연속이 끊긴다).
+ */
+export function makeUndergroundPipeCell(
+  cell: { x: number; y: number },
+  direction: Direction,
+  undergroundPipeEntityName: string,
+  pair: PortPair,
+): PlacedCell {
+  const grid: GridCell = {
+    ...createEmptyCell(),
+    entityId: `r-upipe-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
+    entityName: undergroundPipeEntityName,
+    entityType: EntityType.PipeUnderground,
+    direction,
+    tileOffset: { x: 0, y: 0 },
+    isOrigin: true,
+  };
+  return { x: cell.x, y: cell.y, cell: grid };
+}
+
+/**
  * 컨테이너 셀 1개 생성. `at` 좌표에 박아넣음.
  */
 export function makeContainerCell(
