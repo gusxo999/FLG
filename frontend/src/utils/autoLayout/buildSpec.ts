@@ -25,6 +25,7 @@
 import { useGameDataStore, type Entity } from "../../store/gameDataStore";
 import type { ContainerWizardInput } from "./containerModel";
 import { inserterReach, inserterThroughput } from "./inserterThroughput";
+import { beltThroughput } from "./beltThroughput";
 
 /** 사용자가 고른 인서터 하나 — 이름 + 게임데이터에서 뽑은 능력치. */
 export interface SpecInserter {
@@ -41,8 +42,22 @@ export interface SpecInserter {
   throughput: number;
 }
 
+/** 사용자가 고른 벨트 하나 — 이름 + 게임데이터에서 뽑은 초당 운반량. */
+export interface SpecBelt {
+  entityName: string;
+  /** 초당 운반량(items/sec). 사용자 override 반영. */
+  throughput: number;
+}
+
 export interface BuildSpec {
+  /** 주 벨트(첫 선택 또는 지정). 벨트를 하나만 묻는 옛 소비처용. */
   beltEntityName: string;
+  /**
+   * 고른 벨트 **전부** — throughput 내림차순, 같은 처리량은 하나만.
+   * [determineBeltCount](./beltThroughput.ts) 가 수요를 이 티어들로 나눠 덮는다:
+   * 빠른 것부터 채우고 **나머지는 그 나머지를 감당하는 가장 싼(느린) 벨트**로.
+   */
+  belts: SpecBelt[];
   /** 기본 인서터(사용자가 지정한 주 인서터 또는 첫 선택). */
   inserterEntityName: string;
   /**
@@ -91,11 +106,22 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
   const inserters = [...byReach.values()].sort((a, b) => a.reach - b.reach);
   const long = inserters.find((i) => i.reach >= 2);
 
+  // 고른 벨트 전부 → 처리량 내림차순. 같은 처리량이 둘이면 하나만(자리를 두고 다툴 뿐
+  // 더 나르지 못한다 — 인서터를 reach 별로 하나만 남기는 것과 같은 이유).
+  const byThroughput = new Map<number, SpecBelt>();
+  for (const entityName of input.selectedBelts) {
+    const throughput = beltThroughput(entityMap.get(entityName));
+    if (throughput <= 0) continue; // 데이터 없음 — 지어내지 않는다.
+    if (!byThroughput.has(throughput)) byThroughput.set(throughput, { entityName, throughput });
+  }
+  const belts = [...byThroughput.values()].sort((a, b) => b.throughput - a.throughput);
+
   const undergroundPipeEntityName = input.selectedUndergroundPipes[0];
   const undergroundBeltEntityName = input.selectedUndergroundBelts[0];
 
   return {
     beltEntityName,
+    belts,
     inserterEntityName,
     inserters,
     longInserter: long ? { entityName: long.entityName, reach: long.reach } : undefined,
