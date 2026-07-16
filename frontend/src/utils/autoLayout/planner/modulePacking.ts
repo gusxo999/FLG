@@ -51,6 +51,12 @@ export interface NodeSpec {
    * 게임데이터에 닿는 moduleWizard 가 계산해 넣는다.
    */
   fluidTrunk?: ModuleInput["fluidTrunk"];
+  /**
+   * [Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting) 용량 — 줄별 클러스터
+   * rate(items/sec) + 탭(인서터) 처리량. 게임데이터(레시피 시간·머신 속도)를 보는 moduleWizard 가
+   * 계산해 넣는다(module/ 는 순수). 미지정이면 탭 1개(휴면).
+   */
+  supplyCapacity?: ModuleInput["supplyCapacity"];
 }
 
 export interface PackConfig {
@@ -676,6 +682,8 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(moduleWizard)가 이미
     // 풀어서 spec 에 실어 보낸다. module/ 는 store 를 안 본다(순수).
     fluidTrunk: s.fluidTrunk,
+    // [Parallel Inserting] 용량 — 마찬가지로 게임데이터를 보는 moduleWizard 가 계산해 실었다.
+    supplyCapacity: s.supplyCapacity,
   };
 }
 

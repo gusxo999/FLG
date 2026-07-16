@@ -51,6 +51,7 @@ import type {
 import {
   dijkstraWithJumps,
   emitItemPath,
+  emitFluidPath,
   type DijkstraResult,
 } from "../containerRouting";
 import { cellKey, faceVector, segment } from "../util/helper";
@@ -64,6 +65,18 @@ export interface HopConfig {
   beltMaxUndergroundDistance?: number;
   /** 지하벨트 prototype(점프 blockGroup). */
   undergroundBeltEntityName?: string;
+  /**
+   * 유체 홉(pipe-to-pipe, docs/auto-layout-wizard.fluid-hop.md) 재료. 없으면 유체 홉은
+   * 실패 처리(→ 트리 전체 옛 경로 폴백). 파이프는 인서터·방향이 없어 아이템 홉보다 단순하다.
+   */
+  pipeEntityName?: string;
+  pipeMaxUndergroundDistance?: number;
+  undergroundPipeEntityName?: string;
+  /**
+   * 유체별 **금지 칸**(합류 가드) — 홉이 **다른 유체**에 닿지 않게. 키=유체 이름,
+   * 값=cellKey 집합(그 유체의 `PipeFlow.blockedTilesHard`). 같은 유체는 안 막는다(공유 허용).
+   */
+  fluidBlocked?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** 한 홉의 라우팅 결과. */
@@ -167,6 +180,10 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     ? Math.max(0, config.beltMaxUndergroundDistance ?? 0)
     : 0;
   const blockGroup = config.undergroundBeltEntityName ?? config.beltEntityName;
+  // 유체 홉 점프 거리 — 지하파이프를 골랐을 때만. 아이템과 별개(pipe-to-ground blockGroup).
+  const maxJumpPipe = config.undergroundPipeEntityName
+    ? Math.max(0, config.pipeMaxUndergroundDistance ?? 0)
+    : 0;
 
   // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 홉은
   // 배정 좌표(계단꼴/열 갈아타기/지하 횡단)를 탐색 없이 체인으로 방출한다. dijkstra 는
@@ -190,6 +207,23 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     reservedHop.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
 
   for (const hop of pack.hops) {
+    // 유체 홉(pipe-to-pipe) — 포트가 무한파이프면 유체다. 채널 기하(벨트 크로싱 계획)는
+    // 아이템 전용이라 건너뛰고 파이프 경로로 잇는다(docs/auto-layout-wizard.fluid-hop.md).
+    if (hop.from.chest.kind === "infinity-pipe") {
+      const route = config.pipeEntityName
+        ? routeOneFluidHop(hop, base, hopBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(hop.item))
+        : { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
+      routes.push(route);
+      if (!route.ok) { failures += 1; continue; }
+      for (const c of route.cells) { cells.push(c); hopBelts.add(cellKey(c.x, c.y)); }
+      corridors.push(...route.corridors);
+      strippedChestIds.add(hop.from.chest.id);
+      strippedChestIds.add(hop.to.chest.id);
+      // 유체 포트는 인서터가 없다 — chest(무한파이프) 한 칸만 뗀다(seat=파이프는 남겨 이음).
+      for (const key of stripKeys(hop)) strippedCellKeys.add(key);
+      continue;
+    }
+
     const k = hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
     const chain = plannedChains.get(k);
     let route: HopRoute;
@@ -292,6 +326,59 @@ function routeOneHop(
   }
 
   return finishChain(hop, result, config);
+}
+
+/**
+ * 유체 홉 한 개 — **pipe-to-pipe**(docs/auto-layout-wizard.fluid-hop.md). 아이템 홉보다 단순:
+ * 파이프는 인서터가 없어 seat 이음이 없고, 방향이 없어 인접만으로 이어진다. 두 무한파이프
+ * (자식 출력 sink · 부모 입력 source)를 떼고 그 자리를 파이프로 메워 잇는다.
+ *
+ * `fluidBlocked` = **다른 유체** 금지 칸(합류 가드) — 같은 유체는 안 막아 공유 합류를 허용한다.
+ * emit 은 검증된 [containerRouting.emitFluidPath] 재사용(지상 pipe + 지하파이프 입/출구).
+ */
+function routeOneFluidHop(
+  hop: HopSpec,
+  base: Set<string>,
+  hopBelts: Set<string>,
+  corridors: ReadonlyArray<UndergroundCorridor>,
+  maxJump: number,
+  config: HopConfig,
+  bounds: { x0: number; y0: number; x1: number; y1: number },
+  fluidBlocked?: ReadonlySet<string>,
+): HopRoute {
+  const from = portGeometry(hop.from); // 자식 출력(collect)
+  const to = portGeometry(hop.to); // 부모 입력(supply)
+  const fvFrom = faceVector(hop.from.face);
+  const fvTo = faceVector(hop.to.face);
+
+  const blocked = new Set<string>(base);
+  for (const k of hopBelts) blocked.add(k);
+  if (fluidBlocked) for (const k of fluidBlocked) blocked.add(k);
+  blocked.delete(cellKey(from.chest.x, from.chest.y));
+  blocked.delete(cellKey(to.chest.x, to.chest.y));
+
+  const result = dijkstraWithJumps({
+    start: from.chest,
+    end: to.chest,
+    blocked,
+    corridors,
+    maxJumpDistance: maxJump,
+    // 모든 pipe-to-ground prototype 은 단일 그룹으로 서로 페어링 절단(Factorio 규칙).
+    blockGroup: "pipe-to-ground",
+    jumpCostModel: "length", // 지상이 뚫려 있으면 항상 지상 — 지하는 충돌 회피용.
+    // 끝 셀 점프 방향 강제(지하파이프 입/출구 표면이 트렁크를 향하게). 지상 경로엔 무해.
+    requiredStartJump: { dx: fvFrom.x, dy: fvFrom.y },
+    requiredEndJump: { dx: -fvTo.x, dy: -fvTo.y },
+    bounds,
+  });
+  if (!result) return { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-path" };
+
+  const pair = synthPair(hop.fromId, hop.toId);
+  const emitted = emitFluidPath(result, pair, {
+    pipeEntityName: config.pipeEntityName!,
+    undergroundPipeEntityName: config.undergroundPipeEntityName,
+  });
+  return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
 }
 
 /**

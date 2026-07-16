@@ -35,6 +35,7 @@ import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
+import { clusterLineRate } from "../recipeTree";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
 // [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
 import { makeBuildSpec } from "../buildSpec";
@@ -81,14 +82,6 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     return null;
   };
 
-  // 자식이 부모에게 **무엇을 먹여주나** — 그 품목은 외부 공급이 아니다(홉으로 온다).
-  const fedItemsOf = new Map<RecipeTreeNode, Set<string>>();
-  for (const node of order) fedItemsOf.set(node, new Set());
-  for (const node of order) {
-    const parent = parentOf.get(node);
-    if (parent) fedItemsOf.get(parent)!.add(node.itemName);
-  }
-
   // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md)
   //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
   //    거절 사유가 다 다르므로 각각 이유를 남긴다(진단).
@@ -101,25 +94,29 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     const m = metas.get(node)!;
     const at = `${node.recipeName}`;
 
-    // 유체 **출력**(자식→부모 유체 홉 / 루트 유체 반출) — moduleHop·반출이 벨트만 안다.
-    if (recipe.products.some((p) => p.type === "fluid")) return reject(`유체 출력 미지원 (${at})`);
+    // v1 유체 홉(docs/auto-layout-wizard.fluid-hop.md): **모듈당 유체 1줄**(입력 1 또는 출력 1).
+    // 다-유체 머신(정유·크래킹·황산 등)은 4면·회전이 얽혀 별개 문제 → 옛 경로 유지.
+    const fluidIn = recipe.ingredients.filter((i) => i.type === "fluid");
+    const fluidOut = recipe.products.filter((p) => p.type === "fluid");
+    if (fluidIn.length + fluidOut.length === 0) continue; // 아이템 전용 — 회전 없음.
+    if (fluidIn.length + fluidOut.length > 1) {
+      return reject(`다-유체 미지원 (${at}: 유체 입력 ${fluidIn.length} 출력 ${fluidOut.length})`);
+    }
 
-    const fluidIngredients = recipe.ingredients.filter((i) => i.type === "fluid");
-    if (fluidIngredients.length === 0) continue; // 아이템 전용 노드 — 회전 없음.
-    if (fluidIngredients.length > 1) return reject(`유체 입력 2개 이상 미지원 (${at})`);
-
-    const fluid = fluidIngredients[0];
-    // 자식이 만들어 주는 유체면 홉이 필요하다 — v1 미지원.
-    if (fedItemsOf.get(node)!.has(fluid.name)) return reject(`유체 홉(자식 공급) 미지원 (${at}←${fluid.name})`);
+    const isOutput = fluidOut.length === 1;
+    const fluid = isOutput ? fluidOut[0] : fluidIn[0];
+    const role: "input" | "output" = isOutput ? "output" : "input";
+    // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E) — generateModule 의 outputSide=W 와 정합.
+    // 자식-공급 유체 입력은 이제 **홉이 잇는다**(옛 거절 제거). 루트 유체 출력은 반출로 나간다.
+    const wantFace = isOutput ? "W" : "E";
     // 회전은 footprint 를 안 바꾼다는 전제 위에 있다 → 정사각형 머신만(§3).
     if (m.w !== m.h) return reject(`비정사각형 머신은 회전 불가 (${m.entityName} ${m.w}×${m.h})`);
     if (!options.pipeEntityName) return reject("파이프 prototype 없음");
 
     const entity = entityMap.get(m.entityName);
     if (!entity) return reject(`엔티티 게임데이터 없음: ${m.entityName}`);
-    // 유체 입구가 **입력 면(E)** 을 보게 하는 회전을 데이터에서 고른다(§3).
-    // generateModule 의 outputSide 가 W 이므로 입력 면은 E 다.
-    const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, "E", "input");
+    // 유체 상자가 `wantFace` 를 보게 하는 회전을 데이터에서 고른다(§3).
+    const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, wantFace, role);
     if (!chosen) {
       // 유체 상자의 면은 게임데이터의 `PipeConnection.direction` 에서만 나온다 — 좌표로는
       // 못 정한다(모서리 칸이라 안 갈린다. → module/fluidPorts.ts 머리말). 그 필드가 없는
@@ -135,14 +132,14 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
         );
       }
       return reject(
-        `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} 입력 유체 상자가 E 면에 안 온다` +
+        `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} ${role} 유체 상자가 ${wantFace} 면에 안 온다` +
           ` (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
       );
     }
 
     fluidTrunkOf.set(node, {
       direction: chosen.direction,
-      side: "E",
+      side: wantFace,
       pipeEntityName: options.pipeEntityName,
       // [pipeJumpToClusterPipe] 재료 — 상자 연결 칸의 면 위 위치 + 지하파이프 능력(BuildSpec).
       // generateModule 이 이 셋으로 isJumpableToClusterPipe 를 판정한다(부족하면 옛 스파인).
@@ -161,6 +158,16 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     idOf.set(node, id);
     recipeOfId.set(id, node.recipeName!);
   });
+  // 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량(piece 3) +
+  // [Parallel Inserting] 의 탭 용량. 노드와 무관(같은 인서터)해서 specs 앞에서 한 번 구한다.
+  const ov = input.inserterOverrides;
+  const normalTp = inserterThroughput(entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
+  const longName = options.longInserter?.entityName;
+  const longTp = longName ? inserterThroughput(entityMap.get(longName), ov?.[longName]) : normalTp;
+  // 탭 용량 = **가장 느린 인서터**(min) — 어느 reach 에 앉든 굶지 않게 보수적으로 잡는다.
+  // (줄별 reach 로 정밀화하는 건 후속. v1 은 단일 값.)
+  const tapCap = Math.min(normalTp, longTp);
+
   const specs: NodeSpec[] = order.map((node) => {
     const m = metas.get(node)!;
     const recipe = recipeMap.get(node.recipeName!)!;
@@ -171,6 +178,12 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       ...recipe.products.map((p) => ({ name: p.name, kind: carrier(p.type), role: "output" as const, amount: p.amount })),
     ];
     const parent = parentOf.get(node) ?? undefined;
+    // [Parallel Inserting] 배선 — 줄별 클러스터 rate(items/sec) + 탭 용량을 supplyCapacity 로.
+    // v1 은 벨트 처리량(beltCapacity)은 안 잰다(벨트 분할이 없어 어차피 폴백뿐 — 후속).
+    const params = { craftingSpeed: entityMap.get(m.entityName)?.crafting_speed ?? 1, productivityMultiplier: 1 };
+    const lineRates = new Map<string, number>();
+    for (const ing of recipe.ingredients) lineRates.set(`input:${ing.name}`, clusterLineRate(recipe, "input", ing.name, m.count, params));
+    for (const p of recipe.products) lineRates.set(`output:${p.name}`, clusterLineRate(recipe, "output", p.name, m.count, params));
     return {
       id: idOf.get(node)!,
       depth: m.depth,
@@ -179,14 +192,10 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       count: m.count,
       lines,
       fluidTrunk: fluidTrunkOf.get(node),
+      supplyCapacity: tapCap > 0 ? { tapCapacity: tapCap, lineRates } : undefined,
     };
   });
 
-  // 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량(piece 3).
-  const ov = input.inserterOverrides;
-  const normalTp = inserterThroughput(entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
-  const longName = options.longInserter?.entityName;
-  const longTp = longName ? inserterThroughput(entityMap.get(longName), ov?.[longName]) : normalTp;
   const packConfig: PackConfig = {
     inserterEntityName: options.inserterEntityName,
     beltEntityName: options.beltEntityName,
@@ -282,10 +291,19 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     }
   }
 
+  // 유체 홉(pipe-to-pipe)이 **다른 유체**에 안 닿게 할 금지 칸 — 위 합류 가드가 낸 유체별
+  // hard 지도를 그대로 넘긴다(같은 유체는 안 막아 공유 허용). 아이템 트리면 비어 있다.
+  const fluidBlocked = new Map<string, ReadonlySet<string>>();
+  for (const [fluid, pf] of pipeFlowByFluid) fluidBlocked.set(fluid, pf.blockedTilesHard);
+
   const hopRes = routeModuleHops(pack, {
     beltEntityName: options.beltEntityName,
     beltMaxUndergroundDistance: options.beltMaxUndergroundDistance,
     undergroundBeltEntityName: options.undergroundBeltEntityName,
+    pipeEntityName: options.pipeEntityName,
+    pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
+    undergroundPipeEntityName: options.undergroundPipeEntityName,
+    fluidBlocked,
   });
   if (hopRes.failures > 0) return reject(`모듈 사이 납품 경로 실패 ${hopRes.failures}건`);
 

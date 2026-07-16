@@ -30,17 +30,18 @@
  *
  * 그래서 금지 칸이 **두 등급**이다(이름의 Hard/Soft = 규칙의 **강도**):
  *  - `blockedTilesHard` — 어길 수 없다. 남의(=다른 유체) 파이프 + 그 네 이웃, 그리고
- *    **모든 유체 출력 상자**의 연결 칸.
+ *    **다른 유체를 내는 출력 상자**의 연결 칸(같은 유체 출력은 소스라 허용 — 아래 참고).
  *  - `blockedTilesSoft` — 어겨도 물류는 안 망가진다. 이 유체를 안 받는 **입력** 상자의
  *    연결 칸. **상황이 열악하면 풀어도 되는 규칙**이지만 **푸는 기준은 아직 안 정했다** →
  *    v1 은 hard 와 똑같이 지킨다(거절은 항상 안전하다 — 옛 경로로 폴백할 뿐이다).
  *    풀고 싶으면 [pipeFlowConflict] 에 `soft: false` 를 주면 된다.
  *
- * ## 출력 상자는 "무조건" 막는다 — 그럼 내 유체를 뽑아낼 땐?
- * 유체를 **반출**하는 줄(머신 출력 상자 → 무한파이프)은 자기 머신의 출력 상자에 **닿아야
- * 한다.** 그건 이 규칙의 예외가 아니라 **입력의 문제**다: 그럴 땐 호출자가 `machines` 에서
- * **자기가 이으려는 그 머신을 빼고** 넘긴다. 이 함수는 "넘겨받은 머신들"에 대해서만 답한다.
- * (v1 은 유체 출력 자체를 아직 지원하지 않는다 — [moduleWizard] 가 옛 경로로 폴백시킨다.)
+ * ## 출력 상자 — 같은 유체는 소스라 허용, 다른 유체만 막는다 (2026-07-15 정정)
+ * 유체를 **반출/홉**하는 줄(머신 출력 상자 → ClusterPipe → 무한파이프)은 자기 머신의 출력
+ * 상자에 **닿아야 한다** — 그게 유체를 걷어가는 지점이다. 그래서 출력 상자를 "무조건" 막으면
+ * 유체 출력이 자기 소스에서 거절당한다. 정정: **이 유체를 내는 출력 상자는 허용**(소스, 같은
+ * 유체 병합은 무해 — 위 원칙 2), **다른 유체를 내는 출력 상자만 hard**(그 생산물이 새기 때문).
+ * `recipeFluids.products` 가 그 상자가 내는 유체를 알려준다([boxFluidNames]). (docs/auto-layout-wizard.fluid-hop.md)
  *
  * ## 미구현 — `joinableTile`
  * 용어사전에 예고된 셋째 필드. "같은 유체면 **이미 깔린 관을 타고 간다**"는 **반대 용도**라
@@ -61,7 +62,7 @@ import { fluidPortSlots } from "./fluidPorts";
  * 깔려는 유체 이름을 받는다.
  */
 export interface PipeFlow {
-  /** 어길 수 없는 금지 칸(cellKey). 다른 유체 파이프 + 그 네 이웃, 모든 유체 출력 상자. */
+  /** 어길 수 없는 금지 칸(cellKey). 다른 유체 파이프 + 그 네 이웃, **다른 유체** 출력 상자. */
   blockedTilesHard: Set<string>;
   /** 풀 수 있는 금지 칸(cellKey). 이 유체를 안 받는 **입력** 상자 — 머신이 스스로 거른다. */
   blockedTilesSoft: Set<string>;
@@ -133,8 +134,11 @@ export function collectPipeFlow(input: PipeFlowInput): PipeFlow {
       const at = connectionCell(m, slot.face, slot.offset);
       const isOutput = slot.productionType === "output" || slot.productionType === "input-output";
       if (isOutput) {
-        // 출력 상자는 유체 이름을 안 따진다 — 같은 유체라도 남의 생산물이 내 관망으로 샌다.
-        blockedTilesHard.add(cellKey(at.x, at.y));
+        // 출력 상자: **이 유체를 내는** 상자는 이 관망의 **소스**다 — 걷어가려면 닿아야 한다
+        // (같은 유체 병합은 무해, 파이프 처리량 무한). 다른 유체(또는 이 레시피가 안 내는
+        // 유체)를 내는 상자만 hard — 그 생산물이 내 관망으로 새기 때문이다.
+        const produces = boxFluidNames(m, slot.boxIndex, "output", slot.filter);
+        if (!produces.has(input.fluidName)) blockedTilesHard.add(cellKey(at.x, at.y));
         continue;
       }
       if (slot.productionType !== "input") continue; // "none" 등 — 파이프가 안 붙는다.

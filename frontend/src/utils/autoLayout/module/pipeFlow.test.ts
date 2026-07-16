@@ -76,13 +76,27 @@ describe("collectPipeFlow — 남의 파이프", () => {
 });
 
 describe("collectPipeFlow — 남의 머신 유체 상자", () => {
-  it("출력 상자의 연결 칸은 hard 다 — 같은 유체라도 남의 생산물이 내 관망으로 샌다", () => {
+  it("이 유체를 **안 내는** 출력 상자의 연결 칸은 hard 다 — 남의 생산물이 내 관망으로 샌다", () => {
     // direction 4(시계 90°) → 입력(dir 0)은 E 면, 출력(dir 8)은 W 면.
+    // 이 머신은 plastic-bar 를 굽는다(products 비어 있음) → 출력 상자는 석유 가스를 안 낸다.
     const m = plasticBarMachine({ x: 0, y: 0 }, 4);
     const flow = collectPipeFlow({ fluidName: "petroleum-gas", pipes: [], machines: [m] });
     // 출력 = W 면 → 머신 바로 서쪽 열(x = -1). 두 상자 → 두 칸.
     expect(flow.blockedTilesHard.has(key(-1, 0))).toBe(true);
     expect(flow.blockedTilesHard.has(key(-1, 2))).toBe(true);
+  });
+
+  it("이 유체를 **내는** 출력 상자는 허용된다 — 걷어가는 소스다(같은 유체 병합 무해)", () => {
+    // 석유 가스를 **산출**하는 레시피. 그 출력 상자는 이 관망의 소스라 닿아야 한다.
+    const m = plasticBarMachine({ x: 0, y: 0 }, 4);
+    m.recipeFluids = { ingredients: [], products: [{ name: "petroleum-gas" }] };
+    const flow = collectPipeFlow({ fluidName: "petroleum-gas", pipes: [], machines: [m] });
+    // W 면 출력 상자(x=-1)가 **hard 가 아니다** — 유체 출력/홉이 여기서 걷어간다.
+    expect(flow.blockedTilesHard.has(key(-1, 0))).toBe(false);
+    expect(flow.blockedTilesHard.has(key(-1, 2))).toBe(false);
+    // 단, **다른** 유체(water)를 깔 땐 이 석유 가스 출력 상자가 여전히 hard(생산물 유출).
+    const other = collectPipeFlow({ fluidName: "water", pipes: [], machines: [m] });
+    expect(other.blockedTilesHard.has(key(-1, 0))).toBe(true);
   });
 
   it("이 유체를 받는 입력 상자는 안 막는다 — 트렁크 파이프가 지나가라고 만든 칸이다", () => {

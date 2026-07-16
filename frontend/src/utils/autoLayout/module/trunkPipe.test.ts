@@ -18,6 +18,7 @@ import { EntityType } from "../../../types/layout";
 const inItem = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outItem = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 const inFluid = (name: string): IoLine => ({ name, kind: "pipe", role: "input" });
+const outFluid = (name: string): IoLine => ({ name, kind: "pipe", role: "output" });
 
 /** 화학 공장 꼴: petroleum-gas(유체) + coal(아이템) → plastic-bar(아이템). 3×3, 3대. */
 function plasticBar(count: number): ModuleInput {
@@ -234,5 +235,51 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
     const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
     expect(coal.meta.laneDepth).toBe(4);
     expect(coal.meta.inserter).toBe("long");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 유체 출력 반출 (docs/auto-layout-wizard.fluid-hop.md) — 머신 유체 산출 → 무한파이프
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 아이템 입력(coal) + 유체 출력(petroleum-gas). 출력 유체는 W 면(부모 쪽). 3×3. */
+function fluidOut(count: number): ModuleInput {
+  return {
+    machine: { entityName: "chemical-plant", w: 3, h: 3 },
+    count,
+    lines: [inItem("coal"), outFluid("petroleum-gas")],
+    inserterEntityName: "inserter",
+    beltEntityName: "transport-belt",
+    longInserter: { entityName: "long-handed-inserter", reach: 2 },
+    fluidTrunk: {
+      direction: 12, // W 면을 보게(테스트 픽스처 — 실제는 chooseMachineDirection 이 고름)
+      side: "W",
+      pipeEntityName: "pipe",
+      fluidboxOffset: 0,
+      undergroundPipeEntityName: "pipe-to-ground",
+      pipeMaxUndergroundDistance: 10,
+    },
+  };
+}
+
+describe("유체 출력 반출 — 머신 유체 → 무한파이프", () => {
+  it("탭으로 서고, 유체 출력 포트가 무한파이프다", () => {
+    const mod = generateModule(fluidOut(3));
+    expect(mod.supply?.mode).toBe("tap");
+    expect(mod.unroutedLines).toHaveLength(0);
+    const gas = mod.outputPorts.find((p) => p.line.name === "petroleum-gas")!;
+    expect(gas.chest.kind).toBe("infinity-pipe");
+    expect(gas.meta.side).toBe("W"); // 출력 유체 = 부모 쪽 면
+    // 유체 포트엔 인서터가 없다 — 포트 끝이 파이프.
+    const ev = { x: gas.anchor.x - gas.tapAnchor.x, y: gas.anchor.y - gas.tapAnchor.y };
+    const mid = { x: gas.tapAnchor.x + ev.x / 2, y: gas.tapAnchor.y + ev.y / 2 };
+    expect(cellAt(mod, mid.x, mid.y)?.entityType).toBe(EntityType.Pipe);
+  });
+
+  it("coal 입력은 반대 면(E)에 벨트로 — 유체와 아이템이 안 다툰다", () => {
+    const mod = generateModule(fluidOut(3));
+    const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
+    expect(coal.meta.side).toBe("E");
+    expect(coal.chest.kind).toBe("infinity-chest");
   });
 });

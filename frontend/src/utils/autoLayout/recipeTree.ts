@@ -184,6 +184,29 @@ export function perMachineItemsPerSec(
   );
 }
 
+/**
+ * **클러스터 전체**(머신 N대)가 한 I/O 줄을 초당 몇 개 다루나 — 입력이면 소비 rate,
+ * 출력이면 산출 rate. [Parallel Inserting](../../../docs/용어사전.md#parallel-inserting)의
+ * `SupplyCapacity.lineRates` 를 채우는 값이다.
+ *  - 입력: 제작 횟수 × ingredient.amount.
+ *  - 출력: 제작 횟수 × product.amount × probability × productivityMultiplier.
+ */
+export function clusterLineRate(
+  recipe: Recipe,
+  role: "input" | "output",
+  name: string,
+  machineCount: number,
+  params: NodeMachineParams,
+): number {
+  const crafts = (machineCount * params.craftingSpeed) / craftTime(recipe);
+  if (role === "output") {
+    const p = recipe.products.find((x) => x.name === name);
+    return p ? crafts * p.amount * (p.probability ?? 1) * params.productivityMultiplier : 0;
+  }
+  const ing = recipe.ingredients.find((x) => x.name === name);
+  return ing ? crafts * ing.amount : 0;
+}
+
 /** 머신 N대의 초당 제작 횟수 (productivity 는 횟수가 아닌 산출량에만 영향) */
 function craftsPerSec(
   recipe: Recipe,

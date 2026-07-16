@@ -11,8 +11,12 @@ tags: [moc]
 > 각 문서 상단의 태그(`#auto-layout`, `#factorio-data` 등)로도 탐색할 수 있습니다.
 > 그래프 뷰를 열면 문서 간 연결이 태그별 색상으로 보입니다.
 
-> 📖 **[용어 사전 (Glossary)](용어사전.md)** — 이 vault 에 등장하는 모든 도메인 용어의 단일 정의 출처.
+> 📖 **[용어 사전 (Glossary)](용어사전.md)** — 이 vault 에 등장하는 모든 **도메인 용어**의 단일 정의 출처.
 > 각 문서 본문에서 용어가 처음 나올 때 사전 항목으로 링크됩니다.
+>
+> 🔧 **[변수명 사전 (Debug Flags)](변수명사전.md)** — **디버그 플래그와 진단 출력**의 정리.
+> "새 경로가 왜 안 켜졌지?" 를 화면이 아니라 **콘솔 로그로** 알아내는 법이 여기 있습니다.
+> 용어 사전과 나눈 이유: 저건 사람이 대화할 때 쓰는 말, 이건 켜고 끄거나 콘솔에서 읽는 것.
 
 ---
 
@@ -30,6 +34,7 @@ tags: [moc]
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[진행]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
 | [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[진행]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인) | `#placement` `#fluid` |
+| [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[막힘]** 유체 홉 — 메커니즘은 구현됐으나 **도달 불가**: 레시피 트리가 유체 자식을 못 만든다(`itemToRecipe` 의 item 필터). v1 체인은 실데이터에 77개 실재 | `#placement` `#fluid` |
 | [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | ↳ **[계획]** 1:1 의 채널 예약 결함(지상 배정 all-or-nothing)과 수리 계획 + 지하 실패 시각화 — 트렁크 복귀로 긴급성 하락 | `#placement` `#routing` |
 | [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
 | [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |

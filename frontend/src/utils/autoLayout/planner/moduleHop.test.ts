@@ -45,6 +45,35 @@ const ugConfig: HopConfig = {
   undergroundBeltEntityName: "underground-belt",
 };
 
+// 유체 홉 트리(docs/auto-layout-wizard.fluid-hop.md): 자식 gasmaker 가 petroleum-gas(유체)를
+// 만들어 부모 user 가 쓴다. 출력 유체는 W 면(부모 쪽), 입력 유체는 E 면(자식 쪽).
+const inFluidL = (name: string): IoLine => ({ name, kind: "pipe", role: "input" });
+const outFluidL = (name: string): IoLine => ({ name, kind: "pipe", role: "output" });
+const fluidTrunk = (side: "W" | "E") => ({
+  direction: (side === "W" ? 12 : 4) as 12 | 4,
+  side,
+  pipeEntityName: "pipe",
+  fluidboxOffset: 0,
+  undergroundPipeEntityName: "pipe-to-ground",
+  pipeMaxUndergroundDistance: 10,
+});
+const fluidSpecs: NodeSpec[] = [
+  {
+    id: "user", depth: 0, machine: M, count: 2,
+    lines: [inFluidL("petroleum-gas"), outL("plastic-bar")], fluidTrunk: fluidTrunk("E"),
+  },
+  {
+    id: "gasmaker", depth: 1, parentId: "user", machine: M, count: 2,
+    lines: [inL("coal"), outFluidL("petroleum-gas")], fluidTrunk: fluidTrunk("W"),
+  },
+];
+const fluidHopConfig: HopConfig = {
+  beltEntityName: "transport-belt",
+  pipeEntityName: "pipe",
+  pipeMaxUndergroundDistance: 10,
+  undergroundPipeEntityName: "pipe-to-ground",
+};
+
 /** 모듈 셀 + 머신 footprint 의 점유 좌표 집합. */
 function occupancyOf(pack: PackResult): Set<string> {
   const occ = new Set<string>();
@@ -74,6 +103,40 @@ describe("routeModuleHops", () => {
     expect(res.strippedChestIds.has(hop.from.chest.id)).toBe(true);
     expect(res.strippedChestIds.has(hop.to.chest.id)).toBe(true);
     expect(res.strippedChestIds.size).toBe(2);
+  });
+
+  it("유체 홉 — 자식 유체 출력 → 부모 유체 입력을 파이프로 잇는다", () => {
+    const pack = packModuleTree(fluidSpecs, packConfig);
+    // packModuleTree 가 이름 기반으로 유체 포트도 짝짓는다 → 유체 HopSpec 이 만들어진다.
+    const fluidHop = pack.hops.find((h) => h.item === "petroleum-gas");
+    expect(fluidHop, "유체 홉 쌍이 안 만들어짐").toBeDefined();
+    expect(fluidHop!.from.chest.kind).toBe("infinity-pipe"); // 유체 포트
+
+    const res = routeModuleHops(pack, fluidHopConfig);
+    expect(res.failures).toBe(0);
+
+    // 홉 경로는 **파이프**로 깔린다(벨트가 아니라) — pipe-to-pipe.
+    const route = res.routes.find((r) => r.item === "petroleum-gas")!;
+    expect(route.ok).toBe(true);
+    expect(route.cells.length).toBeGreaterThan(0);
+    expect(
+      route.cells.every(
+        (c) =>
+          c.cell.entityType === EntityType.Pipe ||
+          c.cell.entityType === EntityType.PipeUnderground,
+      ),
+      "홉 경로에 파이프 아닌 셀이 있다",
+    ).toBe(true);
+
+    // 양끝 무한파이프를 strip 대상으로.
+    expect(res.strippedChestIds.has(fluidHop!.from.chest.id)).toBe(true);
+    expect(res.strippedChestIds.has(fluidHop!.to.chest.id)).toBe(true);
+  });
+
+  it("유체 홉 config 에 파이프 prototype 이 없으면 실패(→ 옛 경로 폴백)", () => {
+    const pack = packModuleTree(fluidSpecs, packConfig);
+    const res = routeModuleHops(pack, { beltEntityName: "transport-belt" }); // 파이프 없음
+    expect(res.failures).toBeGreaterThan(0);
   });
 
   it("strip 후 홉 belt 와 모듈 셀이 겹치지 않음 (좌표 고유)", () => {

@@ -574,7 +574,7 @@ const PIPE_BLOCK_GROUP = 'pipe-to-ground';
  * 유체 배치에서 원인 모를 오염·유실이 보이면 이 표식(`Deprecated Dijkstra Guard`)으로
  * 코드와 [docs/auto-layout-wizard.known-limits.md] 를 함께 grep 할 것.
  */
-function emitFluidPath(
+export function emitFluidPath(
   result: DijkstraResult,
   pair: PortPair,
   options: { pipeEntityName: string; undergroundPipeEntityName?: string },
