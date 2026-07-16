@@ -216,6 +216,92 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 다이렉트도 팔 개수를 지킨다 — 상자 여러 개가 머신 한 대를 먹인다
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * **다이렉트 인서팅이 [requiredInserterCount] 만큼 팔을 놓는다.**
+ *
+ * 팔 개수는 공급 방식과 무관한 물리량이다 — 인서터 하나가 나르는 양은 벨트에서 집든
+ * 상자에서 집든 같다. 그래서 탭이 "팔 2개"라고 판정한 수요는 다이렉트에서도 팔 2개다.
+ * 다만 다이렉트는 팔마다 **자기 상자**가 필요하다(상자 한 칸의 이웃은 4칸뿐이고 인서터는
+ * 상자와 머신 양쪽에 닿아야 한다) → **상자 여러 개가 머신 한 대를 먹이는 형태**가 된다.
+ *
+ * 예전엔 다이렉트가 이 수를 묻지도 않고 줄당 팔 하나만 놓고 "성공"이라 보고했다 —
+ * 실측(2026-07-16 kr-glass ← kr-sand)에서 초당 8개를 먹는 머신에 초당 0.667개짜리 인서터가
+ * 하나 붙은 배치가 나왔다. 게임에 넣으면 굶는다.
+ */
+describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => {
+  /** 벨트 한 줄로는 못 나르는 수요(→ 다이렉트로 떨어짐) + 팔은 2개 필요. */
+  const directHighDemand: ModuleInput = {
+    ...copperCable,
+    count: 2,
+    supplyCapacity: {
+      beltCapacity: 1, // 20 > 1 → 벨트 축에서 거절 → 다이렉트
+      tapCapacity: 5,
+      // copper-plate 20 / 2대 = 10, ceil(10/5) = 팔 2개. copper-cable(출력)은 수치 없음 → 1.
+      lineRates: new Map([["input:copper-plate", 20]]),
+    },
+  };
+
+  it("다이렉트로 떨어져도 머신마다 팔 2개가 붙는다 (굶지 않는다)", () => {
+    const mod = generateModule(directHighDemand);
+    expect(mod.supply?.mode).toBe("direct");
+    expect(mod.unroutedLines).toHaveLength(0);
+
+    // 입력 copper-plate 는 E 면(outputSide=W 의 반대). 좌석 열 = x=3.
+    const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
+    for (const m of mod.machines) {
+      const seatCol = inserters.filter(
+        (c) => c.x === 3 && c.y >= m.origin.y && c.y < m.origin.y + m.size.h,
+      );
+      expect(seatCol.length, `머신 ${m.id} 가 팔 하나로 굶는다`).toBe(2);
+    }
+  });
+
+  it("팔마다 자기 상자 — 상자 여러 개가 머신 한 대를 먹인다", () => {
+    const mod = generateModule(directHighDemand);
+    const plateChests = mod.chests.filter((c) => c.content === "copper-plate");
+    // 머신 2대 × 팔 2개 = 상자 4개. (예전엔 머신당 1개 = 2개였다.)
+    expect(plateChests).toHaveLength(4);
+    // 포트도 그만큼 — 상자 하나가 포트 하나다.
+    expect(mod.inputPorts.filter((p) => p.line.name === "copper-plate")).toHaveLength(4);
+    // 좌표 고유 — 팔마다 다른 행에 앉는다.
+    expect(new Set(plateChests.map((c) => `${c.origin.x},${c.origin.y}`)).size).toBe(4);
+  });
+
+  it("수량을 모르는 줄은 팔 1개 — 없는 숫자로 상자를 늘리지 않는다", () => {
+    const mod = generateModule(directHighDemand);
+    // copper-cable(출력)은 lineRates 에 없다 → 보류값 1 → 머신당 상자 1개.
+    expect(mod.chests.filter((c) => c.content === "copper-cable")).toHaveLength(2);
+  });
+
+  it("면에 팔을 다 앉힐 행이 없으면 정직하게 못 놓는다 (줄여서 굶히지 않는다)", () => {
+    // 팔 4개가 필요한데 3×3 머신의 면은 3행뿐 — 줄여 놓으면 굶는 배치가 된다.
+    const tooHungry: ModuleInput = {
+      ...copperCable,
+      count: 2,
+      supplyCapacity: {
+        beltCapacity: 1,
+        tapCapacity: 5,
+        lineRates: new Map([["input:copper-plate", 40]]), // 40/2 = 20, ceil(20/5) = 팔 4개 > 3행
+      },
+    };
+    const mod = generateModule(tooHungry);
+    expect(mod.supply?.mode).toBe("direct");
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("copper-plate");
+    // 굶는 상자를 놓느니 아무것도 안 놓는다.
+    expect(mod.chests.filter((c) => c.content === "copper-plate")).toHaveLength(0);
+  });
+
+  it("결정적", () => {
+    const a = generateModule(directHighDemand);
+    const b = generateModule(directHighDemand);
+    expect(JSON.stringify(b.cells)).toEqual(JSON.stringify(a.cells));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 노출 N/S 완화 — count=1 raw 입력 (방출 수준)
 // ─────────────────────────────────────────────────────────────────────────────
 

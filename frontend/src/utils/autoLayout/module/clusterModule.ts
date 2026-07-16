@@ -303,14 +303,24 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   }
 
   // ── 다이렉트 인서팅(1:1) 방출 ───────────────────────────────────────────────
-  // 한 (머신, 품목) = 두 칸뿐이다:
+  // 한 (머신, 품목, 팔 하나) = 두 칸뿐이다:
   //     [상자] [인서터] [머신 …]      (W 면 예: x=-2, x=-1, x=0..2)
   // 같은 면의 줄들은 **서로 다른 행**(슬롯)을 쓰므로 절대 부딪히지 않는다 — 자리 잡기가
-  // 곧 성공이고, 탐색이 없고, 실패 케이스가 존재하지 않는다. 상자 바깥쪽은 늘 비어 있어
-  // **모든 포트의 바깥 탈출로가 구성으로 보장**된다(우선순위 ②).
+  // 곧 성공이고, 탐색이 없다. 상자 바깥쪽은 늘 비어 있어 **모든 포트의 바깥 탈출로가
+  // 구성으로 보장**된다(우선순위 ②).
   //
   // 트렁크가 이 경로를 대체하지 **않는다** — 트렁크가 거절되면(복잡한 레시피·용량 초과)
   // 언제나 여기로 돌아온다. 그게 "거절은 항상 안전하다"의 실체다.
+  //
+  // **[requiredInserterCount] 만큼 팔을 놓는다.** 인서터 하나가 나르는 양은 유한하므로,
+  // 머신 한 대의 수요가 그걸 넘으면 팔이 여러 개 필요하다 — 이건 탭이냐 다이렉트냐와
+  // 무관한 물리량이다. 탭은 그 팔들을 같은 [ClusterBelt] 에 앉히고([Parallel Inserting]),
+  // 다이렉트는 **팔마다 자기 상자**를 준다: 상자 한 칸의 이웃은 4칸뿐이고 인서터는 상자와
+  // 머신 **양쪽에 닿아야** 하므로 팔을 늘리려면 상자도 늘어야 한다. 그래서 한 줄이 면의
+  // 행을 `arms` 개 먹고, 포트도 그만큼 는다(= 상자 여러 개가 머신 한 대를 먹인다).
+  //
+  // 예전엔 이 수를 **묻지도 않고** 줄당 팔 하나만 놓고 "성공"이라 보고했다 — 초당 8개를
+  // 먹는 머신에 초당 0.667개짜리 인서터 하나가 붙은 배치가 나왔다(2026-07-16 실측).
   const slotOnFace = new Map<PlannedSide, number>(); // 면별로 소비한 행/열 슬롯 수
   let seq = 0;
   for (const planned of plan.lines) {
@@ -324,16 +334,21 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     const face = planned.side as PortFace;
     const fv = faceVector(face);
     const lateral = face === "W" || face === "E" ? input.machine.h : input.machine.w;
+    // 수량을 모르면(lineRates 에 없던 줄) 보류값 1 — 없는 숫자를 지어내지 않는다.
+    const arms = Math.max(1, planned.requiredInserterCount ?? 1);
     const slot = slotOnFace.get(planned.side) ?? 0;
-    if (slot >= lateral) {
-      unroutedLines.push(line); // 이 면에 남은 행이 없다 — 형태(2D)가 필요하다는 신호.
+    if (slot + arms > lateral) {
+      // 이 면에 팔을 다 앉힐 행이 없다. 팔 개수는 협상 대상이 아니므로(레시피·머신·인서터가
+      // 정한다) 줄여서 놓으면 **굶는 배치**가 된다 — 못 놓는다고 정직하게 말한다.
+      unroutedLines.push(line);
       continue;
     }
-    slotOnFace.set(planned.side, slot + 1);
+    slotOnFace.set(planned.side, slot + arms);
 
     for (const m of machines) {
-      // 인서터가 앉는 머신 둘레 칸(rim) — 면 위에서 slot 번째.
-      const seat = rimCell(m, face, slot);
+      for (let k = 0; k < arms; k++) {
+      // 인서터가 앉는 머신 둘레 칸(rim) — 면 위에서 slot+k 번째. 팔마다 자기 행.
+      const seat = rimCell(m, face, slot + k);
       const chestAt = { x: seat.x + fv.x, y: seat.y + fv.y };
       if (occupancy.has(cellKey(seat.x, seat.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
         continue; // 기둥 중간 머신의 N/S 면 등 — 슬롯 모델상 안 생기지만 안전망.
@@ -389,6 +404,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       };
       if (line.role === "output") outputPorts.push(port);
       else inputPorts.push(port);
+      }
     }
   }
 
