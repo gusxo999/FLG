@@ -427,6 +427,80 @@ export function requiredInserterCount(
   return Math.max(1, Math.ceil(rate / machineCount / cap.tapCapacity));
 }
 
+/** [allocateArms] 결과 — 줄별 팔 개수 + 그래서 머신이 실제로 도는 비율. */
+export interface ArmBudget {
+  /** 줄별로 실제 앉힌 팔 개수. 키 = `${role}:${name}`. */
+  armsByLine: Map<string, number>;
+  /**
+   * 머신이 **실제로 도는 비율**(0 < f ≤ 1). 1 = 안 굶는다.
+   * 0 = 줄마다 팔 하나씩도 못 앉힌다(이 머신으론 이 레시피가 아예 불가능).
+   */
+  speedFraction: number;
+}
+
+/**
+ * **팔을 자리 안에서 나눠 앉히고, 그래서 머신이 몇 %로 도는지 답한다.**
+ *
+ * 머신은 **가장 굶는 줄의 속도로만** 돈다 — 입력 하나가 절반만 들어오면 제작도 절반이다.
+ * 그래서 팔이 모자랄 때 "어느 줄에 몇 개를 주느냐"가 곧 머신 속도를 정한다. 최선은
+ * **가장 굶는 줄에 다음 팔을 주는 것**이다(그 줄이 전체를 붙잡고 있으므로).
+ *
+ * 왜 필요한가: [requiredInserterCount] 를 다 앉힐 자리가 없을 때, 예전엔 줄여서 놓고
+ * **"성공"이라 보고**했다(=조용히 굶는 배치). 이제는 줄여 놓은 결과가 **몇 %인지 계산**해서
+ * 호출부가 머신을 그만큼 더 놓고 사용자에게 경고할 수 있게 한다(2026-07-16 사용자 설계).
+ *
+ * **수량을 모르는 줄은 팔 1개**를 받고 비율 계산에서 빠진다 — 모르는 걸로 굶었다고
+ * 단정하지 않는다.
+ *
+ * @param lines 이 머신의 I/O 줄들. 유체(pipe)는 인서터가 없어 대상이 아니다.
+ * @param perMachineRate 줄별 **머신 한 대의** 초당 수요/산출(items/sec). 모르면 undefined.
+ * @param tapCap 인서터 하나의 초당 처리량.
+ * @param rowBudget 팔을 앉힐 수 있는 총 행 수(= 쓸 수 있는 면들의 좌석 행 합).
+ */
+export function allocateArms(
+  lines: IoLine[],
+  perMachineRate: (line: IoLine) => number | undefined,
+  tapCap: number,
+  rowBudget: number,
+): ArmBudget {
+  const belts = lines.filter((l) => l.kind === "belt");
+  const armsByLine = new Map<string, number>();
+  const keyOf = (l: IoLine) => `${l.role}:${l.name}`;
+
+  // 줄마다 팔 하나씩은 있어야 한다 — 그것도 못 앉히면 이 머신으론 불가능하다.
+  if (belts.length > rowBudget || tapCap <= 0) {
+    return { armsByLine, speedFraction: 0 };
+  }
+  for (const l of belts) armsByLine.set(keyOf(l), 1);
+  let spent = belts.length;
+
+  /** 이 줄이 지금 팔로 감당하는 비율(1 = 안 굶음). 수량 미상이면 안 굶는 것으로 본다. */
+  const fractionOf = (l: IoLine): number => {
+    const rate = perMachineRate(l);
+    if (rate === undefined || !Number.isFinite(rate) || rate <= 0) return 1;
+    return Math.min(1, (armsByLine.get(keyOf(l))! * tapCap) / rate);
+  };
+
+  // **가장 굶는 줄에 다음 팔을 준다** — 그 줄이 머신 전체를 붙잡고 있다.
+  while (spent < rowBudget) {
+    let worst: IoLine | undefined;
+    let worstF = 1;
+    for (const l of belts) {
+      const f = fractionOf(l);
+      if (f < worstF) {
+        worstF = f;
+        worst = l;
+      }
+    }
+    if (!worst) break; // 아무도 안 굶는다 — 더 놓을 이유가 없다(자리를 낭비하지 않는다).
+    armsByLine.set(keyOf(worst), armsByLine.get(keyOf(worst))! + 1);
+    spent++;
+  }
+
+  const speedFraction = belts.reduce((f, l) => Math.min(f, fractionOf(l)), 1);
+  return { armsByLine, speedFraction };
+}
+
 /**
  * **이 클러스터를 트렁크(탭 인서팅)로 합칠 수 있는가**를 판정하고, 되는 쪽의 슬롯
  * 배정을 함께 낸다.

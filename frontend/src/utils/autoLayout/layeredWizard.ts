@@ -87,6 +87,7 @@ import {
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_MODULE_PIPELINE } from "./debugFlags";
 import { inserterReach } from "./inserterThroughput";
 import { tryRunModulePipeline } from "./planner/moduleWizard";
+import { makeBuildSpec } from "./buildSpec";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 레이아웃 상수 — 문서 §4 (채널 폭) / §5 (트랙)
@@ -176,7 +177,9 @@ export const runLayeredWizard: RunContainerWizard = async (
           expanded,
           input.countMode.perTarget,
           recipeMap,
-          makeMachineParamsLookup(input.selectedMachines),
+          // 인서터를 함께 넘겨 **굶주림 보상**을 켠다 — 팔을 다 앉힐 자리가 없는 머신은
+          // 그만큼만 돌므로(speedFraction), 부족분만큼 머신이 더 놓인다.
+          makeMachineParamsLookup(input.selectedMachines, makeBuildSpec(input).inserters),
         );
 
   if (!tree.recipeName) {

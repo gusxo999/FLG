@@ -154,6 +154,18 @@ export interface NodeMachineParams {
   craftingSpeed: number;
   /** 산출물 배수 (1 + productivity). 모듈 미적용 시 1 */
   productivityMultiplier: number;
+  /**
+   * **머신이 실제로 도는 비율**(0 < f ≤ 1). 미지정 = 1(안 굶는다).
+   *
+   * 인서터 팔을 다 앉힐 자리가 없으면 머신은 **가장 굶는 줄의 속도로만** 돈다
+   * ([allocateArms](./module/clusterPortPlanner.ts) 가 계산). 그 사실을 여기 담아 산출·수요에
+   * 곱하면, **머신 수가 자연히 늘어나 부족분을 보상**한다(2026-07-16 사용자 설계).
+   *
+   * 순환하지 않는다: 비율은 **전속력 기준 수요**로 정하고, 그렇게 앉힌 팔이 나르는 양이 곧
+   * 실제 수요다 — 자기 자신과 일치한다. 그리고 팔 개수는 머신 수와 무관하므로
+   * ([requiredInserterCount]) 머신 수를 늘려도 비율이 안 바뀐다.
+   */
+  speedFraction?: number;
 }
 
 /** recipeName → 그 레시피를 돌릴 머신의 유효 파라미터. 머신 매칭 실패 시 undefined */
@@ -182,8 +194,10 @@ export function perMachineItemsPerSec(
   if (!product) return 0; // 이 레시피는 그걸 안 만든다 = 진짜 0.
   const yieldPerCraft = productYield(product);
   if (yieldPerCraft === undefined) return undefined; // 수량 미상 — 판정 보류.
+  // speedFraction — 팔을 다 못 앉혀 굶는 머신은 그만큼만 낸다(미지정=1). 이걸 곱해야
+  // countForDemand 가 부족분만큼 **머신을 더 놓아 보상**한다.
   return (
-    (yieldPerCraft * params.productivityMultiplier * params.craftingSpeed) /
+    (yieldPerCraft * params.productivityMultiplier * params.craftingSpeed * (params.speedFraction ?? 1)) /
     craftTime(recipe)
   );
 }
@@ -205,7 +219,9 @@ export function clusterLineRate(
   machineCount: number,
   params: NodeMachineParams,
 ): number | undefined {
-  const crafts = (machineCount * params.craftingSpeed) / craftTime(recipe);
+  // 굶는 머신은 덜 돌므로 **덜 먹고 덜 낸다** — 전속력 수요를 그대로 쓰면 벨트도 팔도
+  // 과하게 잡힌다. (speedFraction 미지정=1 → 옛 동작.)
+  const crafts = (machineCount * params.craftingSpeed * (params.speedFraction ?? 1)) / craftTime(recipe);
   if (role === "output") {
     const p = recipe.products.find((x) => x.name === name);
     if (!p) return 0; // 이 줄은 이 레시피의 산출이 아니다 = 진짜 0.

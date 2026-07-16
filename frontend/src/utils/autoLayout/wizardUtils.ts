@@ -1,6 +1,8 @@
-import { useGameDataStore } from "../../store/gameDataStore";
+import { useGameDataStore, type Entity, type Recipe } from "../../store/gameDataStore";
 import type { Area, ContainerWizardInput } from "./containerModel";
-import type { MachineParamsLookup } from "./recipeTree";
+import { clusterLineRate, type MachineParamsLookup } from "./recipeTree";
+import { allocateArms, type IoLine } from "./module/clusterPortPlanner";
+import type { SpecInserter } from "./buildSpec";
 
 // ─── Area 유틸 ───────────────────────────────────────────────────────────────
 
@@ -29,9 +31,15 @@ export function makeMachinePicker(
  * 처리량 카운트용 머신 파라미터 lookup. `makeMachinePicker` 와 동일하게
  * "선택된 머신 중 카테고리가 맞는 첫 머신" 을 고르고, 그 머신의 base crafting_speed 를
  * 반환한다. 모듈은 v1 미반영(productivityMultiplier=1).
+ *
+ * **`inserters` 를 주면 [굶주림 보상]이 켜진다.** 인서터 팔을 다 앉힐 자리(면 좌석 행)가
+ * 없으면 머신은 그만큼만 돌므로, 그 비율을 `speedFraction` 으로 함께 낸다 →
+ * `countForDemand` 가 **부족분만큼 머신을 더 놓는다**(2026-07-16 사용자 설계).
+ * 안 주면 `speedFraction` 미지정 = 1 = 옛 동작(굶어도 모른 척).
  */
 export function makeMachineParamsLookup(
   selectedMachines: ReadonlyArray<string>,
+  inserters?: ReadonlyArray<SpecInserter>,
 ): MachineParamsLookup {
   return (recipeName: string) => {
     const state = useGameDataStore.getState();
@@ -40,12 +48,66 @@ export function makeMachineParamsLookup(
     for (const name of selectedMachines) {
       const ent = state.entityMap.get(name);
       if (ent?.crafting_categories?.includes(recipe.category)) {
+        const craftingSpeed = ent.crafting_speed ?? 1;
         return {
-          craftingSpeed: ent.crafting_speed ?? 1,
+          craftingSpeed,
           productivityMultiplier: 1,
+          speedFraction: inserters?.length
+            ? machineSpeedFraction(recipe, ent, craftingSpeed, inserters)
+            : undefined,
         };
       }
     }
     return undefined;
   };
+}
+
+/**
+ * 이 머신이 이 레시피를 **몇 %로 돌 수 있나** — 팔을 앉힐 자리가 모자라면 1 미만.
+ *
+ * 자리 = **W/E 두 면의 좌석 행**(= 머신 높이 × 2). 기둥에서 N/S 면은 옆 머신 몸통이라
+ * 못 쓴다(`MODULE_ROW_GAP = 0` — [modulePacking] 의 nsExposure 가 count=1 만 예외로 둔다).
+ *
+ * > **⚠ 이 자리는 지금 실제보다 후하다.** 여기선 한 줄의 팔이 W/E 를 **넘나들 수 있다고**
+ * > 보고 14행을 쓰는데, [planClusterPorts] 는 아직 **줄 하나를 면 하나에** 붙박아서
+ * > 실제 상한은 면당 7행이다. 그래서 이 비율이 "된다"고 해도 모듈이 좌석 예산에서 거절할
+ * > 수 있다(→ 옛 경로). **W/E 퍼뜨리기가 들어오면 그때 이 수가 진실이 된다** — 그게 다음
+ * > 작업이라 일부러 최종 모양으로 두었다. 지금 상태에서 이 비율은 **낙관 상한**이다.
+ *
+ * 팔 개수는 **머신 수와 무관**하므로([requiredInserterCount]) 이 비율도 머신 수와 무관하다 —
+ * 그래서 머신 수를 정하기 **전에** 계산할 수 있다(순환 없음).
+ */
+function machineSpeedFraction(
+  recipe: Recipe,
+  ent: Entity,
+  craftingSpeed: number,
+  inserters: ReadonlyArray<SpecInserter>,
+): number | undefined {
+  // 탭 용량 = 가장 느린 인서터(어느 reach 에 앉든 굶지 않게 보수적으로 — moduleWizard 와 동일).
+  const tapCap = inserters.reduce((m, i) => Math.min(m, i.throughput), Infinity);
+  if (!Number.isFinite(tapCap) || tapCap <= 0) return undefined; // 데이터 없음 — 지어내지 않는다.
+
+  const params = { craftingSpeed, productivityMultiplier: 1 }; // 전속력 기준 수요로 잰다
+  const lines: IoLine[] = [
+    ...recipe.ingredients.map((i) => ({
+      name: i.name,
+      kind: (i.type === "fluid" ? "pipe" : "belt") as IoLine["kind"],
+      role: "input" as const,
+    })),
+    ...recipe.products.map((p) => ({
+      name: p.name,
+      kind: (p.type === "fluid" ? "pipe" : "belt") as IoLine["kind"],
+      role: "output" as const,
+    })),
+  ];
+  const rowBudget = (ent.tile_height ?? 1) * 2; // W/E 두 면
+  const { speedFraction } = allocateArms(
+    lines,
+    (l) => clusterLineRate(recipe, l.role, l.name, 1, params), // 머신 1대 = 머신당
+    tapCap,
+    rowBudget,
+  );
+  // 0 = 줄마다 팔 하나씩도 못 앉힌다 → 이 머신으론 불가능. 비율로 표현할 수 없으니
+  // undefined 로 두고(옛 동작) 배치 단계가 정직하게 실패하게 둔다.
+  return speedFraction > 0 && speedFraction < 1 ? speedFraction : undefined;
 }
