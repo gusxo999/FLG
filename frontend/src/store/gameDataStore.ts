@@ -295,12 +295,13 @@ interface GameDataState {
    */
   recipeToTech: Map<string, string>;
   /**
-   * item.name → 그 아이템을 products 로 만드는 첫 레시피의 이름.
-   * 머신 entity → items_to_place_this[0] → 이 인덱스 → 레시피 → 기술 체인을 얻는다.
+   * 산출물 이름 → 그것을 products 로 만드는 첫 레시피의 이름. **아이템과 유체 모두** 담는다.
+   * 쓰이는 곳 ①: 머신 entity → items_to_place_this[0] → 이 인덱스 → 레시피 → 기술 체인.
+   * 쓰이는 곳 ②: 레시피 트리 확장(`expandIngredient`) — 여기 없는 이름은 **external 로 확정**된다.
    */
   itemToRecipe: Map<string, string>;
   /**
-   * item.name → 그 아이템을 products 로 만드는 모든 '선택 가능한' 레시피 이름 배열.
+   * 산출물 이름 → 그것을 만드는 모든 '선택 가능한' 레시피 이름 배열. **아이템과 유체 모두.**
    * 배열 [0] 은 itemToRecipe 의 기본값과 동일(첫 매칭). 길이가 2 이상이면 대체 제작법이 존재.
    * 레시피 트리에서 사용자가 하위 아이템의 제작법을 직접 고를 때 후보 목록으로 쓴다.
    */
@@ -343,7 +344,8 @@ interface GameDataState {
   resolveRequiredTechs: (input: { machines?: string[]; recipes?: string[] }) => Set<string>;
 }
 
-function buildDerived(data: GameData) {
+/** 원본 게임데이터 → 조회용 파생 인덱스. (export 는 테스트용 — 스토어 밖에서 쓰지 말 것) */
+export function buildDerived(data: GameData) {
   const recipeMap = new Map<string, Recipe>();
   for (const r of data.recipes) recipeMap.set(r.name, r);
 
@@ -378,16 +380,25 @@ function buildDerived(data: GameData) {
   const isRecipeSelectable = (r: Recipe): boolean =>
     r.enabled === true || recipeToTech.has(r.name);
 
-  // item.name → 그 아이템을 products 에 포함하는 첫 '선택 가능한' 레시피.
-  // 머신 entity → items_to_place_this[0] → 이 인덱스로 → 레시피 → 기술 추적.
-  // item.name → 그것을 만드는 모든 '선택 가능한' 레시피 (등장 순서 유지).
-  // recipes 배열 순서대로 push 하므로 [0] 은 itemToRecipe 의 기본 매칭과 일치한다.
+  // 산출물 이름 → 그것을 만드는 첫 '선택 가능한' 레시피 / 그 모든 레시피(등장 순서 유지).
+  // recipes 배열 순서대로 push 하므로 recipesByProduct[0] 은 itemToRecipe 의 기본 매칭과 일치한다.
+  // 쓰이는 곳은 둘: ① 머신 entity → items_to_place_this[0] → 이 인덱스 → 레시피 → 기술 추적,
+  // ② 레시피 트리 확장(expandIngredient)과 대체 제작법 후보.
+  //
+  // **유체도 담는다.** 한때 `p.type !== 'item'` 로 유체 산출물을 버렸는데, 그 필터는 ① 의
+  // 전제("머신은 아이템이다")에서 나온 것이라 ② 에는 맞지 않았다. 결과로 유체가 트리에서
+  // **무조건 external** 이 되어 "자식이 유체를 만들어 부모가 쓰는" 트리를 만들 수 없었다
+  // (2026-07-16 실측에서 발견 — 유체 홉 코드 전체가 도달 불가였다).
+  // 개발자용·미해금 레시피 제외는 위 `isRecipeSelectable` 이 이미 담당한다(그쪽이 의도한 필터).
+  //
+  // 유체를 담으면 물 같은 1차 자원이 기본 '자체 생산'으로 펼쳐진다. 그건 **의도된 것**이다 —
+  // 무엇이 1차 자원인지는 데이터가 모른다(iron-ore 도 kr-crush-iron-ore 로 만들 수 있다).
+  // 1차 자원 선정은 사용자가 트리에서 external 로 토글해 정한다(유체도 철광석과 동등하게).
   const itemToRecipe = new Map<string, string>();
   const recipesByProduct = new Map<string, string[]>();
   for (const r of data.recipes) {
     if (!isRecipeSelectable(r)) continue;
     for (const p of r.products) {
-      if (p.type !== 'item') continue;
       if (!itemToRecipe.has(p.name)) itemToRecipe.set(p.name, r.name);
       const list = recipesByProduct.get(p.name);
       if (list) {

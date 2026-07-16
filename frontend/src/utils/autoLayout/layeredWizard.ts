@@ -158,11 +158,16 @@ export const runLayeredWizard: RunContainerWizard = async (
 
   // 1. 레시피 트리 + 머신 수 산정 (S-EXH 와 동일 모듈 재사용).
   await emit("expandRecipeTree");
+  // recipeOverrides 를 반드시 함께 넘긴다 — 빠뜨리면 실행이 사용자의 **대체 제작법 선택을
+  // 무시**하고 첫 매칭으로 트리를 짓는다(= 화면에 보이는 트리와 실제 배치되는 트리가 달라진다).
+  // 2026-07-16 실측에서 발견: water 를 kr-water-from-atmosphere 로 골랐는데 실행은 첫 매칭인
+  // se-melting-water-ice 로 펼쳐 원유 체인(basic-oil-processing)을 끌고 와 실패했다.
   const expanded = expandRecipeTree(
     input.targetRecipe,
     recipeMap,
     itemToRecipe,
     input.externalIngredients,
+    new Map(Object.entries(input.recipeOverrides ?? {})),
   );
   const tree =
     input.countMode === "min"
