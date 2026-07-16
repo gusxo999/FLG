@@ -535,16 +535,57 @@ export function insertingPlanner(
   // 있다. 그래서 탭 계획이든 다이렉트 계획이든 **같은 수**를 달고 나간다 — 다이렉트가 이 수를
   // 모른 채 팔 하나만 놓고 "성공"이라 보고하던 게 굶는 배치의 원인이었다(2026-07-16 실측).
   // 유체 줄은 인서터가 없다(파이프로 흐른다) — 대상이 아니다.
+  /** 면 하나에 앉힐 수 있는 좌석 행 수(= 그 면의 둘레 칸). 모르면 무한(옛 동작). */
+  const rowsPerFace = input.slotsPerFace?.WE ?? Infinity;
+
+  /**
+   * 줄별 **팔 개수(머신 한 대 전체)** — 배정 수와 무관한 물리량. 아래에서 배정들에 **나눠**
+   * 앉힌다. 통째로 달면 배정이 둘일 때 팔이 두 배가 된다(2026-07-16 버그).
+   */
+  const armsTotalOf = (line: IoLine): number | undefined =>
+    requiredInserterCount(line, machineCount, capacity);
+
+  /**
+   * 이 줄이 배정을 **몇 개** 가져야 하나 — 두 가지가 각각 배정을 요구하고, **더 큰 쪽**을 따른다:
+   *  - **벨트 처리량**([determineBeltCount]): 수요가 벨트 한 줄을 넘으면 줄이 는다.
+   *  - **좌석 행**: 팔이 면 하나의 행보다 많으면 **면을 넘나들어야** 한다 → `ceil(팔 ÷ 면 행)`.
+   *    (한 줄의 팔이 W 에 7개, E 에 6개로 나뉘어 앉는 식. 각 배정이 자기 벨트·자기 포트다.)
+   */
+  const placementsOf = (line: IoLine): number => {
+    const belts = beltLineMap.get(`${line.role}:${line.name}`)?.length ?? 1;
+    const arms = armsTotalOf(line);
+    const byRows =
+      arms !== undefined && Number.isFinite(rowsPerFace) ? Math.ceil(arms / rowsPerFace) : 1;
+    return Math.max(1, belts, byRows);
+  };
+
+  /** 팔을 배정들에 최대한 고르게 나눈다 — 앞쪽 배정이 나머지를 하나씩 더 받는다. */
   const armsOf = (plan: PortPlan): void => {
     if (!plan.ok) return;
+    const byKey = new Map<string, PlannedLine[]>();
     for (const planned of plan.lines) {
       if (planned.line.kind !== "belt") continue;
-      planned.requiredInserterCount = requiredInserterCount(planned.line, machineCount, capacity);
+      const key = `${planned.line.role}:${planned.line.name}`;
+      (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(planned);
+    }
+    for (const group of byKey.values()) {
+      const total = armsTotalOf(group[0].line);
+      if (total === undefined) {
+        for (const p of group) p.requiredInserterCount = undefined; // 수량 미상 — 보류
+        continue;
+      }
+      const base = Math.floor(total / group.length);
+      const rem = total % group.length;
+      group.forEach((p, i) => {
+        p.requiredInserterCount = Math.max(1, base + (i < rem ? 1 : 0));
+      });
     }
   };
 
   const direct = (reason: string): InsertingDecisionResult => {
-    const plan = planClusterPorts(input); // slotsPerFace 있음 = 다이렉트 인서팅
+    // 다이렉트도 같은 배정 수를 쓴다 — 팔이 면 하나에 안 들어가면 면을 넘나드는 건
+    // 공급 방식과 무관하다(팔 개수가 물리량이므로).
+    const plan = planClusterPorts({ ...input, beltLines: placementMap });
     armsOf(plan);
     return { mode: "direct", reason, plan };
   };
@@ -564,9 +605,26 @@ export function insertingPlanner(
     }
   }
 
+  // **배정 수 = max(벨트 축, 좌석 축).** 팔이 면 하나의 행보다 많으면 배정을 하나 더 만들어
+  // **면을 넘나든다**(W 에 7개, E 에 6개…). 그 추가 배정도 자기 벨트가 필요한데, 수요는 이미
+  // 벨트 축이 덮었으므로 **가장 싼 벨트**를 붙인다(넉넉한 건 괜찮다 — 모자라면 안 될 뿐).
+  // 벨트를 안 골랐으면 줄을 못 늘리므로 좌석 축도 포기한다(→ 옛 동작: 좌석 초과는 거절).
+  const placementMap = new Map<string, SpecBelt[]>(beltLineMap);
+  if (input.belts?.length) {
+    const cheapest = [...input.belts].sort((a, b) => a.throughput - b.throughput)[0];
+    for (const line of input.lines) {
+      if (line.kind !== "belt") continue;
+      const key = `${line.role}:${line.name}`;
+      const want = placementsOf(line);
+      const have = placementMap.get(key) ?? [];
+      if (want <= have.length) continue;
+      placementMap.set(key, [...have, ...Array(want - have.length).fill(have.at(-1) ?? cheapest)]);
+    }
+  }
+
   // 간단한 레시피 판별 — slotsPerFace 를 빼면 탭 인서팅(기둥 클러스터 면 용량).
   const { slotsPerFace: _drop, ...tapInput } = input;
-  const tapPlan = planClusterPorts({ ...tapInput, beltLines: beltLineMap });
+  const tapPlan = planClusterPorts({ ...tapInput, beltLines: placementMap });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
   armsOf(tapPlan);
 

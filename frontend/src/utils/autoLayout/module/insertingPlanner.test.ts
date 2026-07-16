@@ -263,6 +263,69 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
   });
 });
 
+/**
+ * ⑤ **한 줄의 팔이 여러 면에 나뉘어 앉는다.**
+ *
+ * 팔이 면 하나의 좌석 행보다 많으면 면을 넘나들 수밖에 없다 — 팔 개수는 협상 대상이
+ * 아니므로(레시피·머신·인서터가 정한다) 줄여서 앉히면 굶는다. 그래서 배정을 하나 더
+ * 만들어 나눠 앉힌다(각 배정이 자기 벨트·자기 포트).
+ *
+ * 여기서 못 박는 핵심은 **팔 개수가 보존된다**는 것이다: 배정이 둘로 늘어도 팔의 합은
+ * 그대로다. 예전엔 배정마다 팔 개수를 **통째로** 달아서 벨트가 2줄이면 팔이 2배가 됐다
+ * (2026-07-16 버그 — 좌석 예산이 없는 수요를 세고 방출도 2배가 될 참이었다).
+ */
+describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
+  const fast = { entityName: "fast-transport-belt", throughput: 30 };
+  const belts = [fast];
+  const armsOf = (d: ReturnType<typeof insertingPlanner>, name: string) =>
+    d.plan.ok ? d.plan.lines.filter((l) => l.line.name === name) : [];
+  const armSum = (d: ReturnType<typeof insertingPlanner>, name: string) =>
+    armsOf(d, name).reduce((s, p) => s + (p.requiredInserterCount ?? 0), 0);
+
+  /**
+   * **아직 안 된다 — 배분기가 면별 좌석 행을 모른다.**
+   *
+   * 배정 수는 늘어나지만(`placementsOf` 가 `ceil(팔 ÷ 면 행)` 을 본다), `planClusterPorts`
+   * 의 슬롯 풀은 **면 하나의 레인을 다 쓴 뒤에야** 다음 면으로 넘어간다. 그래서 배정 둘이
+   * **같은 면**에 앉고, 좌석 예산은 면 단위라 여전히 넘친다 → direct 로 떨어진다.
+   *
+   * 고치려면 배분기가 **팔 개수와 면별 행 예산을 함께** 보고 자리를 정해야 한다(배분 루프
+   * 재설계). 그때 이 테스트를 켠다.
+   */
+  it.skip("팔 4개가 3행짜리 면에 안 들어가면 두 면에 나눠 앉는다 (합은 4)", () => {
+    // a: 60/3대 = 20, tapCap 5 → 팔 4개. 3×3 머신이라 면 좌석은 3행.
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 5,
+      lineRates: new Map([["input:a", 60]]),
+    });
+    const ps = armsOf(d, "a");
+    expect(ps.length).toBe(2);
+    expect(armSum(d, "a")).toBe(4);
+    expect(new Set(ps.map((p) => p.side)).size, "두 배정이 같은 면에 앉았다").toBe(2);
+    for (const p of ps) expect(p.requiredInserterCount!).toBeLessThanOrEqual(3);
+  });
+
+  it("벨트가 2줄이어도 팔은 2배가 되지 않는다 — 나눠 앉을 뿐이다", () => {
+    // 수요 40 → 벨트 2줄. 팔은 40/2대 = 20, tapCap 10 → 2개.
+    const d = insertingPlanner(
+      { ...base([inL("a"), outL("z")]), belts: [fast, { entityName: "t", throughput: 15 }] },
+      2,
+      { tapCapacity: 10, lineRates: new Map([["input:a", 40]]) },
+    );
+    expect(armsOf(d, "a").length).toBe(2); // 벨트 2줄
+    expect(armSum(d, "a"), "배정마다 팔을 통째로 달면 4가 된다").toBe(2);
+  });
+
+  it("한 면에 들어가면 안 나눈다 — 필요 없는 배정을 만들지 않는다", () => {
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 5,
+      lineRates: new Map([["input:a", 30]]), // 30/3 = 10, ceil(10/5) = 팔 2개 ≤ 3행
+    });
+    expect(armsOf(d, "a").length).toBe(1);
+    expect(armSum(d, "a")).toBe(2);
+  });
+});
+
 describe("거절은 항상 안전하다 — 폴백이 실패하지 않는다", () => {
   it("어떤 사유로 거절돼도 direct 계획은 ok 다", () => {
     const cases: [string, ReturnType<typeof insertingPlanner>][] = [

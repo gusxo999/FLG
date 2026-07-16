@@ -41,6 +41,8 @@ export function makeMachineParamsLookup(
   selectedMachines: ReadonlyArray<string>,
   inserters?: ReadonlyArray<SpecInserter>,
 ): MachineParamsLookup {
+  // lookup 은 노드마다 여러 번 불린다(countForDemand + buildThroughput) — 경고는 조합당 한 번만.
+  const warned = new Set<string>();
   return (recipeName: string) => {
     const state = useGameDataStore.getState();
     const recipe = state.recipeMap.get(recipeName);
@@ -49,13 +51,22 @@ export function makeMachineParamsLookup(
       const ent = state.entityMap.get(name);
       if (ent?.crafting_categories?.includes(recipe.category)) {
         const craftingSpeed = ent.crafting_speed ?? 1;
-        return {
-          craftingSpeed,
-          productivityMultiplier: 1,
-          speedFraction: inserters?.length
-            ? machineSpeedFraction(recipe, ent, craftingSpeed, inserters)
-            : undefined,
-        };
+        const speedFraction = inserters?.length
+          ? machineSpeedFraction(recipe, ent, craftingSpeed, inserters)
+          : undefined;
+        if (speedFraction !== undefined && !warned.has(recipeName)) {
+          warned.add(recipeName);
+          // 사용자에게 알려야 하는 사실: **인프라가 모자라 머신이 굶는다.** 배치는 그만큼
+          // 머신을 더 놓아 총 생산량은 맞추지만, 머신 하나하나는 놀고 있다.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[autoLayout] 인프라 부족 — ${recipeName} 을(를) ${name} 으로 돌리면 ` +
+              `${Math.round(speedFraction * 100)}% 로만 돕니다. ` +
+              `인서터가 이 머신의 재료·산출을 다 못 나릅니다(머신 둘레에 팔을 다 앉힐 자리가 없음). ` +
+              `부족분은 머신을 더 놓아 보상합니다 — 더 빠른 인서터를 고르면 머신이 줄어듭니다.`,
+          );
+        }
+        return { craftingSpeed, productivityMultiplier: 1, speedFraction };
       }
     }
     return undefined;
