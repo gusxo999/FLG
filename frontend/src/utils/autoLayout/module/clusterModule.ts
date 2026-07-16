@@ -29,7 +29,7 @@ import {
   type SupplyCapacity,
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
-import type { SpecInserter } from "../buildSpec";
+import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -148,6 +148,12 @@ export interface ModuleInput {
    * 켜진다. 미지정이면 간단한 레시피 판별만 본다(없는 숫자를 지어내지 않는다).
    */
   supplyCapacity?: SupplyCapacity;
+  /**
+   * 고를 수 있는 벨트들([BuildSpec.belts](../buildSpec.ts)) — 수요가 벨트 한 줄을 넘을 때
+   * [determineBeltCount] 가 여기서 티어를 골라 **줄을 늘린다**. 미지정이면 줄을 안 늘린다
+   * (옛 동작: 거절 → 다이렉트). `beltEntityName` 은 기본/폴백 벨트로 남는다.
+   */
+  belts?: SpecBelt[];
   /**
    * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
@@ -271,6 +277,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
     pipeSide: input.fluidTrunk?.side, // 유체가 붙는 면.
     isJumpableToClusterPipe, // true=좌석 살림(일반 면), false=옛 스파인(케이스 B).
+    belts: input.belts,
   };
   const supply: InsertingDecisionResult = insertingPlanner(
     plannerInput,
@@ -705,7 +712,7 @@ function emitTapInserting(args: {
       beltCells.push(
         isPipe
           ? makePipeCell(at, input.fluidTrunk!.pipeEntityName, beltPair)
-          : makeBeltCell(at, beltDir, input.beltEntityName, beltPair),
+          : makeBeltCell(at, beltDir, planned.beltEntityName ?? input.beltEntityName, beltPair),
       );
     }
 

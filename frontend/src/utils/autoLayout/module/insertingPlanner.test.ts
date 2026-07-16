@@ -64,12 +64,12 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
     expect(armsOf(d, "a")).toBeUndefined();
   });
 
-  it("클러스터 수요가 벨트 한 줄을 넘으면 거절 (탭으론 못 푼다 → 1:1)", () => {
+  it("벨트를 안 골랐으면 수요가 한 줄을 넘을 때 거절 — 줄을 늘릴 수단이 없다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 15,
       lineRates: new Map([["input:a", 20]]), // 20 > 15
     };
-    const d = insertingPlanner(base(lines), 3, cap);
+    const d = insertingPlanner(base(lines), 3, cap); // belts 미지정
     expect(d.mode).toBe("direct");
     expect(d.reason).toContain("demand>beltCap");
   });
@@ -192,6 +192,74 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
     expect(dir.mode).toBe("direct");
     expect(armsOf(tap, "a")).toBe(2);
     expect(armsOf(dir, "a"), "모드가 팔 개수를 바꾸면 안 된다").toBe(armsOf(tap, "a"));
+  });
+});
+
+/**
+ * ④ **벨트 줄 수는 수요가 정한다** — 한 줄을 넘는 수요를 거절하지 않고 줄을 늘린다.
+ *
+ * 옛 모델은 "줄 하나 = 벨트 하나" 라서, 수요가 벨트 한 줄을 넘으면 탭이 **거절**하고
+ * 다이렉트로 물러났다(그리고 다이렉트는 포트가 폭발해 모듈 경계가 어긋났다).
+ * [determineBeltCount] 가 티어를 골라 줄을 늘리면 그 거절 자체가 사라진다.
+ *
+ * **이게 경계를 안정시킨다**: 줄 수를 수요에서 유도하므로 자식·부모가 같은 수요를 같은
+ * 규칙으로 보면 같은 답이 나온다(포트 개수를 팔 개수에서 유도하면 양쪽 머신이 달라 어긋난다).
+ */
+describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
+  const fast = { entityName: "fast-transport-belt", throughput: 30 };
+  const basic = { entityName: "transport-belt", throughput: 15 };
+  const belts = [fast, basic];
+  /** 그 줄의 배정(=벨트) 전부. 줄 하나가 배정을 여러 개 가질 수 있다. */
+  const placements = (d: ReturnType<typeof insertingPlanner>, name: string) =>
+    d.plan.ok ? d.plan.lines.filter((l) => l.line.name === name) : [];
+
+  it("수요 40 → 빠른 벨트(30) + 나머지 10을 덮는 싼 벨트(15) = 2줄. 거절하지 않는다", () => {
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 100,
+      lineRates: new Map([["input:a", 40]]),
+    });
+    expect(d.mode, "옛 모델은 여기서 거절했다").toBe("tap");
+    expect(placements(d, "a").map((p) => p.beltEntityName)).toEqual([
+      "fast-transport-belt",
+      "transport-belt",
+    ]);
+  });
+
+  it("두 벨트는 서로 다른 자리에 앉는다 (같은 줄이어도 자리를 나눠 쓴다)", () => {
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 100,
+      lineRates: new Map([["input:a", 40]]),
+    });
+    const ps = placements(d, "a");
+    const seats = ps.map((p) => `${p.side}:${p.clusterBeltDepth}`);
+    expect(new Set(seats).size, `두 벨트가 같은 자리에 앉았다: ${seats}`).toBe(2);
+  });
+
+  it("한 줄로 감당되면 한 줄 그대로 — 필요 없는 벨트를 깔지 않는다", () => {
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 100,
+      lineRates: new Map([["input:a", 20]]),
+    });
+    expect(placements(d, "a")).toHaveLength(1);
+    expect(placements(d, "a")[0].beltEntityName).toBe("fast-transport-belt");
+  });
+
+  it("수량을 모르는 줄은 한 줄 — 없는 숫자로 벨트를 늘리지 않는다", () => {
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 100,
+      lineRates: new Map(), // 수량 미상
+    });
+    expect(placements(d, "a")).toHaveLength(1);
+  });
+
+  it("늘린 줄이 면 용량을 넘으면 complex → 다이렉트 (거짓말 대신 정직한 위임)", () => {
+    // 면당 벨트 2줄 × 2면 = 4. a 가 4줄을 요구하면 z 가 앉을 자리가 없다.
+    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, {
+      tapCapacity: 100,
+      lineRates: new Map([["input:a", 110]]), // 30×3 + 20 → 4줄
+    });
+    expect(d.mode).toBe("direct");
+    expect(d.reason).toContain("belt-demand-exceeds-capacity");
   });
 });
 

@@ -26,7 +26,8 @@
  * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다. v1 은 유체 줄 1개까지.
  */
 
-import type { SpecInserter } from "../buildSpec";
+import type { SpecBelt, SpecInserter } from "../buildSpec";
+import { determineBeltCount } from "../beltThroughput";
 
 /** 컬럼의 좌/우 면. */
 export type PortSide = "W" | "E";
@@ -62,7 +63,13 @@ export interface IoLine {
   external?: boolean;
 }
 
-/** 한 I/O 줄의 배정 결과. */
+/**
+ * **한 I/O 줄의 배정 하나** — 줄 하나가 배정을 **여러 개** 가질 수 있다.
+ *
+ * 수요가 벨트 한 줄을 넘으면 [determineBeltCount] 가 줄 수를 늘리고, 그러면 이 줄은
+ * 배정을 그 수만큼 갖는다(각각 자기 면·자기 벨트·자기 포트). 옛 모델은 "줄 하나 = 배정
+ * 하나" 였고, 그래서 벨트 한 줄을 넘는 수요를 **거절**할 수밖에 없었다.
+ */
 export interface PlannedLine {
   line: IoLine;
   side: PlannedSide;
@@ -76,6 +83,11 @@ export interface PlannedLine {
    * `2+r`칸)의 벨트를 집는다. pipe 는 인서터가 없어 undefined.
    */
   reach?: number;
+  /**
+   * 이 배정이 까는 벨트의 prototype. [determineBeltCount] 가 티어를 고른다(빠른 것부터,
+   * 나머지는 그걸 감당하는 가장 싼 것). 미지정이면 호출부의 기본 벨트.
+   */
+  beltEntityName?: string;
   /**
    * **[requiredInserterCount](../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
    * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. **공급 방식과 무관한 물리량**이다
@@ -159,6 +171,20 @@ export interface PortPlannerInput {
    * planner 는 지하파이프 역학을 모른다 — 이 불리언으로 [pipeSide] 의 슬롯 모양만 가른다.
    */
   isJumpableToClusterPipe?: boolean;
+  /**
+   * 고를 수 있는 벨트들([BuildSpec.belts](../buildSpec.ts)). [insertingPlanner] 가 이걸로
+   * [determineBeltCount] 를 돌려 줄 수를 정한다. **미지정이면 줄 수를 안 늘린다**(옛 동작:
+   * 수요가 벨트 한 줄을 넘으면 거절).
+   */
+  belts?: SpecBelt[];
+  /**
+   * 줄별 **벨트 줄 수** — 키 `${role}:${name}`, 값 = [determineBeltCount] 가 고른 벨트들.
+   * 그 줄은 배정을 `길이` 만큼 갖고, 각 배정이 자기 벨트·자기 포트를 갖는다.
+   *
+   * **미지정이거나 그 줄이 없으면 1줄**(옛 동작) — 수요를 모르면 지어내지 않는다.
+   * [insertingPlanner] 가 [SupplyCapacity.lineRates] 와 고른 벨트로 계산해 넣는다.
+   */
+  beltLines?: Map<string, SpecBelt[]>;
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -243,16 +269,26 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // complex 판정 보수 유지).
   const nsPool = (input.nsFaces ?? []).flatMap((f) => slotsOf(f));
 
+  // 줄마다 **벨트를 몇 줄 까나** — [determineBeltCount] 가 수요에서 유도한 값을 호출부가
+  // 넣어준다. 없으면 1(수요를 모르면 지어내지 않는다). 이 수만큼 슬롯을 먹고, 배정도 그만큼
+  // 나온다 — 그래서 수요가 벨트 한 줄을 넘어도 **거절하지 않고 줄을 늘려** 감당한다.
+  const beltCountOf = (l: IoLine): number =>
+    Math.max(1, input.beltLines?.get(`${l.role}:${l.name}`)?.length ?? 1);
+  const beltProtoOf = (l: IoLine, i: number): string | undefined =>
+    input.beltLines?.get(`${l.role}:${l.name}`)?.[i]?.entityName;
+
   // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(clusterBeltDepth 1)를 따로 쓰고
   // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 벨트 줄을 이미 케이스 B(reach≥2만)로 깎았다(slotsOf).
-  if (beltLines.length > outPool.length + inPool.length) {
+  const slotsNeeded = beltLines.reduce((n, l) => n + beltCountOf(l), 0);
+  if (slotsNeeded > outPool.length + inPool.length) {
     return { ok: false, complex: true, reason: "belt-demand-exceeds-capacity" };
   }
 
-  const assigned = new Map<IoLine, PlannedLine>();
+  /** 줄 → 그 줄의 배정들(줄 수만큼). 등장 순서 보존용. */
+  const assigned = new Map<IoLine, PlannedLine[]>();
   // 유체 줄 먼저 — 자리가 강제돼 **선택의 여지가 없다**. 자유도 없는 것부터 못박는다.
   for (const line of pipeLines) {
-    assigned.set(line, { line, side: input.pipeSide!, clusterBeltDepth: 1, reach: undefined });
+    assigned.set(line, [{ line, side: input.pipeSide!, clusterBeltDepth: 1, reach: undefined }]);
   }
 
   // (B) 정책: 출력 먼저 출력면 확정(넘치면 입력면 잔여), 입력은 입력면 우선. 입력이
@@ -261,9 +297,24 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 각 풀은 near→far 로 소비. 결과는 등장 순서를 보존해 낸다.
   const take = (primary: Slot[], secondary: Slot[]): Slot =>
     (primary.length ? primary.shift() : secondary.shift())!;
+  /** 줄 하나에 벨트 줄 수만큼 슬롯을 뽑아 배정을 만든다. 슬롯이 모자라면 면을 넘나든다. */
+  const place = (line: IoLine, pick: (i: number) => Slot): void => {
+    const n = beltCountOf(line);
+    const out: PlannedLine[] = [];
+    for (let i = 0; i < n; i++) {
+      const slot = pick(i);
+      out.push({
+        line,
+        side: slot.side,
+        clusterBeltDepth: slot.clusterBeltDepth,
+        reach: slot.reach,
+        beltEntityName: beltProtoOf(line, i),
+      });
+    }
+    assigned.set(line, out);
+  };
   for (const line of beltLines.filter((l) => l.role === "output")) {
-    const slot = take(outPool, inPool);
-    assigned.set(line, { line, side: slot.side, clusterBeltDepth: slot.clusterBeltDepth, reach: slot.reach });
+    place(line, () => take(outPool, inPool));
   }
   // 입력 처리 **순서**: 자식-공급(내부 간선) 먼저, external(raw) 나중.
   //
@@ -279,41 +330,43 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     ...beltLines.filter((l) => l.role === "input" && l.external),
   ];
   for (const line of inputsChildFedFirst) {
-    const slot =
+    place(line, () =>
       inPool.length ? inPool.shift()!
       : line.external && nsPool.length ? nsPool.shift()!
-      : outPool.shift()!;
-    assigned.set(line, { line, side: slot.side, clusterBeltDepth: slot.clusterBeltDepth, reach: slot.reach });
+      : outPool.shift()!,
+    );
   }
 
   // clusterBeltDepth = 운반량순 — (B) 가 정한 면은 유지하고, 같은 면 안에서 깊이/reach 만
   // 재배정: 라인 수요(amount) 내림차순 ↔ 슬롯 용량(인서터 throughput) 내림차순 zip. **수요
   // 신호(amount)가 하나도 없으면 건너뜀**(= (B) 등장순서 = near→far 유지). reach 순서를
   // 가정하지 않고 실제 throughput 으로 정렬한다(사장님 단서).
+  // (한 줄이 배정을 여러 개 가질 수 있으므로 **배정 단위**로 재배정한다 — 같은 줄의 두 벨트가
+  //  같은 면에 앉았으면 둘 다 그 줄의 수요 신호를 쓴다.)
   const throughputByReach = new Map(inserters.map((i) => [i.reach, i.throughput]));
   const hasDemand = beltLines.some((l) => l.amount !== undefined);
   if (hasDemand) {
     const capOf = (r?: number) => (r === undefined ? 0 : throughputByReach.get(r) ?? 0);
-    const demandOf = (l: IoLine) => l.amount ?? 0;
+    const demandOf = (p: PlannedLine) => p.line.amount ?? 0;
+    const beltPlacements = beltLines.flatMap((l) => assigned.get(l)!);
     for (const face of [outputSide, inputSide, ...(input.nsFaces ?? [])] as PlannedSide[]) {
       // 유체 줄은 제외 — clusterBeltDepth 가 1 로 강제돼 있고 인서터가 없어 재배정 대상이 아니다.
-      const faceLines = beltLines.filter((l) => assigned.get(l)!.side === face);
-      if (faceLines.length <= 1) continue;
-      const slots = faceLines
-        .map((l) => { const p = assigned.get(l)!; return { clusterBeltDepth: p.clusterBeltDepth, reach: p.reach }; })
+      const facePlacements = beltPlacements.filter((p) => p.side === face);
+      if (facePlacements.length <= 1) continue;
+      const slots = facePlacements
+        .map((p) => ({ clusterBeltDepth: p.clusterBeltDepth, reach: p.reach }))
         .sort((a, b) => capOf(b.reach) - capOf(a.reach));
-      const byDemand = [...faceLines].sort(
-        (a, b) => demandOf(b) - demandOf(a) || lines.indexOf(a) - lines.indexOf(b),
+      const byDemand = [...facePlacements].sort(
+        (a, b) => demandOf(b) - demandOf(a) || lines.indexOf(a.line) - lines.indexOf(b.line),
       );
-      byDemand.forEach((l, i) => {
-        const p = assigned.get(l)!;
+      byDemand.forEach((p, i) => {
         p.clusterBeltDepth = slots[i].clusterBeltDepth;
         p.reach = slots[i].reach;
       });
     }
   }
 
-  return { ok: true, lines: lines.map((l) => assigned.get(l)!) };
+  return { ok: true, lines: lines.flatMap((l) => assigned.get(l)!) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -422,18 +475,34 @@ export function insertingPlanner(
     return { mode: "direct", reason, plan };
   };
 
+  // **벨트 줄 수** — 수요가 벨트 한 줄을 넘으면 [determineBeltCount] 가 줄을 늘린다(빠른
+  // 것부터, 나머지는 그걸 감당하는 가장 싼 벨트로). 팔 개수와 **다른 축**이다: 벨트 상한은
+  // 팔을 늘려도 안 풀리고(벨트가 못 나른다), 반대로 벨트를 늘려도 팔은 그대로 필요하다.
+  //
+  // 벨트를 안 골랐으면(belts 없음) 줄을 못 늘린다 → 옛 규칙대로 `beltCapacity` 초과는 거절.
+  const beltLineMap = new Map<string, SpecBelt[]>();
+  if (input.belts?.length) {
+    for (const line of input.lines) {
+      if (line.kind !== "belt") continue;
+      const key = `${line.role}:${line.name}`;
+      const chosen = determineBeltCount(capacity.lineRates?.get(key), input.belts);
+      if (chosen.length > 0) beltLineMap.set(key, chosen);
+    }
+  }
+
   // 간단한 레시피 판별 — slotsPerFace 를 빼면 탭 인서팅(기둥 클러스터 면 용량).
   const { slotsPerFace: _drop, ...tapInput } = input;
-  const tapPlan = planClusterPorts(tapInput);
+  const tapPlan = planClusterPorts({ ...tapInput, beltLines: beltLineMap });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
   armsOf(tapPlan);
 
-  // **벨트 처리량** — 팔 개수와 다른 축이다. 클러스터 전체 수요가 벨트 한 줄을 넘으면 팔을
-  // 늘려도 안 풀린다(벨트가 못 나른다) → 벨트 줄 수를 나눠야 하는데 그건 다른 기능(나중,
-  // `ceil(수요÷벨트용량)`). v1 은 거절 → 다이렉트. 다이렉트엔 공유 벨트가 없어 이 축이 없다.
+  // 줄 수를 못 정했는데(벨트 미선택) 수요가 벨트 한 줄을 넘으면 여전히 거절 → 다이렉트.
+  // 다이렉트엔 공유 벨트가 없어 이 축 자체가 없다.
   for (const planned of tapPlan.lines) {
     if (planned.line.kind !== "belt") continue;
-    const rate = capacity.lineRates?.get(`${planned.line.role}:${planned.line.name}`);
+    const key = `${planned.line.role}:${planned.line.name}`;
+    if (beltLineMap.has(key)) continue; // 줄 수로 감당했다
+    const rate = capacity.lineRates?.get(key);
     if (rate !== undefined && capacity.beltCapacity !== undefined && rate > capacity.beltCapacity) {
       return direct(`belt: demand>beltCap (${planned.line.name})`);
     }

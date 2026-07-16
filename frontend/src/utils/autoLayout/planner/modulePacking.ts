@@ -62,6 +62,12 @@ export interface NodeSpec {
 export interface PackConfig {
   inserterEntityName: string;
   beltEntityName: string;
+  /**
+   * 고를 수 있는 벨트 전부([BuildSpec.belts](../buildSpec.ts)) — 수요가 벨트 한 줄을 넘을 때
+   * [determineBeltCount] 가 티어를 골라 **줄을 늘린다**. 미지정이면 줄을 안 늘린다(옛 동작:
+   * 거절 → 다이렉트).
+   */
+  belts?: ModuleInput["belts"];
   longInserter?: { entityName: string; reach: number };
   /** 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량. */
   throughput?: { normal: number; long: number };
@@ -676,6 +682,7 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     lines: s.lines.map((l) => ({ ...l, external: l.role === "input" && !fed.has(l.name) })),
     inserterEntityName: config.inserterEntityName,
     beltEntityName: config.beltEntityName,
+    belts: config.belts,
     longInserter: config.longInserter,
     throughput: config.throughput,
     idPrefix: s.id,

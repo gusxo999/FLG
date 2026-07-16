@@ -205,6 +205,8 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const packConfig: PackConfig = {
     inserterEntityName: options.inserterEntityName,
     beltEntityName: options.beltEntityName,
+    // 고른 벨트 전부 — determineBeltCount 가 수요를 이 티어들로 나눠 덮는다.
+    belts: options.belts,
     longInserter: options.longInserter,
     // throughput 데이터 없으면(0) 생략 → planner 가 depth 를 (B) 등장순서로 유지.
     throughput: normalTp > 0 ? { normal: normalTp, long: longTp } : undefined,
