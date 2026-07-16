@@ -19,7 +19,7 @@
  *     렌더링 정상. 병합 상자 드래그 재라우팅은 후속(목표: 상자→첫 머신 구간만).
  */
 
-import { useGameDataStore, type Entity, type Recipe } from '../../store/gameDataStore';
+import { productYield, useGameDataStore, type Entity, type Recipe } from '../../store/gameDataStore';
 import {
   computeMachineFootprintBbox,
   wrapExternalsAroundPerimeter,
@@ -417,5 +417,7 @@ function computeProductDemand(
   if (!recipe.energy_required || recipe.energy_required <= 0) return Infinity;
   const prod = recipe.products.find((p) => p.name === productName);
   if (!prod) return Infinity;
-  return (speed / recipe.energy_required) * prod.amount * (prod.probability ?? 1);
+  const y = productYield(prod); // 범위/확률 산출물의 기대 수율. 수량 미상이면 undefined.
+  if (y === undefined) return Infinity; // 이 파일의 "모르면 Infinity"(판정 보류) 규약.
+  return (speed / recipe.energy_required) * y;
 }

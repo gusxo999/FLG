@@ -27,7 +27,7 @@ import {
   type GridCell,
   type LayoutGrid,
 } from '../types/layout';
-import type { Entity, Module, Recipe } from '../store/gameDataStore';
+import { productYield, type Entity, type Module, type Recipe } from '../store/gameDataStore';
 import type { InfinitySettings } from '../types/blueprint';
 import { beltThroughput } from './autoLayout/beltThroughput';
 import { inserterThroughput, inserterReach } from './autoLayout/inserterThroughput';
@@ -220,8 +220,10 @@ function machineItemRate(
     const prods = recipe.products.filter((p) => p.type === 'item');
     const p = item ? prods.find((q) => q.name === item) : prods[0];
     if (!p) return { rate: null, item };
+    const y = productYield(p); // 범위/확률 산출물의 기대 수율. 수량 미상이면 undefined.
+    if (y === undefined) return { rate: null, item: p.name }; // 모르면 흐름량을 지어내지 않는다.
     return {
-      rate: craftsPerSec * p.amount * (p.probability ?? 1) * eff.productivityMultiplier,
+      rate: craftsPerSec * y * eff.productivityMultiplier,
       item: p.name,
     };
   }

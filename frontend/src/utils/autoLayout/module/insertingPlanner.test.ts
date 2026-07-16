@@ -83,6 +83,27 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
     expect(tapsOf(d, "b")).toBe(1); // 수치 없는 줄은 1
   });
 
+  /**
+   * 수량 미상(범위 산출물인데 게임데이터에 amount_min/max 가 없던 43개)이 **NaN 으로** 흘러들면
+   * 여기가 조용히 망가졌다: `rate === undefined` 방어를 NaN 이 **뚫고**, `NaN > beltCapacity` 도
+   * false 라 거절되지 않고, `Math.max(1, Math.ceil(NaN/…))` = **NaN** 이 되어 emit 의
+   * `for (k = 0; k < NaN; k++)` 가 0회 → **인서터가 사라졌다**(2026-07-16).
+   *
+   * 이제 호출부(moduleWizard)가 수량 미상인 줄을 lineRates 에 **넣지 않으므로** 이 상황은
+   * "수치 없음 → 탭 1개 보류" 로 떨어진다. 그 계약을 여기서 고정한다.
+   */
+  it("수량 미상인 줄은 lineRates 에 없다 → 탭 1개로 보류 (NaN 이 흘러들면 안 된다)", () => {
+    const cap: SupplyCapacity = {
+      beltCapacity: 100,
+      tapCapacity: 5,
+      lineRates: new Map([["input:a", 30]]), // "b" 는 수량 미상 → 아예 없음
+    };
+    const d = insertingPlanner(base(lines), 3, cap);
+    expect(d.mode).toBe("tap");
+    expect(tapsOf(d, "b")).toBe(1); // 보류값. NaN 도 0 도 아니어야 한다.
+    expect(Number.isNaN(tapsOf(d, "b") as number)).toBe(false);
+  });
+
   it("머신을 늘리면 머신당 몫이 줄어 탭이 1개로 준다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,

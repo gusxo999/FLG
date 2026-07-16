@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { useGameDataStore } from '../store/gameDataStore';
-import type { Entity } from '../store/gameDataStore';
+import type { Entity, Recipe } from '../store/gameDataStore';
 import { useT } from '../i18n';
 import {
   expandRecipeTree,
@@ -533,7 +533,8 @@ export default function AutoLayoutSidebar() {
 
 interface RecipeStepProps {
   recipes: { name: string; localised_name: string }[];
-  recipeMap: Map<string, { name: string; localised_name?: string; category: string; energy_required: number; ingredients: { name: string; amount: number; type: string }[]; products: { name: string; amount: number }[] }>;
+  /** 진짜 Recipe 타입을 쓴다 — 인라인 복제는 `amount: number` 같은 거짓 전제를 퍼뜨린다. */
+  recipeMap: Map<string, Recipe>;
   recipesByProduct: Map<string, string[]>;
   targetRecipe: string;
   setTargetRecipe: (v: string) => void;
@@ -909,10 +910,12 @@ function SelfProducedChips({
   );
 }
 
-type RecipeMapLike = Map<
-  string,
-  { name: string; localised_name?: string; category: string; energy_required: number; ingredients: { name: string; amount: number; type: string }[]; products: { name: string; amount: number }[] }
->;
+/**
+ * 진짜 `Recipe` 를 쓴다. 예전엔 여기에 레시피 모양을 **인라인으로 복제**해 뒀는데, 그 복제본이
+ * `amount: number` 라고 단언하는 바람에 **범위 산출물(amount 없음)의 존재를 타입이 가렸다**
+ * (2026-07-16). 복제하지 말 것 — 거짓 전제가 조용히 퍼진다.
+ */
+type RecipeMapLike = Map<string, Recipe>;
 
 interface TreeViewProps {
   node: RecipeTreeNode;

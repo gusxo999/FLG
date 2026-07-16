@@ -17,12 +17,48 @@ export interface RecipeIngredient {
   fluidbox_index?: FluidBoxIndex;
 }
 
+/**
+ * 산출물. 수량은 **고정 `amount`** 이거나 **범위 `amount_min`/`amount_max`** 다(예: `kr-sand`,
+ * `se-core-fragment-*`). 범위형이면 `amount` 가 **없다** — 그래서 optional 이다.
+ *
+ * `amount` 를 직접 곱하지 말 것. `product.amount * probability` 는 범위형에서 **NaN** 이 되고,
+ * 그 NaN 이 `Math.ceil` 을 지나 탭 수까지 흘러가 인서터를 **조용히 0개**로 만든다
+ * (2026-07-16 발견). 수량이 필요하면 [[productYield]] 를 쓴다 — 모를 땐 `undefined` 를 내
+ * 호출부가 "판정 보류" 를 고를 수 있게 한다.
+ */
 export interface RecipeProduct {
   name: string;
-  amount: number;
+  /** 고정 수량. 범위형(`amount_min`/`amount_max`) 산출물에는 없다. */
+  amount?: number;
+  /** 범위 산출의 하한. `amount` 가 없을 때 `amount_max` 와 짝으로 온다. */
+  amount_min?: number;
+  /** 범위 산출의 상한. */
+  amount_max?: number;
   probability?: number;
   type: 'item' | 'fluid';
   fluidbox_index?: FluidBoxIndex;
+}
+
+/**
+ * 산출물 1회 제작당 **기대 수량** — 모르면 `undefined`.
+ *
+ *  - 고정 `amount` → 그대로.
+ *  - 범위 `amount_min`/`amount_max` → **중앙값**(기대값).
+ *  - `probability` 가 있으면 곱한다(확률 산출의 기대 수율).
+ *
+ * **왜 `undefined` 를 내나:** 수량을 모를 때 숫자를 지어내면 **조용히 틀린 배치**가 나온다.
+ * 모른다고 말하면 호출부가 "판정 보류"(예: 탭 1개)를 고를 수 있다. 이건 이미 있던 설계다 —
+ * `determineTapsPerMachine` 은 `rate === undefined` 면 탭 1개로 보류한다. 문제는 `NaN` 이
+ * `undefined` 가 아니라서 그 방어를 **뚫고** 지나가 탭 수를 NaN 으로 만들었던 것이다
+ * (`for (k = 0; k < NaN; k++)` → 0회 → 인서터가 조용히 사라짐).
+ */
+export function productYield(p: RecipeProduct): number | undefined {
+  const base =
+    p.amount ??
+    (p.amount_min !== undefined && p.amount_max !== undefined
+      ? (p.amount_min + p.amount_max) / 2
+      : undefined);
+  return base === undefined ? undefined : base * (p.probability ?? 1);
 }
 
 /**
@@ -424,6 +460,16 @@ export function buildDerived(data: GameData) {
   };
 }
 
+/**
+ * 저장 실패를 사용자에게 알리는 중인가.
+ *
+ * **없으면 무한 재귀로 앱이 죽는다.** persist 는 `setState` 가 일어날 때마다 저장을 시도한다.
+ * 그래서 저장 실패 → `setState({storageWarning})` → **또 저장 시도** → 또 실패 → … 가 된다.
+ * `partialize` 가 storageWarning 을 저장 대상에서 빼고 있어도 소용없다 — 문제는 저장 **내용**이
+ * 아니라 저장 **시도** 자체이기 때문이다. 하필 "용량이 초과됐다" 고 알리려다 스택을 터뜨렸다.
+ */
+let reportingStorageFailure = false;
+
 const safeStorage = createJSONStorage(() => ({
   getItem: (key: string) => {
     try {
@@ -433,12 +479,19 @@ const safeStorage = createJSONStorage(() => ({
     }
   },
   setItem: (key: string, value: string) => {
+    // 경고를 세팅하는 도중 persist 가 다시 부른 저장 → 무시한다(어차피 또 실패한다).
+    if (reportingStorageFailure) return;
     try {
       localStorage.setItem(key, value);
     } catch (e) {
-      useGameDataStore.setState({
-        storageWarning: t('errors.storageQuotaExceeded', { message: (e as Error).message }),
-      });
+      reportingStorageFailure = true;
+      try {
+        useGameDataStore.setState({
+          storageWarning: t('errors.storageQuotaExceeded', { message: (e as Error).message }),
+        });
+      } finally {
+        reportingStorageFailure = false;
+      }
     }
   },
   removeItem: (key: string) => {

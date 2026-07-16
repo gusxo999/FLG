@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Entity, FluidBoxInfo, Module, Recipe } from '../store/gameDataStore';
-import { useGameDataStore } from '../store/gameDataStore';
+import { productYield, useGameDataStore } from '../store/gameDataStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useUiDebugStore } from '../store/uiDebugStore';
 import type { ModuleSlot } from '../types/layout';
@@ -959,7 +959,10 @@ function formatPct(ratio: number): string {
 
 interface RecipeIO {
   name: string;
-  amount: number;
+  /** 고정 수량. 범위 산출물(amount_min/max)에는 없다 → 표시는 '?' 로 떨어진다. */
+  amount?: number;
+  amount_min?: number;
+  amount_max?: number;
   type: 'item' | 'fluid';
   probability?: number;
 }
@@ -998,8 +1001,19 @@ function RecipeIOList({
         {items.map((it, idx) => {
           const prob = it.probability ?? 1;
           const prodMul = showRate ? (productivityMultiplier ?? 1) : 1;
-          const expected = it.amount * prob * prodMul;
-          const perSec = showRate && effectiveTime ? expected / effectiveTime : null;
+          // 범위(amount_min/max)·확률 산출물의 기대 수율. 모르면 undefined → 수량·rate 를
+          // 지어내지 않고 '?' 로 보여준다.
+          const yieldPerCraft = productYield(it);
+          const expected = yieldPerCraft === undefined ? undefined : yieldPerCraft * prodMul;
+          const perSec =
+            showRate && effectiveTime && expected !== undefined ? expected / effectiveTime : null;
+          // 수량 표시: 고정이면 그 값, 범위면 "min~max", 둘 다 없으면 '?'.
+          const amountLabel =
+            it.amount !== undefined
+              ? String(it.amount)
+              : it.amount_min !== undefined && it.amount_max !== undefined
+                ? `${it.amount_min}~${it.amount_max}`
+                : '?';
           return (
             <li
               key={`${it.name}-${idx}`}
@@ -1022,7 +1036,7 @@ function RecipeIOList({
                 )}
               </span>
               <span className="shrink-0 text-right">
-                <span className={`${accent} font-mono`}>×{it.amount}</span>
+                <span className={`${accent} font-mono`}>×{amountLabel}</span>
                 {perSec !== null && (
                   <span className="ml-1 text-[10px] text-gray-400 font-mono">
                     {perSec.toFixed(perSec >= 10 ? 1 : 2)}

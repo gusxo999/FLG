@@ -1,4 +1,4 @@
-import type { Recipe } from '../../store/gameDataStore';
+import { productYield, type Recipe } from '../../store/gameDataStore';
 import type { RecipeTreeNode } from './types';
 
 interface ExpandContext {
@@ -165,19 +165,23 @@ function craftTime(recipe: Recipe): number {
 }
 
 /**
- * 머신 1대가 `producedItem` 을 초당 몇 개 산출하는지.
- * = product.amount × probability × productivityMultiplier × craftingSpeed / energy_required
- * 확률성 산출물은 기대 수율(amount × probability)을 사용한다.
+ * 머신 1대가 `producedItem` 을 초당 몇 개 산출하는지. **수량을 모르면 `undefined`.**
+ * = [[productYield]] × productivityMultiplier × craftingSpeed / energy_required
+ *
+ * 확률·범위 산출물의 기대 수율은 `productYield` 가 계산한다. 그게 `undefined` 를 내면
+ * (= 게임데이터에 수량이 없다) 여기서도 숫자를 지어내지 않는다 — 0 을 내면 "산출이 없다" 는
+ * **다른 뜻**이 되고, 곱해버리면 NaN 이 조용히 퍼진다.
  */
 export function perMachineItemsPerSec(
   recipe: Recipe,
   producedItem: string,
   params: NodeMachineParams,
-): number {
+): number | undefined {
   const product =
     recipe.products.find((p) => p.name === producedItem) ?? recipe.products[0];
-  if (!product) return 0;
-  const yieldPerCraft = product.amount * (product.probability ?? 1);
+  if (!product) return 0; // 이 레시피는 그걸 안 만든다 = 진짜 0.
+  const yieldPerCraft = productYield(product);
+  if (yieldPerCraft === undefined) return undefined; // 수량 미상 — 판정 보류.
   return (
     (yieldPerCraft * params.productivityMultiplier * params.craftingSpeed) /
     craftTime(recipe)
@@ -188,8 +192,11 @@ export function perMachineItemsPerSec(
  * **클러스터 전체**(머신 N대)가 한 I/O 줄을 초당 몇 개 다루나 — 입력이면 소비 rate,
  * 출력이면 산출 rate. [Parallel Inserting](../../../docs/용어사전.md#parallel-inserting)의
  * `SupplyCapacity.lineRates` 를 채우는 값이다.
- *  - 입력: 제작 횟수 × ingredient.amount.
- *  - 출력: 제작 횟수 × product.amount × probability × productivityMultiplier.
+ *  - 입력: 제작 횟수 × ingredient.amount. (재료엔 범위 수량이 없다 — 실데이터 확인)
+ *  - 출력: 제작 횟수 × [[productYield]] × productivityMultiplier.
+ *
+ * **수량을 모르면 `undefined`** 를 낸다. 호출부(moduleWizard)는 그 줄을 `lineRates` 에 아예
+ * 안 넣고, `determineTapsPerMachine` 이 `rate === undefined` → **탭 1개로 보류**한다.
  */
 export function clusterLineRate(
   recipe: Recipe,
@@ -197,11 +204,13 @@ export function clusterLineRate(
   name: string,
   machineCount: number,
   params: NodeMachineParams,
-): number {
+): number | undefined {
   const crafts = (machineCount * params.craftingSpeed) / craftTime(recipe);
   if (role === "output") {
     const p = recipe.products.find((x) => x.name === name);
-    return p ? crafts * p.amount * (p.probability ?? 1) * params.productivityMultiplier : 0;
+    if (!p) return 0; // 이 줄은 이 레시피의 산출이 아니다 = 진짜 0.
+    const y = productYield(p);
+    return y === undefined ? undefined : crafts * y * params.productivityMultiplier;
   }
   const ing = recipe.ingredients.find((x) => x.name === name);
   return ing ? crafts * ing.amount : 0;
@@ -229,7 +238,9 @@ function countForDemand(
   // 레시피/머신 정보가 없으면 안전하게 1대 — 위저드가 머신 미매칭을 별도로 보고한다.
   if (!recipe || !params) return 1;
   const per = perMachineItemsPerSec(recipe, node.itemName, params);
-  if (per <= 0) return 1;
+  // 수량 미상(undefined)도 "정보 없음" — 위 `!recipe || !params` 와 같이 안전하게 1대.
+  // (`per <= 0` 만 보면 undefined 가 비교를 통과해 Math.ceil(d/undefined) = NaN 이 된다.)
+  if (per === undefined || per <= 0) return 1;
   return Math.max(1, Math.ceil(demandItemsPerSec / per));
 }
 

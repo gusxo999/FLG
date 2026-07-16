@@ -179,7 +179,8 @@ function ItemList({
 }: {
   title: string;
   color: string;
-  items: { name: string; amount: number; type: 'item' | 'fluid' }[];
+  /** 재료 또는 산출물. 산출물은 범위 수량(amount_min/max)이라 amount 가 없을 수 있다. */
+  items: { name: string; amount?: number; type: 'item' | 'fluid' }[];
 }) {
   return (
     <div className="pt-1 border-t border-gray-800">
@@ -190,7 +191,7 @@ function ItemList({
             <span className="font-mono text-[11px] text-gray-300 truncate" title={it.name}>
               {it.type === 'fluid' ? '🜄 ' : ''}{it.name}
             </span>
-            <span className="text-gray-500 shrink-0">×{it.amount}</span>
+            <span className="text-gray-500 shrink-0">×{it.amount ?? '?'}</span>
           </li>
         ))}
       </ul>

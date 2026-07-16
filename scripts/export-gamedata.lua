@@ -366,12 +366,19 @@ for n, r in pairs(prototypes.recipe) do
     }
   end
 
+  -- 산출물의 수량은 **두 형태 중 하나**다: 고정 `amount`, 또는 범위 `amount_min`/`amount_max`
+  -- (예: kr-sand, se-core-fragment-*). 범위형이면 `amount` 가 nil 이라 amount 만 뽑으면
+  -- 그 필드가 JSON 에서 통째로 사라진다 — 소비처에서 `product.amount * probability` 가
+  -- **NaN** 이 되어 탭 인서터가 조용히 0개가 됐다(2026-07-16 발견, 실데이터 43개/33레시피).
+  -- 재료(ingredients)엔 범위가 없다(실데이터 확인: amount 누락 0건).
   local products = {}
   for _, v in pairs(r.products) do
     products[#products + 1] = {
       type           = v.type,
       name           = v.name,
       amount         = v.amount,
+      amount_min     = safe_get(function() return v.amount_min end),
+      amount_max     = safe_get(function() return v.amount_max end),
       probability    = v.probability,
       fluidbox_index = safe_get(function() return v.fluidbox_index end),
     }

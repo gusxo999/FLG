@@ -9,8 +9,8 @@
  *     (2026-07-16 브라우저 실측에서 발견).
  */
 
-import { describe, expect, it } from 'vitest';
-import { buildDerived, type GameData } from './gameDataStore';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildDerived, productYield, useGameDataStore, type GameData } from './gameDataStore';
 import { expandRecipeTree } from '../utils/autoLayout/recipeTree';
 import type { Recipe } from './gameDataStore';
 
@@ -81,5 +81,62 @@ describe('레시피 트리에서 유체가 자식이 된다 (유체 홉의 입�
     expect(water!.external).toBe(true);
     expect(water!.recipeName).toBeUndefined();
     expect(water!.children).toEqual([]);
+  });
+});
+
+describe('저장 실패(용량 초과) — 무한 재귀로 죽지 않는다', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useGameDataStore.setState({ storageWarning: null });
+  });
+
+  /**
+   * persist 는 `setState` 마다 저장을 시도한다. 저장 실패를 알리려고 `setState({storageWarning})`
+   * 를 부르면 그게 **또 저장을 시도**해 무한 재귀가 된다(RangeError: Maximum call stack size
+   * exceeded). 실제로 터졌던 버그다 — 프로덕션에서 용량이 차면 앱이 죽는다.
+   */
+  it('localStorage 가 꽉 차도 앱이 죽지 않고 경고만 남긴다', () => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: () => {
+        throw new DOMException('quota', 'QuotaExceededError'); // 항상 실패 = 꽉 찬 저장소
+      },
+      removeItem: (k: string) => void mem.delete(k),
+    });
+
+    // 재귀가 살아 있으면 이 호출이 RangeError 로 터진다.
+    expect(() => useGameDataStore.getState().setGameData(DATA)).not.toThrow();
+
+    // 죽지 않았고, 사용자에게 알릴 경고는 남아야 한다.
+    expect(useGameDataStore.getState().storageWarning).toBeTruthy();
+    // 저장은 실패했어도 게임데이터 자체는 메모리에 올라가 쓸 수 있어야 한다.
+    expect(useGameDataStore.getState().itemToRecipe.get('water')).toBe('kr-water-from-atmosphere');
+  });
+});
+
+describe('productYield — 범위/확률 산출물의 기대 수량', () => {
+  it('고정 amount 는 그대로', () => {
+    expect(productYield({ name: 'x', amount: 3, type: 'item' })).toBe(3);
+  });
+
+  it('범위(amount_min/max)는 중앙값을 쓴다', () => {
+    expect(productYield({ name: 'x', amount_min: 1, amount_max: 3, type: 'item' })).toBe(2);
+  });
+
+  it('probability 를 곱한다 (확률 산출의 기대 수율)', () => {
+    expect(productYield({ name: 'x', amount: 4, probability: 0.5, type: 'item' })).toBe(2);
+    expect(productYield({ name: 'x', amount_min: 2, amount_max: 4, probability: 0.5, type: 'item' })).toBe(1.5);
+  });
+
+  /**
+   * 실데이터 43개(kr-sand, se-core-fragment-* 등)가 이 모양이었다 — export 가 amount_min/max 를
+   * 안 뽑아서 amount 가 통째로 없었다. 예전엔 `product.amount * probability` 가 **NaN** 이 되어
+   * 탭 수까지 흘러가 인서터를 조용히 0개로 만들었다.
+   */
+  it('수량을 모르면 undefined — 숫자를 지어내지 않는다(NaN 금지)', () => {
+    const y = productYield({ name: 'kr-sand', probability: 1, type: 'item' });
+    expect(y).toBeUndefined();
+    expect(Number.isNaN(y as unknown as number)).toBe(false); // NaN 이 아니라 undefined 여야 한다.
   });
 });

@@ -472,10 +472,12 @@ export const runLayeredWizard: RunContainerWizard = async (
         // 부모 ≥2대 + 간단한 레시피 → 멀티싱크 버스(벨트 용량만큼 여러 부모에 분배).
         const childRecipe = recipeMap.get(node.recipeName!);
         const params = paramsLookup(node.recipeName!);
+        // 수량 미상(undefined)은 레시피/머신 정보가 없을 때와 같이 0 으로 본다 — 이 자리의
+        // 기존 규약이다(`: 0`). NaN 을 흘리면 버스 분배 계산이 조용히 망가진다.
         const perChild =
-          childRecipe && params
+          (childRecipe && params
             ? perMachineItemsPerSec(childRecipe, node.itemName, params)
-            : 0;
+            : 0) ?? 0;
         merged = tryMergeClusterOutputBus(
           machinesOf.get(node)!,
           parentMachines,
