@@ -31,27 +31,6 @@ function inverse(o: Orientation): Orientation {
   return { rotation: ((360 - o.rotation) % 360) as Rotation };
 }
 
-function renderRot(mod: GeneratedModule, title: string): void {
-  const ARROW: Record<number, string> = { 0: "↑", 4: "→", 8: "↓", 12: "←" };
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const mk = (x: number, y: number) => { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); };
-  for (const m of mod.machines) for (let dx = 0; dx < m.size.w; dx++) for (let dy = 0; dy < m.size.h; dy++) mk(m.origin.x + dx, m.origin.y + dy);
-  for (const c of mod.cells) mk(c.x, c.y);
-  const grid: string[][] = Array.from({ length: maxY - minY + 1 }, () => Array(maxX - minX + 1).fill("·"));
-  const put = (x: number, y: number, ch: string) => { grid[y - minY][x - minX] = ch; };
-  for (const m of mod.machines) for (let dx = 0; dx < m.size.w; dx++) for (let dy = 0; dy < m.size.h; dy++) put(m.origin.x + dx, m.origin.y + dy, "▒");
-  for (const c of mod.cells) {
-    const t = c.cell.entityType;
-    if (t === EntityType.Belt) put(c.x, c.y, ARROW[c.cell.direction] ?? "b");
-    else if (t === EntityType.Inserter) put(c.x, c.y, "i");
-    else if (t === EntityType.InfinityChest) put(c.x, c.y, "C");
-  }
-  for (const p of mod.inputPorts) put(p.anchor.x, p.anchor.y, "▶");
-  for (const p of mod.outputPorts) put(p.anchor.x, p.anchor.y, "◉");
-  // eslint-disable-next-line no-console
-  console.log(`\n=== ${title} ===\n출력 face: ${mod.outputPorts.map((p) => p.face).join(",")}\n` + grid.map((r) => r.join("")).join("\n"));
-}
-
 describe("transformModule (D4)", () => {
   it("왕복 — o 변환 후 역변환 = 원본 (회전·반사 모두)", () => {
     const base = generateModule(copperCable);
@@ -133,11 +112,5 @@ describe("transformModule (D4)", () => {
     expect(rotationToFace("N", "S")).toBe(180);
     expect(rotationToFace("W", "N")).toBe(90);
     expect(rotationToFace("N", "N")).toBe(0);
-  });
-
-  it("렌더 — copper-cable 원본 vs 90° 회전", () => {
-    const base = generateModule(copperCable);
-    renderRot(base, "원본 (출력 W면 ↑)");
-    renderRot(transformModule(base, { rotation: 90 }), "90° 회전");
   });
 });

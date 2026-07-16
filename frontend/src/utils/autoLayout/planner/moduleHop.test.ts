@@ -306,41 +306,4 @@ describe("routeModuleHops", () => {
       }
     }
   });
-
-  it("렌더 — 모듈 트리 + 홉", () => {
-    const pack = packModuleTree(specs, packConfig);
-    const res = routeModuleHops(pack, hopConfig);
-    const ARROW: Record<number, string> = { 0: "^", 4: ">", 8: "v", 12: "<" };
-    const strip = res.strippedCellKeys;
-    // bbox
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const mark = (x: number, y: number) => { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); };
-    for (const pl of pack.placements) {
-      for (const m of pl.module.machines) { mark(m.origin.x, m.origin.y); mark(m.origin.x + m.size.w - 1, m.origin.y + m.size.h - 1); }
-      for (const c of pl.module.cells) mark(c.x, c.y);
-    }
-    for (const c of res.cells) mark(c.x, c.y);
-    const W = maxX - minX + 1, H = maxY - minY + 1;
-    const g: string[][] = Array.from({ length: H }, () => Array(W).fill("."));
-    const put = (x: number, y: number, ch: string) => { g[y - minY][x - minX] = ch; };
-    for (const pl of pack.placements) {
-      for (const m of pl.module.machines)
-        for (let dx = 0; dx < m.size.w; dx++) for (let dy = 0; dy < m.size.h; dy++)
-          put(m.origin.x + dx, m.origin.y + dy, "#");
-      for (const c of pl.module.cells) {
-        if (strip.has(`${c.x},${c.y}`)) continue; // 떼어낼 경계 셀은 숨김
-        const t = c.cell.entityType;
-        if (t === EntityType.Belt) put(c.x, c.y, ARROW[c.cell.direction] ?? "b");
-        else if (t === EntityType.Inserter) put(c.x, c.y, "i");
-        else if (t === EntityType.InfinityChest) put(c.x, c.y, "C");
-      }
-    }
-    for (const c of res.cells) put(c.x, c.y, ARROW[c.cell.direction] ?? "H"); // 홉 belt(대문자 흐름)
-    // eslint-disable-next-line no-console
-    console.log(
-      `\n--- 모듈 트리 + 홉 (strip 적용, 홉=arrow) ---\n` +
-        `홉 ${res.routes.map((r) => `${r.item}:${r.ok ? r.cells.length + "셀" : "FAIL"}`).join(", ")} · strip chest ${res.strippedChestIds.size}\n` +
-        g.map((r) => r.join("")).join("\n"),
-    );
-  });
 });

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import type { IoLine } from "../module/clusterPortPlanner";
-import { EntityType } from "../../../types/layout";
 import { faceVector, PERIMETER_MARGIN } from "../util/helper";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
@@ -33,35 +32,6 @@ function side(anchor: { x: number; y: number }, bbox: { x: number; y: number; w:
   if (anchor.x >= bbox.x + bbox.w) return "E";
   if (anchor.y < bbox.y) return "N";
   return "S";
-}
-
-function render(res: PackResult): void {
-  const ARROW: Record<number, string> = { 0: "↑", 4: "→", 8: "↓", 12: "←" };
-  const { x: ox, y: oy, w, h } = res.bbox;
-  const grid: string[][] = Array.from({ length: h }, () => Array(w).fill("·"));
-  const put = (x: number, y: number, ch: string) => {
-    if (x >= ox && x < ox + w && y >= oy && y < oy + h) grid[y - oy][x - ox] = ch;
-  };
-  for (const pl of res.placements) {
-    for (const m of pl.module.machines)
-      for (let dx = 0; dx < m.size.w; dx++) for (let dy = 0; dy < m.size.h; dy++) put(m.origin.x + dx, m.origin.y + dy, "▒");
-    for (const c of pl.module.cells) {
-      const t = c.cell.entityType;
-      if (t === EntityType.Belt) put(c.x, c.y, ARROW[c.cell.direction] ?? "b");
-      else if (t === EntityType.Inserter) put(c.x, c.y, "i");
-      else if (t === EntityType.InfinityChest) put(c.x, c.y, "c");
-    }
-  }
-  for (const p of res.rawPorts) put(p.anchor.x, p.anchor.y, "R"); // raw 입력
-  for (const hp of res.hops) { put(hp.from.anchor.x, hp.from.anchor.y, "O"); put(hp.to.anchor.x, hp.to.anchor.y, "I"); }
-  // eslint-disable-next-line no-console
-  console.log(
-    `\n=== 모듈 트리 패킹 (preview) ===\n` +
-      `홉 ${res.hops.length}: ${res.hops.map((h) => `${h.item} O(${h.from.anchor.x},${h.from.anchor.y})→I(${h.to.anchor.x},${h.to.anchor.y})`).join(" | ")}\n` +
-      `raw ${res.rawPorts.length}: ${res.rawPorts.map((p) => `${p.line.name}@(${p.anchor.x},${p.anchor.y})`).join(", ")}\n` +
-      `O=자식출력 I=부모입력 R=raw  c=상자\n` +
-      grid.map((r) => r.join("")).join("\n"),
-  );
 }
 
 describe("packModuleTree", () => {
@@ -184,10 +154,6 @@ describe("packModuleTree", () => {
           expect(p.tapAnchor).toEqual({ x: p.anchor.x - 2 * fv.x, y: p.anchor.y - 2 * fv.y });
           expect(p.tapAnchor.x === p.anchor.x && p.tapAnchor.y === p.anchor.y).toBe(false);
         }
-  });
-
-  it("렌더 — 전체 트리", () => {
-    render(packModuleTree(specs, config));
   });
 });
 

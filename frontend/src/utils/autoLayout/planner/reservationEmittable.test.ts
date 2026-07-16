@@ -10,11 +10,14 @@
  * 지금은 모듈이 [ModulePort.moduleWayOuts] 로 "몸통에 안 막히는 방향"을 답해주고, 예약이
  * 그 방향만 고른다. 그래서 **hint(예약) 재생만으로 전부 방출**되어야 하고, 방출기에 탐색
  * 폴백이 없다. 이 테스트가 그 불변식을 못박는다 — 깨지면 예약이 거짓말을 하고 있는 것이다.
+ *
+ * 여기서 보는 건 **예약이 방출 가능한가**뿐이다. 실제 재배치 결과(skip 0)는
+ * [oneToOneGuarantee](./oneToOneGuarantee.test.ts) 의 `② 모든 포트가 밖으로 나간다` 가
+ * 같은 트리·같은 count 로 이미(그리고 더 세게 — 포트 총량까지) 못 박고 있다.
  */
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
 import { routePortToPerimeter } from "./perimeterRouter";
 import { cellKey } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
@@ -94,17 +97,6 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
           });
           expect(r.ok, `${p.chest.id}: 예약이 방출 불가 — ${r.ok ? "" : r.reason}`).toBe(true);
         }
-    });
-
-    it(`${c0}/${c1}/${c2} — 재배치 skip 0 (탐색 폴백 없이)`, () => {
-      const pack = packModuleTree(mk(c0, c1, c2), config);
-      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
-      const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
-        beltEntityName: "transport-belt",
-        inserterEntityName: "inserter",
-      });
-      expect(res.skipped, `skip 사유: ${res.reason ?? "-"}`).toBe(0);
-      expect(res.relocated).toBeGreaterThan(0);
     });
   }
 
