@@ -22,13 +22,23 @@ interface RawIngredient {
   type: string;
   name: string;
   amount: number;
+  /** 이 재료가 꽂히는 유체 상자 번호. 지정 안 하면 그 역할의 상자 아무 데나. */
+  fluidbox_index?: number;
 }
 
+/**
+ * 산출물 수량은 **두 형태 중 하나**다: 고정 `amount`, 또는 범위 `amount_min`/`amount_max`
+ * (kr-sand, se-core-fragment-* 등 실데이터 43개). 범위형엔 `amount` 가 아예 없으므로
+ * **`amount` 를 필수로 선언하면 안 된다** — 그 거짓말이 NaN 을 낳았다(2026-07-16).
+ */
 interface RawProduct {
   type: string;
   name: string;
-  amount: number;
+  amount?: number;
+  amount_min?: number;
+  amount_max?: number;
   probability?: number;
+  fluidbox_index?: number;
 }
 
 interface RawSurfaceCondition {
@@ -256,16 +266,22 @@ export function parseGameData(raw: unknown): GameData {
     category: r.category,
     energy_required: r.energy ?? 0.5,
     enabled: r.enabled,
+    // 여기서 고른 필드만 앱 안으로 들어온다 — **exporter 가 뽑아도 여기 없으면 죽는다.**
+    // amount_min/max 와 fluidbox_index 가 실제로 그렇게 죽고 있었다(2026-07-16).
     ingredients: toArray(r.ingredients).map((ing) => ({
       name: ing.name,
       amount: ing.amount,
       type: (ing.type ?? 'item') as 'item' | 'fluid',
+      fluidbox_index: ing.fluidbox_index,
     })),
     products: toArray(r.products).map((p) => ({
       name: p.name,
       amount: p.amount,
+      amount_min: p.amount_min,
+      amount_max: p.amount_max,
       probability: p.probability,
       type: (p.type ?? 'item') as 'item' | 'fluid',
+      fluidbox_index: p.fluidbox_index,
     })),
     allowed_module_categories: toStringArray(r.allowed_module_categories),
     surface_conditions: parseSurfaceConditions(r.surface_conditions),
