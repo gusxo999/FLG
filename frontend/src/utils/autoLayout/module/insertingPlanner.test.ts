@@ -3,10 +3,13 @@
  * (docs/auto-layout-wizard.trunk-redesign.md §10.2, 용어: docs/용어사전.md §D).
  *
  * 판정 순서: ① 간단한 레시피인가(기둥 클러스터로 표현 가능 — `planClusterPorts` 의
- * ok/complex 가 곧 이 판별이다, 별도 "레인 검사"를 새로 만들지 않는다) ②
- * `determineTapsPerMachine`(벨트 한 줄이 감당하나 + 머신당 탭 몇 개 — Parallel Inserting)
- * + 좌석 예산. 하나라도 걸리면 **모듈 전체가 다이렉트 인서팅으로 물러난다** — 거절은
- * 항상 안전하다(1:1 은 구성으로 성립).
+ * ok/complex 가 곧 이 판별이다, 별도 "레인 검사"를 새로 만들지 않는다) ② 벨트 한 줄이
+ * 감당하나 + `requiredInserterCount` 좌석 예산. 하나라도 걸리면 **모듈 전체가 다이렉트
+ * 인서팅으로 물러난다** — 거절은 항상 안전하다(1:1 은 구성으로 성립).
+ *
+ * `requiredInserterCount`(머신 한 대의 한 줄을 먹이는 팔 개수)는 **모드가 정하는 값이 아니다**
+ * — 레시피·머신·인서터가 밖에서 정한다. 그래서 탭이든 다이렉트든 **같은 수**를 달고 나가야
+ * 한다. 그 불변식을 아래 ③ 이 못 박는다.
  */
 import { describe, it, expect } from "vitest";
 import { insertingPlanner, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
@@ -48,17 +51,17 @@ describe("① 간단한 레시피 판별 — 기둥 클러스터로 표현 가�
   });
 });
 
-describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", () => {
+describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () => {
   const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
 
-  /** plan 에서 한 줄의 tapsPerMachine 조회(탭 모드 전용). */
-  const tapsOf = (d: ReturnType<typeof insertingPlanner>, name: string): number | undefined =>
-    d.plan.ok ? d.plan.lines.find((l) => l.line.name === name)?.tapsPerMachine : undefined;
+  /** plan 에서 한 줄의 requiredInserterCount 조회. **모드와 무관하게** 달려 있어야 한다. */
+  const armsOf = (d: ReturnType<typeof insertingPlanner>, name: string): number | undefined =>
+    d.plan.ok ? d.plan.lines.find((l) => l.line.name === name)?.requiredInserterCount : undefined;
 
-  it("수치를 안 주면 건너뛴다 — 탭 1개(없는 숫자를 지어내지 않는다)", () => {
+  it("수치를 안 주면 판정 보류 — undefined(없는 숫자를 지어내지 않는다)", () => {
     const d = insertingPlanner(base(lines), 3, {});
     expect(d.mode).toBe("tap");
-    expect(tapsOf(d, "a")).toBe(1);
+    expect(armsOf(d, "a")).toBeUndefined();
   });
 
   it("클러스터 수요가 벨트 한 줄을 넘으면 거절 (탭으론 못 푼다 → 1:1)", () => {
@@ -79,8 +82,8 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
     };
     const d = insertingPlanner(base(lines), 3, cap);
     expect(d.mode).toBe("tap"); // 옛 모델은 여기서 거절했다 — 이제 탭으로 감당
-    expect(tapsOf(d, "a")).toBe(2);
-    expect(tapsOf(d, "b")).toBe(1); // 수치 없는 줄은 1
+    expect(armsOf(d, "a")).toBe(2);
+    expect(armsOf(d, "b")).toBeUndefined(); // 수치 없는 줄은 보류
   });
 
   /**
@@ -90,9 +93,9 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
    * `for (k = 0; k < NaN; k++)` 가 0회 → **인서터가 사라졌다**(2026-07-16).
    *
    * 이제 호출부(moduleWizard)가 수량 미상인 줄을 lineRates 에 **넣지 않으므로** 이 상황은
-   * "수치 없음 → 탭 1개 보류" 로 떨어진다. 그 계약을 여기서 고정한다.
+   * "수치 없음 → `undefined`(판정 보류)" 로 떨어지고, 소비처가 1로 본다. 그 계약을 고정한다.
    */
-  it("수량 미상인 줄은 lineRates 에 없다 → 탭 1개로 보류 (NaN 이 흘러들면 안 된다)", () => {
+  it("수량 미상인 줄은 lineRates 에 없다 → undefined 로 보류 (NaN 이 흘러들면 안 된다)", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
       tapCapacity: 5,
@@ -100,8 +103,8 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
     };
     const d = insertingPlanner(base(lines), 3, cap);
     expect(d.mode).toBe("tap");
-    expect(tapsOf(d, "b")).toBe(1); // 보류값. NaN 도 0 도 아니어야 한다.
-    expect(Number.isNaN(tapsOf(d, "b") as number)).toBe(false);
+    expect(armsOf(d, "b")).toBeUndefined(); // 보류. NaN 도 0 도 아니어야 한다.
+    expect(Number.isNaN(armsOf(d, "b") as number)).toBe(false);
   });
 
   it("머신을 늘리면 머신당 몫이 줄어 탭이 1개로 준다", () => {
@@ -112,7 +115,7 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
     };
     const d = insertingPlanner(base(lines), 8, cap);
     expect(d.mode).toBe("tap");
-    expect(tapsOf(d, "a")).toBe(1);
+    expect(armsOf(d, "a")).toBe(1);
   });
 
   it("좌석이 모자라면(총 탭 > 면 좌석 행) 다이렉트로 거른다", () => {
@@ -134,6 +137,61 @@ describe("② determineTapsPerMachine — 벨트 용량 + Parallel Inserting", (
       lineRates: new Map([["input:a", 20]]),
     };
     expect(insertingPlanner(base(lines), 100, cap).mode).toBe("direct");
+  });
+});
+
+/**
+ * ③ **팔 개수는 모드보다 먼저 정해진다.**
+ *
+ * 인서터 하나가 나르는 양은 그 팔이 벨트에서 집든 상자에서 집든 같다. 그래서
+ * `requiredInserterCount` 는 탭/다이렉트를 고르기 **전에** 이미 정해져 있고, 두 계획이
+ * **같은 수**를 달고 나가야 한다.
+ *
+ * 예전엔 이 수가 탭 경로 안에서만 계산됐다. 그래서 다이렉트로 떨어진 모듈은 팔이 몇 개
+ * 필요한지 **묻지도 않고** 줄당 하나만 놓고 "성공" 이라 보고했다 — 실측(2026-07-16,
+ * kr-glass ← kr-sand)에서 초당 8개를 먹는 머신에 초당 0.667개짜리 인서터가 **하나** 붙은
+ * 배치가 나왔다. 게임에 넣으면 12배 굶는다.
+ *
+ * 여기서 못 박는 건 "다이렉트가 그 수만큼 팔을 놓는다"가 아니라(그건 다음 단계다)
+ * **"다이렉트도 그 수를 알고 있다"** 이다.
+ */
+describe("③ requiredInserterCount 는 모드와 무관하다", () => {
+  const armsOf = (d: ReturnType<typeof insertingPlanner>, name: string): number | undefined =>
+    d.plan.ok ? d.plan.lines.find((l) => l.line.name === name)?.requiredInserterCount : undefined;
+
+  const cap: SupplyCapacity = {
+    beltCapacity: 100,
+    tapCapacity: 5,
+    lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 팔 4개
+  };
+
+  it("좌석이 모자라 다이렉트로 떨어져도, 그 계획이 팔 4개를 알고 있다", () => {
+    const d = insertingPlanner(base([inL("a"), outL("z")]), 3, cap);
+    expect(d.mode).toBe("direct");
+    expect(d.reason).toContain("seats");
+    // 굶는 배치의 근원 — 예전엔 여기가 undefined 라 다이렉트가 팔 하나만 놓았다.
+    expect(armsOf(d, "a"), "다이렉트 계획이 팔 개수를 모른다").toBe(4);
+  });
+
+  it("복잡한 레시피로 다이렉트가 돼도 팔 개수는 달려 나온다", () => {
+    const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
+    const d = insertingPlanner(base(lines, false), 3, cap); // 긴팔 없음 → complex
+    expect(d.mode).toBe("direct");
+    expect(d.reason).toContain("complex");
+    expect(armsOf(d, "a")).toBe(4);
+  });
+
+  it("탭과 다이렉트가 같은 줄에 대해 같은 수를 낸다", () => {
+    // 4줄 — 긴팔이 있으면 탭(면당 2레인 × 2면 = 4), 없으면 complex → 다이렉트.
+    // 갈리는 건 **모드뿐**이고 수요·머신 수·인서터 처리량은 같다.
+    const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
+    const rates = { ...cap, lineRates: new Map([["input:a", 30]]) }; // 30/3대 = 10, ceil(10/5) = 2
+    const tap = insertingPlanner(base(lines), 3, rates);
+    const dir = insertingPlanner(base(lines, false), 3, rates);
+    expect(tap.mode).toBe("tap");
+    expect(dir.mode).toBe("direct");
+    expect(armsOf(tap, "a")).toBe(2);
+    expect(armsOf(dir, "a"), "모드가 팔 개수를 바꾸면 안 된다").toBe(armsOf(tap, "a"));
   });
 });
 

@@ -182,7 +182,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     // v1 은 벨트 처리량(beltCapacity)은 안 잰다(벨트 분할이 없어 어차피 폴백뿐 — 후속).
     const params = { craftingSpeed: entityMap.get(m.entityName)?.crafting_speed ?? 1, productivityMultiplier: 1 };
     // 수량을 모르는 줄(범위 산출물인데 게임데이터에 amount_min/max 가 없는 경우)은 **넣지
-    // 않는다** — 그래야 determineTapsPerMachine 이 `rate === undefined` 로 보고 **탭 1개로
+    // 않는다** — 그래야 requiredInserterCount 가 `rate === undefined` 로 보고 **판정 보류(1개)로
     // 보류**한다. 지어낸 숫자나 NaN 을 넣으면 탭 수가 조용히 틀어진다.
     const lineRates = new Map<string, number>();
     const putRate = (key: string, rate: number | undefined): void => {

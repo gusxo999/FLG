@@ -48,7 +48,7 @@ export interface RecipeProduct {
  *
  * **왜 `undefined` 를 내나:** 수량을 모를 때 숫자를 지어내면 **조용히 틀린 배치**가 나온다.
  * 모른다고 말하면 호출부가 "판정 보류"(예: 탭 1개)를 고를 수 있다. 이건 이미 있던 설계다 —
- * `determineTapsPerMachine` 은 `rate === undefined` 면 탭 1개로 보류한다. 문제는 `NaN` 이
+ * `requiredInserterCount` 는 `rate === undefined` 면 `undefined`(판정 보류)를 낸다. 문제는 `NaN` 이
  * `undefined` 가 아니라서 그 방어를 **뚫고** 지나가 탭 수를 NaN 으로 만들었던 것이다
  * (`for (k = 0; k < NaN; k++)` → 0회 → 인서터가 조용히 사라짐).
  */

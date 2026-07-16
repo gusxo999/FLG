@@ -189,7 +189,7 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
     expect(mod.unroutedLines).toHaveLength(0);
 
     const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
-    // 각 머신의 E 면 좌석 열(x=3)에 탭 인서터가 2행 앉는다(= tapsPerMachine 2).
+    // 각 머신의 E 면 좌석 열(x=3)에 탭 인서터가 2행 앉는다(= requiredInserterCount 2).
     for (const m of mod.machines) {
       const seatCol = inserters.filter(
         (c) => c.x === 3 && c.y >= m.origin.y && c.y < m.origin.y + m.size.h,

@@ -77,12 +77,17 @@ export interface PlannedLine {
    */
   reach?: number;
   /**
-   * **[Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting)** — 머신 한 대가
-   * 이 줄을 탭 인서터 몇 개로 집나. 머신당 수요가 인서터 하나 처리량을 넘으면 좌석을 더 써서
-   * 같은 [ClusterBelt] 를 여러 번 집는다. [insertingPlanner] 가 [SupplyCapacity] 로 채운다.
-   * 미지정 = 1(단일 탭). `planClusterPorts` 자체는 채우지 않는다(용량을 안 본다).
+   * **[requiredInserterCount](../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
+   * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. **공급 방식과 무관한 물리량**이다
+   * (`ceil(머신당 수요 ÷ 인서터 하나 처리량)`) — 탭이면 그 팔들이 같은 [ClusterBelt] 에서
+   * 집고([Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting)), 다이렉트면
+   * 각자 자기 상자에서 집는다. 팔 **개수** 자체는 어느 쪽이든 같다.
+   *
+   * [insertingPlanner] 가 [SupplyCapacity] 로 **두 모드 모두에** 채운다. 미지정 = 수량을
+   * 모른다(판정 보류 → 소비처가 1로 본다). `planClusterPorts` 자체는 채우지 않는다(용량을
+   * 안 본다).
    */
-  tapsPerMachine?: number;
+  requiredInserterCount?: number;
 }
 
 export interface PortPlannerInput {
@@ -325,7 +330,7 @@ export interface SupplyCapacity {
   tapCapacity?: number;
   /**
    * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
-   * 미지정이면 [determineTapsPerMachine] 는 **탭 1개로 본다** — 없는 숫자를 지어내지 않는다.
+   * 미지정이면 [requiredInserterCount] 가 `undefined` 를 낸다 — 없는 숫자를 지어내지 않는다.
    */
   lineRates?: Map<string, number>;
 }
@@ -339,36 +344,34 @@ export interface InsertingDecisionResult {
   plan: PortPlan;
 }
 
-/** [determineTapsPerMachine] 결과 — 감당 가능하면 머신당 탭 수, 아니면 거절 사유. */
-export type TapDecision = { taps: number } | { reject: string };
-
 /**
- * 이 품목을 벨트 한 줄로 감당할 수 있나, 그러려면 **머신당 탭 인서터가 몇 개** 필요한가.
+ * **[requiredInserterCount](../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
+ * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. 모르면 `undefined`.
  *
- * 두 축은 다르다:
- *  - **벨트 처리량**(`demand>beltCap`) — 클러스터 전체 수요가 벨트 한 줄을 넘으면 거절한다.
- *    이건 탭을 늘려도 안 풀린다(벨트가 못 나른다) → 벨트 **줄 수**를 나눠야 하는데 그건
- *    다른 기능(나중, `ceil(수요÷벨트용량)`). v1 은 거절.
- *  - **인서터 처리량**([Parallel Inserting](docs/용어사전.md#parallel-inserting)) — 머신 한
- *    대의 몫이 인서터 하나를 넘으면 **탭을 `ceil(머신당수요 ÷ tapCap)` 개**로 늘린다. 좌석은
- *    보통 남는다(면 좌석 ≥ 벨트 열 수). 좌석이 모자라면 [insertingPlanner] 가 거른다.
+ * **공급 방식과 무관한 물리량이다.** 인서터 하나가 나르는 양은 그 팔이 벨트에서 집든
+ * 상자에서 집든 같으므로, 이 수는 탭/다이렉트를 고르기 **전에** 정해진다 — 레시피·머신
+ * 속도·인서터 프로토타입이 전부 밖에서 오는 값이라 협상 대상이 아니다. 그래서 이 함수는
+ * 모드를 모른다. 모드는 **이 수를 어떻게 앉히느냐**의 문제일 뿐이다:
+ *  - **탭**: 팔들이 같은 [ClusterBelt] 한 줄에서 집는다([Parallel Inserting]).
+ *  - **다이렉트**: 팔들이 각자 자기 상자에서 집는다(상자 한 칸의 이웃은 4칸뿐이고 인서터는
+ *    상자와 머신 양쪽에 닿아야 하므로, 팔이 늘면 상자도 늘어야 한다).
  *
- * `lineRates` 가 없으면 숫자를 지어내지 않고 **탭 1개**로 본다(판정 보류).
+ * `rate` 를 모르면(범위 산출물인데 게임데이터에 amount_min/max 가 없는 등) **`undefined`**
+ * 를 낸다 — 숫자를 지어내지 않는다. 호출부가 "판정 보류"(1로 봄)를 고른다.
+ *
+ * **벨트 처리량은 여기 없다.** 그건 다른 축이다 — 클러스터 전체 수요가 벨트 한 줄을 넘는
+ * 문제는 팔을 늘려도 안 풀리고(벨트가 못 나른다), 애초에 벨트를 안 쓰는 다이렉트엔 존재하지
+ * 않는다. 그래서 [insertingPlanner] 의 탭 경로에만 둔다.
  */
-function determineTapsPerMachine(
+export function requiredInserterCount(
   line: IoLine,
   machineCount: number,
   cap: SupplyCapacity,
-): TapDecision {
+): number | undefined {
   const rate = cap.lineRates?.get(`${line.role}:${line.name}`);
-  if (rate === undefined) return { taps: 1 }; // 수치 없음 → 단일 탭
-  if (cap.beltCapacity !== undefined && rate > cap.beltCapacity) {
-    return { reject: `demand>beltCap (${line.name})` };
-  }
-  if (cap.tapCapacity !== undefined && cap.tapCapacity > 0 && machineCount > 0) {
-    return { taps: Math.max(1, Math.ceil(rate / machineCount / cap.tapCapacity)) };
-  }
-  return { taps: 1 };
+  if (rate === undefined) return undefined; // 수치 없음 → 판정 보류(지어내지 않는다)
+  if (cap.tapCapacity === undefined || cap.tapCapacity <= 0 || machineCount <= 0) return undefined;
+  return Math.max(1, Math.ceil(rate / machineCount / cap.tapCapacity));
 }
 
 /**
@@ -384,9 +387,12 @@ function determineTapsPerMachine(
  * 판별을 한다(`ok` vs `complex`) — 새로 안 만든다. [복잡한 레시피](용어사전.md#복잡한-레시피)면
  * 정의상 다이렉트(1:1)로 간다.
  *
- * 그다음 [determineTapsPerMachine] — 품목마다 벨트 한 줄이 감당하는가 + 머신당 탭 몇 개가
- * 필요한가([SupplyCapacity.lineRates] 가 있을 때만). 그리고 면별 총 탭 수가 좌석 행을 넘지
- * 않는지 본다([Parallel Inserting] 좌석 예산).
+ * 그다음 두 축을 본다([SupplyCapacity.lineRates] 가 있을 때만) — **섞으면 안 된다**:
+ *  - **[requiredInserterCount]**(인서터 처리량) — 머신 한 대의 한 줄에 팔이 몇 개 필요한가.
+ *    **모드가 정하는 값이 아니라서** 탭/다이렉트를 고르기 전에 구해 **두 계획 모두에** 단다.
+ *    면별 총 팔 수가 좌석 행을 넘으면 탭으로 못 앉힌다([Parallel Inserting] 좌석 예산).
+ *  - **벨트 처리량** — 클러스터 전체 수요가 벨트 한 줄을 넘는가. 팔을 늘려도 안 풀리고,
+ *    공유 벨트가 없는 다이렉트엔 이 축이 아예 없다 → 탭 경로 전용 거절.
  *
  * 하나라도 걸리면 **모듈 전체가 다이렉트 인서팅으로 물러난다**(v1 결정, §10.4-1).
  * 부분 병합(한 면은 트렁크, 다른 면은 1:1)은 같은 면에서 벨트와 상자가 자리를 다투므로
@@ -397,25 +403,40 @@ export function insertingPlanner(
   machineCount: number,
   capacity: SupplyCapacity = {},
 ): InsertingDecisionResult {
-  const direct = (reason: string): InsertingDecisionResult => ({
-    mode: "direct",
-    reason,
-    plan: planClusterPorts(input), // slotsPerFace 있음 = 다이렉트 인서팅
-  });
+  // **팔 개수([requiredInserterCount])를 모드보다 먼저 구한다.** 이건 공급 방식이 정하는 게
+  // 아니라 레시피·머신·인서터가 밖에서 정해 주는 물리량이라, 모드를 고르기 전에 이미 정해져
+  // 있다. 그래서 탭 계획이든 다이렉트 계획이든 **같은 수**를 달고 나간다 — 다이렉트가 이 수를
+  // 모른 채 팔 하나만 놓고 "성공"이라 보고하던 게 굶는 배치의 원인이었다(2026-07-16 실측).
+  // 유체 줄은 인서터가 없다(파이프로 흐른다) — 대상이 아니다.
+  const armsOf = (plan: PortPlan): void => {
+    if (!plan.ok) return;
+    for (const planned of plan.lines) {
+      if (planned.line.kind !== "belt") continue;
+      planned.requiredInserterCount = requiredInserterCount(planned.line, machineCount, capacity);
+    }
+  };
+
+  const direct = (reason: string): InsertingDecisionResult => {
+    const plan = planClusterPorts(input); // slotsPerFace 있음 = 다이렉트 인서팅
+    armsOf(plan);
+    return { mode: "direct", reason, plan };
+  };
 
   // 간단한 레시피 판별 — slotsPerFace 를 빼면 탭 인서팅(기둥 클러스터 면 용량).
   const { slotsPerFace: _drop, ...tapInput } = input;
   const tapPlan = planClusterPorts(tapInput);
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
+  armsOf(tapPlan);
 
-  // 줄마다 **머신당 탭 수**를 정한다([Parallel Inserting]). 유체 줄은 벨트가 아니라 파이프로
-  // 흐르므로 대상이 아니다(파이프 처리량은 아직 안 잰다 — trunk-pipe §8). 벨트 처리량 초과는
-  // 탭으로 못 풀어 거절 → 다이렉트.
+  // **벨트 처리량** — 팔 개수와 다른 축이다. 클러스터 전체 수요가 벨트 한 줄을 넘으면 팔을
+  // 늘려도 안 풀린다(벨트가 못 나른다) → 벨트 줄 수를 나눠야 하는데 그건 다른 기능(나중,
+  // `ceil(수요÷벨트용량)`). v1 은 거절 → 다이렉트. 다이렉트엔 공유 벨트가 없어 이 축이 없다.
   for (const planned of tapPlan.lines) {
     if (planned.line.kind !== "belt") continue;
-    const decided = determineTapsPerMachine(planned.line, machineCount, capacity);
-    if ("reject" in decided) return direct(`belt: ${decided.reject}`);
-    planned.tapsPerMachine = decided.taps;
+    const rate = capacity.lineRates?.get(`${planned.line.role}:${planned.line.name}`);
+    if (rate !== undefined && capacity.beltCapacity !== undefined && rate > capacity.beltCapacity) {
+      return direct(`belt: demand>beltCap (${planned.line.name})`);
+    }
   }
 
   // **좌석 예산** — 한 면의 총 탭 수가 그 면의 좌석 행을 넘으면 탭 인서팅으로 못 앉힌다 →
@@ -430,7 +451,7 @@ export function insertingPlanner(
   const tapsOnFace = new Map<PlannedSide, number>();
   for (const p of tapPlan.lines) {
     if (p.line.kind !== "belt") continue;
-    tapsOnFace.set(p.side, (tapsOnFace.get(p.side) ?? 0) + (p.tapsPerMachine ?? 1));
+    tapsOnFace.set(p.side, (tapsOnFace.get(p.side) ?? 0) + (p.requiredInserterCount ?? 1));
   }
   for (const [side, used] of tapsOnFace) {
     if (used > rowsOf(side)) return direct(`seats: ${side} ${used}탭 > ${rowsOf(side)}행`);

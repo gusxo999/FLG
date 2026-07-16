@@ -144,7 +144,7 @@ export interface ModuleInput {
    */
   nsExposure?: ("N" | "S")[];
   /**
-   * 트렁크(탭 인서팅) 용량 — 있으면 [insertingPlanner] 의 [determineBeltCount] 검사가
+   * 트렁크(탭 인서팅) 용량 — 있으면 [insertingPlanner] 의 벨트 처리량 검사가
    * 켜진다. 미지정이면 간단한 레시피 판별만 본다(없는 숫자를 지어내지 않는다).
    */
   supplyCapacity?: SupplyCapacity;
@@ -609,7 +609,7 @@ function emitTapInserting(args: {
     // 좌석 행 배정은 **인서터가 있는 줄만** 한다 — 트렁크 파이프는 인서터가 없어서 좌석
     // 행을 안 먹는다(머신 유체 입구에 직접 닿는다). [Parallel Inserting]: 한 줄이 머신마다
     // 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
-    const taps = isPipe ? 0 : Math.max(1, planned.tapsPerMachine ?? 1);
+    const taps = isPipe ? 0 : Math.max(1, planned.requiredInserterCount ?? 1);
     let slot = 0;
     if (!isPipe) {
       const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;

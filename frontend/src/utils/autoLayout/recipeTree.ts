@@ -196,7 +196,7 @@ export function perMachineItemsPerSec(
  *  - 출력: 제작 횟수 × [[productYield]] × productivityMultiplier.
  *
  * **수량을 모르면 `undefined`** 를 낸다. 호출부(moduleWizard)는 그 줄을 `lineRates` 에 아예
- * 안 넣고, `determineTapsPerMachine` 이 `rate === undefined` → **탭 1개로 보류**한다.
+ * 안 넣고, `requiredInserterCount` 가 `rate === undefined` → **판정 보류(1개)** 한다.
  */
 export function clusterLineRate(
   recipe: Recipe,
