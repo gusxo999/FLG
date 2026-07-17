@@ -39,9 +39,10 @@ const recipeMap = new Map<string, Recipe>([
   ['iron-plate', recipe('iron-plate', 3.2, [{ name: 'iron-plate', amount: 1 }], [{ name: 'iron-ore', amount: 1 }])],
 ]);
 
-const speed = (s: number, prod = 1): MachineParamsLookup => () => ({
+const speed = (s: number, prod = 1, speedFraction?: number): MachineParamsLookup => () => ({
   craftingSpeed: s,
   productivityMultiplier: prod,
+  speedFraction,
 });
 
 const find = (root: RecipeTreeNode, item: string): RecipeTreeNode => {
@@ -96,6 +97,18 @@ describe('assignThroughputCounts', () => {
     // prod 2 → root out/machine = 1 × 2 / 0.5 = 4 → ceil(5/4) = 2
     const out = assignThroughputCounts(tree, 5, recipeMap, speed(1, 2));
     expect(out.machineCount).toBe(2);
+  });
+
+  it('a starved machine both produces less AND demands less of its children', () => {
+    // speedFraction 0.5 — the machine can only be fed half its full-speed demand.
+    // root out/machine = 1 × 1 × 0.5 / 0.5 = 1 gear/s → ceil(5/1) = 5 machines.
+    // Those 5 machines craft at half speed: 5 × 0.5 / 0.5 = 5 crafts/s, so they eat
+    // 10 plates/s — NOT the 20 they would eat at full speed. Sizing the child off the
+    // full-speed figure over-provisions it by exactly 1/speedFraction.
+    // plate out/machine = 1 × 0.5 / 3.2 = 0.15625 → ceil(10 / 0.15625) = 64.
+    const out = assignThroughputCounts(tree, 5, recipeMap, speed(1, 1, 0.5));
+    expect(out.machineCount).toBe(5);
+    expect(find(out, 'iron-plate').machineCount).toBe(64);
   });
 
   it('falls back to 1 machine when no machine params are available', () => {

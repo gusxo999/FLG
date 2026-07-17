@@ -232,13 +232,22 @@ export function clusterLineRate(
   return ing ? crafts * ing.amount : 0;
 }
 
-/** 머신 N대의 초당 제작 횟수 (productivity 는 횟수가 아닌 산출량에만 영향) */
+/**
+ * 머신 N대의 초당 제작 횟수 (productivity 는 횟수가 아닌 산출량에만 영향).
+ *
+ * **굶는 머신은 덜 돌므로 덜 만든다** — `speedFraction` 을 곱해야 한다(미지정=1).
+ * 안 곱하면 `buildThroughput` 이 자식에게 **안 먹을 양을 요구**해 자식 머신이 과잉으로
+ * 놓인다: 80%로 도는 부모 10대의 실제 제작은 8대분인데 10대분을 내려보내게 된다.
+ * (2026-07-17 발견 — 바로 위 `clusterLineRate` 는 같은 값을 곱하고 있었다.)
+ */
 function craftsPerSec(
   recipe: Recipe,
   machineCount: number,
   params: NodeMachineParams,
 ): number {
-  return (machineCount * params.craftingSpeed) / craftTime(recipe);
+  return (
+    (machineCount * params.craftingSpeed * (params.speedFraction ?? 1)) / craftTime(recipe)
+  );
 }
 
 /** 요구 산출 rate(items/sec)를 만족하는 최소 머신 수. 비-외부 노드는 최소 1대. */
