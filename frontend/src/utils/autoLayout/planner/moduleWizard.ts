@@ -39,7 +39,7 @@ import { clusterLineRate } from "../recipeTree";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
 // [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
 import { makeBuildSpec } from "../buildSpec";
-import { makeEmptyArea } from "../wizardUtils";
+import { makeEmptyArea, machineSpeedFraction } from "../wizardUtils";
 import { commitContainer } from "../machinePlacer";
 
 /** layeredWizard NodeMeta 와 동형(필요한 부분만). */
@@ -180,7 +180,18 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
     const parent = parentOf.get(node) ?? undefined;
     // [Parallel Inserting] 배선 — 줄별 클러스터 rate(items/sec) + 탭 용량을 supplyCapacity 로.
     // v1 은 벨트 처리량(beltCapacity)은 안 잰다(벨트 분할이 없어 어차피 폴백뿐 — 후속).
-    const params = { craftingSpeed: entityMap.get(m.entityName)?.crafting_speed ?? 1, productivityMultiplier: 1 };
+    // **속도는 굶주림 보상과 같은 출처를 읽는다**([machineSpeedFraction]). 팔을 다 앉힐 자리가
+    // 없는 머신은 그만큼만 도므로, 이 클러스터가 **실제로** 나르는 양도 그만큼이다. 여기서
+    // 100% 수요를 넘기면 배분기는 앉히지도 못할 팔을 요구하고 → 좌석에서 거절 → 옛 경로로
+    // 폴백한다. 그런데 머신 **수**는 이미 그 보상만큼 늘어나 있어서, 100% 수요는 애초에
+    // 아무도 안 믿는 숫자다(2026-07-17 실측: kr-sand 13+5팔 > 14행 → 폴백. 80%면 10+4=14로 앉는다).
+    const ent = entityMap.get(m.entityName);
+    const craftingSpeed = ent?.crafting_speed ?? 1;
+    const params = {
+      craftingSpeed,
+      productivityMultiplier: 1,
+      speedFraction: ent ? machineSpeedFraction(recipe, ent, craftingSpeed, options.inserters) : undefined,
+    };
     // 수량을 모르는 줄(범위 산출물인데 게임데이터에 amount_min/max 가 없는 경우)은 **넣지
     // 않는다** — 그래야 requiredInserterCount 가 `rate === undefined` 로 보고 **판정 보류(1개)로
     // 보류**한다. 지어낸 숫자나 NaN 을 넣으면 탭 수가 조용히 틀어진다.

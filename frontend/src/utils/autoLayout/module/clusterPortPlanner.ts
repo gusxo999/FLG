@@ -115,8 +115,12 @@ export interface PortPlannerInput {
   inserters: SpecInserter[];
   /**
    * 출력 라인이 향할 면(부모 방향). 입력 라인은 반대 면을 우선한다. 좌우 계층형에서
-   * 부모는 항상 왼쪽이므로 기본 "W". (B) 정책: 출력을 이 면에 **먼저 확정(항상 보장)**,
+   * 부모는 항상 왼쪽이므로 기본 "W". (B) 정책: 출력에 이 면을 **먼저 고르게 하고**,
    * 입력은 반대 면에 채우다 넘치면 이 면의 잔여 슬롯으로 흘린다.
+   *
+   * **"항상 보장"이 아니다** — 출력도 이 면이 차면 반대 면으로 넘어간다(아래 `place`).
+   * 넘치는 이유는 두 가지다: 벨트 자리가 없거나(슬롯 풀 고갈), **좌석 행이 없거나**
+   * ([seatRowsPerFace]). 우선권은 "먼저 고른다"이지 "독차지한다"가 아니다.
    */
   outputSide: PortSide;
   /**
@@ -185,6 +189,31 @@ export interface PortPlannerInput {
    * [insertingPlanner] 가 [SupplyCapacity.lineRates] 와 고른 벨트로 계산해 넣는다.
    */
   beltLines?: Map<string, SpecBelt[]>;
+  /**
+   * **면당 좌석 행 수** — 그 면에 인서터 팔을 몇 개까지 앉힐 수 있나(= 그 면의 둘레 칸).
+   *
+   * [slotsPerFace] 와 **세는 대상이 다르다**: 저건 "벨트를 몇 줄 세우나"(reach 종류 수, 보통 2),
+   * 이건 "팔을 몇 개 앉히나"(머신 높이, 보통 7). 배정 하나가 벨트 자리 **하나**를 먹으면서
+   * 팔은 **여러 개**([armsByPlacement]) 앉힐 수 있으므로 두 수는 서로 유도되지 않는다.
+   *
+   * 이게 없던 동안 배분기는 좌석을 아예 못 봤고, 그래서 팔 4개짜리 줄을 좌석 3칸인 면에
+   * 통째로 몰아넣은 뒤 **사후에** 거절당했다(→ 다이렉트 폴백). 이제 배분의 **입력**이라
+   * 면이 차면 그 자리에서 다음 면으로 넘어간다.
+   *
+   * **미지정 = 무한**(옛 동작). [insertingPlanner] 의 탭 계획에만 넣는다 — 다이렉트는
+   * 상자·인서터가 둘레 칸을 직접 먹어 셈이 다르고, 무엇보다 **항상 성립하는 폴백**이어야
+   * 하므로 이 장부로 실패시키지 않는다.
+   */
+  seatRowsPerFace?: { WE: number; NS: number };
+  /**
+   * 줄별 **배정마다의 팔 개수** — 키 `${role}:${name}`, 값 = 배정 순서대로의 팔 수
+   * ([beltLines] 와 길이가 같다). 배분기가 [seatRowsPerFace] 에서 차감할 양이다.
+   *
+   * 총합([requiredInserterCount])을 배정들에 어떻게 쪼갤지는 [insertingPlanner] 가 정한다 —
+   * 여기선 이미 쪼개진 결과만 받는다(배분기는 용량을 안 본다는 경계 유지).
+   * **미지정 = 배정당 1개**(옛 동작).
+   */
+  armsByPlacement?: Map<string, number[]>;
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -291,18 +320,54 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     assigned.set(line, [{ line, side: input.pipeSide!, clusterBeltDepth: 1, reach: undefined }]);
   }
 
-  // (B) 정책: 출력 먼저 출력면 확정(넘치면 입력면 잔여), 입력은 입력면 우선. 입력이
-  // 넘치면 E → (external 한정) 노출 N/S → 출력면 잔여(W) 순 — W-spill 을 최후로 미뤄
+  // ── 면별 좌석 행 장부 ──
+  // 벨트 자리와 **따로 세는 두 번째 자원**이다. 배정 하나는 벨트 슬롯 1개를 먹으면서 팔은
+  // 여러 개 앉힌다 — 그래서 슬롯이 남아도 좌석이 없어 그 면을 못 쓰는 일이 생긴다. 그럴 때
+  // 다음 면으로 넘어가는 게 이 장부의 존재 이유다(옛 코드엔 이 축이 아예 없었다).
+  // 미지정이면 무한 → 옛 동작 그대로(장부가 아무것도 막지 않는다).
+  const seatRowsOf = (side: PlannedSide): number => {
+    const rows = input.seatRowsPerFace;
+    if (!rows) return Infinity;
+    const base = side === "W" || side === "E" ? rows.WE : rows.NS;
+    // 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell] 이 먹는다 → 좌석 한 줄 감소.
+    return side === input.pipeSide && input.isJumpableToClusterPipe ? base - 1 : base;
+  };
+  const rowsLeft = new Map<PlannedSide, number>();
+  const rowsLeftOf = (side: PlannedSide): number => rowsLeft.get(side) ?? seatRowsOf(side);
+  const armsAt = (l: IoLine, i: number): number =>
+    input.armsByPlacement?.get(`${l.role}:${l.name}`)?.[i] ?? 1;
+
+  // (B) 정책: 출력이 출력면을 **먼저 고르고**(차면 입력면으로 넘어간다), 입력은 입력면 우선.
+  // 입력이 넘치면 E → (external 한정) 노출 N/S → 출력면 잔여(W) 순 — W-spill 을 최후로 미뤄
   // 상자가 부모-홉이 붐비는 채널 쪽에 태어나는 것을 피한다(kr-glass 갇힘의 원인).
   // 각 풀은 near→far 로 소비. 결과는 등장 순서를 보존해 낸다.
-  const take = (primary: Slot[], secondary: Slot[]): Slot =>
-    (primary.length ? primary.shift() : secondary.shift())!;
-  /** 줄 하나에 벨트 줄 수만큼 슬롯을 뽑아 배정을 만든다. 슬롯이 모자라면 면을 넘나든다. */
-  const place = (line: IoLine, pick: (i: number) => Slot): void => {
+  //
+  // 풀을 앞에서부터 훑되 **좌석이 남은 슬롯만** 집는다. 좌석이 모자라 건너뛴 슬롯은 풀에
+  // 남는다 — 팔이 적은 다른 줄이 나중에 쓸 수 있기 때문이다(자리를 낭비하지 않는다).
+  const takeSeat = (pools: Slot[][], arms: number): Slot | undefined => {
+    for (const pool of pools) {
+      const i = pool.findIndex((s) => rowsLeftOf(s.side) >= arms);
+      if (i < 0) continue;
+      const [slot] = pool.splice(i, 1);
+      rowsLeft.set(slot.side, rowsLeftOf(slot.side) - arms);
+      return slot;
+    }
+    return undefined;
+  };
+  /**
+   * 줄 하나에 벨트 줄 수만큼 슬롯을 뽑아 배정을 만든다. 슬롯이든 좌석이든 모자라면 다음
+   * 면으로 넘어가고, 어느 면에도 없으면 `overflow` 에 남겨 호출부가 complex 로 낸다.
+   */
+  let overflow: string | undefined;
+  const place = (line: IoLine, pools: Slot[][]): void => {
     const n = beltCountOf(line);
     const out: PlannedLine[] = [];
     for (let i = 0; i < n; i++) {
-      const slot = pick(i);
+      const slot = takeSeat(pools, armsAt(line, i));
+      if (!slot) {
+        overflow ??= `${line.role}:${line.name}`;
+        return;
+      }
       out.push({
         line,
         side: slot.side,
@@ -314,7 +379,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     assigned.set(line, out);
   };
   for (const line of beltLines.filter((l) => l.role === "output")) {
-    place(line, () => take(outPool, inPool));
+    place(line, [outPool, inPool]);
   }
   // 입력 처리 **순서**: 자식-공급(내부 간선) 먼저, external(raw) 나중.
   //
@@ -330,11 +395,12 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     ...beltLines.filter((l) => l.role === "input" && l.external),
   ];
   for (const line of inputsChildFedFirst) {
-    place(line, () =>
-      inPool.length ? inPool.shift()!
-      : line.external && nsPool.length ? nsPool.shift()!
-      : outPool.shift()!,
-    );
+    place(line, line.external ? [inPool, nsPool, outPool] : [inPool, outPool]);
+  }
+  // 벨트 자리는 [slotsNeeded] 게이트가 이미 봤으므로, 여기 걸리는 건 사실상 **좌석**이다 —
+  // 두 면의 좌석을 다 써도 팔이 남는 레시피. 정직하게 거절하고 다이렉트로 물러난다.
+  if (overflow) {
+    return { ok: false, complex: true, reason: `seats-exceed-capacity (${overflow})` };
   }
 
   // clusterBeltDepth = 운반량순 — (B) 가 정한 면은 유지하고, 같은 면 안에서 깊이/reach 만
@@ -559,26 +625,23 @@ export function insertingPlanner(
     return Math.max(1, belts, byRows);
   };
 
-  /** 팔을 배정들에 최대한 고르게 나눈다 — 앞쪽 배정이 나머지를 하나씩 더 받는다. */
+  /**
+   * 줄별 **배정마다의 팔 개수** — 배분기의 좌석 장부([PortPlannerInput.seatRowsPerFace])와
+   * 최종 [PlannedLine.requiredInserterCount] 가 **같은 수**를 봐야 한다. 그래서 여기서 한 번
+   * 쪼개 두 곳이 함께 읽는다(따로 계산하면 장부가 예산한 좌석과 실제로 앉는 팔이 어긋난다).
+   * 수량 미상인 줄은 넣지 않는다 → 양쪽 다 "배정당 1개"로 보수적으로 본다.
+   */
+  const armsByPlacement = new Map<string, number[]>();
+  /** 쪼개 둔 팔 개수를 계획의 배정들에 순서대로 단다(배정 순서 = 그 줄의 벨트 순서). */
   const armsOf = (plan: PortPlan): void => {
     if (!plan.ok) return;
-    const byKey = new Map<string, PlannedLine[]>();
+    const nth = new Map<string, number>();
     for (const planned of plan.lines) {
       if (planned.line.kind !== "belt") continue;
       const key = `${planned.line.role}:${planned.line.name}`;
-      (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(planned);
-    }
-    for (const group of byKey.values()) {
-      const total = armsTotalOf(group[0].line);
-      if (total === undefined) {
-        for (const p of group) p.requiredInserterCount = undefined; // 수량 미상 — 보류
-        continue;
-      }
-      const base = Math.floor(total / group.length);
-      const rem = total % group.length;
-      group.forEach((p, i) => {
-        p.requiredInserterCount = Math.max(1, base + (i < rem ? 1 : 0));
-      });
+      const i = nth.get(key) ?? 0;
+      nth.set(key, i + 1);
+      planned.requiredInserterCount = armsByPlacement.get(key)?.[i]; // 미상 = undefined(보류)
     }
   };
 
@@ -622,9 +685,58 @@ export function insertingPlanner(
     }
   }
 
+  // 배정 수가 확정됐으니 팔을 그 배정들에 쪼갠다. 이 결과를 배분기의 좌석 장부와 최종
+  // [PlannedLine] 이 **함께** 읽는다.
+  //
+  // **채워서 쪼갠다(고르게 아님).** 고르게 나누면 자리가 남는데도 굶는다: 팔 10개를 [5,5] 로
+  // 나누면 7행짜리 면에 2행씩 남기고, 그 남은 자리는 조각나서 다른 줄도 못 쓴다. [7,3] 으로
+  // 채우면 한 면을 비워 다음 줄에 통째로 넘겨줄 수 있다(2026-07-17 실측: kr-sand 가 [5,5] 라
+  // stone 4팔이 갈 곳을 잃었다 — [7,3] 이면 E 의 4행에 정확히 앉는다).
+  //
+  // 배정 하나가 받을 수 있는 팔은 **두 상한 중 작은 쪽**이다 — 섞으면 안 된다:
+  //  - **좌석**: 면 하나의 행보다 많이 앉을 수 없다.
+  //  - **벨트**: 그 배정의 벨트가 나르는 양보다 많이 집을 수 없다. 벨트가 여러 줄인 건 수요가
+  //    한 줄을 넘었다는 뜻이라, 한 줄에 팔을 몰면 그 벨트가 먼저 터진다.
+  const tapCap = capacity.tapCapacity;
+  for (const line of input.lines) {
+    if (line.kind !== "belt") continue;
+    const key = `${line.role}:${line.name}`;
+    const total = armsTotalOf(line);
+    if (total === undefined || tapCap === undefined || tapCap <= 0) continue; // 미상 — 지어내지 않는다
+    const belts = placementMap.get(key);
+    const n = belts?.length ?? 1;
+    /** 이 배정이 받을 수 있는 팔 상한(좌석 ∧ 벨트). 최소 1 — 배정이 있으면 팔은 있어야 한다. */
+    const capOf = (i: number): number => {
+      const beltArms = belts?.[i] ? Math.floor(belts[i].throughput / tapCap) : Infinity;
+      return Math.max(1, Math.min(rowsPerFace, beltArms));
+    };
+    // **합은 언제나 `total` 이다** — 상한에 막혀도 팔 개수를 깎지 않는다. 이건 협상 대상이
+    // 아닌 물리량이라([requiredInserterCount]), 깎아서 적어내면 그 계획은 "성공"이라 보고하며
+    // 조용히 굶는다(2026-07-16 실측의 근원). 마지막 배정이 남은 걸 다 받고, **안 들어가면**
+    // 좌석 장부가 거절해 다이렉트로 물러난다 — 정직한 실패.
+    //
+    // 그 대가: 마지막 배정이 자기 벨트 상한을 넘을 수 있다(팔은 앉는데 벨트가 못 나르는 경우).
+    // 벨트 축의 정밀화는 별도다 — 벨트 분할·합류가 없는 지금은 어차피 폴백뿐이다.
+    const arms: number[] = [];
+    let left = total;
+    for (let i = 0; i < n; i++) {
+      // 뒤에 남은 배정마다 최소 1개는 남겨 둔다 — 배정이 있는데 팔이 0이면 그 벨트는 헛것이다.
+      const give = i === n - 1 ? left : Math.max(1, Math.min(capOf(i), left - (n - i - 1)));
+      arms.push(give);
+      left -= give;
+    }
+    armsByPlacement.set(key, arms);
+  }
+
   // 간단한 레시피 판별 — slotsPerFace 를 빼면 탭 인서팅(기둥 클러스터 면 용량).
+  // **좌석 장부는 여기(탭)에만 준다** — 다이렉트는 항상 성립하는 폴백이어야 한다.
   const { slotsPerFace: _drop, ...tapInput } = input;
-  const tapPlan = planClusterPorts({ ...tapInput, beltLines: placementMap });
+  const tapPlan = planClusterPorts({
+    ...tapInput,
+    beltLines: placementMap,
+    seatRowsPerFace: input.slotsPerFace,
+    armsByPlacement,
+  });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
   armsOf(tapPlan);
 
@@ -640,8 +752,10 @@ export function insertingPlanner(
     }
   }
 
-  // **좌석 예산** — 한 면의 총 탭 수가 그 면의 좌석 행을 넘으면 탭 인서팅으로 못 앉힌다 →
-  // 다이렉트로 거른다(안전망). 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell]이 먹으므로 −1.
+  // **좌석 예산 재검** — 이제 배분기가 좌석 장부를 들고 배정하므로(seatRowsPerFace) 여기서
+  // 걸릴 일은 원칙적으로 없다. 그래도 남겨 둔다: 장부가 틀리면 **조용히 굶는 배치**가 나가는데,
+  // 그건 이 설계가 없애려던 바로 그 실패다. 걸리면 다이렉트로 물러난다(정직한 실패).
+  // 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell]이 먹으므로 −1.
   const jumpBeltOnPipeSide =
     !!input.isJumpableToClusterPipe &&
     tapPlan.lines.some((p) => p.line.kind === "belt" && p.side === input.pipeSide);

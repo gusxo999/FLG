@@ -79,16 +79,19 @@ export function makeMachineParamsLookup(
  * 자리 = **W/E 두 면의 좌석 행**(= 머신 높이 × 2). 기둥에서 N/S 면은 옆 머신 몸통이라
  * 못 쓴다(`MODULE_ROW_GAP = 0` — [modulePacking] 의 nsExposure 가 count=1 만 예외로 둔다).
  *
- * > **⚠ 이 자리는 지금 실제보다 후하다.** 여기선 한 줄의 팔이 W/E 를 **넘나들 수 있다고**
- * > 보고 14행을 쓰는데, [planClusterPorts] 는 아직 **줄 하나를 면 하나에** 붙박아서
- * > 실제 상한은 면당 7행이다. 그래서 이 비율이 "된다"고 해도 모듈이 좌석 예산에서 거절할
- * > 수 있다(→ 옛 경로). **W/E 퍼뜨리기가 들어오면 그때 이 수가 진실이 된다** — 그게 다음
- * > 작업이라 일부러 최종 모양으로 두었다. 지금 상태에서 이 비율은 **낙관 상한**이다.
+ * 14행(두 면 합)을 쓸 수 있는 건 한 줄의 팔이 **W/E 를 넘나들 수 있기** 때문이다
+ * ([PortPlannerInput.seatRowsPerFace] — 2026-07-17). 그 전엔 배분기가 줄 하나를 면 하나에
+ * 붙박아서 이 수가 **낙관 상한**이었다(비율이 "된다"고 해도 모듈이 좌석 예산에서 거절 → 옛 경로).
  *
  * 팔 개수는 **머신 수와 무관**하므로([requiredInserterCount]) 이 비율도 머신 수와 무관하다 —
  * 그래서 머신 수를 정하기 **전에** 계산할 수 있다(순환 없음).
+ *
+ * **두 곳이 이 함수를 함께 읽는다** — [makeMachineParamsLookup](머신 **수**를 늘려 보상)과
+ * [tryRunModulePipeline](배분기에 줄 **수요**를 넘김). 둘이 다른 속도를 믿으면 보상은 80%로
+ * 머신을 늘려놓고 배분기는 100% 수요의 팔을 요구해 **좌석에서 거절**당한다(2026-07-17 실측:
+ * kr-sand 가 13+5팔 > 14행으로 옛 경로 폴백. 80%면 10+4=14로 정확히 앉는다).
  */
-function machineSpeedFraction(
+export function machineSpeedFraction(
   recipe: Recipe,
   ent: Entity,
   craftingSpeed: number,
