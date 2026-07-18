@@ -26,6 +26,7 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
+import { allocateMachineLinks, type MachineLink } from "../module/allocateMachineLinks";
 import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
@@ -187,6 +188,37 @@ export interface PackResult {
 // ─────────────────────────────────────────────────────────────────────────────
 // 진입점
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 한 엣지(자식→부모, 한 품목)의 [MachineLink] 목록을 spec 의 rate·count 에서 유도.
+ * rate 나 처리량을 모르면 `undefined`(지어내지 않는다).
+ *
+ * **논리 층 — 좌표·전략 무관.** 자식 머신당 산출 = 클러스터 산출 ÷ 대수, 부모 머신당
+ * 수요 = 클러스터 수요 ÷ 대수. 인서터 처리량은 보수적으로 min(normal, long)([insertingPlanner]
+ * 의 tapCap 과 동일), 벨트는 가장 빠른 티어. Phase 2(출력 emit)가 이 결과를 소비한다.
+ */
+export function edgeMachineLinks(
+  child: NodeSpec,
+  parent: NodeSpec,
+  item: string,
+  config: PackConfig,
+): MachineLink[] | undefined {
+  const tp = config.throughput ? Math.min(config.throughput.normal, config.throughput.long) : 0;
+  const belt = config.belts?.[0]?.throughput ?? 0;
+  if (tp <= 0 || belt <= 0 || child.count <= 0 || parent.count <= 0) return undefined;
+  const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);
+  const inTotal = parent.supplyCapacity?.lineRates?.get(`input:${item}`);
+  if (outTotal === undefined || inTotal === undefined) return undefined;
+  return allocateMachineLinks({
+    childCount: child.count,
+    parentCount: parent.count,
+    childProduction: outTotal / child.count,
+    parentDemand: inTotal / parent.count,
+    item,
+    inserterThroughput: tp,
+    beltThroughput: belt,
+  });
+}
 
 export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
   const byId = new Map(specs.map((s) => [s.id, s]));
