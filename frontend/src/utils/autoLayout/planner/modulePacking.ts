@@ -262,11 +262,20 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
   // 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위.
   const IDENTITY: Orientation = { rotation: 0, reflect: false };
+  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [MachineLink] 목록.
+  // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
+  const outputLinksOf = (s: NodeSpec): MachineLink[] | undefined => {
+    if (!s.parentId) return undefined;
+    const product = productOf(s);
+    if (!product) return undefined;
+    return edgeMachineLinks(s, byId.get(s.parentId)!, product, config);
+  };
   const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule =>
     generateModule({
       ...toModuleInput(s, config, childFedItems(s)),
       lineEnds,
       nsExposure: nsExposureOf(s),
+      outputLinks: outputLinksOf(s),
     });
 
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
