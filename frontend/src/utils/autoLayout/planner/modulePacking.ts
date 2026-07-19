@@ -270,12 +270,27 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     if (!product) return undefined;
     return edgeMachineLinks(s, byId.get(s.parentId)!, product, config);
   };
+  // 입력 fan-in 링크 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 링크를 모은다.
+  // 같은 간선이라 자식의 outputLinks 와 같은 배열 → 링크 순서로 1:1 짝짓기가 성립.
+  const inputLinksOf = (s: NodeSpec): MachineLink[] | undefined => {
+    const kids = childIdsByParent.get(s.id) ?? [];
+    const links: MachineLink[] = [];
+    for (const cid of kids) {
+      const c = byId.get(cid)!;
+      const product = productOf(c);
+      if (!product) continue;
+      const l = edgeMachineLinks(c, s, product, config);
+      if (l) links.push(...l);
+    }
+    return links.length > 0 ? links : undefined;
+  };
   const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule =>
     generateModule({
       ...toModuleInput(s, config, childFedItems(s)),
       lineEnds,
       nsExposure: nsExposureOf(s),
       outputLinks: outputLinksOf(s),
+      inputLinks: inputLinksOf(s),
     });
 
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)

@@ -164,6 +164,13 @@ export interface ModuleInput {
    */
   outputLinks?: MachineLink[];
   /**
+   * **입력 fan-in 링크** — 이 노드의 입력을 자식 머신들이 어떻게 채우나. `outputLinks` 의
+   * 거울: 같은 [MachineLink] 를 부모(toMachine) 관점에서 본 것이다(같은 간선이라 같은 배열).
+   * 있으면 입력이 "줄당 트렁크 하나" 대신 **링크마다 입력 포트 하나**(toMachine 위치)로 나서,
+   * 자식 출력 포트와 **링크 순서로 1:1** 짝지어진다. 미지정이면 옛 트렁크 입력.
+   */
+  inputLinks?: MachineLink[];
+  /**
    * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
    * 프로토타입의 `fluid_boxes` 가 정하므로, **게임데이터를 보는 호출자**가 계산해 넘긴다
@@ -309,21 +316,33 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   //
   // 어느 쪽이든 **탐색이 없다** — 자리는 planner 가 이미 못박았고 방출기는 깔기만 한다.
   if (supply.mode === "tap") {
-    // 출력 fan-out — 링크가 있는 출력 줄은 "줄당 트렁크 하나"(병합) 대신 "머신당·목적지별
-    // belt"로 갈라 낸다(emitOutputLinks). 나머지 줄(입력·유체·링크 없는 출력)은 기존 탭.
-    const links = input.outputLinks ?? [];
-    const linkedItems = new Set(links.map((l) => l.item));
-    const isLinkedOut = (p: PlannedLine): boolean =>
-      p.line.role === "output" && p.line.kind === "belt" && linkedItems.has(p.line.name);
-    const restPlan = links.length > 0 ? { ok: true as const, lines: plan.lines.filter((p) => !isLinkedOut(p)) } : plan;
+    // 링크 기반 방출 — 출력은 fan-out(머신당·목적지별 belt), 입력은 fan-in(링크당 입력 포트).
+    // 링크가 있는 줄만 떼어 emitOutputLinks/emitInputLinks 로, 나머지(유체·링크 없는 줄)는 기존 탭.
+    const outLinks = input.outputLinks ?? [];
+    const inLinks = input.inputLinks ?? [];
+    const outItems = new Set(outLinks.map((l) => l.item));
+    const inItems = new Set(inLinks.map((l) => l.item));
+    const isLinked = (p: PlannedLine): boolean =>
+      p.line.kind === "belt" &&
+      ((p.line.role === "output" && outItems.has(p.line.name)) ||
+        (p.line.role === "input" && inItems.has(p.line.name)));
+    const restPlan =
+      outLinks.length + inLinks.length > 0
+        ? { ok: true as const, lines: plan.lines.filter((p) => !isLinked(p)) }
+        : plan;
     emitTapInserting({
       plan: restPlan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
       isJumpableToClusterPipe,
     });
-    if (links.length > 0) {
-      const lineOf = new Map(plan.lines.filter(isLinkedOut).map((p) => [p.line.name, p.line]));
-      emitOutputLinks({ links, lineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    const lineOf = new Map(plan.lines.map((p) => [`${p.line.role}:${p.line.name}`, p.line]));
+    if (outLinks.length > 0) {
+      const m = new Map([...lineOf].filter(([k]) => k.startsWith("output:")).map(([k, v]) => [k.slice(7), v]));
+      emitOutputLinks({ links: outLinks, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    }
+    if (inLinks.length > 0) {
+      const m = new Map([...lineOf].filter(([k]) => k.startsWith("input:")).map(([k, v]) => [k.slice(6), v]));
+      emitInputLinks({ links: inLinks, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
     }
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
@@ -651,6 +670,103 @@ function emitOutputLinks(args: {
       meta: {
         item: line.name, side: "W", laneDepth: 2, inserter: "normal",
         amount: line.amount, endPreference: input.lineEnds?.get(`output:${line.name}`),
+      },
+    });
+  }
+}
+
+/**
+ * **입력 fan-in 방출** — [emitOutputLinks] 의 거울. 링크마다 부모 머신(toMachine) 하나의
+ * 연속 좌석 k개에 입력 탭을 앉히고, 세로 belt 를 깔아 **E변(자식 쪽)으로** 포트 하나를 낸다.
+ * 자식 출력 포트와 **링크 순서로 1:1** 짝지어지도록 링크 순서대로 낸다.
+ *
+ * 기하(E면, 머신 origin (mx,my), base, k): 탭=faceCell d1 (mx+w, ...) 벨트에서 집어 머신에
+ * 넣음; belt=d2 세로(아래로 흐름 — 포트에서 받아 탭에 분배); 포트 인서터=d3, chest=d4(동).
+ */
+function emitInputLinks(args: {
+  links: MachineLink[];
+  lineOf: Map<string, IoLine>;
+  machines: Container[];
+  input: ModuleInput;
+  prefix: string;
+  occupancy: Set<string>;
+  cells: PlacedCell[];
+  chests: Container[];
+  inputPorts: ModulePort[];
+  unroutedLines: IoLine[];
+}): void {
+  const { links, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines } = args;
+  const ext = {
+    x0: Math.min(...machines.map((m) => m.origin.x)),
+    y0: Math.min(...machines.map((m) => m.origin.y)),
+    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
+    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
+  };
+  const face: PortFace = "E";
+  const usedRows = new Map<string, number>();
+  let seq = 0;
+
+  for (const link of links) {
+    const line = args.lineOf.get(link.item);
+    const m = machines[link.toMachine];
+    if (!line || !m) continue;
+    const k = Math.max(1, link.inserterCount);
+    const base = usedRows.get(m.id) ?? 0;
+    if (base + k > m.size.h) { unroutedLines.push(line); continue; } // 좌석 부족 → 폴백
+    usedRows.set(m.id, base + k);
+
+    const topT = m.origin.y + base;
+    const beltTop = faceCell(ext, face, 2, topT); // (x1+2, topT)
+    const seatCell = { x: beltTop.x + 1, y: beltTop.y }; // 포트 인서터 (x1+3)
+    const chestAt = { x: beltTop.x + 2, y: beltTop.y }; // 포트 상자 (x1+4)
+    const chestId = `${prefix}-input-${line.name}-${seq++}`;
+    const chest: Container = {
+      id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
+      origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "input",
+    };
+    const portPair: PortPair = { // 입력: 상자(소스) → belt → 머신
+      producer: { containerId: chestId, cell: { ...beltTop }, face, kind: "item" },
+      consumer: { containerId: m.id, cell: { ...beltTop }, face, kind: "item" },
+    };
+
+    const beltDir = vectorToDirection(0, 1); // 아래로 흐름(포트에서 받아 분배)
+    const beltCells: PlacedCell[] = [];
+    let blocked = false;
+    for (let t = 0; t < k; t++) {
+      const at = faceCell(ext, face, 2, m.origin.y + base + t);
+      if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
+      beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 후속
+    }
+    if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
+      unroutedLines.push(line);
+      continue;
+    }
+
+    for (let t = 0; t < k; t++) {
+      const seat = faceCell(ext, face, 1, m.origin.y + base + t); // (x1+1)
+      const pair: PortPair = {
+        producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
+        consumer: { containerId: m.id, cell: { ...seat }, face, kind: "item" },
+      };
+      cells.push(makeInserterCell(seat, { x: 1, y: 0 }, input.inserterEntityName, pair)); // 벨트(동)에서 집어 머신(서)로
+      occupancy.add(cellKey(seat.x, seat.y));
+    }
+    cells.push(
+      ...beltCells,
+      makeInserterCell(seatCell, { x: 1, y: 0 }, input.inserterEntityName, portPair), // 상자(동)에서 집어 belt(서)로
+      makeContainerCell(chest, chestAt),
+    );
+    for (const bc of beltCells) occupancy.add(cellKey(bc.x, bc.y));
+    occupancy.add(cellKey(seatCell.x, seatCell.y));
+    occupancy.add(cellKey(chestAt.x, chestAt.y));
+    chests.push(chest);
+
+    inputPorts.push({
+      line, anchor: { ...chestAt }, tapAnchor: { x: m.origin.x + m.size.w - 1, y: topT }, face,
+      moduleWayOuts: [], chest, cells: beltCells,
+      meta: {
+        item: line.name, side: "E", laneDepth: 2, inserter: "normal",
+        amount: line.amount, endPreference: input.lineEnds?.get(`input:${line.name}`),
       },
     });
   }
