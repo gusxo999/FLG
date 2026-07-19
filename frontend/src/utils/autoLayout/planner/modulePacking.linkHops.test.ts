@@ -67,7 +67,7 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
   // 부모 2대(머신당 18 = 팔 3 = 그릇 가득), 자식 2대(머신당 18 = 딱 한 그릇).
   // 물붓기: (c0→p0,3) 에서 c0 소진 → (c1→p1,3). 서로 다른 fromMachine → 안 묶임.
   // (자식 머신당 팔 3 = W면 3행 — 좌석 물리 성립. 머신당 6팔 수치는 W면에 못 앉아
-  //  planner 가 direct 로 떨어뜨리므로 이 테스트의 대상이 아니다.)
+  //  이제 E 면으로 넘어간다 — 아래 "거대 출력" 참고.)
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 2,
@@ -88,6 +88,49 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
     expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
     expect(parent.module.inputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
     expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
+  });
+
+  it("라우팅 실패 0", () => {
+    const hop = routeModuleHops(pack, {
+      beltEntityName: "transport-belt",
+      undergroundBeltEntityName: "underground-belt",
+      beltMaxUndergroundDistance: 4,
+    });
+    expect(hop.failures).toBe(0);
+  });
+});
+
+// 거대 출력 — 자식 머신 하나가 W면 좌석(3행)보다 많은 팔을 낸다. 넘친 그룹은 E 면으로
+// 넘어가고, 그 포트는 **왼쪽 부모까지 되돌아 나가야** 한다. 여기서 보는 것은 기하가 아니라
+// 그 되돌아 나가는 길이 **실제로 라우팅되는가**다.
+describe("거대 출력 — 넘친 그룹이 E 로 나가도 부모까지 이어진다", () => {
+  // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + E 3행).
+  // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
+  const specs: NodeSpec[] = [
+    {
+      id: "p", depth: 0, machine: M, count: 4,
+      lines: [inL("x"), outL("prod")],
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 72], ["output:prod", 24]]) },
+    },
+    {
+      id: "c", depth: 1, parentId: "p", machine: M, count: 2,
+      lines: [outL("x")],
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["output:x", 72]]) },
+    },
+  ];
+  const pack = packModuleTree(specs, config);
+  const child = pack.placements.find((pl) => pl.id === "c")!;
+
+  it("자식 머신마다 W 하나 + E 하나 — 팔을 깎지 않는다", () => {
+    const ports = child.module.outputPorts.filter((p) => p.line.name === "x");
+    expect(ports).toHaveLength(4);
+    expect(ports.filter((p) => p.face === "W")).toHaveLength(2);
+    expect(ports.filter((p) => p.face === "E")).toHaveLength(2);
+    expect(ports.reduce((s, p) => s + p.cells.length, 0)).toBe(12); // 팔 합 = 6×2
+  });
+
+  it("unrouted 0 — 넘쳤다고 줄을 버리지 않는다", () => {
+    expect(child.module.unroutedLines).toHaveLength(0);
   });
 
   it("라우팅 실패 0", () => {

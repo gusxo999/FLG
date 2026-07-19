@@ -128,3 +128,91 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
     expect(dup).toBe(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 면 넘나들기(거대 출력) — 머신 하나의 한 면에는 인서터가 h개까지만 앉는다(d1 칸이 그것뿐).
+// 팔이 그보다 많으면 반대 면으로 넘어간다. **팔을 깎지 않는다** — 깎으면 조용히 굶는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const linkedBase = {
+  machine: M,
+  count: 1,
+  inserterEntityName: "inserter",
+  beltEntityName: "transport-belt",
+  longInserter: { entityName: "long-handed-inserter", reach: 2 },
+  throughput: { normal: 2.4, long: 1.2 },
+  belts: [{ entityName: "transport-belt", throughput: 15 }],
+};
+
+describe("거대 출력 — W면이 차면 E면으로 넘어간다", () => {
+  // 머신 0 에서 팔 5개(그룹 3 + 그룹 2). W면 좌석은 h=3 뿐이다.
+  const mod = generateModule({
+    ...linkedBase,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
+      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }],
+    ],
+  } as ModuleInput);
+
+  it("두 그룹 다 살아남는다 (넘친 쪽을 버리지 않는다)", () => {
+    expect(mod.outputPorts).toHaveLength(2);
+    expect(mod.unroutedLines).toHaveLength(0);
+  });
+
+  it("첫 그룹은 W, 넘친 그룹은 E 로 나간다", () => {
+    expect(mod.outputPorts.map((p) => p.face)).toEqual(["W", "E"]);
+    expect(mod.outputPorts.map((p) => p.meta.side)).toEqual(["W", "E"]);
+  });
+
+  it("팔 합은 언제나 total (3+2)", () => {
+    expect(mod.outputPorts.map((p) => p.cells.length)).toEqual([3, 2]);
+  });
+
+  it("E 그룹의 상자는 머신 동쪽에 있다 (거울 기하)", () => {
+    const [w, e] = mod.outputPorts;
+    expect(w.anchor.x).toBeLessThan(0); // 머신 origin.x = 0
+    expect(e.anchor.x).toBeGreaterThan(M.w - 1);
+  });
+
+  it("셀 좌표가 겹치지 않는다", () => {
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) dup++;
+      seen.add(k);
+    }
+    expect(dup).toBe(0);
+  });
+});
+
+// 넘침이 **남의 선호 면**을 먼저 먹으면 안 된다. 출력을 통째로 먼저 처리하면 출력의 넘침이
+// E 를 2행 먹어 입력(팔 3개)이 앉을 자리를 잃는다 → 입력이 굶는다. 그래서 배정은 두 단계다:
+// ① 양쪽의 **선호 면** 수요 → ② 남은 자리를 넘침끼리.
+describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
+  const mod = generateModule({
+    ...linkedBase,
+    lines: [
+      { name: "gear", kind: "belt", role: "output" },
+      { name: "iron", kind: "belt", role: "input" },
+    ],
+    outputLinks: [
+      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
+      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과분
+    ],
+    inputLinks: [[{ fromMachine: 9, toMachine: 0, item: "iron", inserterCount: 3 }]],
+  } as ModuleInput);
+
+  it("입력은 선호 면(E)을 그대로 얻는다", () => {
+    const iron = mod.inputPorts.filter((p) => p.line.name === "iron");
+    expect(iron).toHaveLength(1);
+    expect(iron[0].face).toBe("E");
+    expect(iron[0].cells.length).toBe(3);
+  });
+
+  it("두 면이 다 차서 못 앉은 출력 그룹은 정직하게 unrouted", () => {
+    expect(mod.outputPorts).toHaveLength(1);
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("gear");
+  });
+});
