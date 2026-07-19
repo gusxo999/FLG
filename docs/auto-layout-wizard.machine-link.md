@@ -134,20 +134,56 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 구현 상태와 남은 순서
+## 구현 상태 — 2026-07-19 작업 중단 시점 (복귀용 스냅샷)
 
-**구현됨:**
-- [[용어사전#allocateMachineLinks|allocateMachineLinks]] — 순수 함수 + 테스트(`module/allocateMachineLinks.ts`). 물 붓기 규칙(입력 ceil / 출력 floor), 꼬리 부모 미세 부족까지 재현.
-- `craftsPerSec` 의 `speedFraction` 누락 수정(굶는 부모가 자식에게 안 먹을 양을 요구하던 버그).
+> **여기까지 왔고, 여기서 멈췄다.** 재개할 때 이 절만 읽으면 된다. 420 green · 골든 불변 ·
+> 타입 에러 기준선 21(+0) · 작업 트리 깨끗함.
 
-**남은 순서(기하 미착수):**
-1. `beltThroughput` 를 `PackConfig` 로 흘려 넣기(v1 이 벨트 처리량을 안 잼).
-2. `generateModule` 시그니처 변경 — 포트를 **자가 계산**에서 **링크에서 받기**로. `GeneratedModule` 은 형태·gap 소유하는 공간 상자로 남되 포트는 밖에서 받음.
-3. `pairHopPorts`(index-zip) 삭제 — 짝은 `allocateMachineLinks` 가 흐름으로 이미 만듦.
-4. gap 예약(모서리 포트 y 유도) + gap 폭을 부산물로.
-5. `HopSpec`/`seq` 를 `MachineLink` + `HopGeometry` 로 대체.
+### 커밋 사슬 (이번 작업, 시간순)
 
-**미결(곁가지):**
-- 유체 링크(`carrier: belt|pipe`) — MachineLink 는 아이템-벨트. 유체는 파이프.
-- raw 끝(외부 입력·최종 산출) — 한쪽 끝이 경계인 링크로 흡수(옛 `rawPorts`).
-- 포트를 4면에 어떻게 배치하나(면 배정 전략) — 기존 (B)·N/S 완화의 일반화.
+| 커밋 | 내용 |
+|---|---|
+| `bcf1178` | `craftsPerSec` 가 `speedFraction` 안 곱던 버그 — 굶는 부모가 자식에 안 먹을 양 요구(자식 128→64 재현) |
+| `c60cddf` | **`allocateMachineLinks`** 순수 함수 + 13 테스트 — 물붓기(부모 ceil/자식 floor), 예시(100/60.5/20/6) 전량 재현, 꼬리 부모 미세부족(60<60.5) 등재 |
+| `61fbea7`~ | 용어사전·본 문서 정정(클러스터=가벼운 배열, fan-in=기존 탭 재사용) |
+| Phase 1 | **`edgeMachineLinks`**(modulePacking.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateMachineLinks. rate 미상이면 undefined(지어내지 않음) |
+| `459f63e` | 출력 링크를 `ModuleInput.outputLinks` 까지 전달 |
+| Phase 2 | **`emitOutputLinks`**(clusterModule.ts) — 링크당 [머신 k좌석 탭 + 세로 belt + W꺾음 포트]. 셀 생성자 재사용, 그 위 emit 은 새로(링크 필드=논리, 셀 입력=기하, 겹침 0이라 그렇게 갈림) |
+| Phase 3 | **`emitInputLinks`**(E면 거울) + `ModuleInput.inputLinks` — 부모가 링크마다 입력 포트. **pairHopPorts 는 안 고침**: 양쪽이 링크 순서로 포트를 내니 index-zip 이 곧 링크 짝짓기 |
+| 마지막 | 통합 테스트 2건 — linkHops(count=2 fan-out↔fan-in↔홉 2, `routeModuleHops` 실패 0) + **realTree(advanced-circuit 다-노드 트리, 실패 0)** |
+
+### 갈림 조건 (핵심 — 어느 경로가 도는가)
+
+```
+rate(supplyCapacity.lineRates + config.throughput + config.belts) 있음
+   → edgeMachineLinks 가 링크 냄 → 새 emit (fan-out/fan-in, W/E 모서리 belt)
+rate 없음
+   → undefined → 옛 트렁크/탭 emit (골든·대부분의 옛 테스트가 이 경로)
+```
+
+**production(브라우저)은 moduleWizard 가 rate 를 항상 채우므로 count=1 포함 전부 새 경로다.**
+(count≥2 게이트 제안은 사용자가 기각 — 하드 교체 = 경로 하나. count=1 도 부모가 여럿이면
+fan-out 이므로 "count=1 은 fan-out 없다"는 내 말은 틀렸다: fan-out 은 **부모 대수**가 정한다.)
+
+### 안 한 것 (재개 지점, 위부터)
+
+1. **골든/커버리지 정렬** — 옛 골든은 rate 없이 돌아 **옛 경로만** 검사한다. production 이 타는
+   새 경로를 골든급으로 지키려면 rate 넣은 골든이 필요(realTree 테스트가 그 시작). ← **중단 직전 여기**
+2. **(나) 순서 우선 미구현** — emit 이 지금 링크 배열 순서대로만 앉힌다. 부모 Y 순 정렬(채널 교차
+   최소화)은 아직 없음. 사용자 결정: 순서 우선, 애매하면 사용자 선택으로 노출 가능.
+3. **거대 출력**(팔 > 머신 높이×면) — emit 이 unrouted 로 정직 폴백. N/S gap(모서리 포트 y =
+   gap 줄 순서, (B) 정책 재적용)은 미착수.
+4. **HopSpec/seq 제거** — 아직 존치(링크 짝짓기가 index-zip 을 그대로 쓰는 동안은 무해).
+5. **입력 트렁크 공유**(작은 입력을 벨트 하나로 여러 부모 머신 탭) — 링크 여러 개의 기하 병합. 미착수.
+6. **벨트 티어 선택** — 새 emit 은 기본 벨트 고정(`input.beltEntityName`).
+7. **유체 링크 / raw 끝** — 옛 경로가 그대로 처리 중(새 emit 은 belt 줄만 뗀다).
+8. **브라우저 실측** — 사용자 지시로 **최종 마지막에**. 실측 전 상태로는 production 배치가
+   바뀌어 있음을 유의(rate 항상 있음 → 새 기하).
+
+### 함정 (재개자가 밟기 쉬운 것)
+
+- `routeModuleHops(...).failures` 는 **숫자**다(배열 아님).
+- `IoLine` 에 `beltEntityName` 없음 — 그건 `PlannedLine` 필드.
+- 새 emit 의 포트는 [moduleHop](../frontend/src/utils/autoLayout/planner/moduleHop.ts) 계약
+  (`chest=anchor, seat=anchor−fv, trunkStart=anchor−2fv`)과 **검증 완료**(W면: x0−4/−3/−2, E면 거울).
+- 옛 탭 emit 은 죽은 코드가 아니라 **rate 없을 때의 폴백** — 지우려면 골든 정렬(1번)이 먼저.
