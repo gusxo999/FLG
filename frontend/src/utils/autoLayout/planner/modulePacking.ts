@@ -26,7 +26,12 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import { allocateMachineLinks, type MachineLink } from "../module/allocateMachineLinks";
+import {
+  allocateMachineLinks,
+  groupLinkBelts,
+  maxInsertersPerBelt,
+  type MachineLink,
+} from "../module/allocateMachineLinks";
 import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
@@ -220,6 +225,25 @@ export function edgeMachineLinks(
   });
 }
 
+/**
+ * 한 엣지의 링크를 **벨트 그룹**으로 — [groupLinkBelts] 트렁크 공유. 그룹 하나 = 벨트 하나 =
+ * 포트 한 쌍. cap = min(그릇, 자식 머신 좌석) — 그룹 전체가 자식 머신 하나의 면에 앉는다.
+ * 자식(출력 emit)과 부모(입력 emit)가 여기서 나온 **같은 그룹**을 받아 짝이 어긋나지 않는다.
+ */
+export function edgeLinkGroups(
+  child: NodeSpec,
+  parent: NodeSpec,
+  item: string,
+  config: PackConfig,
+): MachineLink[][] | undefined {
+  const links = edgeMachineLinks(child, parent, item, config);
+  if (!links || links.length === 0) return undefined;
+  // edgeMachineLinks 가 링크를 냈으면 throughput·belts 는 존재한다(같은 전제).
+  const tp = Math.min(config.throughput!.normal, config.throughput!.long);
+  const cap = Math.min(maxInsertersPerBelt(config.belts![0].throughput, tp), child.machine.h);
+  return groupLinkBelts(links, cap);
+}
+
 export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
   const byId = new Map(specs.map((s) => [s.id, s]));
   const childIdsByParent = new Map<string, string[]>();
@@ -264,25 +288,25 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const IDENTITY: Orientation = { rotation: 0, reflect: false };
   // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [MachineLink] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
-  const outputLinksOf = (s: NodeSpec): MachineLink[] | undefined => {
+  const outputLinksOf = (s: NodeSpec): MachineLink[][] | undefined => {
     if (!s.parentId) return undefined;
     const product = productOf(s);
     if (!product) return undefined;
-    return edgeMachineLinks(s, byId.get(s.parentId)!, product, config);
+    return edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
   };
-  // 입력 fan-in 링크 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 링크를 모은다.
-  // 같은 간선이라 자식의 outputLinks 와 같은 배열 → 링크 순서로 1:1 짝짓기가 성립.
-  const inputLinksOf = (s: NodeSpec): MachineLink[] | undefined => {
+  // 입력 fan-in 그룹 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 그룹을 모은다.
+  // 같은 간선에 같은 edgeLinkGroups 라 자식 쪽과 그룹이 일치 → 그룹 순서 1:1 짝짓기 성립.
+  const inputLinksOf = (s: NodeSpec): MachineLink[][] | undefined => {
     const kids = childIdsByParent.get(s.id) ?? [];
-    const links: MachineLink[] = [];
+    const groups: MachineLink[][] = [];
     for (const cid of kids) {
       const c = byId.get(cid)!;
       const product = productOf(c);
       if (!product) continue;
-      const l = edgeMachineLinks(c, s, product, config);
-      if (l) links.push(...l);
+      const g = edgeLinkGroups(c, s, product, config);
+      if (g) groups.push(...g);
     }
-    return links.length > 0 ? links : undefined;
+    return groups.length > 0 ? groups : undefined;
   };
   const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule =>
     generateModule({

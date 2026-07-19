@@ -61,6 +61,43 @@ export interface AllocateMachineLinksInput {
 const EPS = 1e-9;
 
 /**
+ * 그릇(규칙 3) — 벨트 하나에 붙일 수 있는 인서터 수. [allocateMachineLinks](벨트 쪼개기)와
+ * [groupLinkBelts](트렁크 공유)가 **같은 값**을 봐야 하므로 한 곳에 둔다.
+ */
+export function maxInsertersPerBelt(beltThroughput: number, inserterThroughput: number): number {
+  return Math.max(1, Math.floor(beltThroughput / inserterThroughput + EPS));
+}
+
+/**
+ * **트렁크 공유(기하 병합)** — 같은 (품목, 자식 머신)의 연속 링크를 그릇이 허락하는 만큼
+ * 벨트 하나로 묶는다. **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍.**
+ *
+ * 링크(회계)는 그대로다 — 누가 누구에게 얼마는 안 바뀌고, 그 벨트들이 **한 벨트를 나눠 탈
+ * 뿐**이다. 작은 입력(링크당 팔 1~2개)은 자연히 묶여 옛 입력 트렁크(벨트 하나가 부모 머신
+ * 여럿을 탭)가 되고, 큰 입력(링크가 이미 그릇을 채움)은 자연히 점대점으로 남는다 —
+ * 트렁크 vs 점대점의 **별도 판정이 없다**(그릇 규칙 하나가 가른다).
+ *
+ * 자식 출력 emit 과 부모 입력 emit 이 **같은 배열에 같은 cap 으로** 이 함수를 돌리므로
+ * 그룹이 양쪽에서 일치한다 → 그룹 단위 1:1 짝짓기(index-zip)가 유지된다.
+ *
+ * @param cap 그룹 인서터 합의 상한 — 호출자가 `min(그릇, 자식 머신 좌석)` 으로 준다
+ *            (그룹 전체가 자식 머신 하나의 면 좌석에 연속으로 앉아야 하므로).
+ */
+export function groupLinkBelts(links: MachineLink[], cap: number): MachineLink[][] {
+  const groups: MachineLink[][] = [];
+  for (const l of links) {
+    const g = groups[groups.length - 1];
+    const sum = g?.reduce((s, x) => s + x.inserterCount, 0) ?? 0;
+    if (g && g[0].item === l.item && g[0].fromMachine === l.fromMachine && sum + l.inserterCount <= cap) {
+      g.push(l);
+    } else {
+      groups.push([l]);
+    }
+  }
+  return groups;
+}
+
+/**
  * 자식 산출을 부모에게 나눠 [MachineLink] 목록으로 낸다. 순수 함수(입력만으로 결정).
  *
  * 자식·부모 손가락이 각자 위에서 아래로 훑으며 규칙 5(부모 올림)·6(자식 내림)으로 벨트를
@@ -72,9 +109,8 @@ export function allocateMachineLinks(input: AllocateMachineLinksInput): MachineL
   const links: MachineLink[] = [];
   if (tp <= 0) return links; // 인서터 처리량 미상 — 지어내지 않는다.
 
-  // 그릇(규칙 3): 벨트 하나에 붙일 수 있는 인서터 수 = floor(벨트 ÷ 인서터). 최소 1
-  // (벨트가 인서터 하나도 못 받으면 애초에 성립 불가지만, 방어적으로 1로 둬 무한루프 방지).
-  const maxPerBelt = Math.max(1, Math.floor(beltThroughput / tp + EPS));
+  // 그릇(규칙 3) — groupLinkBelts(트렁크 공유)와 같은 값을 봐야 하므로 공용 함수.
+  const maxPerBelt = maxInsertersPerBelt(beltThroughput, tp);
 
   // 각 머신의 남은 예산. 자식 = 아직 안 뺀 산출, 부모 = 아직 안 채운 필요량.
   const childLeft = Array.from({ length: Math.max(1, input.childCount) }, () => childProduction);

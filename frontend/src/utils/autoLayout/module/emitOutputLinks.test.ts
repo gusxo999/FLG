@@ -1,20 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "./clusterModule";
-import type { MachineLink } from "./allocateMachineLinks";
+import { groupLinkBelts, type MachineLink } from "./allocateMachineLinks";
 
-// 출력 fan-out 방출 검증 — 링크가 있으면 출력이 "줄당 트렁크 하나"가 아니라
-// "머신당·목적지별 belt"로 갈라 나온다. count≥2, W/E 에 앉는 중간 출력 케이스.
+// 출력 fan-out 방출 검증 — 링크 그룹(=벨트) 단위로 "머신당·목적지별" belt 가 갈라 나온다.
+// count≥2, W/E 에 앉는 중간 출력 케이스. 그룹핑은 packModuleTree(edgeLinkGroups)가 하므로
+// 여기선 같은 함수(groupLinkBelts)로 직접 만들어 넣는다.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
-// 자식 2대. 각 머신이 출력을 부모 여럿으로 갈라 낸다.
-//   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)   ← fan-out (한 머신, 두 목적지)
-//   머신1 → 부모1 (팔1)
-const links: MachineLink[] = [
+// 자식 2대. 머신0 이 부모0·부모1 로 갈라 낸다(fan-out).
+//   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)  → cap 3 이라 한 벨트로 묶임(트렁크 공유)
+//   머신1 → 부모1 (팔1)                        → 자기 벨트
+const flat: MachineLink[] = [
   { fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 1 },
   { fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 1 },
   { fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 1 },
 ];
+const groups = groupLinkBelts(flat, 3); // [[c0→p0, c0→p1], [c1→p1]]
 
 const base: ModuleInput = {
   machine: M,
@@ -35,25 +37,32 @@ const base: ModuleInput = {
       ["output:gear", 3],
     ]),
   },
-  outputLinks: links,
+  outputLinks: groups,
 };
 
-describe("emitOutputLinks — 출력 fan-out", () => {
+describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
   const mod = generateModule(base);
 
-  it("링크마다 출력 포트 하나 (머신당·목적지별 belt = fan-out)", () => {
-    // 링크 3개 → 출력 포트 3개. (옛 트렁크였다면 gear 포트 1개뿐)
-    expect(mod.outputPorts).toHaveLength(3);
+  it("그룹핑: 같은 자식 머신의 작은 링크들이 한 벨트로 묶인다", () => {
+    expect(groups.map((g) => g.length)).toEqual([2, 1]);
+  });
+
+  it("그룹마다 출력 포트 하나 (옛 트렁크였다면 gear 포트 1개뿐)", () => {
+    expect(mod.outputPorts).toHaveLength(2);
   });
 
   it("포트가 전부 W면으로 나간다 (부모 쪽으로 꺾임)", () => {
     expect(mod.outputPorts.every((p) => p.face === "W")).toBe(true);
   });
 
-  it("머신0 이 두 포트를 낸다 (한 머신 → 두 부모, 갈림길)", () => {
-    // 머신0 의 두 belt 는 서로 다른 행(base 0,1)에서 나가 anchor y 가 다르다.
-    const ys = mod.outputPorts.map((p) => p.anchor.y).sort((a, b) => a - b);
-    expect(new Set(ys).size).toBe(3); // 세 포트가 서로 다른 행
+  it("두 벨트가 서로 다른 행에서 나간다", () => {
+    const ys = mod.outputPorts.map((p) => p.anchor.y);
+    expect(new Set(ys).size).toBe(2);
+  });
+
+  it("머신0 벨트는 팔 2개(그룹 합), 머신1 벨트는 팔 1개", () => {
+    // 벨트 셀 수 = 팔 수(연속 좌석 k행을 덮는 세로 belt).
+    expect(mod.outputPorts.map((p) => p.cells.length).sort()).toEqual([1, 2]);
   });
 
   it("셀 좌표가 겹치지 않는다 (occupancy 충돌 0)", () => {

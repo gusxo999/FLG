@@ -161,15 +161,17 @@ export interface ModuleInput {
    * 부모를 봐야 정해지므로 부모-무시인 generateModule 이 못 만든다 — 트리를 아는
    * packModuleTree 가 계산해 넣는다. **있으면 출력 방출이 "줄당 트렁크 하나"(fan-out 병합)
    * 대신 "머신당·목적지별 벨트"로 갈라 나간다.** 미지정(rate 미상 등)이면 옛 트렁크 방출.
+   *
+   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([groupLinkBelts] 트렁크 공유). 작은 링크들은
+   * 한 벨트에 묶이고(옛 입력 트렁크의 재현), 큰 링크는 혼자 탄다(점대점). 링크(회계)는 그대로.
    */
-  outputLinks?: MachineLink[];
+  outputLinks?: MachineLink[][];
   /**
-   * **입력 fan-in 링크** — 이 노드의 입력을 자식 머신들이 어떻게 채우나. `outputLinks` 의
-   * 거울: 같은 [MachineLink] 를 부모(toMachine) 관점에서 본 것이다(같은 간선이라 같은 배열).
-   * 있으면 입력이 "줄당 트렁크 하나" 대신 **링크마다 입력 포트 하나**(toMachine 위치)로 나서,
-   * 자식 출력 포트와 **링크 순서로 1:1** 짝지어진다. 미지정이면 옛 트렁크 입력.
+   * **입력 fan-in 그룹** — `outputLinks` 의 거울: 같은 간선의 같은 그룹을 부모(toMachine)
+   * 관점에서 받은 것. 그룹마다 입력 트렁크 하나(그룹의 toMachine 들을 세로로 관통하는 벨트 +
+   * 머신별 탭)가 나서, 자식 출력 벨트와 **그룹 순서로 1:1** 짝지어진다. 미지정=옛 트렁크 입력.
    */
-  inputLinks?: MachineLink[];
+  inputLinks?: MachineLink[][];
   /**
    * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
@@ -320,8 +322,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // 링크가 있는 줄만 떼어 emitOutputLinks/emitInputLinks 로, 나머지(유체·링크 없는 줄)는 기존 탭.
     const outLinks = input.outputLinks ?? [];
     const inLinks = input.inputLinks ?? [];
-    const outItems = new Set(outLinks.map((l) => l.item));
-    const inItems = new Set(inLinks.map((l) => l.item));
+    const outItems = new Set(outLinks.flat().map((l) => l.item));
+    const inItems = new Set(inLinks.flat().map((l) => l.item));
     const isLinked = (p: PlannedLine): boolean =>
       p.line.kind === "belt" &&
       ((p.line.role === "output" && outItems.has(p.line.name)) ||
@@ -584,7 +586,7 @@ function tapSeatDepth(planned: PlannedLine): number {
  *   chest(포트) = (mx-4, my+base)
  */
 function emitOutputLinks(args: {
-  links: MachineLink[];
+  links: MachineLink[][];
   lineOf: Map<string, IoLine>;
   machines: Container[];
   input: ModuleInput;
@@ -606,14 +608,15 @@ function emitOutputLinks(args: {
   const usedRows = new Map<string, number>();
   let seq = 0;
 
-  for (const link of links) {
-    const line = args.lineOf.get(link.item);
-    const m = machines[link.fromMachine];
+  for (const group of links) {
+    const line = args.lineOf.get(group[0].item);
+    const m = machines[group[0].fromMachine];
     if (!line || !m) continue;
-    const k = Math.max(1, link.inserterCount);
+    // 그룹 = 벨트 하나. 팔 수 = 그룹 링크들의 합(트렁크 공유 — 자식 쪽은 늘 한 머신이다).
+    const k = Math.max(1, group.reduce((s, l) => s + l.inserterCount, 0));
     const base = usedRows.get(m.id) ?? 0;
     if (base + k > m.size.h) {
-      unroutedLines.push(line); // 좌석 부족(거대 출력) → 폴백(N/S gap 은 Phase 6)
+      unroutedLines.push(line); // 좌석 부족(거대 출력) → 폴백(N/S gap 은 후속)
       continue;
     }
     usedRows.set(m.id, base + k);
@@ -684,7 +687,7 @@ function emitOutputLinks(args: {
  * 넣음; belt=d2 세로(아래로 흐름 — 포트에서 받아 탭에 분배); 포트 인서터=d3, chest=d4(동).
  */
 function emitInputLinks(args: {
-  links: MachineLink[];
+  links: MachineLink[][];
   lineOf: Map<string, IoLine>;
   machines: Container[];
   input: ModuleInput;
@@ -706,66 +709,100 @@ function emitInputLinks(args: {
   const usedRows = new Map<string, number>();
   let seq = 0;
 
-  for (const link of links) {
-    const line = args.lineOf.get(link.item);
-    const m = machines[link.toMachine];
-    if (!line || !m) continue;
-    const k = Math.max(1, link.inserterCount);
-    const base = usedRows.get(m.id) ?? 0;
-    if (base + k > m.size.h) { unroutedLines.push(line); continue; } // 좌석 부족 → 폴백
-    usedRows.set(m.id, base + k);
+  // 레인 후보 — 트렁크 벨트의 깊이와 그 깊이를 집을 수 있는 탭 인서터(옛 reach-레인 모델).
+  // 트렁크 하나가 여러 머신의 행을 관통하므로, 다른 그룹의 트렁크와 같은 깊이에서 겹치면
+  // 다음 레인(긴팔)으로 물러난다. 후보가 다 막히면 그룹 전체 unrouted(정직 폴백).
+  const lanes: { d: number; inserter: string }[] = [
+    { d: 2, inserter: input.inserterEntityName },
+    ...(input.longInserter
+      ? [{ d: 1 + input.longInserter.reach, inserter: input.longInserter.entityName }]
+      : []),
+  ];
 
-    const topT = m.origin.y + base;
-    const beltTop = faceCell(ext, face, 2, topT); // (x1+2, topT)
-    const seatCell = { x: beltTop.x + 1, y: beltTop.y }; // 포트 인서터 (x1+3)
-    const chestAt = { x: beltTop.x + 2, y: beltTop.y }; // 포트 상자 (x1+4)
+  for (const group of links) {
+    const line = args.lineOf.get(group[0].item);
+    if (!line) continue;
+    // 머신별 팔 수 — 그룹 링크들의 회계 합산. 링크(누가 얼마)는 그대로, 벨트만 공유한다.
+    const armsBy = new Map<number, number>();
+    for (const l of group) armsBy.set(l.toMachine, (armsBy.get(l.toMachine) ?? 0) + Math.max(1, l.inserterCount));
+
+    // 좌석 행 배정(머신별 연속, toMachine 오름차순 = 위→아래). 확정은 성공 후(트랜잭션) —
+    // 중간에 넘치면 usedRows 를 더럽히지 않고 그룹째 물러난다.
+    const seats: { m: Container; rows: number[] }[] = [];
+    let overflow = false;
+    for (const [mi, arms] of [...armsBy].sort((a, b) => a[0] - b[0])) {
+      const m = machines[mi];
+      const base = m ? (usedRows.get(m.id) ?? 0) : 0;
+      if (!m || base + arms > m.size.h) { overflow = true; break; }
+      seats.push({ m, rows: Array.from({ length: arms }, (_, t) => m.origin.y + base + t) });
+    }
+    if (overflow) { unroutedLines.push(line); continue; }
+    const allRows = seats.flatMap((s) => s.rows);
+    const topT = Math.min(...allRows);
+    const botT = Math.max(...allRows);
+
+    // 좌석(d1)이 막히면 폴백. 레인은 막히면 다음 후보로.
+    const seatCells = allRows.map((t) => faceCell(ext, face, 1, t));
+    if (seatCells.some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); continue; }
+    let lane: { d: number; inserter: string } | undefined;
+    for (const cand of lanes) {
+      const span: { x: number; y: number }[] = [];
+      for (let t = topT; t <= botT; t++) span.push(faceCell(ext, face, cand.d, t));
+      const bt = faceCell(ext, face, cand.d, topT);
+      span.push({ x: bt.x + 1, y: bt.y }, { x: bt.x + 2, y: bt.y }); // 포트 인서터·상자
+      if (span.every((c) => !occupancy.has(cellKey(c.x, c.y)))) { lane = cand; break; }
+    }
+    if (!lane) { unroutedLines.push(line); continue; }
+
+    // ── 배치 확정 ──
+    for (const s of seats) usedRows.set(s.m.id, (usedRows.get(s.m.id) ?? 0) + s.rows.length);
+    const beltTop = faceCell(ext, face, lane.d, topT);
+    const seatCell = { x: beltTop.x + 1, y: beltTop.y }; // 포트 인서터
+    const chestAt = { x: beltTop.x + 2, y: beltTop.y }; // 포트 상자(anchor)
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
     const chest: Container = {
       id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
       origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "input",
     };
-    const portPair: PortPair = { // 입력: 상자(소스) → belt → 머신
+    const portPair: PortPair = { // 입력: 상자(소스) → 트렁크 belt → 머신들
       producer: { containerId: chestId, cell: { ...beltTop }, face, kind: "item" },
-      consumer: { containerId: m.id, cell: { ...beltTop }, face, kind: "item" },
+      consumer: { containerId: seats[0].m.id, cell: { ...beltTop }, face, kind: "item" },
     };
 
-    const beltDir = vectorToDirection(0, 1); // 아래로 흐름(포트에서 받아 분배)
+    const beltDir = vectorToDirection(0, 1); // 아래로 — 포트(위)에서 받아 탭들에 분배
     const beltCells: PlacedCell[] = [];
-    let blocked = false;
-    for (let t = 0; t < k; t++) {
-      const at = faceCell(ext, face, 2, m.origin.y + base + t);
-      if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
+    for (let t = topT; t <= botT; t++) {
+      const at = faceCell(ext, face, lane.d, t);
       beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 후속
+      occupancy.add(cellKey(at.x, at.y));
     }
-    if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
-      unroutedLines.push(line);
-      continue;
-    }
-
-    for (let t = 0; t < k; t++) {
-      const seat = faceCell(ext, face, 1, m.origin.y + base + t); // (x1+1)
-      const pair: PortPair = {
-        producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
-        consumer: { containerId: m.id, cell: { ...seat }, face, kind: "item" },
-      };
-      cells.push(makeInserterCell(seat, { x: 1, y: 0 }, input.inserterEntityName, pair)); // 벨트(동)에서 집어 머신(서)로
-      occupancy.add(cellKey(seat.x, seat.y));
+    for (const s of seats) {
+      for (const t of s.rows) {
+        const seat = faceCell(ext, face, 1, t);
+        const pair: PortPair = {
+          producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
+          consumer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
+        };
+        cells.push(makeInserterCell(seat, { x: 1, y: 0 }, lane.inserter, pair)); // 트렁크(동)에서 집어 머신(서)로
+        occupancy.add(cellKey(seat.x, seat.y));
+      }
     }
     cells.push(
       ...beltCells,
       makeInserterCell(seatCell, { x: 1, y: 0 }, input.inserterEntityName, portPair), // 상자(동)에서 집어 belt(서)로
       makeContainerCell(chest, chestAt),
     );
-    for (const bc of beltCells) occupancy.add(cellKey(bc.x, bc.y));
     occupancy.add(cellKey(seatCell.x, seatCell.y));
     occupancy.add(cellKey(chestAt.x, chestAt.y));
     chests.push(chest);
 
     inputPorts.push({
-      line, anchor: { ...chestAt }, tapAnchor: { x: m.origin.x + m.size.w - 1, y: topT }, face,
+      line, anchor: { ...chestAt },
+      tapAnchor: { x: seats[0].m.origin.x + seats[0].m.size.w - 1, y: topT }, face,
       moduleWayOuts: [], chest, cells: beltCells,
       meta: {
-        item: line.name, side: "E", laneDepth: 2, inserter: "normal",
+        item: line.name, side: "E", laneDepth: lane.d,
+        inserter: lane.d === 2 ? "normal" : "long",
         amount: line.amount, endPreference: input.lineEnds?.get(`input:${line.name}`),
       },
     });
