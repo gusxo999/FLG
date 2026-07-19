@@ -206,6 +206,13 @@ export interface PortPlannerInput {
    */
   seatRowsPerFace?: { WE: number; NS: number };
   /**
+   * **면별로 이미 쓰인 좌석 행** — [seatRowsPerFace] 에서 뺀다. 링크 방출
+   * (`emitOutputLinks`/`emitInputLinks`)이 tap/direct 와 **무관하게** 먼저 자리를 잡으므로,
+   * 남은 줄들은 그만큼 줄어든 예산을 봐야 한다. 안 빼면 배분기가 이미 찬 자리를 또 배정해
+   * 셀이 겹친다. 미지정 = 0(옛 동작).
+   */
+  seatRowsUsed?: Partial<Record<PlannedSide, number>>;
+  /**
    * 줄별 **배정마다의 팔 개수** — 키 `${role}:${name}`, 값 = 배정 순서대로의 팔 수
    * ([beltLines] 와 길이가 같다). 배분기가 [seatRowsPerFace] 에서 차감할 양이다.
    *
@@ -330,7 +337,9 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     if (!rows) return Infinity;
     const base = side === "W" || side === "E" ? rows.WE : rows.NS;
     // 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell] 이 먹는다 → 좌석 한 줄 감소.
-    return side === input.pipeSide && input.isJumpableToClusterPipe ? base - 1 : base;
+    const afterPipe = side === input.pipeSide && input.isJumpableToClusterPipe ? base - 1 : base;
+    // 링크 방출이 먼저 먹은 행을 뺀다([seatRowsUsed]).
+    return Math.max(0, afterPipe - (input.seatRowsUsed?.[side] ?? 0));
   };
   const rowsLeft = new Map<PlannedSide, number>();
   const rowsLeftOf = (side: PlannedSide): number => rowsLeft.get(side) ?? seatRowsOf(side);
@@ -601,8 +610,11 @@ export function insertingPlanner(
   // 있다. 그래서 탭 계획이든 다이렉트 계획이든 **같은 수**를 달고 나간다 — 다이렉트가 이 수를
   // 모른 채 팔 하나만 놓고 "성공"이라 보고하던 게 굶는 배치의 원인이었다(2026-07-16 실측).
   // 유체 줄은 인서터가 없다(파이프로 흐른다) — 대상이 아니다.
-  /** 면 하나에 앉힐 수 있는 좌석 행 수(= 그 면의 둘레 칸). 모르면 무한(옛 동작). */
-  const rowsPerFace = input.slotsPerFace?.WE ?? Infinity;
+  // 면 하나에 앉힐 수 있는 좌석 행 수(= 그 면의 둘레 칸). 모르면 무한(옛 동작).
+  // 링크 방출이 먼저 먹은 행은 뺀다 — W/E 예산이 한 수라 **보수적으로 큰 쪽**을 뺀다
+  // (정밀한 면별 차감은 planClusterPorts 의 [seatRowsUsed] 가 따로 한다).
+  const linkUsedWE = Math.max(input.seatRowsUsed?.W ?? 0, input.seatRowsUsed?.E ?? 0);
+  const rowsPerFace = input.slotsPerFace ? Math.max(1, input.slotsPerFace.WE - linkUsedWE) : Infinity;
 
   /**
    * 줄별 **팔 개수(머신 한 대 전체)** — 배정 수와 무관한 물리량. 아래에서 배정들에 **나눠**

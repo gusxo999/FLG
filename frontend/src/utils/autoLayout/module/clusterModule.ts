@@ -287,12 +287,40 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     (ft.pipeMaxUndergroundDistance ?? 0) >= maxReach + 1 &&
     plannerInserters.length <= input.machine.h - 1;
 
+  // ── 링크 줄 분리 ──────────────────────────────────────────────────────────
+  // 링크가 있는 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
+  // tap/direct 판정 대상이 아니다. planner 에서 빼고, 대신 그 줄이 **먹을 좌석을 예약**해
+  // 남은 줄들이 정확한 예산을 보게 한다. 안 빼면 두 문제가 생긴다:
+  //  ① 링크 줄이 좌석을 넘겨 planner 가 direct 로 떨어지면, 링크 방출이 안 불려 포트가 통째로
+  //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샌다 — 2026-07-19 실측).
+  //  ② planner 가 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
+  const outLinkGroups = input.outputLinks ?? [];
+  const inLinkGroups = input.inputLinks ?? [];
+  const linkedKeys = new Set([
+    ...outLinkGroups.flat().map((l) => `output:${l.item}`),
+    ...inLinkGroups.flat().map((l) => `input:${l.item}`),
+  ]);
+  /** 머신 하나가 그 면에서 최대 몇 행을 링크에 내주나(면 예산에서 뺄 값). */
+  const maxRowsPerMachine = (perMachine: Map<number, number>): number =>
+    perMachine.size === 0 ? 0 : Math.max(...perMachine.values());
+  const outRows = new Map<number, number>();
+  for (const g of outLinkGroups) {
+    const arms = g.reduce((s, l) => s + Math.max(1, l.inserterCount), 0);
+    outRows.set(g[0].fromMachine, (outRows.get(g[0].fromMachine) ?? 0) + arms);
+  }
+  const inRows = new Map<number, number>();
+  for (const l of inLinkGroups.flat()) {
+    inRows.set(l.toMachine, (inRows.get(l.toMachine) ?? 0) + Math.max(1, l.inserterCount));
+  }
+  const seatRowsUsed = { W: maxRowsPerMachine(outRows), E: maxRowsPerMachine(inRows) };
+
   const plannerInput = {
-    lines: plannedLines,
+    lines: plannedLines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)),
     inserters: plannerInserters,
     outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
     nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
     slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
+    seatRowsUsed, // 링크 방출이 먼저 먹는 행
     pipeSide: input.fluidTrunk?.side, // 유체가 붙는 면.
     isJumpableToClusterPipe, // true=좌석 살림(일반 면), false=옛 스파인(케이스 B).
     belts: input.belts,
@@ -309,6 +337,19 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
+  // ── 링크 방출 — tap/direct **이전에, 모드와 무관하게** ─────────────────────
+  // 링크 줄은 planner 를 안 거쳤고(위에서 뺐다) 자기 좌석·벨트·포트를 스스로 놓는다.
+  // 먼저 놓아야 occupancy 가 채워져, 아래 나머지 줄 방출이 그 자리를 피한다.
+  const lineOf = new Map(plannedLines.map((l) => [`${l.role}:${l.name}`, l]));
+  if (outLinkGroups.length > 0) {
+    const m = new Map(outLinkGroups.flat().map((l) => [l.item, lineOf.get(`output:${l.item}`)!]));
+    emitOutputLinks({ links: outLinkGroups, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+  }
+  if (inLinkGroups.length > 0) {
+    const m = new Map(inLinkGroups.flat().map((l) => [l.item, lineOf.get(`input:${l.item}`)!]));
+    emitInputLinks({ links: inLinkGroups, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+  }
+
   // ── 방출 ────────────────────────────────────────────────────────────────────
   // [insertingPlanner] 의 판정에 따라 갈라진다:
   //
@@ -318,34 +359,12 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   //
   // 어느 쪽이든 **탐색이 없다** — 자리는 planner 가 이미 못박았고 방출기는 깔기만 한다.
   if (supply.mode === "tap") {
-    // 링크 기반 방출 — 출력은 fan-out(머신당·목적지별 belt), 입력은 fan-in(링크당 입력 포트).
-    // 링크가 있는 줄만 떼어 emitOutputLinks/emitInputLinks 로, 나머지(유체·링크 없는 줄)는 기존 탭.
-    const outLinks = input.outputLinks ?? [];
-    const inLinks = input.inputLinks ?? [];
-    const outItems = new Set(outLinks.flat().map((l) => l.item));
-    const inItems = new Set(inLinks.flat().map((l) => l.item));
-    const isLinked = (p: PlannedLine): boolean =>
-      p.line.kind === "belt" &&
-      ((p.line.role === "output" && outItems.has(p.line.name)) ||
-        (p.line.role === "input" && inItems.has(p.line.name)));
-    const restPlan =
-      outLinks.length + inLinks.length > 0
-        ? { ok: true as const, lines: plan.lines.filter((p) => !isLinked(p)) }
-        : plan;
+    // 나머지 줄(유체·링크 없는 줄)만 — 링크 줄은 위에서 이미 놓았고 plan 에도 없다.
     emitTapInserting({
-      plan: restPlan, machines, input, prefix, occupancy,
+      plan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
       isJumpableToClusterPipe,
     });
-    const lineOf = new Map(plan.lines.map((p) => [`${p.line.role}:${p.line.name}`, p.line]));
-    if (outLinks.length > 0) {
-      const m = new Map([...lineOf].filter(([k]) => k.startsWith("output:")).map(([k, v]) => [k.slice(7), v]));
-      emitOutputLinks({ links: outLinks, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
-    }
-    if (inLinks.length > 0) {
-      const m = new Map([...lineOf].filter(([k]) => k.startsWith("input:")).map(([k, v]) => [k.slice(6), v]));
-      emitInputLinks({ links: inLinks, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
-    }
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }

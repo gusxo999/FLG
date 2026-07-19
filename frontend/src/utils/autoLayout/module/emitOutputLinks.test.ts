@@ -80,3 +80,51 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
     expect(mod.unroutedLines.filter((l) => l.role === "output")).toHaveLength(0);
   });
 });
+
+// 2026-07-19 등재했던 갭의 회귀 테스트 — 링크 방출이 tap 분기 안에만 있어서, 링크 없는 줄이
+// 좌석을 넘겨 모듈이 direct 로 떨어지면 **링크 포트가 통째로 사라졌다**(자식 direct + 부모 tap
+// → 포트 모양이 어긋나 홉이 샘). 이제 링크 방출은 모드 판정 **이전에, 무관하게** 돈다.
+describe("링크 방출은 tap/direct 판정과 무관하다", () => {
+  const mod = generateModule({
+    machine: M,
+    count: 1,
+    lines: [
+      { name: "heavy", kind: "belt", role: "input" }, // 좌석 초과 유발(링크 없음)
+      { name: "gear", kind: "belt", role: "output" }, // 링크 줄
+    ],
+    inserterEntityName: "inserter",
+    beltEntityName: "transport-belt",
+    longInserter: { entityName: "long-handed-inserter", reach: 2 },
+    throughput: { normal: 6, long: 6 },
+    belts: [{ entityName: "transport-belt", throughput: 20 }],
+    supplyCapacity: {
+      tapCapacity: 6,
+      lineRates: new Map([["input:heavy", 60], ["output:gear", 6]]), // heavy = 팔 10개 → 좌석 초과
+    },
+    outputLinks: [[{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 1 }]],
+  });
+
+  it("링크 없는 줄이 좌석을 넘겨 모듈은 direct 로 떨어진다", () => {
+    expect(mod.supply?.mode).toBe("direct");
+  });
+
+  it("그래도 링크 출력 포트는 그대로 나온다 — 개수만이 아니라 **모양**이 링크다", () => {
+    const gear = mod.outputPorts.filter((p) => p.line.name === "gear");
+    expect(gear).toHaveLength(1);
+    // 개수로는 옛 버그를 못 잡는다 — 옛 코드도 direct 방출로 gear 포트를 하나 냈다.
+    // 구분은 모양: 링크 포트는 **자기 벨트**를 갖고(anchor 는 그 벨트 바깥 2칸),
+    // 다이렉트 포트는 벨트가 없다(cells: []).
+    expect(gear[0].cells.length).toBeGreaterThan(0);
+  });
+
+  it("링크가 먼저 먹은 좌석을 나머지 줄이 안 밟는다 (셀 충돌 0)", () => {
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) dup++;
+      seen.add(k);
+    }
+    expect(dup).toBe(0);
+  });
+});
