@@ -152,7 +152,7 @@ const config: PackConfig = {
   channelGeometry: true,
 };
 
-// modulePipeline.golden 과 동형(advanced-circuit 실측 트리).
+// advanced-circuit 실측 트리와 동형.
 const specs: NodeSpec[] = [
   {
     id: "n0-advanced-circuit", depth: 0, machine: M, count: 1,

@@ -10,10 +10,9 @@
  * **출력**해 눈으로 비교한다(`VITEST_PRINT_METRICS=1`).
  *
  * **이 파일에 남은 단언은 하나뿐이다** — 다른 데 없는 것만 둔다. 물류 성립·결정성·포트 수는
- * [oneToOneGuarantee](./oneToOneGuarantee.test.ts) 와
- * [modulePipeline.golden](./modulePipeline.golden.test.ts) 이 **같은 트리·같은 count 로**
- * 이미 못 박고 있다. 예전엔 그걸 여기서 한 번 더 검사했는데, 자를 하나 고칠 때마다 네 파일이
- * 같이 빨개질 뿐 새로 잡히는 건 없었다.
+ * [oneToOneGuarantee](./oneToOneGuarantee.test.ts) 가 **같은 트리·같은 count 로** 이미 못 박고
+ * 있다. 예전엔 그걸 여기서 한 번 더 검사했는데, 자를 하나 고칠 때마다 여러 파일이 같이
+ * 빨개질 뿐 새로 잡히는 건 없었다.
  */
 import { describe, it, expect } from "vitest";
 import { measurePipeline, formatMetrics, type PipelineMetrics } from "./pipelineMetrics";
@@ -40,7 +39,7 @@ const hopConfig: HopConfig = {
   beltMaxUndergroundDistance: 4,
 };
 
-/** advanced-circuit 동형 트리 — golden·보장 테스트와 같은 트리(자를 통일한다). */
+/** advanced-circuit 동형 트리 — 보장 테스트와 같은 트리(자를 통일한다). */
 const mk = (c0: number, c1: number, c2: number): NodeSpec[] => [
   { id: "n0", depth: 0, machine: M, count: c0, lines: [inL("copper-cable", 4), inL("electronic-circuit", 2), inL("kr-components", 2), outL("advanced-circuit", 1)] },
   { id: "n1", depth: 1, parentId: "n0", machine: M, count: c1, lines: [inL("plastic-bar", 4), inL("kr-silicon", 2), inL("kr-glass", 2), outL("kr-components", 4)] },
