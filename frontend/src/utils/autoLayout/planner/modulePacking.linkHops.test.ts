@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
+import { routeModuleHops } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
 
 // 끝단 통합 — count≥2 에서 출력 fan-out(자식) ↔ 입력 fan-in(부모)이 링크 순서대로
@@ -51,5 +52,14 @@ describe("packModuleTree — 링크 기반 fan-out/fan-in 홉", () => {
 
   it("x 포트가 raw 로 남지 않는다 (전부 짝지어짐)", () => {
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
+  });
+
+  it("홉이 실제로 라우팅된다 (moduleHop 실패 0)", () => {
+    const hop = routeModuleHops(pack, {
+      beltEntityName: "transport-belt",
+      undergroundBeltEntityName: "underground-belt",
+      beltMaxUndergroundDistance: 4,
+    });
+    expect(hop.failures).toBe(0);
   });
 });
