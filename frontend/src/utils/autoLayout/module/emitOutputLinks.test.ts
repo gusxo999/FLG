@@ -131,12 +131,14 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 면 넘나들기(거대 출력) — 머신 하나의 한 면에는 인서터가 h개까지만 앉는다(d1 칸이 그것뿐).
-// 팔이 그보다 많으면 반대 면으로 넘어간다. **팔을 깎지 않는다** — 깎으면 조용히 굶는다.
+// 팔이 그보다 많으면 **N/S(gap)** 로 넘어간다. 반대 옆면(E)이 아닌 이유: E 로 넘기면 벨트가
+// 채널 반대쪽에서 출발해 **되돌아올 길이 없다**. gap 으로 넘기면 가로 벨트가 서쪽 변까지 와서
+// 90° 꺾이고, 그 꺾이는 칸이 곧 평범한 W 포트다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const linkedBase = {
   machine: M,
-  count: 1,
+  count: 2,
   inserterEntityName: "inserter",
   beltEntityName: "transport-belt",
   longInserter: { entityName: "long-handed-inserter", reach: 2 },
@@ -144,8 +146,8 @@ const linkedBase = {
   belts: [{ entityName: "transport-belt", throughput: 15 }],
 };
 
-describe("거대 출력 — W면이 차면 E면으로 넘어간다", () => {
-  // 머신 0 에서 팔 5개(그룹 3 + 그룹 2). W면 좌석은 h=3 뿐이다.
+describe("거대 출력 — W면이 차면 gap 으로 넘어간다", () => {
+  // 머신 0 에서 팔 5개(그룹 3 + 그룹 2). W면 좌석은 h=3 뿐 → 둘째 그룹은 아래 gap 으로.
   const mod = generateModule({
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
@@ -160,19 +162,24 @@ describe("거대 출력 — W면이 차면 E면으로 넘어간다", () => {
     expect(mod.unroutedLines).toHaveLength(0);
   });
 
-  it("첫 그룹은 W, 넘친 그룹은 E 로 나간다", () => {
-    expect(mod.outputPorts.map((p) => p.face)).toEqual(["W", "E"]);
-    expect(mod.outputPorts.map((p) => p.meta.side)).toEqual(["W", "E"]);
+  it("둘 다 W 로 나간다 — gap 그룹도 모서리에서 꺾여 평범한 W 포트가 된다", () => {
+    expect(mod.outputPorts.map((p) => p.face)).toEqual(["W", "W"]);
+    expect(mod.outputPorts.map((p) => p.meta.side)).toEqual(["W", "W"]);
   });
 
   it("팔 합은 언제나 total (3+2)", () => {
     expect(mod.outputPorts.map((p) => p.cells.length)).toEqual([3, 2]);
   });
 
-  it("E 그룹의 상자는 머신 동쪽에 있다 (거울 기하)", () => {
-    const [w, e] = mod.outputPorts;
-    expect(w.anchor.x).toBeLessThan(0); // 머신 origin.x = 0
-    expect(e.anchor.x).toBeGreaterThan(M.w - 1);
+  it("gap 이 열린다 — 머신 두 대가 더 이상 밀착이 아니다", () => {
+    const [m0, m1] = mod.machines;
+    expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBe(2); // 좌석 1줄 + 가로 벨트 1줄
+  });
+
+  it("gap 포트는 gap 행에 선다 (머신 행이 아니다)", () => {
+    const [m0] = mod.machines;
+    const corner = mod.outputPorts[1];
+    expect(corner.anchor.y).toBeGreaterThanOrEqual(m0.origin.y + m0.size.h);
   });
 
   it("셀 좌표가 겹치지 않는다", () => {
@@ -187,9 +194,7 @@ describe("거대 출력 — W면이 차면 E면으로 넘어간다", () => {
   });
 });
 
-// 넘침이 **남의 선호 면**을 먼저 먹으면 안 된다. 출력을 통째로 먼저 처리하면 출력의 넘침이
-// E 를 2행 먹어 입력(팔 3개)이 앉을 자리를 잃는다 → 입력이 굶는다. 그래서 배정은 두 단계다:
-// ① 양쪽의 **선호 면** 수요 → ② 남은 자리를 넘침끼리.
+// 넘침이 **남의 선호 면**을 먼저 먹으면 안 된다 — 배정은 ① 양쪽의 선호 면 ② 남은 gap 순이다.
 describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
   const mod = generateModule({
     ...linkedBase,
@@ -211,8 +216,8 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
     expect(iron[0].cells.length).toBe(3);
   });
 
-  it("두 면이 다 차서 못 앉은 출력 그룹은 정직하게 unrouted", () => {
-    expect(mod.outputPorts).toHaveLength(1);
-    expect(mod.unroutedLines.map((l) => l.name)).toContain("gear");
+  it("출력 넘침은 gap 으로 가고 아무도 안 굶는다", () => {
+    expect(mod.outputPorts).toHaveLength(2);
+    expect(mod.unroutedLines).toHaveLength(0);
   });
 });

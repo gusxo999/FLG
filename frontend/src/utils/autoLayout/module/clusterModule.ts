@@ -209,13 +209,25 @@ export interface ModuleInput {
  */
 export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
+  const count = Math.max(1, input.count);
+
+  // ── 링크 면 배정 — **머신을 놓기 전에** ────────────────────────────────────
+  // 순서가 뒤집힌 이유: gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고, **gap 폭 = 그
+  // gap 을 지나는 가로 벨트 수**다. 폭이 곧 머신 좌표를 정하므로 좌표보다 면이 먼저다.
+  // 이 단계는 팔 **수**만 본다(좌표 없음) — 논리 층이 기하를 안 보는 그 성질 그대로다.
+  const outLinkGroups = input.outputLinks ?? [];
+  const inLinkGroups = input.inputLinks ?? [];
+  const faceLedger = new Map<string, number>();
+  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, (l) => l.fromMachine, "W", faceLedger);
+  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, (l) => l.toMachine, "E", faceLedger);
+  // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
+  spillLinkFacesToGap(input.machine, count, outLinkGroups, (l) => l.fromMachine, faceLedger, outFaces);
+  spillLinkFacesToGap(input.machine, count, inLinkGroups, (l) => l.toMachine, faceLedger, inFaces);
+  const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
+
   const layout = layoutCluster(
-    {
-      w: input.machine.w,
-      h: input.machine.h,
-      count: Math.max(1, input.count),
-    },
-    MODULE_ROW_GAP,
+    { w: input.machine.w, h: input.machine.h, count },
+    rowGaps.some((g) => g > 0) ? rowGaps : MODULE_ROW_GAP,
   );
 
   const machines: Container[] = layout.positions.map((pos, i) => ({
@@ -294,22 +306,15 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   //  ① 링크 줄이 좌석을 넘겨 planner 가 direct 로 떨어지면, 링크 방출이 안 불려 포트가 통째로
   //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샌다 — 2026-07-19 실측).
   //  ② planner 가 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
-  const outLinkGroups = input.outputLinks ?? [];
-  const inLinkGroups = input.inputLinks ?? [];
   const linkedKeys = new Set([
     ...outLinkGroups.flat().map((l) => `output:${l.item}`),
     ...inLinkGroups.flat().map((l) => `input:${l.item}`),
   ]);
-  //
-  // 좌석 배정은 **방출보다 먼저** — 두 방출기가 같은 면을 다투기 때문이다. 출력은 W, 입력은 E
-  // 를 선호하되 면이 차면 반대 면으로 넘어간다(팔을 깎으면 머신이 조용히 굶는다). 선호 면
-  // 수요를 양쪽 다 먼저 앉힌 뒤에 넘침끼리 남은 자리를 다퉈야 늦게 도는 쪽이 안 굶는다.
-  const linkSeatLedger = new Map<string, number>();
-  const outSeats = allocateLinkSeats(machines, outLinkGroups, (l) => l.fromMachine, ["W", "E"], linkSeatLedger);
-  const inSeats = allocateLinkSeats(machines, inLinkGroups, (l) => l.toMachine, ["E", "W"], linkSeatLedger);
-  spillLinkSeats(machines, outLinkGroups, (l) => l.fromMachine, "E", linkSeatLedger, outSeats);
-  spillLinkSeats(machines, inLinkGroups, (l) => l.toMachine, "W", linkSeatLedger, inSeats);
-  const seatRowsUsed = seatRowsByFace(linkSeatLedger);
+  // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
+  const placeLedger = new Map<string, number>();
+  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger);
+  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger);
+  const seatRowsUsed = seatRowsByFace(faceLedger);
 
   const plannerInput = {
     lines: plannedLines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)),
@@ -340,11 +345,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const lineOf = new Map(plannedLines.map((l) => [`${l.role}:${l.name}`, l]));
   if (outLinkGroups.length > 0) {
     const m = new Map(outLinkGroups.flat().map((l) => [l.item, lineOf.get(`output:${l.item}`)!]));
-    emitOutputLinks({ links: outLinkGroups, seats: outSeats.seats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    emitOutputLinks({ links: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
   }
   if (inLinkGroups.length > 0) {
     const m = new Map(inLinkGroups.flat().map((l) => [l.item, lineOf.get(`input:${l.item}`)!]));
-    emitInputLinks({ links: inLinkGroups, seats: inSeats.seats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+    emitInputLinks({ links: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -588,13 +593,28 @@ function tapSeatDepth(planned: PlannedLine): number {
 }
 
 /**
- * 링크 그룹 하나가 실제로 앉은 자리 — **어느 면**과, 머신마다 **어느 행들**.
- * 그룹 = 벨트 하나라 면은 그룹당 하나다(세로 벨트가 두 면에 걸칠 수는 없다).
+ * 링크 그룹 하나가 앉을 **면** — 좌표가 생기기 **전에** 팔 수만으로 정한다.
+ *
+ * 순서가 이렇게 뒤집힌 이유: N/S 면(=gap)에 앉는 그룹은 gap 안에 가로 벨트 한 줄을 놓고,
+ * **gap 폭 = 그 gap 을 지나는 가로 벨트 수**다. 폭이 머신 좌표를 정하므로, 좌표를 알기 전에
+ * 면부터 정해야 한다(폭은 우리가 고르는 값이 아니라 배정의 부산물).
  */
-interface LinkSeats {
+interface LinkFacePlan {
+  /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */
   face: PortFace;
-  /** 머신 index → 그 머신에서 이 그룹이 쓰는 절대 y 행들(연속). */
-  rows: Map<number, number[]>;
+  /** N/S 일 때 가로 벨트를 놓을 gap index — 머신 `gap` 과 `gap+1` 사이. */
+  gap?: number;
+  /** 이 그룹이 쓰는 머신 index → 팔 수. */
+  arms: Map<number, number>;
+}
+
+/**
+ * 링크 그룹 하나가 실제로 앉은 자리 — 면 + 머신마다 쓰는 **면 위 위치** `t`.
+ * `t` 는 [faceCell] 과 같은 뜻이다: W/E 면이면 y(행), N/S 면이면 x(열).
+ */
+interface LinkSeats extends LinkFacePlan {
+  /** 머신 index → 그 머신 면에서 이 그룹이 쓰는 연속 `t` 값들. */
+  slots: Map<number, number[]>;
 }
 
 /** 좌석 장부의 열쇠 — 머신 하나의 한 면. 면마다 예산이 따로다(`machine.h` 행). */
@@ -602,93 +622,138 @@ function seatKey(machineIndex: number, face: PortFace): string {
   return `${machineIndex}:${face}`;
 }
 
+/** 그룹이 머신마다 몇 팔을 쓰나. */
+function armsByMachine(group: MachineLink[], machineOf: (l: MachineLink) => number): Map<number, number> {
+  const by = new Map<number, number>();
+  for (const l of group) {
+    const mi = machineOf(l);
+    by.set(mi, (by.get(mi) ?? 0) + Math.max(1, l.inserterCount));
+  }
+  return by;
+}
+
+/** gap 하나가 한쪽 면에서 쓰는 줄 수 — 좌석 1 + 가로 벨트 1. (레인 늘리기는 후속.) */
+const GAP_ROWS_PER_SIDE = 2;
+
 /**
- * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(성공해도 확정은 호출자가 한다).
- * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다. 하나라도 넘치면
- * `undefined` — 벨트 하나를 반만 옮길 수는 없다.
+ * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
+ * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
+ * 옮길 수는 없다.
+ *
+ * 면마다 한계가 다르다:
+ *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다.
+ *  - **N/S(gap)**: 머신 위/아래 면의 d1 칸 = `machine.w` 개. v1 은 **면당 그룹 하나**
+ *    (가로 벨트 한 줄만 깐다 — 레인 두 줄(긴팔)은 후속). 그리고 그 방향에 **gap 이 실제로
+ *    있어야** 한다: 맨 위 머신에 N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
  */
-function seatLinkGroup(
-  machines: Container[],
+function tryLinkFace(
+  machine: { w: number; h: number },
+  count: number,
   group: MachineLink[],
   machineOf: (l: MachineLink) => number,
   face: PortFace,
   used: Map<string, number>,
-): Map<number, number[]> | undefined {
-  const armsBy = new Map<number, number>();
-  for (const l of group) {
-    const mi = machineOf(l);
-    armsBy.set(mi, (armsBy.get(mi) ?? 0) + Math.max(1, l.inserterCount));
+): LinkFacePlan | undefined {
+  const arms = armsByMachine(group, machineOf);
+  for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
+
+  if (face === "N" || face === "S") {
+    // gap 벨트는 머신 하나의 면만 훑는다(가로라 기둥을 관통할 수 없다).
+    if (arms.size !== 1) return undefined;
+    const [mi, k] = [...arms][0];
+    const gap = face === "S" ? mi : mi - 1;
+    if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
+    if ((used.get(seatKey(mi, face)) ?? 0) > 0) return undefined; // v1: 면당 한 줄
+    if (k > machine.w) return undefined;
+    return { face, gap, arms };
   }
-  const rows = new Map<number, number[]>();
-  for (const [mi, arms] of [...armsBy].sort((a, b) => a[0] - b[0])) {
-    const m = machines[mi];
-    if (!m) return undefined;
-    const base = used.get(seatKey(mi, face)) ?? 0;
-    if (base + arms > m.size.h) return undefined; // 이 면은 찼다 → 호출자가 다음 면을 본다
-    rows.set(mi, Array.from({ length: arms }, (_, t) => m.origin.y + base + t));
+
+  for (const [mi, k] of arms) {
+    if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
   }
-  return rows;
+  return { face, arms };
 }
 
-/** [seatLinkGroup] 이 낸 자리를 장부에 확정한다. */
-function commitLinkSeats(rows: Map<number, number[]>, face: PortFace, used: Map<string, number>): void {
-  for (const [mi, r] of rows) {
-    const k = seatKey(mi, face);
-    used.set(k, (used.get(k) ?? 0) + r.length);
+/** [tryLinkFace] 가 낸 배정을 장부에 확정한다. */
+function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>): void {
+  for (const [mi, k] of plan.arms) {
+    const key = seatKey(mi, plan.face);
+    used.set(key, (used.get(key) ?? 0) + k);
   }
 }
 
 /**
- * **링크 좌석 배정 — 선호 면부터 채우고, 차면 그 자리에서 넘어간다.**
+ * **링크 면 배정 — 선호 면부터 채우고, 차면 gap 으로 넘어간다.**
  *
  * 머신 하나의 한 면에는 인서터가 `machine.h` 개까지만 앉는다(d1 칸이 그것뿐이다). 팔이 그보다
- * 많으면(거대 출력) **다른 면으로 넘길 수밖에 없다** — 중간 머신은 위아래가 이웃에 막혀
- * (`MODULE_ROW_GAP = 0`) W/E 두 면이 전부이므로, 넘어갈 곳은 반대 면 하나다.
+ * 많으면(거대 출력) 다른 면으로 넘길 수밖에 없다. **넘어갈 곳은 N/S(gap) 뿐이다:**
+ * 반대 옆면(E)으로 넘기면 벨트가 채널 반대쪽에서 출발해 **되돌아올 길이 없다**(gap 이 0 이면
+ * 클러스터를 통째로 돌아야 한다). N/S 로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서
+ * 90° 꺾이고, **그 꺾이는 칸이 곧 평범한 W 포트**가 된다 — 채널 장부가 이미 아는 모양이다.
  *
  * 두 단계로 나눈 이유(굶주림 방지): 출력은 W, 입력은 E 를 선호한다. 출력을 통째로 먼저
- * 처리하면 출력의 넘침이 입력의 **선호 면**을 먼저 먹어 입력이 굶는다. 그래서
+ * 처리하면 출력의 넘침이 gap 을 먼저 먹어 입력이 굶는다. 그래서
  *  - 1단계: 출력·입력 **양쪽의 선호 면 수요**를 먼저 앉히고,
- *  - 2단계: 그러고 남은 자리를 넘침끼리 다툰다.
+ *  - 2단계: 그러고 남은 gap 을 넘침끼리 다툰다.
  *
- * 못 앉은 그룹은 `undefined` — 방출기가 정직하게 `unrouted` 로 낸다(N/S gap 은 후속).
+ * 못 앉은 그룹은 `undefined` — 방출기가 정직하게 `unrouted` 로 낸다.
  */
-function allocateLinkSeats(
-  machines: Container[],
+function allocateLinkFaces(
+  machine: { w: number; h: number },
+  count: number,
   groups: MachineLink[][],
   machineOf: (l: MachineLink) => number,
-  faces: [prefer: PortFace, spill: PortFace],
+  prefer: PortFace,
   used: Map<string, number>,
-): { seats: (LinkSeats | undefined)[]; deferred: number[] } {
-  const seats: (LinkSeats | undefined)[] = groups.map(() => undefined);
+): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
+  const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const rows = seatLinkGroup(machines, g, machineOf, faces[0], used);
-    if (rows) {
-      commitLinkSeats(rows, faces[0], used);
-      seats[i] = { face: faces[0], rows };
+    const plan = tryLinkFace(machine, count, g, machineOf, prefer, used);
+    if (plan) {
+      commitLinkFace(plan, used);
+      plans[i] = plan;
     } else deferred.push(i);
   });
-  return { seats, deferred };
+  return { plans, deferred };
 }
 
-/** [allocateLinkSeats] 의 2단계 — 선호 면이 찬 그룹들을 반대 면의 남은 자리에 앉힌다. */
-function spillLinkSeats(
-  machines: Container[],
+/**
+ * [allocateLinkFaces] 의 2단계 — 선호 면이 찬 그룹을 gap 으로 넘긴다.
+ * 아래 gap(S)을 먼저 본다: 링크 수열이 위→아래 단조라 아래쪽이 뒤에 오는 목적지와 가깝다.
+ */
+function spillLinkFacesToGap(
+  machine: { w: number; h: number },
+  count: number,
   groups: MachineLink[][],
   machineOf: (l: MachineLink) => number,
-  spill: PortFace,
   used: Map<string, number>,
-  out: { seats: (LinkSeats | undefined)[]; deferred: number[] },
+  out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
 ): void {
   for (const i of out.deferred) {
-    const rows = seatLinkGroup(machines, groups[i], machineOf, spill, used);
-    if (!rows) continue; // 두 면 다 찼다 → unrouted
-    commitLinkSeats(rows, spill, used);
-    out.seats[i] = { face: spill, rows };
+    for (const face of ["S", "N"] as const) {
+      const plan = tryLinkFace(machine, count, groups[i], machineOf, face, used);
+      if (!plan) continue;
+      commitLinkFace(plan, used);
+      out.plans[i] = plan;
+      break;
+    }
   }
 }
 
-/** 면마다 링크가 먹은 **최대 행 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값. */
+/**
+ * **gap 폭 = 그 gap 을 지나는 가로 벨트 수에서 유도.** 우리가 고르는 값이 아니다.
+ * 한쪽 면이 쓰면 좌석 1 + 벨트 1 = 2줄, 양쪽이 쓰면 4줄.
+ */
+function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
+  const rows = new Array(Math.max(0, count - 1)).fill(0);
+  for (const list of plans)
+    for (const p of list)
+      if (p && p.gap !== undefined) rows[p.gap] += GAP_ROWS_PER_SIDE;
+  return rows;
+}
+
+/** 면마다 링크가 먹은 **최대 좌석 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값. */
 function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, number>> {
   const by: Record<string, number> = {};
   for (const [k, v] of used) {
@@ -696,6 +761,31 @@ function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, 
     by[face] = Math.max(by[face] ?? 0, v);
   }
   return { W: by.W ?? 0, E: by.E ?? 0 };
+}
+
+/**
+ * 면 배정(팔 수)에 좌표를 입힌다 — 머신이 놓인 뒤에 부른다.
+ * `t` 의 뜻은 [faceCell] 과 같다: W/E 면이면 y(행), N/S 면이면 x(열).
+ */
+function placeLinkSeats(
+  machines: Container[],
+  plans: (LinkFacePlan | undefined)[],
+  used: Map<string, number>,
+): (LinkSeats | undefined)[] {
+  return plans.map((plan) => {
+    if (!plan) return undefined;
+    const slots = new Map<number, number[]>();
+    for (const [mi, k] of [...plan.arms].sort((a, b) => a[0] - b[0])) {
+      const m = machines[mi];
+      if (!m) return undefined;
+      const key = seatKey(mi, plan.face);
+      const base = used.get(key) ?? 0;
+      used.set(key, base + k);
+      const origin = plan.face === "N" || plan.face === "S" ? m.origin.x : m.origin.y;
+      slots.set(mi, Array.from({ length: k }, (_, t) => origin + base + t));
+    }
+    return { ...plan, slots };
+  });
 }
 
 /**
@@ -726,12 +816,6 @@ function emitOutputLinks(args: {
   unroutedLines: IoLine[];
 }): void {
   const { links, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines } = args;
-  const ext = {
-    x0: Math.min(...machines.map((m) => m.origin.x)),
-    y0: Math.min(...machines.map((m) => m.origin.y)),
-    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
-    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
-  };
   let seq = 0;
 
   links.forEach((group, gi) => {
@@ -746,27 +830,37 @@ function emitOutputLinks(args: {
     // 출력 그룹은 늘 자식 머신 **하나**다(fan-out 은 목적지가 갈릴 뿐 출발은 한 대).
     const face = plan.face;
     const fv = faceVector(face);
-    const rows = plan.rows.get(group[0].fromMachine)!;
+    const rows = plan.slots.get(group[0].fromMachine)!;
+    // depth 는 **그 머신의 면**에서 잰다 — 가운데 머신의 N/S 면은 클러스터 끝면이 아니다.
+    const mExt = { x0: m.origin.x, y0: m.origin.y, x1: m.origin.x + m.size.w - 1, y1: m.origin.y + m.size.h - 1 };
 
-    const topT = rows[0]; // 출구 행(가장 위)
-    const beltTop = faceCell(ext, face, 2, topT);
-    const seatCell = { x: beltTop.x + fv.x, y: beltTop.y + fv.y }; // 출구 인서터
-    const chestAt = { x: beltTop.x + 2 * fv.x, y: beltTop.y + 2 * fv.y }; // 포트 상자
+    // 출구는 **언제나 W**다. W 면 좌석이면 세로 벨트가 그대로 서쪽을 보고, N/S(gap) 좌석이면
+    // 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90° 꺾인다 — **그 꺾이는 칸이 곧 평범한 W
+    // 포트**다(모서리 포트). 그래서 채널 장부가 새 모양을 배울 필요가 없다.
+    const portFace: PortFace = "W";
+    const pfv = faceVector(portFace);
+    const topT = rows[0];
+    const belt0 = faceCell(mExt, face, 2, topT); // 벨트 줄의 시작 칸
+    // 트렁크 끝(= 홉 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 맨 서쪽.
+    const trunkStart = face === "W" ? belt0 : { x: m.origin.x, y: belt0.y };
+    const seatCell = { x: trunkStart.x + pfv.x, y: trunkStart.y + pfv.y }; // 출구 인서터
+    const chestAt = { x: trunkStart.x + 2 * pfv.x, y: trunkStart.y + 2 * pfv.y }; // 포트 상자
     const chestId = `${prefix}-output-${line.name}-${seq++}`;
     const chest: Container = {
       id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
       origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "output",
     };
     const portPair: PortPair = {
-      producer: { containerId: m.id, cell: { ...beltTop }, face, kind: "item" },
-      consumer: { containerId: chestId, cell: { ...beltTop }, face, kind: "item" },
+      producer: { containerId: m.id, cell: { ...trunkStart }, face: portFace, kind: "item" },
+      consumer: { containerId: chestId, cell: { ...trunkStart }, face: portFace, kind: "item" },
     };
 
-    const beltDir = vectorToDirection(0, -1); // 위로 흐름 — 출구(topT)가 맨 위
+    // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W 면은 위로, N/S 면은 서쪽으로.
+    const beltDir = face === "W" ? vectorToDirection(0, -1) : vectorToDirection(-1, 0);
     const beltCells: PlacedCell[] = [];
     let blocked = false;
     for (const t of rows) {
-      const at = faceCell(ext, face, 2, t);
+      const at = faceCell(mExt, face, 2, t);
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
       beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 선택은 후속
     }
@@ -775,10 +869,10 @@ function emitOutputLinks(args: {
       return;
     }
 
-    // 픽업 = 안쪽(−fv): 탭은 머신에서 집어 belt 에, 출구 인서터는 belt 에서 집어 chest 에.
+    // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로).
     const inward = { x: -fv.x, y: -fv.y };
     for (const t of rows) {
-      const seat = faceCell(ext, face, 1, t);
+      const seat = faceCell(mExt, face, 1, t);
       const pair: PortPair = {
         producer: { containerId: m.id, cell: { ...seat }, face, kind: "item" },
         consumer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
@@ -788,7 +882,8 @@ function emitOutputLinks(args: {
     }
     cells.push(
       ...beltCells,
-      makeInserterCell(seatCell, inward, input.inserterEntityName, portPair),
+      // 출구 인서터는 **포트 면**을 따른다(belt 에서 집어 chest 로) — N/S 좌석이어도 서쪽.
+      makeInserterCell(seatCell, { x: -pfv.x, y: -pfv.y }, input.inserterEntityName, portPair),
       makeContainerCell(chest, chestAt),
     );
     for (const bc of beltCells) occupancy.add(cellKey(bc.x, bc.y));
@@ -798,10 +893,12 @@ function emitOutputLinks(args: {
 
     outputPorts.push({
       line, anchor: { ...chestAt },
-      tapAnchor: { x: face === "W" ? m.origin.x : m.origin.x + m.size.w - 1, y: topT }, face,
+      tapAnchor: { x: m.origin.x, y: trunkStart.y }, face: portFace,
       moduleWayOuts: [], chest, cells: beltCells,
       meta: {
-        item: line.name, side: face as PortSide, laneDepth: 2, inserter: "normal",
+        // side = 어느 **변**이냐(채널 장부가 보는 것), face = 어느 쪽으로 **나가느냐**.
+        // gap 좌석이어도 나가는 변은 W 다 — 둘은 다르다(모듈 머리말 "변 vs face").
+        item: line.name, side: "W", laneDepth: 2, inserter: "normal",
         amount: line.amount, endPreference: input.lineEnds?.get(`output:${line.name}`),
       },
     });
@@ -854,53 +951,71 @@ function emitInputLinks(args: {
     const plan = args.seats[gi];
     if (!plan) { unroutedLines.push(line); return; } // 두 면 다 찼다 → 정직 폴백
     const face = plan.face;
-    const fv = faceVector(face);
+    const isGap = face === "N" || face === "S";
 
-    // 좌석은 [allocateLinkSeats] 가 이미 정했다 — 여기선 깔기만 한다.
-    const seats = [...plan.rows]
+    // 좌석은 [allocateLinkFaces]+[placeLinkSeats] 가 이미 정했다 — 여기선 깔기만 한다.
+    const seats = [...plan.slots]
       .sort((a, b) => a[0] - b[0])
       .map(([mi, rows]) => ({ m: machines[mi], rows }));
+    const m0 = seats[0].m;
+    // gap 좌석이면 depth 를 **그 머신의 면**에서 잰다(가운데 머신의 N/S 는 클러스터 끝면이 아니다).
+    const geomExt = isGap
+      ? { x0: m0.origin.x, y0: m0.origin.y, x1: m0.origin.x + m0.size.w - 1, y1: m0.origin.y + m0.size.h - 1 }
+      : ext;
     const allRows = seats.flatMap((s) => s.rows);
     const topT = Math.min(...allRows);
-    const botT = Math.max(...allRows);
+    // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다(탭은 서쪽 k칸에만).
+    const botT = isGap ? m0.origin.x + m0.size.w - 1 : Math.max(...allRows);
+
+    // 입구는 **언제나 E**다(자식이 동쪽). gap 좌석이면 가로 벨트가 동쪽 변에서 90° 꺾여
+    // 들어온다 — 그 꺾이는 칸이 곧 평범한 E 포트(모서리 포트)다.
+    const portFace: PortFace = "E";
+    const pfv = faceVector(portFace);
 
     // 좌석(d1)이 막히면 폴백. 레인은 막히면 다음 후보로.
-    const seatCells = allRows.map((t) => faceCell(ext, face, 1, t));
+    const seatCells = allRows.map((t) => faceCell(geomExt, face, 1, t));
     if (seatCells.some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); return; }
+    /** 이 레인에서 트렁크 끝(포트가 붙는 칸) — E 면이면 belt 줄의 맨 위, gap 이면 맨 동쪽. */
+    const trunkEndOf = (d: number): { x: number; y: number } => {
+      const b = faceCell(geomExt, face, d, topT);
+      return isGap ? { x: botT, y: b.y } : b;
+    };
     let lane: { d: number; inserter: string } | undefined;
     for (const cand of lanes) {
       const span: { x: number; y: number }[] = [];
-      for (let t = topT; t <= botT; t++) span.push(faceCell(ext, face, cand.d, t));
-      const bt = faceCell(ext, face, cand.d, topT);
-      span.push({ x: bt.x + fv.x, y: bt.y + fv.y }, { x: bt.x + 2 * fv.x, y: bt.y + 2 * fv.y }); // 포트 인서터·상자
+      for (let t = topT; t <= botT; t++) span.push(faceCell(geomExt, face, cand.d, t));
+      const te = trunkEndOf(cand.d);
+      span.push({ x: te.x + pfv.x, y: te.y + pfv.y }, { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }); // 포트 인서터·상자
       if (span.every((c) => !occupancy.has(cellKey(c.x, c.y)))) { lane = cand; break; }
     }
     if (!lane) { unroutedLines.push(line); return; }
 
     // ── 배치 확정 ──
-    const beltTop = faceCell(ext, face, lane.d, topT);
-    const seatCell = { x: beltTop.x + fv.x, y: beltTop.y + fv.y }; // 포트 인서터
-    const chestAt = { x: beltTop.x + 2 * fv.x, y: beltTop.y + 2 * fv.y }; // 포트 상자(anchor)
+    const beltTop = trunkEndOf(lane.d);
+    const seatCell = { x: beltTop.x + pfv.x, y: beltTop.y + pfv.y }; // 포트 인서터
+    const chestAt = { x: beltTop.x + 2 * pfv.x, y: beltTop.y + 2 * pfv.y }; // 포트 상자(anchor)
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
     const chest: Container = {
       id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
       origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "input",
     };
     const portPair: PortPair = { // 입력: 상자(소스) → 트렁크 belt → 머신들
-      producer: { containerId: chestId, cell: { ...beltTop }, face, kind: "item" },
-      consumer: { containerId: seats[0].m.id, cell: { ...beltTop }, face, kind: "item" },
+      producer: { containerId: chestId, cell: { ...beltTop }, face: portFace, kind: "item" },
+      consumer: { containerId: m0.id, cell: { ...beltTop }, face: portFace, kind: "item" },
     };
 
-    const beltDir = vectorToDirection(0, 1); // 아래로 — 포트(위)에서 받아 탭들에 분배
+    // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
+    const beltDir = isGap ? vectorToDirection(-1, 0) : vectorToDirection(0, 1);
     const beltCells: PlacedCell[] = [];
     for (let t = topT; t <= botT; t++) {
-      const at = faceCell(ext, face, lane.d, t);
+      const at = faceCell(geomExt, face, lane.d, t);
       beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 후속
       occupancy.add(cellKey(at.x, at.y));
     }
+    const fv = faceVector(face);
     for (const s of seats) {
       for (const t of s.rows) {
-        const seat = faceCell(ext, face, 1, t);
+        const seat = faceCell(geomExt, face, 1, t);
         const pair: PortPair = {
           producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
           consumer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
@@ -911,20 +1026,21 @@ function emitInputLinks(args: {
     }
     cells.push(
       ...beltCells,
-      makeInserterCell(seatCell, fv, input.inserterEntityName, portPair), // 픽업 = 바깥(상자) → belt 에 놓음
+      // 포트 인서터는 **포트 면**을 따른다(상자에서 집어 belt 로) — gap 좌석이어도 동쪽.
+      makeInserterCell(seatCell, pfv, input.inserterEntityName, portPair),
       makeContainerCell(chest, chestAt),
     );
     occupancy.add(cellKey(seatCell.x, seatCell.y));
     occupancy.add(cellKey(chestAt.x, chestAt.y));
     chests.push(chest);
 
-    const m0 = seats[0].m;
     inputPorts.push({
       line, anchor: { ...chestAt },
-      tapAnchor: { x: face === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: topT }, face,
+      tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y }, face: portFace,
       moduleWayOuts: [], chest, cells: beltCells,
       meta: {
-        item: line.name, side: face as PortSide, laneDepth: lane.d,
+        // side = 어느 변(장부가 보는 것), face = 어느 쪽으로 나가느냐. gap 이어도 변은 E.
+        item: line.name, side: "E", laneDepth: lane.d,
         inserter: lane.d === 2 ? "normal" : "long",
         amount: line.amount, endPreference: input.lineEnds?.get(`input:${line.name}`),
       },

@@ -74,7 +74,7 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
   // 부모 2대(머신당 18 = 팔 3 = 그릇 가득), 자식 2대(머신당 18 = 딱 한 그릇).
   // 물붓기: (c0→p0,3) 에서 c0 소진 → (c1→p1,3). 서로 다른 fromMachine → 안 묶임.
   // (자식 머신당 팔 3 = W면 3행 — 좌석 물리 성립. 머신당 6팔 수치는 W면에 못 앉아
-  //  이제 E 면으로 넘어간다 — 아래 "거대 출력" 참고.)
+  //  이제 gap 으로 넘어간다 — 아래 "거대 출력" 참고.)
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 2,
@@ -109,11 +109,11 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
   });
 });
 
-// 거대 출력 — 자식 머신 하나가 W면 좌석(3행)보다 많은 팔을 낸다. 넘친 그룹은 E 면으로
-// 넘어가고, 그 포트는 **왼쪽 부모까지 되돌아 나가야** 한다. 여기서 보는 것은 기하가 아니라
-// 그 되돌아 나가는 길이 **실제로 라우팅되는가**다.
-describe("거대 출력 — 넘친 그룹이 E 로 나가도 부모까지 이어진다", () => {
-  // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + E 3행).
+// 거대 출력 — 자식 머신 하나가 W면 좌석(3행)보다 많은 팔을 낸다. 넘친 그룹은 **gap** 으로
+// 넘어가 가로 벨트로 서쪽 변까지 와서 90° 꺾인다. 여기서 보는 것은 기하가 아니라
+// **그 홉을 누가 냈는가**다 — 모서리 포트가 평범한 W 포트라면 장부가 계획할 수 있어야 한다.
+describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 계획한다", () => {
+  // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + gap 3칸).
   // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
   const specs: NodeSpec[] = [
     {
@@ -130,11 +130,11 @@ describe("거대 출력 — 넘친 그룹이 E 로 나가도 부모까지 이어
   const pack = packModuleTree(specs, config);
   const child = pack.placements.find((pl) => pl.id === "c")!;
 
-  it("자식 머신마다 W 하나 + E 하나 — 팔을 깎지 않는다", () => {
+  it("자식 머신마다 W 하나 + gap 하나 — 팔을 깎지 않는다", () => {
     const ports = child.module.outputPorts.filter((p) => p.line.name === "x");
     expect(ports).toHaveLength(4);
-    expect(ports.filter((p) => p.face === "W")).toHaveLength(2);
-    expect(ports.filter((p) => p.face === "E")).toHaveLength(2);
+    // 넘친 그룹도 모서리에서 꺾여 **평범한 W 포트**로 나온다.
+    expect(ports.filter((p) => p.face === "W")).toHaveLength(4);
     expect(ports.reduce((s, p) => s + p.cells.length, 0)).toBe(12); // 팔 합 = 6×2
   });
 
@@ -142,24 +142,22 @@ describe("거대 출력 — 넘친 그룹이 E 로 나가도 부모까지 이어
     expect(child.module.unroutedLines).toHaveLength(0);
   });
 
-  // ⚠ 여기가 **알려진 저하 지점**이다(2026-07-20 실측).
+  // 이 수가 gap 방향을 고른 **이유**다.
   //
-  // 길은 다 난다(failures 0). 하지만 W 로 나가는 홉만 예약 장부가 계획하고, **E 로 넘어간
-  // 홉 2개는 dijkstra 폴백**으로 난다. 이유: 장부([channelGeometryPlanner])는 자식 출력이
-  // **W 로 채널에 들어온다**고 보고 트랙을 배정한다. E 포트는 채널 반대쪽을 보므로 장부가
-  // 아는 "납품"이 아니다 — 기존에 이미 이름이 붙은 **스필 홉** 부류(폭만 예약하고 탐색에
-  // 맡김)에 들어간다.
+  // 옛 시도(E 면으로 넘기기)에서는 planned 2 / dijkstraFallback 2 였다 — 넘친 홉이 전부
+  // 탐색으로 났다. 장부는 자식 출력이 **W 로 채널에 들어온다**고 보므로 E 포트는 장부가 아는
+  // "납품"이 아니었기 때문이다.
   //
-  // 즉 새 구멍이 아니라 **기존 저하 부류의 인구가 는 것**이다. 그래도 예약 철학과 어긋나므로
-  // 수치를 못박아 **눈에 보이게** 둔다 — 나아지면 이 기대값이 깨져서 알려준다.
-  it("길은 다 나지만 E 로 넘어간 홉은 아직 예약이 아니라 탐색이 낸다", () => {
+  // gap 으로 넘기면 가로 벨트가 서쪽 변에서 꺾여 **평범한 W 포트**가 되므로, 장부가 새 모양을
+  // 배울 필요 없이 그대로 계획한다 → **fallback 0**. 예약 철학이 지켜진다.
+  it("네 홉 전부 예약이 계획한다 — 탐색 0", () => {
     const hop = routeModuleHops(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
     expect(hop.failures).toBe(0);
-    expect(hop.planned).toBe(2); // W 로 나간 두 홉
-    expect(hop.dijkstraFallback).toBe(2); // E 로 넘어간 두 홉 ← 없애야 할 수
+    expect(hop.planned).toBe(4);
+    expect(hop.dijkstraFallback).toBe(0);
   });
 });

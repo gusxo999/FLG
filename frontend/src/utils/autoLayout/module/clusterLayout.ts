@@ -43,18 +43,25 @@ export interface ClusterMeta {
  * 트렁크가 N/S 끝면으로 spill 탭을 할 수 있어 이 여백이 필요하다. **간단 레시피(W/E 전용)**
  * 모듈 경로는 N/S 면을 안 쓰므로 0 을 넘겨 머신을 밀착시킨다(gap 은 트렁크 길이만 늘릴 뿐).
  */
-export function layoutCluster(meta: ClusterMeta, rowGap: number = ROW_GAP): ClusterLayout {
+export function layoutCluster(
+  meta: ClusterMeta,
+  rowGap: number | number[] = ROW_GAP,
+): ClusterLayout {
   const count = Math.max(1, meta.count);
-  const positions = Array.from({ length: count }, (_, i) => ({
-    dx: 0,
-    dy: i * (meta.h + rowGap),
-  }));
+  // gap 은 **자리마다 다를 수 있다** — 그 gap 을 지나는 가로 벨트 수에서 유도되기 때문이다
+  // (폭은 우리가 정하는 값이 아니라 예약의 부산물). 스칼라는 "전부 같은 폭" 의 축약.
+  const gapAt = (i: number): number =>
+    Array.isArray(rowGap) ? Math.max(0, rowGap[i] ?? 0) : rowGap;
+
+  const positions: { dx: number; dy: number }[] = [];
+  let y = 0;
+  for (let i = 0; i < count; i++) {
+    positions.push({ dx: 0, dy: y });
+    y += meta.h + gapAt(i); // gapAt(i) = 머신 i 와 i+1 사이
+  }
   return {
     positions,
-    size: {
-      w: meta.w,
-      h: count * meta.h + (count - 1) * rowGap,
-    },
+    size: { w: meta.w, h: y - (count > 0 ? gapAt(count - 1) : 0) },
   };
 }
 
