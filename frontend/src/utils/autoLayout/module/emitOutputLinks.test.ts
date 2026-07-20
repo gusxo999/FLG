@@ -221,3 +221,36 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
     expect(mod.unroutedLines).toHaveLength(0);
   });
 });
+
+// gap 폭은 **자리마다 다르다** — 우리가 고르는 값이 아니라 그 gap 을 지나는 가로 벨트에서
+// 유도된 부산물이라, 안 쓰는 gap 은 0 으로 남아 머신이 밀착한다.
+describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => {
+  // 머신 3대. 머신0 만 W면(3행)을 넘겨 아래 gap(0번)으로 넘친다. 머신1·2 는 안 넘친다.
+  const mod = generateModule({
+    ...linkedBase,
+    count: 3,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
+      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과 → gap0
+      [{ fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 2 }],
+      [{ fromMachine: 2, toMachine: 2, item: "gear", inserterCount: 2 }],
+    ],
+  } as ModuleInput);
+
+  const gapOf = (i: number) => {
+    const [a, b] = [mod.machines[i], mod.machines[i + 1]];
+    return b.origin.y - (a.origin.y + a.size.h);
+  };
+
+  it("쓰는 gap 만 벌어지고 나머지는 밀착(0)", () => {
+    expect(gapOf(0)).toBe(2); // 머신0 의 S 면이 쓴다 → 좌석 1 + 벨트 1
+    expect(gapOf(1)).toBe(0); // 아무도 안 쓴다 → 낭비 0
+  });
+
+  it("네 그룹 다 살아남고 팔 합이 보존된다", () => {
+    expect(mod.outputPorts).toHaveLength(4);
+    expect(mod.outputPorts.reduce((s, p) => s + p.cells.length, 0)).toBe(9);
+    expect(mod.unroutedLines).toHaveLength(0);
+  });
+});
