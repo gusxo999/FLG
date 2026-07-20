@@ -604,6 +604,13 @@ interface LinkFacePlan {
   face: PortFace;
   /** N/S 일 때 가로 벨트를 놓을 gap index — 머신 `gap` 과 `gap+1` 사이. */
   gap?: number;
+  /**
+   * 이 그룹의 벨트가 앉을 **면에서의 깊이**([faceCell] 의 `d`). 좌석은 언제나 d1 이므로
+   * 이 값이 곧 **이 그룹이 면 바깥으로 먹는 줄 수**다 — gap 폭이 여기서 나온다
+   * ([gapRowsFromPlans])**이자** 방출기가 벨트를 놓는 깊이다([emitOutputLinks]).
+   * 두 곳이 같은 필드를 보므로 폭과 기하가 어긋날 수 없다.
+   */
+  laneDepth: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
 }
@@ -632,8 +639,11 @@ function armsByMachine(group: MachineLink[], machineOf: (l: MachineLink) => numb
   return by;
 }
 
-/** gap 하나가 한쪽 면에서 쓰는 줄 수 — 좌석 1 + 가로 벨트 1. (레인 늘리기는 후속.) */
-const GAP_ROWS_PER_SIDE = 2;
+/**
+ * 링크 벨트의 기본 깊이 — 좌석(d1) 바로 바깥. v1 은 그룹마다 이 한 줄뿐이다
+ * (레인 늘리기 = 긴팔로 d≥3 을 집는 것은 후속).
+ */
+const LINK_LANE_DEPTH = 2;
 
 /**
  * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
@@ -665,13 +675,13 @@ function tryLinkFace(
     if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
     if ((used.get(seatKey(mi, face)) ?? 0) > 0) return undefined; // v1: 면당 한 줄
     if (k > machine.w) return undefined;
-    return { face, gap, arms };
+    return { face, gap, arms, laneDepth: LINK_LANE_DEPTH };
   }
 
   for (const [mi, k] of arms) {
     if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
   }
-  return { face, arms };
+  return { face, arms, laneDepth: LINK_LANE_DEPTH };
 }
 
 /** [tryLinkFace] 가 낸 배정을 장부에 확정한다. */
@@ -742,14 +752,19 @@ function spillLinkFacesToGap(
 }
 
 /**
- * **gap 폭 = 그 gap 을 지나는 가로 벨트 수에서 유도.** 우리가 고르는 값이 아니다.
- * 한쪽 면이 쓰면 좌석 1 + 벨트 1 = 2줄, 양쪽이 쓰면 4줄.
+ * **gap 폭 = 그 gap 에 놓일 것들이 먹는 줄 수.** 우리가 고르는 값이 아니라 배정의 부산물이다.
+ *
+ * 한쪽 면이 먹는 줄 = 좌석(d1) … 벨트(d`laneDepth`) = `laneDepth` 줄. 양쪽이 쓰면 각자
+ * 자기 머신 면에서 재므로 그냥 더해진다(위 머신은 위에서, 아래 머신은 아래에서 센다).
+ *
+ * 이 수는 방출기가 벨트를 놓을 때 쓰는 `laneDepth` **바로 그 값**이다 — 상수를 따로 적어두면
+ * 방출 기하가 바뀔 때 폭이 조용히 안 따라와 벨트가 옆 머신 몸통에 놓인다.
  */
 function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
   const rows = new Array(Math.max(0, count - 1)).fill(0);
   for (const list of plans)
     for (const p of list)
-      if (p && p.gap !== undefined) rows[p.gap] += GAP_ROWS_PER_SIDE;
+      if (p && p.gap !== undefined) rows[p.gap] += p.laneDepth;
   return rows;
 }
 
@@ -839,8 +854,11 @@ function emitOutputLinks(args: {
     // 포트**다(모서리 포트). 그래서 채널 장부가 새 모양을 배울 필요가 없다.
     const portFace: PortFace = "W";
     const pfv = faceVector(portFace);
+    // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
+    // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
+    const laneDepth = plan.laneDepth;
     const topT = rows[0];
-    const belt0 = faceCell(mExt, face, 2, topT); // 벨트 줄의 시작 칸
+    const belt0 = faceCell(mExt, face, laneDepth, topT); // 벨트 줄의 시작 칸
     // 트렁크 끝(= 홉 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 맨 서쪽.
     const trunkStart = face === "W" ? belt0 : { x: m.origin.x, y: belt0.y };
     const seatCell = { x: trunkStart.x + pfv.x, y: trunkStart.y + pfv.y }; // 출구 인서터
@@ -860,7 +878,7 @@ function emitOutputLinks(args: {
     const beltCells: PlacedCell[] = [];
     let blocked = false;
     for (const t of rows) {
-      const at = faceCell(mExt, face, 2, t);
+      const at = faceCell(mExt, face, laneDepth, t);
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
       beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 선택은 후속
     }
@@ -898,7 +916,7 @@ function emitOutputLinks(args: {
       meta: {
         // side = 어느 **변**이냐(채널 장부가 보는 것), face = 어느 쪽으로 **나가느냐**.
         // gap 좌석이어도 나가는 변은 W 다 — 둘은 다르다(모듈 머리말 "변 vs face").
-        item: line.name, side: "W", laneDepth: 2, inserter: "normal",
+        item: line.name, side: "W", laneDepth, inserter: "normal",
         amount: line.amount, endPreference: input.lineEnds?.get(`output:${line.name}`),
       },
     });
@@ -938,8 +956,8 @@ function emitInputLinks(args: {
   // 레인 후보 — 트렁크 벨트의 깊이와 그 깊이를 집을 수 있는 탭 인서터(옛 reach-레인 모델).
   // 트렁크 하나가 여러 머신의 행을 관통하므로, 다른 그룹의 트렁크와 같은 깊이에서 겹치면
   // 다음 레인(긴팔)으로 물러난다. 후보가 다 막히면 그룹 전체 unrouted(정직 폴백).
-  const lanes: { d: number; inserter: string }[] = [
-    { d: 2, inserter: input.inserterEntityName },
+  const sideLanes: { d: number; inserter: string }[] = [
+    { d: LINK_LANE_DEPTH, inserter: input.inserterEntityName },
     ...(input.longInserter
       ? [{ d: 1 + input.longInserter.reach, inserter: input.longInserter.entityName }]
       : []),
@@ -980,6 +998,10 @@ function emitInputLinks(args: {
       const b = faceCell(geomExt, face, d, topT);
       return isGap ? { x: botT, y: b.y } : b;
     };
+    // **gap 좌석은 물러날 곳이 없다** — gap 폭이 이 그룹의 `laneDepth` 로 이미 정해져 굳었으니
+    // 긴팔 레인으로 물러나면 벨트가 gap 밖(옆 머신 몸통)에 놓인다. 옆면(W/E)은 바깥이 열려
+    // 있으므로 종전대로 물러난다. 막히면 정직하게 unrouted.
+    const lanes = isGap ? [{ d: plan.laneDepth, inserter: input.inserterEntityName }] : sideLanes;
     let lane: { d: number; inserter: string } | undefined;
     for (const cand of lanes) {
       const span: { x: number; y: number }[] = [];

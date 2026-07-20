@@ -254,3 +254,36 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
     expect(mod.unroutedLines).toHaveLength(0);
   });
 });
+
+// gap 폭과 방출 기하가 **같은 값**(LinkFacePlan.laneDepth)에서 나온다는 걸 구조로 확인한다.
+// 상수 재확인이 아니라 결과 좌표를 본다 — 둘이 어긋나면 벨트가 옆 머신 몸통 위에 놓인다.
+describe("gap 그룹의 벨트는 gap 안에 있다", () => {
+  const mod = generateModule({
+    ...linkedBase,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
+      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과 → gap
+    ],
+  } as ModuleInput);
+
+  it("넘친 그룹의 벨트 칸이 두 머신 사이 빈 띠 안에 든다", () => {
+    const [m0, m1] = mod.machines;
+    const bandTop = m0.origin.y + m0.size.h; // gap 첫 줄
+    const bandBot = m1.origin.y - 1; // gap 마지막 줄
+    expect(bandBot).toBeGreaterThanOrEqual(bandTop); // gap 이 실제로 열렸다
+    for (const c of mod.outputPorts[1].cells) {
+      expect(c.y).toBeGreaterThanOrEqual(bandTop);
+      expect(c.y).toBeLessThanOrEqual(bandBot);
+    }
+  });
+
+  it("어떤 셀도 머신 몸통 위에 없다", () => {
+    const body = new Set<string>();
+    for (const m of mod.machines)
+      for (let x = m.origin.x; x < m.origin.x + m.size.w; x++)
+        for (let y = m.origin.y; y < m.origin.y + m.size.h; y++) body.add(`${x},${y}`);
+    const on = mod.cells.filter((c) => body.has(`${c.x},${c.y}`));
+    expect(on).toHaveLength(0);
+  });
+});
