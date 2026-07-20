@@ -17,6 +17,11 @@ const config: PackConfig = {
   longInserter: { entityName: "long-handed-inserter", reach: 2 },
   throughput: { normal: 6, long: 6 }, // tapCap 6, 그릇 = floor(20/6) = 3
   belts: [{ entityName: "transport-belt", throughput: 20 }],
+  // 예약 장부를 켠다 — 안 켜면 홉이 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
+  // 검증하지 않는다(2026-07-20 실측: planned 0 / fallback 전부).
+  channelGeometry: true,
+  reservePerimeterLanes: true,
+  beltMaxUndergroundDistance: 4,
 };
 
 describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 여럿을 탭", () => {
@@ -60,6 +65,8 @@ describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 �
       beltMaxUndergroundDistance: 4,
     });
     expect(hop.failures).toBe(0);
+    // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
+    expect(hop.dijkstraFallback).toBe(0);
   });
 });
 
@@ -97,6 +104,8 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
       beltMaxUndergroundDistance: 4,
     });
     expect(hop.failures).toBe(0);
+    // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
+    expect(hop.dijkstraFallback).toBe(0);
   });
 });
 
@@ -133,12 +142,24 @@ describe("거대 출력 — 넘친 그룹이 E 로 나가도 부모까지 이어
     expect(child.module.unroutedLines).toHaveLength(0);
   });
 
-  it("라우팅 실패 0", () => {
+  // ⚠ 여기가 **알려진 저하 지점**이다(2026-07-20 실측).
+  //
+  // 길은 다 난다(failures 0). 하지만 W 로 나가는 홉만 예약 장부가 계획하고, **E 로 넘어간
+  // 홉 2개는 dijkstra 폴백**으로 난다. 이유: 장부([channelGeometryPlanner])는 자식 출력이
+  // **W 로 채널에 들어온다**고 보고 트랙을 배정한다. E 포트는 채널 반대쪽을 보므로 장부가
+  // 아는 "납품"이 아니다 — 기존에 이미 이름이 붙은 **스필 홉** 부류(폭만 예약하고 탐색에
+  // 맡김)에 들어간다.
+  //
+  // 즉 새 구멍이 아니라 **기존 저하 부류의 인구가 는 것**이다. 그래도 예약 철학과 어긋나므로
+  // 수치를 못박아 **눈에 보이게** 둔다 — 나아지면 이 기대값이 깨져서 알려준다.
+  it("길은 다 나지만 E 로 넘어간 홉은 아직 예약이 아니라 탐색이 낸다", () => {
     const hop = routeModuleHops(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
     expect(hop.failures).toBe(0);
+    expect(hop.planned).toBe(2); // W 로 나간 두 홉
+    expect(hop.dijkstraFallback).toBe(2); // E 로 넘어간 두 홉 ← 없애야 할 수
   });
 });

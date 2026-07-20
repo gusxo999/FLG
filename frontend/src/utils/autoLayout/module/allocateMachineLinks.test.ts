@@ -111,3 +111,35 @@ describe("allocateMachineLinks — 방어적 경계", () => {
     ).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (나) 순서 — 채널 교차는 **애초에 표현될 수 없다**
+//
+// 물 붓기의 두 손가락은 **둘 다 위에서 아래로만** 간다: 부모 손가락 `pj` 는 바깥 루프라
+// 되돌아오지 않고, 자식 손가락 `ci` 도 증가만 한다(한 번 다음 자식으로 넘어가면 앞 자식은
+// 잔량을 버린 상태다). 그래서 링크 수열은 **양끝 모두 단조**다.
+//
+// 이게 교차 없음의 증명이다: 교차하려면 "위 자식 → 아래 부모" 다음에 "아래 자식 → 위 부모"
+// 가 나와야 하는데, 그건 ci 나 pj 가 되돌아가야 가능하다 → 구조적으로 불가능.
+// 좌표는 한 번도 안 봤다 — **인덱스 순서가 곧 Y 순서**이기 때문이다(머신은 위→아래로 놓인다).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("링크 수열은 양끝 모두 단조 — 교차가 표현 불가능하다", () => {
+  const cases = [
+    { childCount: 2, parentCount: 3, childProduction: 100, parentDemand: 60.5 },
+    { childCount: 3, parentCount: 2, childProduction: 40, parentDemand: 55 },
+    { childCount: 1, parentCount: 4, childProduction: 200, parentDemand: 45 },
+    { childCount: 5, parentCount: 1, childProduction: 12, parentDemand: 55 },
+    { childCount: 4, parentCount: 4, childProduction: 37, parentDemand: 37 },
+  ];
+
+  it.each(cases)("childCount=$childCount parentCount=$parentCount 에서 단조", (c) => {
+    const links = allocateMachineLinks({
+      ...c, item: "x", inserterThroughput: 6, beltThroughput: 20,
+    });
+    expect(links.length).toBeGreaterThan(0);
+    for (let i = 1; i < links.length; i++) {
+      expect(links[i].fromMachine).toBeGreaterThanOrEqual(links[i - 1].fromMachine);
+      expect(links[i].toMachine).toBeGreaterThanOrEqual(links[i - 1].toMachine);
+    }
+  });
+});

@@ -102,6 +102,16 @@ export interface ModuleHopResult {
   routes: HopRoute[];
   /** 경로 못 찾은 홉 수. */
   failures: number;
+  /**
+   * **예약(계획된 체인)으로 깐 홉 수** — 탐색이 없었던 홉.
+   *
+   * `failures === 0` 은 "길이 났다"만 말하고 **누가 냈는지는 안 말한다.** dijkstra 폴백도
+   * 길을 내기 때문이다. 예약 철학이 지켜지는지 보려면 이 수를 봐야 한다
+   * (`planned + dijkstraFallback + failures = 아이템 홉 수`).
+   */
+  planned: number;
+  /** 예약이 못 대서 dijkstra 로 넘어간 홉 수 — 0 이 아니면 예약에 구멍이 있다. */
+  dijkstraFallback: number;
 }
 
 /** 포트의 경계 기하 — anchor + face 에서 유도. */
@@ -171,6 +181,8 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   const strippedCellKeys = new Set<string>();
   const routes: HopRoute[] = [];
   let failures = 0;
+  let planned = 0;        // 예약 체인으로 깐 홉(탐색 없음)
+  let dijkstraFallback = 0; // 예약이 못 대서 탐색으로 넘어간 홉
 
   // 지하벨트 게이트 — prototype 미지정(위저드에서 지하벨트 미선택)이면 지상 전용(기존
   // 동작). emit 은 emitItemPath(edge-aware)라 점프 경로가 지하벨트 입/출구로 정확히
@@ -229,7 +241,9 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     let route: HopRoute;
     if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop)) {
       route = finishChain(hop, chain, config);
+      planned += 1;
     } else {
+      dijkstraFallback += 1;
       if (chain && AUTO_LAYOUT_COORD_DUMP)
         console.log("[moduleHop] planned chain blocked — dijkstra fallback", k);
       // 다른 예약 자리(반출 lane + 다른 계획 홉)는 dijkstra 도 침범 금지.
@@ -257,7 +271,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     for (const k of stripKeys(hop)) strippedCellKeys.add(k);
   }
 
-  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures };
+  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback };
 }
 
 /**

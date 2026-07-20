@@ -63,5 +63,8 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
       beltMaxUndergroundDistance: 4,
     });
     expect(hop.failures).toBe(0);
+    // 길이 났다는 것만으로는 부족하다 — **누가 냈는지**를 본다. dijkstra 폴백도 길은 낸다.
+    expect(hop.dijkstraFallback).toBe(0);
+    expect(hop.planned).toBeGreaterThan(0);
   });
 });
