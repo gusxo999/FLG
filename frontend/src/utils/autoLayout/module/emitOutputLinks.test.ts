@@ -330,6 +330,61 @@ describe("이웃 머신 그룹의 벨트로 물건이 새지 않는다", () => {
   });
 });
 
+// **반출 사다리** — gap 은 나가는 쪽(서쪽)이 면과 **평행**이라, W/E 처럼 "자기 구간만 덮고
+// 꺾기"가 안 통한다. 모든 벨트가 서쪽 변까지 달려야 하므로 같은 줄 두 벨트는 반드시 합쳐진다.
+// 그래서 n 번째 그룹은 **한 칸 더 깊은 줄로 내려가서** 달린다. 내려가는 건 벨트→벨트라
+// 팔 길이와 무관하다(팔은 수집 줄 d2 까지만 닿으면 된다).
+describe("gap 반출 사다리 — 한 면에 벨트 여러 줄", () => {
+  // 머신0 이 W면 3행을 채우고, 넘친 그룹 **둘**이 같은 gap 면(S)으로 간다.
+  const mod = generateModule({
+    ...linkedBase,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] }, // W 를 채움
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] }, // → gap 1번째
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] }, // → gap 2번째
+    ],
+  } as ModuleInput);
+
+  it("셋 다 살아남는다 — 예전엔 면당 한 줄이라 셋째가 unrouted 였다", () => {
+    expect(mod.outputPorts).toHaveLength(3);
+    expect(mod.unroutedLines).toHaveLength(0);
+  });
+
+  it("gap 두 그룹의 포트가 서로 다른 줄에 선다 (사다리)", () => {
+    const [, a, b] = mod.outputPorts;
+    expect(a.anchor.y).not.toBe(b.anchor.y);
+    expect(Math.abs(a.anchor.y - b.anchor.y)).toBe(1); // 딱 한 칸씩만 깊어진다
+  });
+
+  it("둘째 그룹이 첫째보다 깊은 줄로 달린다", () => {
+    const [, a, b] = mod.outputPorts;
+    const depthOf = (p: (typeof mod.outputPorts)[number]) => p.anchor.y - (mod.machines[0].origin.y + 3);
+    expect(depthOf(b)).toBeGreaterThan(depthOf(a));
+  });
+
+  it("벨트끼리 새지 않는다 — 사다리가 남의 줄을 밟지 않는다", () => {
+    expect(beltLeaks(mod)).toEqual([]);
+  });
+
+  it("셀이 겹치지 않는다", () => {
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) dup++;
+      seen.add(k);
+    }
+    expect(dup).toBe(0);
+  });
+
+  it("gap 폭이 사다리 깊이에서 나온다 — 같은 면은 더하지 않고 가장 깊은 것 하나", () => {
+    const [m0, m1] = mod.machines;
+    // 좌석 1 + 수집 1 + 사다리 1 = 3. 두 그룹 깊이를 더했다면 5가 됐을 것.
+    expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBe(3);
+  });
+});
+
 // gap 폭과 방출 기하가 **같은 값**(LinkFacePlan.laneDepth)에서 나온다는 걸 구조로 확인한다.
 // 상수 재확인이 아니라 결과 좌표를 본다 — 둘이 어긋나면 벨트가 옆 머신 몸통 위에 놓인다.
 describe("gap 그룹의 벨트는 gap 안에 있다", () => {

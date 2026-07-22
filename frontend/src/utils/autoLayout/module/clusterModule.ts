@@ -227,11 +227,14 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outLinkGroups = input.outputLinks ?? [];
   const inLinkGroups = input.inputLinks ?? [];
   const faceLedger = new Map<string, number>();
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger);
+  // 면마다 **그룹이 몇 개** 앉았나 — gap 의 반출 사다리(몇 번째가 몇 칸 깊이로 달리나)를
+  // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
+  const faceGroupLedger = new Map<string, number>();
+  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, faceGroupLedger);
+  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, faceGroupLedger);
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces);
+  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, faceGroupLedger);
+  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, faceGroupLedger);
   const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
 
   const layout = layoutCluster(
@@ -637,6 +640,19 @@ interface LinkFacePlan {
    * 두 곳이 같은 필드를 보므로 폭과 기하가 어긋날 수 없다.
    */
   laneDepth: number;
+  /**
+   * **반출 깊이 — gap 전용**(docs/auto-layout-wizard.cluster-redesign.md 의 "반출" 단).
+   *
+   * W/E 면에서는 빠져나가는 방향이 면과 **수직**이라, 벨트가 자기 좌석 구간만 덮고 끝에서
+   * 꺾으면 그만이다(그래서 여러 그룹이 같은 깊이를 나눠 쓴다). gap 은 다르다 — 나가는 쪽
+   * (부모=서쪽)이 면과 **평행**이라 모든 벨트가 서쪽 변까지 달려야 하고, 같은 줄 두 벨트는
+   * 반드시 합쳐진다.
+   *
+   * 그래서 이 면의 **n 번째 그룹은 한 칸 더 깊은 줄로 내려가서** 달린다. 내려가는 건
+   * **벨트가 벨트를 먹이는 것**이라 팔 길이와 무관하다 — 팔은 `laneDepth`(수집 줄)까지만
+   * 닿으면 된다. 첫 그룹은 `laneDepth` 와 같다(내려갈 것도 없이 이미 서쪽 변에서 시작).
+   */
+  exitDepth?: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
 }
@@ -699,6 +715,7 @@ function tryLinkFace(
   side: "from" | "to",
   face: PortFace,
   used: Map<string, number>,
+  faceGroups: Map<string, number>,
 ): LinkFacePlan | undefined {
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
@@ -712,9 +729,18 @@ function tryLinkFace(
     const [mi, k] = [...arms][0];
     const gap = face === "S" ? mi : mi - 1;
     if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
-    if ((used.get(seatKey(mi, face)) ?? 0) > 0) return undefined; // v1: 면당 한 줄
-    if (k > machine.w) return undefined;
-    return { face, gap, arms, laneDepth: LINK_LANE_DEPTH };
+    const base = used.get(seatKey(mi, face)) ?? 0;
+    if (base + k > machine.w) return undefined; // 이 면의 좌석(열)이 다 찼다
+    // **입력은 아직 면당 한 줄이다.** 사다리는 "포트에 가까운 그룹이 얕은 줄"이라야 성립하는데,
+    // 입력의 포트는 **동쪽**이라 좌석도 동쪽부터 채워야 그 순서가 나온다(출력은 서쪽이라 지금
+    // 채우는 방향 그대로 맞는다). 좌석 채우는 방향을 뒤집는 건 별도 단계 — 그전까지는 조용히
+    // 어긋나느니 정직하게 한 줄만 받는다.
+    if (side === "to" && base > 0) return undefined;
+    // **반출 사다리** — 이 면의 몇 번째 그룹인가가 곧 반출 깊이다(탐색 없이 순번으로 결정).
+    // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
+    // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
+    const nth = faceGroups.get(seatKey(mi, face)) ?? 0;
+    return { face, gap, arms, laneDepth: LINK_LANE_DEPTH, exitDepth: LINK_LANE_DEPTH + nth };
   }
 
   for (const [mi, k] of arms) {
@@ -723,11 +749,15 @@ function tryLinkFace(
   return { face, arms, laneDepth: LINK_LANE_DEPTH };
 }
 
-/** [tryLinkFace] 가 낸 배정을 좌석 장부에 확정한다. */
-function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>): void {
+/**
+ * [tryLinkFace] 가 낸 배정을 장부에 확정한다 — 좌석(팔 수)과 그룹 수를 따로 센다.
+ * 둘은 유도가 안 된다: 좌석은 **팔마다** 하나, 반출 줄은 **그룹마다** 하나다.
+ */
+function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>, faceGroups: Map<string, number>): void {
   for (const [mi, k] of plan.arms) {
     const key = seatKey(mi, plan.face);
     used.set(key, (used.get(key) ?? 0) + k);
+    faceGroups.set(key, (faceGroups.get(key) ?? 0) + 1);
   }
 }
 
@@ -754,13 +784,14 @@ function allocateLinkFaces(
   side: "from" | "to",
   prefer: PortFace,
   used: Map<string, number>,
+  faceGroups: Map<string, number>,
 ): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const plan = tryLinkFace(machine, count, g, side, prefer, used);
+    const plan = tryLinkFace(machine, count, g, side, prefer, used, faceGroups);
     if (plan) {
-      commitLinkFace(plan, used);
+      commitLinkFace(plan, used, faceGroups);
       plans[i] = plan;
     } else deferred.push(i);
   });
@@ -778,12 +809,13 @@ function spillLinkFacesToGap(
   side: "from" | "to",
   used: Map<string, number>,
   out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
+  faceGroups: Map<string, number>,
 ): void {
   for (const i of out.deferred) {
     for (const face of ["S", "N"] as const) {
-      const plan = tryLinkFace(machine, count, groups[i], side, face, used);
+      const plan = tryLinkFace(machine, count, groups[i], side, face, used, faceGroups);
       if (!plan) continue;
-      commitLinkFace(plan, used);
+      commitLinkFace(plan, used, faceGroups);
       out.plans[i] = plan;
       break;
     }
@@ -810,10 +842,18 @@ function spillLinkFacesToGap(
  * 발현 불가라 산술을 미리 안 바꿨다).
  */
 function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
-  const rows = new Array(Math.max(0, count - 1)).fill(0);
+  // 같은 면의 그룹들은 **덮어쓰는 게 아니라 한 줄씩 더 깊어지므로** 가장 깊은 것 하나만
+  // 세고(max), 마주 보는 두 면은 각자 자기 쪽에서 재므로 더한다(sum).
+  const deepest = new Map<string, number>(); // `gap:face` → 그 면이 먹는 줄 수
   for (const list of plans)
-    for (const p of list)
-      if (p && p.gap !== undefined) rows[p.gap] += p.laneDepth;
+    for (const p of list) {
+      if (!p || p.gap === undefined) continue;
+      const key = `${p.gap}:${p.face}`;
+      const d = p.exitDepth ?? p.laneDepth;
+      deepest.set(key, Math.max(deepest.get(key) ?? 0, d));
+    }
+  const rows = new Array(Math.max(0, count - 1)).fill(0);
+  for (const [key, d] of deepest) rows[Number(key.split(":")[0])] += d;
   return rows;
 }
 
@@ -914,10 +954,13 @@ function emitOutputLinks(args: {
     // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
     // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
     const laneDepth = plan.laneDepth;
+    const exitDepth = plan.exitDepth ?? laneDepth;
     const topT = rows[0];
     const belt0 = faceCell(mExt, face, laneDepth, topT); // 벨트 줄의 시작 칸
-    // 트렁크 끝(= 홉 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 맨 서쪽.
-    const trunkStart = face === "W" ? belt0 : { x: m.origin.x, y: belt0.y };
+    // 트렁크 끝(= 홉 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
+    // 맨 서쪽(사다리로 내려온 뒤 서쪽 변에 닿는 칸).
+    const trunkStart =
+      face === "W" ? belt0 : { x: m.origin.x, y: faceCell(mExt, face, exitDepth, topT).y };
     const seatCell = { x: trunkStart.x + pfv.x, y: trunkStart.y + pfv.y }; // 출구 인서터
     const chestAt = { x: trunkStart.x + 2 * pfv.x, y: trunkStart.y + 2 * pfv.y }; // 포트 상자
     const chestId = `${prefix}-output-${line.name}-${seq++}`;
@@ -931,7 +974,7 @@ function emitOutputLinks(args: {
     };
 
     // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W 면은 위로, N/S 면은 서쪽으로.
-    const beltDir = face === "W" ? vectorToDirection(0, -1) : vectorToDirection(-1, 0);
+    const beltDirV = face === "W" ? { x: 0, y: -1 } : { x: -1, y: 0 };
     // **끝 칸은 면을 따라 계속 흐르지 않고 포트 쪽으로 꺾는다.** 안 꺾으면 이 그룹의 물건이
     // 면을 따라 더 흘러 **이웃 그룹의 벨트로 넘어간다**(머신 사이 gap 이 0 이면 두 벨트가 실제로
     // 맞닿는다). 품목이 같아 오염은 안 나지만 장부가 통째로 거짓이 된다 — 이쪽 부모는 굶고
@@ -939,12 +982,26 @@ function emitOutputLinks(args: {
     // 꺾은 칸의 다음 칸은 이 그룹의 포트 인서터라 언제나 비어 있다(다른 그룹의 행과 안 겹친다).
     const beltCells: PlacedCell[] = [];
     let blocked = false;
+    const push = (at: { x: number; y: number }, v: { x: number; y: number }): void => {
+      if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; return; }
+      beltCells.push(makeBeltCell(at, vectorToDirection(v.x, v.y), input.beltEntityName, portPair)); // 티어는 후속
+    };
+    // ① **수집** — 자기 좌석 구간만 덮는다.
     for (const t of rows) {
-      const at = faceCell(mExt, face, laneDepth, t);
-      if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
-      const dir = t === topT ? vectorToDirection(pfv.x, pfv.y) : beltDir;
-      beltCells.push(makeBeltCell(at, dir, input.beltEntityName, portPair)); // 벨트 티어 선택은 후속
+      if (blocked) break;
+      // 끝 칸: 사다리를 타야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
+      const turn = exitDepth > laneDepth ? fv : pfv;
+      push(faceCell(mExt, face, laneDepth, t), t === topT ? turn : beltDirV);
     }
+    // ② **사다리** — 자기 열에서 반출 줄까지 내려간다. 내려가는 건 **벨트가 벨트를 먹이는**
+    // 것이라 팔 길이와 무관하다(팔은 수집 줄 d`laneDepth` 까지만 닿으면 된다).
+    for (let d = laneDepth + 1; d <= exitDepth && !blocked; d++) {
+      push(faceCell(mExt, face, d, topT), d === exitDepth ? pfv : fv); // 반출 줄에 닿으면 서쪽으로
+    }
+    // ③ **반출** — 반출 줄을 따라 서쪽 변까지. 먼저 앉은 그룹들의 줄보다 **깊고**, 그들의
+    // 열보다 **동쪽에서** 출발하므로 남의 줄을 밟지 않는다.
+    if (exitDepth > laneDepth)
+      for (let t = topT - 1; t >= m.origin.x && !blocked; t--) push(faceCell(mExt, face, exitDepth, t), pfv);
     if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
       return;
