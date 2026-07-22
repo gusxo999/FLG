@@ -626,15 +626,30 @@ export function insertingPlanner(
   /**
    * 이 줄이 배정을 **몇 개** 가져야 하나 — 두 가지가 각각 배정을 요구하고, **더 큰 쪽**을 따른다:
    *  - **벨트 처리량**([determineBeltCount]): 수요가 벨트 한 줄을 넘으면 줄이 는다.
-   *  - **좌석 행**: 팔이 면 하나의 행보다 많으면 **면을 넘나들어야** 한다 → `ceil(팔 ÷ 면 행)`.
+   *  - **팔**: 배정 하나가 받을 수 있는 팔은 `min(면 좌석 행, 그릇)` 이다 → `ceil(팔 ÷ 그 수)`.
    *    (한 줄의 팔이 W 에 7개, E 에 6개로 나뉘어 앉는 식. 각 배정이 자기 벨트·자기 포트다.)
+   *
+   * **좌석 행만 보면 안 된다**(2026-07-23 수정). 예전엔 `ceil(팔 ÷ 면 행)` 만 봤는데, 배정
+   * 하나가 감당하는 팔은 좌석과 그릇 **둘 중 작은 쪽**이라 좌석만으로는 모자랄 수 있다.
+   * 그러면 [armsByPlacement] 의 마지막 배정이 남은 팔을 다 받아 **자기 벨트를 넘겨 싣는다**
+   * (7×7 머신·벨트 45/s·팔 10/s·수요 90/s 에서 배정 2개로 잡혀 부하가 [40, **50**] 이 됐다).
+   * 배정 수를 같은 상한에서 유도하면 마지막 배정도 구성상 넘칠 수 없다.
    */
   const placementsOf = (line: IoLine): number => {
-    const belts = beltLineMap.get(`${line.role}:${line.name}`)?.length ?? 1;
+    const key = `${line.role}:${line.name}`;
+    const chosen = beltLineMap.get(key);
+    const belts = chosen?.length ?? 1;
     const arms = armsTotalOf(line);
-    const byRows =
-      arms !== undefined && Number.isFinite(rowsPerFace) ? Math.ceil(arms / rowsPerFace) : 1;
-    return Math.max(1, belts, byRows);
+    if (arms === undefined) return Math.max(1, belts); // 팔 수 미상 — 지어내지 않는다
+    // 그릇은 **실제로 깔릴 벨트 중 가장 느린 것**으로 잰다(보수적). 벨트를 못 골랐으면
+    // (수요 미상) 이 축은 없다 — 옛 동작대로 좌석만 본다.
+    // (아래 `tapCap` 은 이 클로저보다 뒤에 선언되므로 여기서는 원본을 직접 읽는다.)
+    const tp = capacity.tapCapacity ?? 0;
+    const slowest = chosen?.length ? Math.min(...chosen.map((b) => b.throughput)) : undefined;
+    const grail = slowest !== undefined && tp > 0 ? Math.floor(slowest / tp) : Infinity;
+    const perPlacement = Math.max(1, Math.min(rowsPerFace, grail));
+    const byArms = Number.isFinite(perPlacement) ? Math.ceil(arms / perPlacement) : 1;
+    return Math.max(1, belts, byArms);
   };
 
   /**

@@ -342,3 +342,59 @@ describe("거절은 항상 안전하다 — 폴백이 실패하지 않는다", (
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **어떤 배정도 자기 벨트를 넘겨 싣지 않는다** (2026-07-23).
+//
+// 배정 하나가 받을 수 있는 팔은 `min(면 좌석 행, 그릇)` 인데, 예전엔 배정 **수**를 좌석
+// 행으로만 셌다(`ceil(팔 ÷ 면 행)`). 그러면 마지막 배정이 남은 팔을 다 받아 자기 벨트를
+// 넘긴다 — [armsByPlacement] 는 "합은 언제나 total"이라 깎지 않기 때문이다(깎으면 조용히
+// 굶는다). 실제로 7×7 머신·벨트 45/s·팔 10/s·수요 90/s 에서 부하가 [40, **50**] 이었다.
+//
+// 수요를 훑어 **한 건도** 안 넘는지 본다. 한 케이스만 박아 두면 경계가 조금만 움직여도
+// 그 케이스를 비껴간다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("그릇 — 어떤 배정도 자기 벨트를 넘기지 않는다", () => {
+  const BELT = 45;
+  const TAP = 10;
+  /** 실측 모드팩 값(express 45/s, fast 10/s, 7×7 머신). */
+  const sweep = (rate: number, machineCount: number) => {
+    const line = inL("x");
+    const res = insertingPlanner(
+      {
+        lines: [line],
+        inserters: [{ entityName: "fast-inserter", reach: 1, throughput: TAP }],
+        outputSide: "W",
+        slotsPerFace: { WE: 7, NS: 7 },
+        belts: [{ entityName: "express-transport-belt", throughput: BELT }],
+      },
+      machineCount,
+      { tapCapacity: TAP, lineRates: new Map([["input:x", rate]]) } as SupplyCapacity,
+    );
+    if (res.mode !== "tap" || !res.plan.ok) return [];
+    return res.plan.lines
+      .filter((p) => p.line.kind === "belt")
+      .map((p) => (p.requiredInserterCount ?? 1) * TAP);
+  };
+
+  it("머신 수·수요를 훑어도 벨트 상한을 넘는 배정이 없다", () => {
+    const over: string[] = [];
+    for (const machineCount of [1, 2, 4, 5, 8]) {
+      for (let rate = 10; rate <= 600; rate += 10) {
+        const loads = sweep(rate, machineCount);
+        if (loads.some((l) => l > BELT)) over.push(`머신${machineCount} rate=${rate} → [${loads}]`);
+      }
+    }
+    expect(over).toEqual([]);
+  });
+
+  it("고치기 전 터지던 그 자리 — 머신 1대·수요 90/s 는 이제 탭을 거절한다", () => {
+    // 예전: 배정 2개로 잡아 부하 [40, **50**] — 벨트가 못 나르는데 "성공"이라 보고했다.
+    // 지금: 그릇까지 세면 배정 3개가 필요한데 이 모듈은 벨트 3줄을 못 놓는다 → **direct 폴백**.
+    //
+    // 이게 옳은 답이다. 못 하는 걸 못 한다고 말하는 쪽이, 되는 척하며 조용히 굶는 것보다 낫다
+    // ("거절은 항상 안전하다" — 1:1 은 구성으로 성립한다). 고친 결과가 "배정이 하나 늘었다"가
+    // 아니라 "정직하게 물러났다"인 것은 **예상과 달랐고**, 그래서 여기 적어 둔다.
+    expect(sweep(90, 1)).toEqual([]); // 탭 계획 없음 = direct 로 물러남
+  });
+});
