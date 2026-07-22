@@ -253,7 +253,16 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
       if (!route.ok && extra.size > 0) {
         // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(홉 실패 = 트리 전체
         // 폴백이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
+        //
+        // **이 재시도는 남의 예약을 밟는다. 그 대가가 연쇄한다**(2026-07-22 조사):
+        // 밟힌 계획은 다음 차례에 막혀 자기도 탐색으로 내려가고, 그 탐색이 또 예약을
+        // 밟을 수 있다. 관측된 사슬 — 계획 없던 홉 하나가 두 홉을 더 끌고 내려갔다.
+        // 그래도 **의도된 거래**다: 여기서 물러나면 홉 실패 → 트리 전체가 옛 경로로
+        // 떨어져 훨씬 크게 잃는다. 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
+        // **최소한만 밟게** 해야 하는데, 그건 라우터 비용 모델을 바꾸는 별개 작업이다.
         route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, bounds);
+        if (AUTO_LAYOUT_COORD_DUMP)
+          console.log("[moduleHop] 예약 무시 재시도 — 남의 계획을 밟는다(연쇄 가능)", k);
       }
     }
     routes.push(route);
