@@ -170,7 +170,7 @@ export interface ModuleInput {
    * 아는 packModuleTree 가 계산해 넣는다. **있으면 출력 방출이 "줄당 트렁크 하나"(fan-out
    * 병합) 대신 "머신당·목적지별 벨트"로 갈라 나간다.** 미지정(rate 미상 등)이면 옛 트렁크 방출.
    *
-   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([groupLinkBelts] 트렁크 공유, [MachineLinkGroup]).
+   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([MachineLinkGroup]). v1 은 링크 하나가 곧 그룹 하나다.
    * 신원([linkGroupId])은 그룹 자신의 `id` 필드에 실려 온다 — `ModulePort.linkId` 가 된다.
    */
   outputLinks?: MachineLinkGroup[];
@@ -227,20 +227,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outLinkGroups = input.outputLinks ?? [];
   const inLinkGroups = input.inputLinks ?? [];
   const faceLedger = new Map<string, number>();
-  // 다열-머신(입력 트렁크) 그룹이 depth(레인)를 다투는 장부 — [tryLinkFace] 참고. 얕은
-  // 레인(기본)부터 시도하고, 겹치면 긴팔 레인으로 — 배정 단계에서 끝나 방출은 탐색 없이 깐다.
-  const spanLedger: SpanLedger = new Map();
-  const laneCandidates: { d: number; inserter: string }[] = [
-    { d: LINK_LANE_DEPTH, inserter: input.inserterEntityName },
-    ...(input.longInserter
-      ? [{ d: 1 + input.longInserter.reach, inserter: input.longInserter.entityName }]
-      : []),
-  ];
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, laneCandidates, spanLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, laneCandidates, spanLedger);
+  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger);
+  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger);
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, laneCandidates, spanLedger);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, laneCandidates, spanLedger);
+  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces);
+  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces);
   const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
 
   const layout = layoutCluster(
@@ -648,19 +639,6 @@ interface LinkFacePlan {
   laneDepth: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
-  /**
-   * `laneDepth` 에서 집는 탭 인서터 — reach 가 depth 를 결정하므로 depth 와 짝이다.
-   * 단일 머신 그룹(출력·gap)은 항상 기본 레인이라 안 씀(기존 상수 `input.inserterEntityName`).
-   */
-  inserter?: string;
-  /**
-   * **다열-머신(트렁크) 그룹이 지나가는 머신 index 구간**([minMi, maxMi], 포함). 단일 머신
-   * 그룹은 자기 행 밖을 못 벗어나 span 다툼이 없어 `undefined`. 있으면 [commitLinkFace] 가
-   * 그 구간 전체를 이 `laneDepth` 의 [spanLedger] 에 claim 한다 — 다른 다열-머신 그룹이
-   * 같은 구간·같은 depth 를 또 쓰지 못하게(2026-07-21, [발견 ④] 근치: 배정 단계에서
-   * depth 겹침을 막아 방출 시점 탐색을 없앤다).
-   */
-  spanMi?: [number, number];
 }
 
 /**
@@ -699,35 +677,20 @@ function armsByMachine(group: MachineLinkGroup, side: "from" | "to"): Map<number
 const LINK_LANE_DEPTH = 2;
 
 /**
- * `[face,depth]` 별로 **이미 그 depth 를 지나가는 머신 index 집합** — [tryLinkFace] 가 다열-
- * 머신(트렁크) 그룹을 배정할 때 쓰는 장부. 단일 머신 그룹은 자기 행(=자기 머신) 밖을 못
- * 벗어나므로 안 씀 — 트렁크만 남의 머신 위를 "지나가며" 겹칠 수 있다.
- *
- * 왜 머신 index(좌표 아님)로 재는가: [tryLinkFace] 는 좌표가 생기기 **전**에 불린다(면이
- * 좌표보다 먼저). 그런데 트렁크 벨트는 자기 span(topT..botT)을 **일직선으로 관통**하므로,
- * 그 구간에 걸리는 머신은 (자기가 그 머신에 팔이 있든 없든) 전부 그 depth 를 "쓴 것"과
- * 같다 — 머신 index 구간 겹침만으로 실제 셀 충돌을 판정할 수 있다(정확한 행 몰라도 된다).
- */
-type SpanLedger = Map<string, Set<number>>;
-
-function spanLedgerKey(face: PortFace, depth: number): string {
-  return `${face}:${depth}`;
-}
-
-/**
  * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
  * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
  * 옮길 수는 없다.
  *
- * 면마다 한계가 다르다:
- *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다. **다열-머신
- *    그룹**(arms.size>1, = 입력 트렁크)은 좌석과 별개로 **depth(레인)** 도 다퉈야 한다 —
- *    자기 span 을 관통하는 depth 가 다른 트렁크와 겹치면 다음 레인 후보(긴팔)로, 그마저
- *    없으면 이 면 자체가 실패([spanLedger]). 단일 머신 그룹(출력은 늘 이쪽)은 자기 행
- *    밖을 안 벗어나 dispute 가 없으니 기본 레인 그대로.
+ * 면마다 한계가 **좌석 수 하나**다(2026-07-22). 예전엔 좌석과 별개로 **depth(레인)** 도
+ * 다퉜다 — 벨트가 면을 따라 끝까지 달렸기 때문에 같은 depth 두 줄이 반드시 부딪혔고, 그래서
+ * 한 면의 줄 수가 팔 길이 종류 수에 묶였다. 이제 벨트는 **자기 좌석 구간만 덮고 끝에서 포트
+ * 쪽으로 꺾으므로**([emitOutputLinks]) 행 구간이 안 겹치는 그룹끼리는 **같은 depth 를 그냥
+ * 나눠 쓴다.** 다툴 게 없으니 장부도 없다.
+ *
+ *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다.
  *  - **N/S(gap)**: 머신 위/아래 면의 d1 칸 = `machine.w` 개. v1 은 **면당 그룹 하나**
- *    (가로 벨트 한 줄만 깐다 — 레인 두 줄(긴팔)은 후속). 그리고 그 방향에 **gap 이 실제로
- *    있어야** 한다: 맨 위 머신에 N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
+ *    (가로 벨트 한 줄만 깐다). 그리고 그 방향에 **gap 이 실제로 있어야** 한다: 맨 위 머신에
+ *    N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
  */
 function tryLinkFace(
   machine: { w: number; h: number },
@@ -736,15 +699,16 @@ function tryLinkFace(
   side: "from" | "to",
   face: PortFace,
   used: Map<string, number>,
-  laneCandidates: { d: number; inserter: string }[],
-  spanLedger: SpanLedger,
 ): LinkFacePlan | undefined {
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
+  // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
+  // 하고, 관통하는 순간 다른 그룹과 depth 를 다퉈야 한다(그 다툼을 없앤 게 이번 재설계다).
+  // v1 의 [edgeLinkGroups] 는 tap 이 하나뿐인 그룹만 내므로 여기 걸릴 일이 없지만, 걸리면
+  // 조용히 겹치는 대신 **정직하게 자리 없음**으로 떨어뜨린다(병합을 되살릴 때 여기가 관문).
+  if (arms.size !== 1) return undefined;
 
   if (face === "N" || face === "S") {
-    // gap 벨트는 머신 하나의 면만 훑는다(가로라 기둥을 관통할 수 없다) — span 다툼 없음.
-    if (arms.size !== 1) return undefined;
     const [mi, k] = [...arms][0];
     const gap = face === "S" ? mi : mi - 1;
     if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
@@ -756,36 +720,14 @@ function tryLinkFace(
   for (const [mi, k] of arms) {
     if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
   }
-
-  // span(min..max 머신 index)을 관통할 depth 를 고른다 — 단일 머신 그룹도 검사한다.
-  // (처음엔 "단일 머신은 자기 행 밖을 안 벗어나 안전하다"고 생각했지만 틀렸다: **다른**
-  // 다열-머신 그룹의 관통 벨트가 이 머신의 행을 지나갈 수 있다 — 검사 대상은 "나 vs 나"가
-  // 아니라 "나 vs 이 depth 를 지나가는 모든 것"이다. 출력(W)은 다열-머신 그룹이 아예 없어
-  // 이 검사가 항상 첫 후보에서 통과한다 — 손해 없이 안전만 늘어난다.
-  const mis = [...arms.keys()];
-  const minMi = Math.min(...mis);
-  const maxMi = Math.max(...mis);
-  for (const cand of laneCandidates) {
-    const claimed = spanLedger.get(spanLedgerKey(face, cand.d));
-    let blocked = false;
-    if (claimed) for (let mi = minMi; mi <= maxMi; mi++) if (claimed.has(mi)) { blocked = true; break; }
-    if (!blocked) {
-      return { face, arms, laneDepth: cand.d, inserter: cand.inserter, spanMi: [minMi, maxMi] };
-    }
-  }
-  return undefined; // 후보 depth 가 다 겹친다 — 이 면은 못 쓴다(정직한 실패, gap 폴백 또는 unrouted).
+  return { face, arms, laneDepth: LINK_LANE_DEPTH };
 }
 
-/** [tryLinkFace] 가 낸 배정을 장부에 확정한다. */
-function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>, spanLedger: SpanLedger): void {
+/** [tryLinkFace] 가 낸 배정을 좌석 장부에 확정한다. */
+function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>): void {
   for (const [mi, k] of plan.arms) {
     const key = seatKey(mi, plan.face);
     used.set(key, (used.get(key) ?? 0) + k);
-  }
-  if (plan.spanMi) {
-    const key = spanLedgerKey(plan.face, plan.laneDepth);
-    const claimed = spanLedger.get(key) ?? spanLedger.set(key, new Set()).get(key)!;
-    for (let mi = plan.spanMi[0]; mi <= plan.spanMi[1]; mi++) claimed.add(mi);
   }
 }
 
@@ -812,15 +754,13 @@ function allocateLinkFaces(
   side: "from" | "to",
   prefer: PortFace,
   used: Map<string, number>,
-  laneCandidates: { d: number; inserter: string }[],
-  spanLedger: SpanLedger,
 ): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const plan = tryLinkFace(machine, count, g, side, prefer, used, laneCandidates, spanLedger);
+    const plan = tryLinkFace(machine, count, g, side, prefer, used);
     if (plan) {
-      commitLinkFace(plan, used, spanLedger);
+      commitLinkFace(plan, used);
       plans[i] = plan;
     } else deferred.push(i);
   });
@@ -838,14 +778,12 @@ function spillLinkFacesToGap(
   side: "from" | "to",
   used: Map<string, number>,
   out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
-  laneCandidates: { d: number; inserter: string }[],
-  spanLedger: SpanLedger,
 ): void {
   for (const i of out.deferred) {
     for (const face of ["S", "N"] as const) {
-      const plan = tryLinkFace(machine, count, groups[i], side, face, used, laneCandidates, spanLedger);
+      const plan = tryLinkFace(machine, count, groups[i], side, face, used);
       if (!plan) continue;
-      commitLinkFace(plan, used, spanLedger);
+      commitLinkFace(plan, used);
       out.plans[i] = plan;
       break;
     }
@@ -1014,11 +952,9 @@ function emitOutputLinks(args: {
 
     // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로).
     // **팔 종류는 레인 깊이와 짝이다** — 좌석은 언제나 d1 이므로 벨트가 d`laneDepth` 면 팔이
-    // `laneDepth-1` 칸을 던져야 한다. 배정([tryLinkFace])이 그 짝을 이미 골라 `plan.inserter`
-    // 에 실어 보내므로 **여기서 다시 고르지 않고 그대로 따른다**. 상수를 쓰면 깊은 레인에
-    // 짧은 팔을 놓아 벨트에 못 닿고 그 자리가 조용히 굶는다(2026-07-22 수정, 입력 방출은
-    // 처음부터 옳게 읽고 있었다). 기본 레인 그룹은 `inserter` 가 비어 있어 기본 팔로 떨어진다.
-    const tapInserter = plan.inserter ?? input.inserterEntityName;
+    // `laneDepth-1` 칸을 던져야 한다. v1 은 모든 링크 벨트가 기본 레인(d2)이라 기본 팔이
+    // 언제나 맞다. 깊은 레인이 다시 생기면(반출 사다리) **여기가 그 짝을 따라가야 한다** —
+    // 상수를 쓰면 짧은 팔이 벨트에 못 닿아 그 자리가 조용히 굶는다.
     const inward = { x: -fv.x, y: -fv.y };
     for (const t of rows) {
       const seat = faceCell(mExt, face, 1, t);
@@ -1026,7 +962,7 @@ function emitOutputLinks(args: {
         producer: { containerId: m.id, cell: { ...seat }, face, kind: "item" },
         consumer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
       };
-      cells.push(makeInserterCell(seat, inward, tapInserter, pair));
+      cells.push(makeInserterCell(seat, inward, input.inserterEntityName, pair));
       occupancy.add(cellKey(seat.x, seat.y));
     }
     cells.push(
@@ -1120,17 +1056,15 @@ function emitInputLinks(args: {
       const b = faceCell(geomExt, face, d, topT);
       return isGap ? { x: botT, y: b.y } : b;
     };
-    // 레인(depth)은 이미 배정 단계에서 결정됐다([tryLinkFace]의 spanLedger) — 다열-머신
-    // 그룹끼리 depth 를 다투는 계산은 거기서 끝났으므로 여기선 탐색하지 않는다(2026-07-21,
-    // 발견 ④ 근치). 단일 머신 그룹(gap 전부·입력도 일부)은 애초에 dispute 가 없어 기본
-    // 레인 그대로다 — `plan.inserter` 가 그때만 비어 있다.
-    const lane = { d: plan.laneDepth, inserter: plan.inserter ?? input.inserterEntityName };
+    // 레인(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
+    // 곧 벨트 하나라 관통 벨트가 없고, 벨트가 자기 구간만 덮으므로 다툴 depth 자체가 없다.
+    const lane = { d: plan.laneDepth, inserter: input.inserterEntityName };
     const span: { x: number; y: number }[] = [];
     for (let t = topT; t <= botT; t++) span.push(faceCell(geomExt, face, lane.d, t));
     const te = trunkEndOf(lane.d);
     span.push({ x: te.x + pfv.x, y: te.y + pfv.y }, { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }); // 포트 인서터·상자
     if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
-      unroutedLines.push(line); // 안전망(구성상 발생 안 함 — spanLedger 가 이미 막았어야 한다)
+      unroutedLines.push(line); // 안전망(구성상 발생 안 함 — 좌석 장부가 이미 막았어야 한다)
       return;
     }
 

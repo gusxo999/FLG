@@ -5,8 +5,9 @@ import type { IoLine } from "../module/clusterPortPlanner";
 import * as allocateMachineLinksModule from "../module/allocateMachineLinks";
 
 // 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 홉으로 이어지는지.
-// 케이스 A: 작은 링크(팔 1) → 트렁크 공유(그룹 하나 = 벨트 하나가 부모 머신 여럿을 탭).
-// 케이스 B: 큰 링크(그릇을 채움) → 점대점(그룹 = 링크 하나씩). 별도 판정 없이 그릇 규칙이 가른다.
+// v1 은 **링크 하나 = 벨트 하나**다(2026-07-22, docs/auto-layout-wizard.cluster-redesign.md).
+// 링크가 작아 그릇에 여유가 남아도 목적지가 다르면 안 묶는다 — 묶으면 그 벨트가 부모 머신
+// 여럿을 관통해야 하고, 그러려면 그 머신들이 붙어 있어야 하기 때문(= ColumnCluster 강제).
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
@@ -25,8 +26,9 @@ const config: PackConfig = {
   beltMaxUndergroundDistance: 4,
 };
 
-describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 여럿을 탭", () => {
-  // 부모 2대(머신당 6 = 팔 1), 자식 2대(머신당 12). 링크: (c0→p0,1),(c0→p1,1) → 그룹 하나.
+describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도 따로", () => {
+  // 부모 2대(머신당 6 = 팔 1), 자식 2대(머신당 12). 링크: (c0→p0,1),(c0→p1,1).
+  // 그릇은 3이라 예전이면 한 벨트로 묶였을 자리 — 이제 목적지가 달라 벨트 둘이다.
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 2,
@@ -43,19 +45,19 @@ describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 �
   const child = pack.placements.find((pl) => pl.id === "c")!;
   const parent = pack.placements.find((pl) => pl.id === "p")!;
 
-  it("자식 출력 포트 1개 — 두 링크가 한 벨트에 묶임", () => {
-    expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(1);
+  it("자식 출력 포트 2개 — 그릇에 여유가 있어도 안 묶는다", () => {
+    expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
   });
 
-  it("부모 입력 포트 1개 = 트렁크(벨트가 두 머신의 행을 관통, 머신마다 탭)", () => {
+  it("부모 입력 포트 2개 — 벨트가 남의 머신 행을 관통하지 않는다", () => {
     const ports = parent.module.inputPorts.filter((p) => p.line.name === "x");
-    expect(ports).toHaveLength(1);
-    // 트렁크 belt 가 두 머신의 좌석 행(각 1행)을 다 덮는다 — 벨트 셀 ≥ 머신 간 거리.
-    expect(ports[0].cells.length).toBeGreaterThanOrEqual(2);
+    expect(ports).toHaveLength(2);
+    // 각 벨트는 **자기 목적지 머신의 좌석 행만** 덮는다(팔 1개 = 셀 1개).
+    expect(ports.map((p) => p.cells.length)).toEqual([1, 1]);
   });
 
-  it("홉 1개 — 그룹 순서 1:1, raw 0", () => {
-    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(1);
+  it("홉 2개 — 그룹 순서 1:1, raw 0", () => {
+    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
   });
 
@@ -214,11 +216,11 @@ describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자�
 // (자식 쪽)·inputLinksOf(부모 쪽)가 같은 간선에 대해 edgeLinkGroups 를 각자 독립으로 두 번
 // 불렀다("결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 양쪽이 일치하길 기대하던
 // 구조). packModuleTree 가 간선당 사전 캐시 1개만 만들고 양쪽이 그 캐시를 참조하는지,
-// edgeLinkGroups 내부에서 트렁크 공유를 실제로 계산하는 groupLinkBelts(cross-module import
-// — 같은 파일 안 호출과 달리 vi.spyOn 이 가로챌 수 있다) 호출 횟수로 확인한다.
+// edgeMachineLinks 가 부르는 allocateMachineLinks(cross-module import — 같은 파일 안 호출과
+// 달리 vi.spyOn 이 가로챌 수 있다) 호출 횟수로 확인한다.
 describe("링크 그룹 계산 — 간선당 정확히 1회(이중 계산 회귀 방지)", () => {
-  it("자식→부모 간선 하나에 groupLinkBelts 가 딱 한 번 불린다", () => {
-    const spy = vi.spyOn(allocateMachineLinksModule, "groupLinkBelts");
+  it("자식→부모 간선 하나에 allocateMachineLinks 가 딱 한 번 불린다", () => {
+    const spy = vi.spyOn(allocateMachineLinksModule, "allocateMachineLinks");
     const specs: NodeSpec[] = [
       {
         id: "p", depth: 0, machine: M, count: 2,

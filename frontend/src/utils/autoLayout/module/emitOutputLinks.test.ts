@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
-import { groupLinkBelts, type MachineLink } from "./allocateMachineLinks";
+import type { MachineLink, MachineLinkGroup } from "./allocateMachineLinks";
 import { directionToVector } from "../containerRouting";
 
 /**
@@ -26,20 +26,24 @@ function beltLeaks(mod: GeneratedModule): string[] {
 }
 
 // 출력 fan-out 방출 검증 — 링크 그룹(=벨트) 단위로 "머신당·목적지별" belt 가 갈라 나온다.
-// count≥2, W/E 에 앉는 중간 출력 케이스. 그룹핑은 packModuleTree(edgeLinkGroups)가 하므로
-// 여기선 같은 함수(groupLinkBelts)로 직접 만들어 넣는다.
+// count≥2, W/E 에 앉는 중간 출력 케이스. **v1 은 링크 하나가 곧 벨트 하나**라
+// (docs/auto-layout-wizard.cluster-redesign.md) 여기서도 링크를 그대로 그룹으로 편다.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 // 자식 2대. 머신0 이 부모0·부모1 로 갈라 낸다(fan-out).
-//   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)  → cap 3 이라 한 벨트로 묶임(트렁크 공유)
+//   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)  → 목적지가 다르니 **벨트도 따로**
 //   머신1 → 부모1 (팔1)                        → 자기 벨트
 const flat: MachineLink[] = [
   { fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 1 },
   { fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 1 },
   { fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 1 },
 ];
-const groups = groupLinkBelts(flat, 3); // [{c0: taps p0,p1}, {c1: taps p1}]
+const groups: MachineLinkGroup[] = flat.map((l) => ({
+  fromMachine: l.fromMachine,
+  item: l.item,
+  taps: [{ toMachine: l.toMachine, inserterCount: l.inserterCount }],
+}));
 
 const base: ModuleInput = {
   machine: M,
@@ -66,21 +70,21 @@ const base: ModuleInput = {
 describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
   const mod = generateModule(base);
 
-  it("그룹핑: 같은 자식 머신의 작은 링크들이 한 벨트로 묶인다", () => {
-    expect(groups.map((g) => g.taps.length)).toEqual([2, 1]);
+  it("링크 하나 = 벨트 하나 — 목적지가 다르면 안 묶는다", () => {
+    expect(groups.map((g) => g.taps.length)).toEqual([1, 1, 1]);
   });
 
   it("그룹마다 출력 포트 하나 (옛 트렁크였다면 gear 포트 1개뿐)", () => {
-    expect(mod.outputPorts).toHaveLength(2);
+    expect(mod.outputPorts).toHaveLength(3);
   });
 
   it("포트가 전부 W면으로 나간다 (부모 쪽으로 꺾임)", () => {
     expect(mod.outputPorts.every((p) => p.face === "W")).toBe(true);
   });
 
-  it("두 벨트가 서로 다른 행에서 나간다", () => {
+  it("벨트마다 서로 다른 행에서 나간다", () => {
     const ys = mod.outputPorts.map((p) => p.anchor.y);
-    expect(new Set(ys).size).toBe(2);
+    expect(new Set(ys).size).toBe(3);
   });
 
   // 순서 우선(문서 체크리스트 "(나)") — 정렬(부모 Y순 재배치)은 안 한다. 그룹 배열 순서가
@@ -93,9 +97,18 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
     expect(rows).toEqual(sorted);
   });
 
-  it("머신0 벨트는 팔 2개(그룹 합), 머신1 벨트는 팔 1개", () => {
+  it("벨트마다 팔 1개 — 링크의 팔 수 그대로", () => {
     // 벨트 셀 수 = 팔 수(연속 좌석 k행을 덮는 세로 belt).
-    expect(mod.outputPorts.map((p) => p.cells.length).sort()).toEqual([1, 2]);
+    expect(mod.outputPorts.map((p) => p.cells.length)).toEqual([1, 1, 1]);
+  });
+
+  it("머신0 의 두 벨트가 **같은 깊이**를 나눠 쓴다 — 행이 안 겹치니 다툴 게 없다", () => {
+    const xs = mod.outputPorts.slice(0, 2).map((p) => p.cells[0].x);
+    expect(new Set(xs).size).toBe(1);
+  });
+
+  it("벨트끼리 새지 않는다", () => {
+    expect(beltLeaks(mod)).toEqual([]);
   });
 
   it("셀 좌표가 겹치지 않는다 (occupancy 충돌 0)", () => {
@@ -314,44 +327,6 @@ describe("이웃 머신 그룹의 벨트로 물건이 새지 않는다", () => {
 
   it("머신1 의 물건이 머신0 의 벨트로 흘러들지 않는다", () => {
     expect(beltLeaks(mod)).toEqual([]);
-  });
-});
-
-// 레인(depth)과 팔 종류는 **짝**이다 — 배정이 "이 벨트는 d3 이니 긴팔로 집어라"라고 정해
-// LinkFacePlan.inserter 에 적어 보내는데, 방출이 그걸 안 읽고 기본 인서터를 놓으면 팔이
-// 벨트에 **닿지 않는다**(조용히 굶는다). 입력 방출은 처음부터 읽고 있었고 출력만 빠져 있었다.
-describe("깊은 레인 그룹은 긴팔로 집는다 (배정이 정한 팔 종류를 따른다)", () => {
-  // 같은 머신에서 그룹 둘. 좌석은 남지만(1+1 ≤ 3) 기본 레인(d2)은 첫 그룹이 이미 관통해
-  // 있으므로 둘째 그룹은 긴팔 레인(d = 1+reach = 3)으로 밀린다. count=1 이라 gap 폴백도 없다.
-  const mod = generateModule({
-    ...linkedBase,
-    count: 1,
-    lines: [{ name: "gear", kind: "belt", role: "output" }],
-    outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 1 }] },
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] },
-    ],
-  } as ModuleInput);
-
-  const [m0] = mod.machines;
-  /** 이 포트의 벨트가 W 면에서 몇 칸 바깥인가. */
-  const depthOf = (i: number) => m0.origin.x - mod.outputPorts[i].cells[0].x;
-
-  it("두 그룹이 서로 다른 레인에 선다", () => {
-    expect(mod.outputPorts).toHaveLength(2);
-    expect(depthOf(0)).toBe(2);
-    expect(depthOf(1)).toBe(3);
-  });
-
-  it("d3 벨트를 집는 팔은 긴팔이다", () => {
-    // 탭 인서터 = 좌석(d1) 칸. 그 칸의 엔티티가 레인 깊이와 짝이어야 한다.
-    const seatX = m0.origin.x - 1;
-    const seatsOf = (i: number) => {
-      const beltYs = new Set(mod.outputPorts[i].cells.map((c) => c.y));
-      return mod.cells.filter((c) => c.x === seatX && beltYs.has(c.y));
-    };
-    expect(seatsOf(0).map((c) => c.cell.entityName)).toEqual(["inserter"]);
-    expect(seatsOf(1).map((c) => c.cell.entityName)).toEqual(["long-handed-inserter"]);
   });
 });
 

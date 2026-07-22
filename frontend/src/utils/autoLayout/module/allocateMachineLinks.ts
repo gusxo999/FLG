@@ -41,12 +41,18 @@ export interface MachineLink {
 }
 
 /**
- * 자식→부모 간선 하나의 **벨트(그룹)** — [groupLinkBelts] 가 트렁크 공유로 묶어 낸 결과.
- * "자식 머신 하나(`fromMachine`)가 부모 머신 여러 개(`taps`)에 판다"는 사실을 **행 여러 개로
- * 흩어 저장하지 않고 레코드 하나에 묶어 담는다** — 그룹 하나 = 물리 벨트 하나 = 포트 한 쌍.
+ * 자식→부모 간선 하나의 **벨트** — 그룹 하나 = 물리 벨트 하나 = 포트 한 쌍.
  *
- * `id` 는 이 함수(그룹핑)가 아니라 간선의 양끝(자식·부모 노드 id)을 아는 호출자
- * ([edgeLinkGroups])가 채운다 — 그래서 여기선 항상 `undefined` 로 나온다.
+ * **v1 은 링크 하나가 곧 그룹 하나다**(2026-07-22). 목적지가 다르면 벨트도 따로 낸다 —
+ * 여러 목적지를 한 벨트에 묶으면 그 벨트가 부모 머신 여럿을 **관통**해야 하고, 그러려면
+ * 그 머신들이 **붙어 있어야** 한다([[용어사전#ColumnCluster]]). 채널 트랙 하나를 아끼려고
+ * 클러스터 형태 전체를 저당 잡히는 거래라 v1 에서는 안 한다.
+ * 단일 출처: docs/auto-layout-wizard.cluster-redesign.md
+ *
+ * `taps` 가 배열인 채로 남은 이유: 병합은 **되살릴 수 있는 선택**이라(채널 폭이 실제로
+ * 아까울 때) 그때 이 자료 구조를 다시 안 바꾸려는 것이다. v1 에서는 항상 길이 1.
+ *
+ * `id` 는 간선의 양끝(자식·부모 노드 id)을 아는 호출자([edgeLinkGroups])가 채운다.
  */
 export interface MachineLinkGroup {
   /** 그룹 신원([linkGroupId]) — 이 벨트로 난 포트의 [ModulePort.linkId] 가 그대로 든다. */
@@ -80,42 +86,15 @@ export interface AllocateMachineLinksInput {
 const EPS = 1e-9;
 
 /**
- * 그릇(규칙 3) — 벨트 하나에 붙일 수 있는 인서터 수. [allocateMachineLinks](벨트 쪼개기)와
- * [groupLinkBelts](트렁크 공유)가 **같은 값**을 봐야 하므로 한 곳에 둔다.
+ * 그릇(규칙 3) — 벨트 하나에 붙일 수 있는 인서터 수. [allocateMachineLinks] 가 링크를
+ * 쪼갤 때 쓴다.
+ *
+ * **상한이지 명령이 아니다.** "이 이상 실으면 벨트가 넘친다"까지만 말한다 — "여유가 있으면
+ * 합쳐라"는 여기서 안 나온다(그건 대가가 따로 있는 정책이다).
+ * docs/auto-layout-wizard.cluster-redesign.md
  */
 export function maxInsertersPerBelt(beltThroughput: number, inserterThroughput: number): number {
   return Math.max(1, Math.floor(beltThroughput / inserterThroughput + EPS));
-}
-
-/**
- * **트렁크 공유(기하 병합)** — 같은 (품목, 자식 머신)의 연속 링크를 그릇이 허락하는 만큼
- * 벨트 하나로 묶는다. **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍.**
- *
- * 링크(회계)는 그대로다 — 누가 누구에게 얼마는 안 바뀌고, 그 벨트들이 **한 벨트를 나눠 탈
- * 뿐**이다. 작은 입력(링크당 팔 1~2개)은 자연히 묶여 옛 입력 트렁크(벨트 하나가 부모 머신
- * 여럿을 탭)가 되고, 큰 입력(링크가 이미 그릇을 채움)은 자연히 점대점으로 남는다 —
- * 트렁크 vs 점대점의 **별도 판정이 없다**(그릇 규칙 하나가 가른다).
- *
- * 한 간선당 이 함수는 [edgeLinkGroups] 를 거쳐 **한 번만** 불리고([packModuleTree] 캐시),
- * 자식 출력 emit 과 부모 입력 emit 은 그 결과 [MachineLinkGroup] 객체를 그대로 참조한다 —
- * "같은 입력이면 같은 출력"이라는 결정성에 기대어 양쪽이 따로 계산해 우연히 일치하길
- * 바라던 옛 구조(2026-07-21 이전)를 없앴다.
- *
- * @param cap 그룹 인서터 합의 상한 — 호출자가 `min(그릇, 자식 머신 좌석)` 으로 준다
- *            (그룹 전체가 자식 머신 하나의 면 좌석에 연속으로 앉아야 하므로).
- */
-export function groupLinkBelts(links: MachineLink[], cap: number): MachineLinkGroup[] {
-  const groups: MachineLinkGroup[] = [];
-  for (const l of links) {
-    const g = groups[groups.length - 1];
-    const sum = g?.taps.reduce((s, t) => s + t.inserterCount, 0) ?? 0;
-    if (g && g.item === l.item && g.fromMachine === l.fromMachine && sum + l.inserterCount <= cap) {
-      g.taps.push({ toMachine: l.toMachine, inserterCount: l.inserterCount });
-    } else {
-      groups.push({ fromMachine: l.fromMachine, item: l.item, taps: [{ toMachine: l.toMachine, inserterCount: l.inserterCount }] });
-    }
-  }
-  return groups;
 }
 
 /**
@@ -130,7 +109,7 @@ export function allocateMachineLinks(input: AllocateMachineLinksInput): MachineL
   const links: MachineLink[] = [];
   if (tp <= 0) return links; // 인서터 처리량 미상 — 지어내지 않는다.
 
-  // 그릇(규칙 3) — groupLinkBelts(트렁크 공유)와 같은 값을 봐야 하므로 공용 함수.
+  // 그릇(규칙 3) — 벨트 한 줄이 실어 나를 수 있는 양.
   const maxPerBelt = maxInsertersPerBelt(beltThroughput, tp);
 
   // 각 머신의 남은 예산. 자식 = 아직 안 뺀 산출, 부모 = 아직 안 채운 필요량.
