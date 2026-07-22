@@ -33,7 +33,7 @@ import type { RecipeTreeNode } from "../types";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
-import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
+import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
@@ -212,6 +212,34 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       supplyCapacity: tapCap > 0 ? { tapCapacity: tapCap, lineRates } : undefined,
     };
   });
+
+  // **왜 팔이 그만큼 앉았나** — 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느
+  // 식에서 나왔는지 좌표만 보고는 못 가린다. 세 후보가 같은 값을 낼 수 있기 때문이다:
+  // 팔 개수(수요÷tapCap) · 그릇(벨트÷tapCap) · 면 좌석(머신 변 길이). 셋을 나란히 찍어
+  // **어느 것이 실제로 물린 상한인지** 드러낸다.
+  //
+  // `tapCap` 이 두 열에 동시에 들어가는 게 핵심이다 — 팔 개수엔 **느린 팔**이 보수적이고
+  // 그릇엔 **빠른 팔**이 보수적인데, 지금은 둘 다 min(normal, long) 하나를 본다.
+  // 그래서 `그릇×normalTp` 열(= 그 벨트가 실제로 받는 부하)이 벨트 처리량을 넘으면 포화다.
+  if (AUTO_LAYOUT_COORD_DUMP) {
+    const fastest = options.belts?.[0]?.throughput ?? 0;
+    console.log(
+      `[팔·벨트 상한] normalTp=${normalTp} longTp=${longTp} tapCap=min=${tapCap} 벨트(최속)=${fastest}`,
+    );
+    for (const s of specs) {
+      const rows = { WE: s.machine.h, NS: s.machine.w };
+      for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
+        const arms = Math.max(1, Math.ceil(rate / s.count / tapCap));
+        const grail = Math.max(1, Math.floor(fastest / tapCap));
+        console.log(
+          `  ${s.id} ${key}: 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} ` +
+            `→ 팔/머신=${arms} · 그릇=${grail} · 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
+            `|| 그릇 가득 실부하=${(grail * normalTp).toFixed(1)}/s vs 벨트 ${fastest}/s` +
+            `${grail * normalTp > fastest ? "  ← 포화" : ""}`,
+        );
+      }
+    }
+  }
 
   const packConfig: PackConfig = {
     inserterEntityName: options.inserterEntityName,

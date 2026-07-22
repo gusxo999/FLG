@@ -105,6 +105,56 @@ describe("routeModuleHops", () => {
     expect(res.strippedChestIds.size).toBe(2);
   });
 
+  // **섞인 홉** — 한쪽 끝은 트렁크(탭 인서팅) 포트, 반대쪽은 1:1 다이렉트 인서팅 포트.
+  // 부모는 입력이 많아 트렁크가 거절되고(direct), 자식은 tap 으로 남는다.
+  //
+  // 좌석 인서터의 운명이 **끝마다 다르다**([moduleHop.seatIsBeltFeeder]):
+  //  - 트렁크 끝 `[상자][인서터][벨트]` — 상자가 홉 belt 가 되면 그 인서터는 belt→belt 가
+  //    되어 하는 일 없이 처리량만 깎는다. 떼고 그 자리도 belt 로 메운다.
+  //  - 1:1 끝 `[상자][인서터][머신]` — 그 인서터가 **머신에 재료를 넣는 유일한 물건**이다.
+  //    떼면 머신이 조용히 굶는다. 남긴다.
+  //
+  // 그래서 판정은 홉 단위 플래그가 아니라 **포트 단위**여야 한다 — 이 트리가 그 증거다.
+  it("섞인 홉 — 트렁크 끝 인서터는 belt 가 되고, 1:1 끝 인서터는 남는다", () => {
+    const mixedSpecs: NodeSpec[] = [
+      {
+        id: "p", depth: 0, machine: M, count: 2,
+        // 입력 5줄 = 트렁크 거절 → 다이렉트 인서팅(포트가 머신에 직접 붙는다).
+        lines: [inL("a"), inL("b"), inL("c"), inL("d"), inL("x"), outL("prod")],
+      },
+      { id: "c", depth: 1, parentId: "p", machine: M, count: 2, lines: [outL("x")] },
+    ];
+    const pack = packModuleTree(mixedSpecs, packConfig);
+    const res = routeModuleHops(pack, hopConfig);
+    const hop = pack.hops.find((h) => h.item === "x")!;
+
+    // 전제 — 두 끝의 모양이 실제로 다른가. 이게 같아지면 이 테스트는 섞인 홉을 더 이상
+    // 재현하지 못하므로, 통과해도 증거가 아니다.
+    expect(hop.from.cells.length, "자식 끝이 트렁크 포트가 아님").toBeGreaterThan(0);
+    expect(hop.to.cells, "부모 끝이 1:1 포트가 아님").toHaveLength(0);
+
+    const seatOf = (p: typeof hop.from) => {
+      const fv = faceVector(p.face);
+      return `${p.anchor.x - fv.x},${p.anchor.y - fv.y}`;
+    };
+    const fromSeat = seatOf(hop.from);
+    const toSeat = seatOf(hop.to);
+
+    // 트렁크 끝 — 떨어지고 belt 로 메워진다.
+    expect(res.strippedCellKeys.has(fromSeat), `트렁크 끝 인서터가 안 떨어짐 @${fromSeat}`).toBe(true);
+    expect(
+      res.cells.find((c) => `${c.x},${c.y}` === fromSeat)?.cell.entityType,
+      `트렁크 끝 좌석이 belt 로 안 메워짐 @${fromSeat}`,
+    ).toBe(EntityType.Belt);
+
+    // 1:1 끝 — 그대로 남는다(떼지도, 덮지도 않는다).
+    expect(res.strippedCellKeys.has(toSeat), `1:1 인서터를 뗐다 @${toSeat}`).toBe(false);
+    expect(
+      res.cells.some((c) => `${c.x},${c.y}` === toSeat),
+      `1:1 인서터를 belt 로 덮었다 @${toSeat}`,
+    ).toBe(false);
+  });
+
   it("유체 홉 — 자식 유체 출력 → 부모 유체 입력을 파이프로 잇는다", () => {
     const pack = packModuleTree(fluidSpecs, packConfig);
     // packModuleTree 가 이름 기반으로 유체 포트도 짝짓는다 → 유체 HopSpec 이 만들어진다.

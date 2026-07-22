@@ -4,8 +4,9 @@
  * 단일 출처: 본 설계안(모듈 출력 경계 / ⑤ 핸드오프 = 벨트-투-벨트 무상자).
  *
  * [modulePacking.packModuleTree] 가 낸 `HopSpec`(자식 출력 포트 → 부모 입력 포트)을
- * 받아, 두 포트의 **경계 무한상자 + 경계 인서터를 떼고** 그 자리를 belt 로 메워
- * 자식 출력 trunk 끝 → 부모 입력 trunk 머리를 **상자 없이 직접** 잇는다.
+ * 받아, 두 포트의 **경계 무한상자를 떼고**(+ 그 상자에 붙은 인서터가 belt→belt 피더면
+ * 그것도 함께 떼고) 그 자리를 belt 로 메워 자식 출력 trunk 끝 → 부모 입력 trunk 머리를
+ * **상자 없이 직접** 잇는다. 어느 인서터가 함께 떨어지는지는 [seatIsBeltFeeder] 참조.
  *
  * ## 왜 무상자
  * generateModule 은 클러스터를 "루트인 척" 생성해 모든 포트가 무한상자(외부 소스/싱크)로
@@ -16,7 +17,7 @@
  * emitTrunk 규약상 한 포트는 `chest -- seat(인서터) -- trunkStart(belt)` 가 일직선(2칸)이고
  * `face` 는 바깥 방향(클러스터→ring)이다. 따라서:
  *   - chest    = `anchor`
- *   - seat     = `anchor − faceVec(face)`   (인서터 — 제거 대상)
+ *   - seat     = `anchor − faceVec(face)`   (인서터 — belt→belt 피더일 때만 제거 대상)
  *   - trunkStart = `anchor − 2·faceVec(face)` (기존 trunk belt — 유지)
  * 출력(collect)은 trunk 흐름이 chest 쪽(바깥)을 향하고, 입력(supply)은 chest→trunk(안쪽)을
  * 향한다. 그래서 새 belt 체인은 `seat_from → chest_from → …경로… → chest_to → seat_to` 로
@@ -58,6 +59,7 @@ import { cellKey, faceVector, segment } from "../util/helper";
 import type { ModulePort } from "../module/clusterModule";
 import { hopMapKey, type HopGeometry, type HopSpec, type PackResult } from "./modulePacking";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
+import { EntityType } from "../../../types/layout";
 
 export interface HopConfig {
   beltEntityName: string;
@@ -97,7 +99,7 @@ export interface ModuleHopResult {
   corridors: UndergroundCorridor[];
   /** 떼야 할 무한상자 컨테이너 id(자식 출력 싱크 + 부모 입력 소스). */
   strippedChestIds: Set<string>;
-  /** 떼야 할 모듈 셀 좌표("x,y") — 경계 chest ghost + 경계 인서터. */
+  /** 떼야 할 모듈 셀 좌표("x,y") — 경계 chest ghost + belt→belt 가 된 경계 인서터. */
   strippedCellKeys: Set<string>;
   routes: HopRoute[];
   /** 경로 못 찾은 홉 수. */
@@ -125,6 +127,33 @@ function portGeometry(port: ModulePort): {
   const seat = { x: chest.x - fv.x, y: chest.y - fv.y };
   const trunkStart = { x: chest.x - 2 * fv.x, y: chest.y - 2 * fv.y };
   return { chest, seat, trunkStart };
+}
+
+/**
+ * 이 포트의 seat(인서터)이 **벨트↔상자 피더**인가 — 즉 홉이 상자를 벨트로 바꾸면
+ * **쓸모가 없어지는가**.
+ *
+ * 포트에는 모양이 둘 있고, 좌석의 운명이 갈린다:
+ *
+ *  - **1:1 다이렉트 인서팅** — `[상자][인서터][머신]`. 그 인서터가 머신에 재료를 넣는
+ *    **유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔아도 픽업 셀은 그대로라
+ *    인서터는 **남겨야** 한다. 모듈 안에 벨트가 없으므로 `port.cells` 가 비어 있다.
+ *  - **링크/트렁크 벨트** — `[상자][인서터][벨트]`([emitOutputLinks]·[emitInputLinks]·
+ *    [trunkEmit.emitTrunk] 공통 규약). 상자가 홉 belt 로 바뀌면 이 인서터는 **belt→belt**
+ *    가 되어, 하는 일은 없이 처리량만 인서터 속도로 깎는다. 떼고 그 자리도 belt 로 메워
+ *    홉 벨트가 트렁크로 **곧장 흐르게** 해야 한다.
+ *
+ * 판정은 기하에서 **유도**한다 — 포트가 깐 벨트 셀에 `trunkStart`(= anchor − 2·faceVec)
+ * 가 있으면 좌석 건너편이 벨트다. 새 플래그를 심으면 방출기와 여기가 따로 놀 수 있다.
+ */
+function seatIsBeltFeeder(port: ModulePort): boolean {
+  const { trunkStart } = portGeometry(port);
+  return port.cells.some(
+    (c) =>
+      c.x === trunkStart.x &&
+      c.y === trunkStart.y &&
+      (c.cell.entityType === EntityType.Belt || c.cell.entityType === EntityType.UndergroundBelt),
+  );
 }
 
 /** p 가 축정렬 구간 a→b 위에 있나(양끝 포함). */
@@ -284,17 +313,22 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
 }
 
 /**
- * 한 홉이 떼는 셀 좌표 — **양끝 chest(ghost) 뿐.** 인서터(seat)는 **남긴다.**
+ * 한 홉이 떼는 셀 좌표 — 양끝 chest(ghost) + **좌석이 belt→belt 피더인 끝의 인서터.**
  *
- * 1:1 방출(트렁크 비활성)에서 포트는 `[상자][인서터][머신]` 두 칸이다. 그 인서터가
- * **머신에 재료를 넣는 유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔면
- * 인서터는 그 belt 에서 집어(픽업 셀 = 상자 자리 = 그대로) 머신에 넣는다 — 픽업 방향이
- * 바뀌지 않으므로 인서터를 그대로 두면 된다.
+ * 포트 모양에 따라 좌석의 운명이 갈린다([seatIsBeltFeeder]): 링크/트렁크 포트의 좌석은
+ * 상자가 belt 로 바뀌는 순간 belt→belt 가 되어 처리량만 깎으므로 떼고 그 자리도 belt 로
+ * 메운다([finishChain] 이 체인을 좌석까지 늘린다). 1:1 다이렉트 인서팅의 좌석은 머신에
+ * 재료를 넣는 유일한 물건이라 **남긴다** — 떼면 머신이 굶는다.
+ *
+ * 두 끝은 **따로** 판정한다. 한 모듈은 링크 벨트, 상대는 1:1 인 홉이 실제로 생긴다.
  */
 function stripKeys(hop: HopSpec): string[] {
   const g0 = portGeometry(hop.from);
   const g1 = portGeometry(hop.to);
-  return [cellKey(g0.chest.x, g0.chest.y), cellKey(g1.chest.x, g1.chest.y)];
+  const keys = [cellKey(g0.chest.x, g0.chest.y), cellKey(g1.chest.x, g1.chest.y)];
+  if (seatIsBeltFeeder(hop.from)) keys.push(cellKey(g0.seat.x, g0.seat.y));
+  if (seatIsBeltFeeder(hop.to)) keys.push(cellKey(g1.seat.x, g1.seat.y));
+  return keys;
 }
 
 function routeOneHop(
@@ -411,10 +445,31 @@ function routeOneFluidHop(
 function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): HopRoute {
   const fvTo = faceVector(hop.to.face);
 
-  // 체인 = chest_from … chest_to 그대로. seat(인서터)은 양끝에 **그대로 남아** 있으므로
-  // 벨트로 덮지 않는다 — 출력 인서터가 chest_from 자리 belt 에 놓고, 입력 인서터가
-  // chest_to 자리 belt 에서 집어 머신에 넣는다.
-  const ext: DijkstraResult = result;
+  // 체인의 몸통은 chest_from … chest_to. 양 끝은 **그 끝의 좌석이 무엇이냐**에 따라 갈린다
+  // ([stripKeys]·[seatIsBeltFeeder] 와 같은 판정을 써야 한다 — 여기서 어긋나면 뗀 자리가
+  // 빈 칸으로 남아 물건이 사라진다):
+  //  - belt→belt 피더 좌석(링크/트렁크 포트) = 인서터를 뗐으니 그 자리를 belt 로 메워
+  //    홉 벨트가 트렁크로 곧장 흐르게 한다. seat↔chest 는 인접 1칸이라 edge 는 'surface'.
+  //  - 1:1 다이렉트 인서팅 좌석 = 인서터가 그대로 남아 있으므로 덮지 않는다. 출력 인서터가
+  //    chest_from 자리 belt 에 놓고, 입력 인서터가 chest_to 자리 belt 에서 집어 넣는다.
+  const headSeat = seatIsBeltFeeder(hop.from) ? portGeometry(hop.from).seat : null;
+  const tailSeat = seatIsBeltFeeder(hop.to) ? portGeometry(hop.to).seat : null;
+  const ext: DijkstraResult =
+    headSeat || tailSeat
+      ? {
+          ...result,
+          cells: [
+            ...(headSeat ? [headSeat] : []),
+            ...result.cells,
+            ...(tailSeat ? [tailSeat] : []),
+          ],
+          edges: [
+            ...(headSeat ? (["surface"] as DijkstraResult["edges"]) : []),
+            ...result.edges,
+            ...(tailSeat ? (["surface"] as DijkstraResult["edges"]) : []),
+          ],
+        }
+      : result;
 
   // INVARIANT: 체인은 텔레포트하지 않는다 — surface edge 는 인접 1칸, jump edge 는
   // 축 정렬 + 거리 k 여야 한다. emitItemPath 는 edge 를 신뢰하므로 어긋난 결과를
@@ -435,8 +490,9 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
   }
 
   const pair = synthPair(hop.from.chest.id, hop.to.chest.id);
-  // 마지막 셀(seat_to)의 방향 = trunkStart_to 쪽 = −fv_to. emitItemPath 는
-  // `-consumerOut` 방향으로 emit 하므로 consumerOut = +fv_to 를 넘긴다.
+  // 마지막 셀의 방향 = 모듈 안쪽 = −fv_to. emitItemPath 는 `-consumerOut` 방향으로
+  // emit 하므로 consumerOut = +fv_to 를 넘긴다. 끝이 seat_to 든(피더를 뗀 경우) chest_to
+  // 든(1:1, 인서터 잔류) 다음 칸은 −fv_to 쪽이라 **같은 값**이다.
   const emitted = emitItemPath(
     ext,
     pair,

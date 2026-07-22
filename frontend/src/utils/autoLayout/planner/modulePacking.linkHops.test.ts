@@ -3,6 +3,8 @@ import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking"
 import { routeModuleHops } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
 import * as allocateMachineLinksModule from "../module/allocateMachineLinks";
+import { faceVector } from "../util/helper";
+import { EntityType } from "../../../types/layout";
 
 // 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 홉으로 이어지는지.
 // v1 은 **링크 하나 = 벨트 하나**다(2026-07-22, docs/auto-layout-wizard.cluster-redesign.md).
@@ -80,6 +82,40 @@ describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도
 
   it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
     expect(pack.linkMismatches).toEqual([]);
+  });
+
+  // 포트 상자가 홉 belt 로 바뀌면 그 상자에 붙어 있던 인서터는 **belt→belt** 가 된다 —
+  // 하는 일은 없이 처리량만 인서터 속도로 깎는다. 상자와 **같이** 떨어지고 그 자리도
+  // belt 로 메워져야 홉 벨트가 트렁크로 곧장 흐른다.
+  it("포트 인서터도 상자와 같이 떨어지고, 그 자리는 belt 가 된다", () => {
+    const res = routeModuleHops(pack, {
+      beltEntityName: "transport-belt",
+      undergroundBeltEntityName: "underground-belt",
+      beltMaxUndergroundDistance: 4,
+    });
+    const beltAt = new Map<string, EntityType>(
+      res.cells.map((c) => [`${c.x},${c.y}`, c.cell.entityType]),
+    );
+
+    for (const hop of pack.hops.filter((h) => h.item === "x")) {
+      for (const port of [hop.from, hop.to]) {
+        // 링크 포트 = [상자][인서터][벨트]. 좌석 건너편이 벨트임을 먼저 못 박는다 —
+        // 이게 거짓이면 아래 기대는 다른 이유로 통과하는 셈이라 증거가 못 된다.
+        const fv = faceVector(port.face);
+        const seat = { x: port.anchor.x - fv.x, y: port.anchor.y - fv.y };
+        const trunkStart = { x: port.anchor.x - 2 * fv.x, y: port.anchor.y - 2 * fv.y };
+        expect(
+          port.cells.some((c) => c.x === trunkStart.x && c.y === trunkStart.y),
+          "링크 포트가 아님 — 이 테스트의 전제가 깨졌다",
+        ).toBe(true);
+
+        const seatKey = `${seat.x},${seat.y}`;
+        expect(res.strippedCellKeys.has(seatKey), `좌석 인서터가 안 떨어짐 @${seatKey}`).toBe(true);
+        expect(beltAt.get(seatKey), `좌석 자리가 belt 로 안 메워짐 @${seatKey}`).toBe(
+          EntityType.Belt,
+        );
+      }
+    }
   });
 });
 
