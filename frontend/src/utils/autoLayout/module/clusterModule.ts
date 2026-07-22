@@ -860,6 +860,16 @@ function spillLinkFacesToGap(
  *
  * 이 수는 방출기가 벨트를 놓을 때 쓰는 `laneDepth` **바로 그 값**이다 — 상수를 따로 적어두면
  * 방출 기하가 바뀔 때 폭이 조용히 안 따라와 벨트가 옆 머신 몸통에 놓인다.
+ *
+ * **더하기가 맞는 이유는 전제 하나에 달려 있다: 한 면에는 그룹이 하나뿐**([tryLinkFace] 의
+ * N/S 분기가 `used > 0` 이면 거절하고, 그 장부는 출력·입력이 공유한다). 그래서 한 gap 에
+ * 들어오는 계획은 최대 둘이고 그 둘은 **반드시 다른 면**(위 머신의 S, 아래 머신의 N)이라,
+ * 각자 자기 쪽에서 세므로 그냥 더하면 된다.
+ *
+ * **그 전제를 푸는 사람에게(면당 여러 줄):** 같은 면의 둘째 그룹은 첫 그룹을 **덮는 게 아니라
+ * 한 줄 더 바깥**이므로(d2 옆에 d3), 그때는 같은 면끼리 `max` 를 잡고 **면 둘을 더해야** 한다.
+ * 지금처럼 전부 더하면 안 쓰는 줄만큼 클러스터가 조용히 벌어진다(2026-07-22 확인 — 지금은
+ * 발현 불가라 산술을 미리 안 바꿨다).
  */
 function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
   const rows = new Array(Math.max(0, count - 1)).fill(0);
@@ -997,6 +1007,12 @@ function emitOutputLinks(args: {
     }
 
     // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로).
+    // **팔 종류는 레인 깊이와 짝이다** — 좌석은 언제나 d1 이므로 벨트가 d`laneDepth` 면 팔이
+    // `laneDepth-1` 칸을 던져야 한다. 배정([tryLinkFace])이 그 짝을 이미 골라 `plan.inserter`
+    // 에 실어 보내므로 **여기서 다시 고르지 않고 그대로 따른다**. 상수를 쓰면 깊은 레인에
+    // 짧은 팔을 놓아 벨트에 못 닿고 그 자리가 조용히 굶는다(2026-07-22 수정, 입력 방출은
+    // 처음부터 옳게 읽고 있었다). 기본 레인 그룹은 `inserter` 가 비어 있어 기본 팔로 떨어진다.
+    const tapInserter = plan.inserter ?? input.inserterEntityName;
     const inward = { x: -fv.x, y: -fv.y };
     for (const t of rows) {
       const seat = faceCell(mExt, face, 1, t);
@@ -1004,7 +1020,7 @@ function emitOutputLinks(args: {
         producer: { containerId: m.id, cell: { ...seat }, face, kind: "item" },
         consumer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
       };
-      cells.push(makeInserterCell(seat, inward, input.inserterEntityName, pair));
+      cells.push(makeInserterCell(seat, inward, tapInserter, pair));
       occupancy.add(cellKey(seat.x, seat.y));
     }
     cells.push(
@@ -1026,7 +1042,7 @@ function emitOutputLinks(args: {
       meta: {
         // side = 어느 **변**이냐(채널 장부가 보는 것), face = 어느 쪽으로 **나가느냐**.
         // gap 좌석이어도 나가는 변은 W 다 — 둘은 다르다(모듈 머리말 "변 vs face").
-        item: line.name, side: "W", laneDepth, inserter: "normal",
+        item: line.name, side: "W", laneDepth, inserter: laneDepth === 2 ? "normal" : "long",
         amount: line.amount, endPreference: input.lineEnds?.get(`output:${line.name}`),
       },
     });

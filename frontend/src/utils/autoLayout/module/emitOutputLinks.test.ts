@@ -265,6 +265,44 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
   });
 });
 
+// 레인(depth)과 팔 종류는 **짝**이다 — 배정이 "이 벨트는 d3 이니 긴팔로 집어라"라고 정해
+// LinkFacePlan.inserter 에 적어 보내는데, 방출이 그걸 안 읽고 기본 인서터를 놓으면 팔이
+// 벨트에 **닿지 않는다**(조용히 굶는다). 입력 방출은 처음부터 읽고 있었고 출력만 빠져 있었다.
+describe("깊은 레인 그룹은 긴팔로 집는다 (배정이 정한 팔 종류를 따른다)", () => {
+  // 같은 머신에서 그룹 둘. 좌석은 남지만(1+1 ≤ 3) 기본 레인(d2)은 첫 그룹이 이미 관통해
+  // 있으므로 둘째 그룹은 긴팔 레인(d = 1+reach = 3)으로 밀린다. count=1 이라 gap 폴백도 없다.
+  const mod = generateModule({
+    ...linkedBase,
+    count: 1,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 1 }] },
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] },
+    ],
+  } as ModuleInput);
+
+  const [m0] = mod.machines;
+  /** 이 포트의 벨트가 W 면에서 몇 칸 바깥인가. */
+  const depthOf = (i: number) => m0.origin.x - mod.outputPorts[i].cells[0].x;
+
+  it("두 그룹이 서로 다른 레인에 선다", () => {
+    expect(mod.outputPorts).toHaveLength(2);
+    expect(depthOf(0)).toBe(2);
+    expect(depthOf(1)).toBe(3);
+  });
+
+  it("d3 벨트를 집는 팔은 긴팔이다", () => {
+    // 탭 인서터 = 좌석(d1) 칸. 그 칸의 엔티티가 레인 깊이와 짝이어야 한다.
+    const seatX = m0.origin.x - 1;
+    const seatsOf = (i: number) => {
+      const beltYs = new Set(mod.outputPorts[i].cells.map((c) => c.y));
+      return mod.cells.filter((c) => c.x === seatX && beltYs.has(c.y));
+    };
+    expect(seatsOf(0).map((c) => c.cell.entityName)).toEqual(["inserter"]);
+    expect(seatsOf(1).map((c) => c.cell.entityName)).toEqual(["long-handed-inserter"]);
+  });
+});
+
 // gap 폭과 방출 기하가 **같은 값**(LinkFacePlan.laneDepth)에서 나온다는 걸 구조로 확인한다.
 // 상수 재확인이 아니라 결과 좌표를 본다 — 둘이 어긋나면 벨트가 옆 머신 몸통 위에 놓인다.
 describe("gap 그룹의 벨트는 gap 안에 있다", () => {
