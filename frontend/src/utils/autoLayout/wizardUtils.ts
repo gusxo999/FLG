@@ -2,7 +2,7 @@ import { useGameDataStore, type Entity, type Recipe } from "../../store/gameData
 import type { Area, ContainerWizardInput } from "./containerModel";
 import { clusterLineRate, type MachineParamsLookup } from "./recipeTree";
 import { allocateArms, type IoLine } from "./module/clusterPortPlanner";
-import type { SpecInserter } from "./buildSpec";
+import { tapCapacity, type SpecInserter } from "./buildSpec";
 
 // ─── Area 유틸 ───────────────────────────────────────────────────────────────
 
@@ -97,9 +97,12 @@ export function machineSpeedFraction(
   craftingSpeed: number,
   inserters: ReadonlyArray<SpecInserter>,
 ): number | undefined {
-  // 탭 용량 = 가장 느린 인서터(어느 reach 에 앉든 굶지 않게 보수적으로 — moduleWizard 와 동일).
-  const tapCap = inserters.reduce((m, i) => Math.min(m, i.throughput), Infinity);
-  if (!Number.isFinite(tapCap) || tapCap <= 0) return undefined; // 데이터 없음 — 지어내지 않는다.
+  // 예전엔 여기서 `min` 을 **자체 계산**했는데, 그 규칙이 moduleWizard 에서 바뀌자
+  // **여기만 옛 값에 남아** 둘이 다른 속도를 믿게 됐다(2026-07-23 실측: 팔 3개면 되는
+  // 7×7 머신을 "80% 로만 돈다"고 보고 머신을 더 놓았다). 바로 이 함수의 머리말이
+  // 경고하던 상태다 — 유도를 여기서 없애 구조적으로 못 어긋나게 한다.
+  const tapCap = tapCapacity(inserters);
+  if (tapCap === undefined) return undefined; // 데이터 없음 — 지어내지 않는다.
 
   const params = { craftingSpeed, productivityMultiplier: 1 }; // 전속력 기준 수요로 잰다
   const lines: IoLine[] = [

@@ -38,7 +38,7 @@ import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
 // [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
-import { makeBuildSpec } from "../buildSpec";
+import { makeBuildSpec, tapCapacity } from "../buildSpec";
 import { makeEmptyArea, machineSpeedFraction } from "../wizardUtils";
 import { commitContainer } from "../machinePlacer";
 
@@ -164,22 +164,16 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const normalTp = inserterThroughput(entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
   const longName = options.longInserter?.entityName;
   const longTp = longName ? inserterThroughput(entityMap.get(longName), ov?.[longName]) : normalTp;
-  // **탭 용량 = 그 좌석에 실제로 앉는 팔의 처리량** (2026-07-23 사장님 규칙).
+  // **탭 용량 = 그 좌석에 실제로 앉는 팔의 처리량**([tapCapacity] 가 유일한 출처).
   //
-  // 예전엔 `min(normal, long)` 이었다 — "어느 reach 에 앉든 굶지 않게 보수적으로". 두 팔의
-  // 속도가 비슷하면 맞는 보수성이지만, 실측 모드팩은 fast 10/s 대 long-handed 1.2/s 로
-  // **8배**였다. 그러면 min 은 보수성이 아니라 오답이다. 같은 숫자가 성질이 반대인 두
-  // 질문에 동시에 쓰이기 때문이다:
+  // 예전엔 여기서 `min(normal, long)` 을 자체 계산했다 — "어느 reach 에 앉든 굶지 않게
+  // 보수적으로". 두 팔의 속도가 비슷하면 맞는 보수성이지만, 실측 모드팩은 fast 10/s 대
+  // long-handed 1.2/s 로 **8배**였다. 그러면 min 은 보수성이 아니라 오답이다 — 같은 숫자가
+  // 성질이 반대인 두 질문에 동시에 쓰이기 때문이다:
   //  - **팔이 몇 개 필요한가** — 느린 값을 쓰면 8배로 세서 면을 넘친다.
   //  - **한 벨트에 몇 개 앉나**(그릇) — 느린 값을 쓰면 `45÷1.2 = 37` 이 되어 **상한이 사라진다**.
   // 그렇게 앉은 팔은 전부 fast 라, 실측에서 벨트 한 줄이 70/s 를 받았다(벨트는 45/s).
-  // 2026-07-22 실측 kr-sand: 머신당 10팔 요구 → 면 7행 → [7,3] 분할 → 첫 벨트 포화.
-  //
-  // 링크·탭 좌석은 **d1 에 앉아 d2 를 집는다** → reach 1 이다. 그리고 reach 는 최대치가
-  // 아니라 **고정 거리**라([inserterReach]) 긴팔은 d2 를 아예 못 집는다 — 후보는 reach 1
-  // 뿐이고, 그중 **가장 빠른 것**을 쓴다.
-  const reach1Tp = Math.max(0, ...options.inserters.filter((i) => i.reach === 1).map((i) => i.throughput));
-  const tapCap = reach1Tp > 0 ? reach1Tp : normalTp;
+  const tapCap = tapCapacity(options.inserters) ?? normalTp;
 
   const specs: NodeSpec[] = order.map((node) => {
     const m = metas.get(node)!;
