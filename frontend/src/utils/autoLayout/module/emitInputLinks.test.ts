@@ -76,3 +76,60 @@ describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴�
     expect(rows).toEqual(sorted);
   });
 });
+
+// **반출 사다리(입력 쪽)** — [emitOutputLinks] 의 거울. 입력의 포트는 **동쪽**이라 좌석도
+// 동쪽부터 채운다: 그래야 포트에 가까운 그룹이 얕은 줄을 쓰고, 먼 그룹의 줄이 가까운 그룹의
+// 열 위를 밟지 않는다(출력은 포트가 서쪽이라 서→동으로 채운다).
+describe("gap 반출 사다리(입력) — 한 면에 벨트 여러 줄", () => {
+  const linked = {
+    machine: M,
+    count: 2,
+    inserterEntityName: "inserter",
+    beltEntityName: "transport-belt",
+    longInserter: { entityName: "long-handed-inserter", reach: 2 },
+    lines: [{ name: "x", kind: "belt", role: "input" as const }],
+  };
+  // 머신0 의 E면(3행)을 첫 그룹이 채우고, 넘친 그룹 **둘**이 같은 gap 면(S)으로 간다.
+  const mod = generateModule({
+    ...linked,
+    inputLinks: [
+      { fromMachine: 0, item: "x", taps: [{ toMachine: 0, inserterCount: 3 }] }, // E 를 채움
+      { fromMachine: 1, item: "x", taps: [{ toMachine: 0, inserterCount: 1 }] }, // → gap 1번째
+      { fromMachine: 2, item: "x", taps: [{ toMachine: 0, inserterCount: 1 }] }, // → gap 2번째
+    ],
+  } as ModuleInput);
+
+  it("셋 다 살아남는다 — 예전엔 입력 gap 이 면당 한 줄이라 셋째가 거절됐다", () => {
+    expect(mod.inputPorts).toHaveLength(3);
+    expect(mod.unroutedLines).toHaveLength(0);
+  });
+
+  it("gap 두 그룹이 서로 다른 줄에 선다 (사다리)", () => {
+    const [, a, b] = mod.inputPorts;
+    expect(Math.abs(a.anchor.y - b.anchor.y)).toBe(1);
+  });
+
+  it("좌석을 동쪽부터 채운다 — 첫 gap 그룹이 더 동쪽에 앉는다", () => {
+    // 벨트의 **동쪽 끝**으로는 못 잰다 — 사다리를 탄 그룹도 반출 줄이 동쪽 변까지 가므로
+    // 둘 다 같은 값이 나온다. 좌석이 어디까지 뻗었나(= 서쪽 끝)를 봐야 순서가 드러난다.
+    const [, a, b] = mod.inputPorts;
+    const westmost = (p: (typeof mod.inputPorts)[number]) => Math.min(...p.cells.map((c) => c.x));
+    expect(westmost(a)).toBeGreaterThan(westmost(b));
+  });
+
+  it("포트는 둘 다 클러스터 동쪽 변 밖에 선다", () => {
+    const east = mod.machines[0].origin.x + mod.machines[0].size.w - 1;
+    for (const p of mod.inputPorts.slice(1)) expect(p.anchor.x).toBeGreaterThan(east);
+  });
+
+  it("셀이 겹치지 않는다", () => {
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) dup++;
+      seen.add(k);
+    }
+    expect(dup).toBe(0);
+  });
+});

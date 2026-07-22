@@ -324,8 +324,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   ]);
   // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
   const placeLedger = new Map<string, number>();
-  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger);
-  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger);
+  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger, false);
+  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger, true); // 입력 포트는 동쪽
   const seatRowsUsed = seatRowsByFace(faceLedger);
 
   const plannerInput = {
@@ -731,11 +731,6 @@ function tryLinkFace(
     if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
     const base = used.get(seatKey(mi, face)) ?? 0;
     if (base + k > machine.w) return undefined; // 이 면의 좌석(열)이 다 찼다
-    // **입력은 아직 면당 한 줄이다.** 사다리는 "포트에 가까운 그룹이 얕은 줄"이라야 성립하는데,
-    // 입력의 포트는 **동쪽**이라 좌석도 동쪽부터 채워야 그 순서가 나온다(출력은 서쪽이라 지금
-    // 채우는 방향 그대로 맞는다). 좌석 채우는 방향을 뒤집는 건 별도 단계 — 그전까지는 조용히
-    // 어긋나느니 정직하게 한 줄만 받는다.
-    if (side === "to" && base > 0) return undefined;
     // **반출 사다리** — 이 면의 몇 번째 그룹인가가 곧 반출 깊이다(탐색 없이 순번으로 결정).
     // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
     // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
@@ -878,11 +873,17 @@ function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, 
 /**
  * 면 배정(팔 수)에 좌표를 입힌다 — 머신이 놓인 뒤에 부른다.
  * `t` 의 뜻은 [faceCell] 과 같다: W/E 면이면 y(행), N/S 면이면 x(열).
+ *
+ * **gap 면의 좌석은 포트 쪽부터 채운다.** 반출 사다리는 "포트에 가까운 그룹이 얕은 줄"이라야
+ * 성립하기 때문이다 — 먼 그룹이 얕은 줄을 차지하면 그 줄이 가까운 그룹의 열 위를 지나며
+ * 남의 자리를 밟는다. 출력은 포트가 서쪽이라 서→동, 입력은 동쪽이라 **동→서**다.
+ * (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
  */
 function placeLinkSeats(
   machines: Container[],
   plans: (LinkFacePlan | undefined)[],
   used: Map<string, number>,
+  gapFromEast: boolean,
 ): (LinkSeats | undefined)[] {
   return plans.map((plan) => {
     if (!plan) return undefined;
@@ -893,8 +894,14 @@ function placeLinkSeats(
       const key = seatKey(mi, plan.face);
       const base = used.get(key) ?? 0;
       used.set(key, base + k);
-      const origin = plan.face === "N" || plan.face === "S" ? m.origin.x : m.origin.y;
-      slots.set(mi, Array.from({ length: k }, (_, t) => origin + base + t));
+      const isGap = plan.face === "N" || plan.face === "S";
+      if (isGap && gapFromEast) {
+        const east = m.origin.x + m.size.w - 1;
+        slots.set(mi, Array.from({ length: k }, (_, t) => east - base - t).reverse());
+      } else {
+        const origin = isGap ? m.origin.x : m.origin.y;
+        slots.set(mi, Array.from({ length: k }, (_, t) => origin + base + t));
+      }
     }
     return { ...plan, slots };
   });
@@ -1097,8 +1104,11 @@ function emitInputLinks(args: {
       : ext;
     const allRows = seats.flatMap((s) => s.rows);
     const topT = Math.min(...allRows);
-    // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다(탭은 서쪽 k칸에만).
-    const botT = isGap ? m0.origin.x + m0.size.w - 1 : Math.max(...allRows);
+    // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 사다리를 타는 그룹은
+    // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
+    const exitDepth = plan.exitDepth ?? plan.laneDepth;
+    const ownEast = Math.max(...allRows);
+    const botT = isGap ? (exitDepth > plan.laneDepth ? ownEast : m0.origin.x + m0.size.w - 1) : ownEast;
 
     // 입구는 **언제나 E**다(자식이 동쪽). gap 좌석이면 가로 벨트가 동쪽 변에서 90° 꺾여
     // 들어온다 — 그 꺾이는 칸이 곧 평범한 E 포트(모서리 포트)다.
@@ -1108,18 +1118,47 @@ function emitInputLinks(args: {
     // 좌석(d1)이 막히면 폴백. 레인은 막히면 다음 후보로.
     const seatCells = allRows.map((t) => faceCell(geomExt, face, 1, t));
     if (seatCells.some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); return; }
-    /** 이 레인에서 트렁크 끝(포트가 붙는 칸) — E 면이면 belt 줄의 맨 위, gap 이면 맨 동쪽. */
+    /**
+     * 트렁크 끝(포트가 붙는 칸) — E 면이면 belt 줄의 맨 위, gap 이면 **반출 줄의** 맨 동쪽
+     * (사다리를 타든 안 타든 포트는 언제나 클러스터 동쪽 변에 선다).
+     */
     const trunkEndOf = (d: number): { x: number; y: number } => {
       const b = faceCell(geomExt, face, d, topT);
-      return isGap ? { x: botT, y: b.y } : b;
+      return isGap ? { x: m0.origin.x + m0.size.w - 1, y: faceCell(geomExt, face, exitDepth, topT).y } : b;
     };
     // 레인(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
     // 곧 벨트 하나라 관통 벨트가 없고, 벨트가 자기 구간만 덮으므로 다툴 depth 자체가 없다.
     const lane = { d: plan.laneDepth, inserter: input.inserterEntityName };
-    const span: { x: number; y: number }[] = [];
-    for (let t = topT; t <= botT; t++) span.push(faceCell(geomExt, face, lane.d, t));
+    const fv = faceVector(face);
+    // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
+    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: 1 };
+    const inward = { x: -fv.x, y: -fv.y };
+
+    // 벨트 경로를 **먼저 전부 계산하고**, 다 놓을 수 있을 때만 놓는다. 반만 놓인 벨트는
+    // 포트에서 물건이 사라지는 것과 같아서, 한 칸이라도 막히면 통째로 물러난다.
+    const path: { at: { x: number; y: number }; v: { x: number; y: number } }[] = [];
+    // ① **반출** — 포트(동쪽 변)에서 자기 열까지 반출 줄로 달려온다([emitOutputLinks] 의 거울,
+    // 흐름만 반대다). 사다리를 안 타는 첫 그룹은 이 구간이 없다(수집이 곧 동쪽 변까지).
+    if (isGap && exitDepth > lane.d)
+      for (let t = m0.origin.x + m0.size.w - 1; t > ownEast; t--)
+        path.push({ at: faceCell(geomExt, face, exitDepth, t), v: beltDirV });
+    // ② **사다리** — 자기 열에서 수집 줄까지 **올라온다**(머신 쪽). 벨트→벨트라 팔 길이 무관.
+    for (let d = exitDepth; d > lane.d; d--)
+      path.push({ at: faceCell(geomExt, face, d, ownEast), v: inward });
+    // ③ **수집** — 자기 좌석 구간을 덮으며 탭에 나눠 준다. 먼 쪽 끝 칸은 면을 따라 더 흐르면
+    // **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다 — 그 칸은 이 그룹 자신의
+    // 좌석(인서터)이라 언제나 안전하다.
+    for (let t = topT; t <= botT; t++) {
+      const far = isGap ? t === topT : t === botT;
+      path.push({ at: faceCell(geomExt, face, lane.d, t), v: far ? inward : beltDirV });
+    }
+
     const te = trunkEndOf(lane.d);
-    span.push({ x: te.x + pfv.x, y: te.y + pfv.y }, { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }); // 포트 인서터·상자
+    const span = [
+      ...path.map((c) => c.at),
+      { x: te.x + pfv.x, y: te.y + pfv.y },
+      { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }, // 포트 인서터·상자
+    ];
     if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
       unroutedLines.push(line); // 안전망(구성상 발생 안 함 — 좌석 장부가 이미 막았어야 한다)
       return;
@@ -1139,19 +1178,10 @@ function emitInputLinks(args: {
       consumer: { containerId: m0.id, cell: { ...beltTop }, face: portFace, kind: "item" },
     };
 
-    // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
-    const beltDir = isGap ? vectorToDirection(-1, 0) : vectorToDirection(0, 1);
-    // [emitOutputLinks] 의 거울: **먼 쪽 끝 칸이 면을 따라 더 흐르면 이웃 그룹의 벨트로 넘어간다.**
-    // 여기선 포트가 위(topT)라 먼 끝이 `botT` 다. 바깥(pfv=E)으로 꺾어 거기서 멈춘다 — 그 칸은
-    // 이 그룹의 행이라 다른 그룹의 벨트가 없다. gap 은 면당 그룹이 하나뿐이라 다툼이 없어 그대로.
-    const beltCells: PlacedCell[] = [];
-    for (let t = topT; t <= botT; t++) {
-      const at = faceCell(geomExt, face, lane.d, t);
-      const dir = !isGap && t === botT ? vectorToDirection(pfv.x, pfv.y) : beltDir;
-      beltCells.push(makeBeltCell(at, dir, input.beltEntityName, portPair)); // 벨트 티어 후속
-      occupancy.add(cellKey(at.x, at.y));
-    }
-    const fv = faceVector(face);
+    const beltCells: PlacedCell[] = path.map((c) =>
+      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), input.beltEntityName, portPair), // 티어는 후속
+    );
+    for (const c of beltCells) occupancy.add(cellKey(c.x, c.y));
     for (const s of seats) {
       for (const t of s.rows) {
         const seat = faceCell(geomExt, face, 1, t);
