@@ -727,8 +727,12 @@ function tryLinkFace(
 
   if (face === "N" || face === "S") {
     const [mi, k] = [...arms][0];
-    const gap = face === "S" ? mi : mi - 1;
-    if (gap < 0 || gap >= count - 1) return undefined; // 그쪽엔 gap 이 없다(클러스터 끝)
+    // **클러스터 양 끝은 gap 이 아니라 바깥이다.** 맨 위 머신의 N, 맨 아래 머신의 S 에는
+    // 이웃이 없어 벨트가 모듈 밖으로 나간다 — 그래서 `gap` 이 `undefined` 이고, 벌릴 gap 도
+    // 없다([gapRowsFromPlans] 가 안 센다). 자리는 그냥 **바깥으로 자란다**: 모듈이 차지하는
+    // 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다.
+    const g = face === "S" ? mi : mi - 1;
+    const gap = g >= 0 && g < count - 1 ? g : undefined;
     const base = used.get(seatKey(mi, face)) ?? 0;
     if (base + k > machine.w) return undefined; // 이 면의 좌석(열)이 다 찼다
     // **반출 사다리** — 이 면의 몇 번째 그룹인가가 곧 반출 깊이다(탐색 없이 순번으로 결정).

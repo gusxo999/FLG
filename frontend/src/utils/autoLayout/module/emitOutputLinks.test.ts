@@ -417,3 +417,53 @@ describe("gap 그룹의 벨트는 gap 안에 있다", () => {
     expect(on).toHaveLength(0);
   });
 });
+
+// **클러스터 양 끝** — 맨 위 머신의 N, 맨 아래 머신의 S 에는 이웃이 없어 gap 이 아니라
+// **모듈 바깥**이다. 예전엔 이 두 면을 아예 안 썼다: count=1 이면 gap 이 하나도 없어
+// W 를 넘긴 그룹이 통째로 unrouted 였다. 이제는 바깥으로 자란다 — 모듈이 차지하는 범위는
+// moduleExtent(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다.
+describe("클러스터 양 끝 — 머신 하나뿐이어도 넘친 그룹이 산다", () => {
+  const mod = generateModule({
+    ...linkedBase,
+    count: 1, // gap 이 하나도 없다
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] }, // W 를 채움
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // → 아래쪽 바깥
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 2, inserterCount: 2 }] }, // → 위쪽 바깥
+    ],
+  } as ModuleInput);
+
+  it("셋 다 살아남는다 — 예전엔 뒤 둘이 unrouted 였다", () => {
+    expect(mod.outputPorts).toHaveLength(3);
+    expect(mod.unroutedLines).toHaveLength(0);
+  });
+
+  it("팔 합이 보존된다 (3+2+2)", () => {
+    expect(mod.outputPorts.reduce((s, p) => s + p.cells.length, 0)).toBeGreaterThanOrEqual(7);
+  });
+
+  it("넘친 둘이 머신 몸통 아래·위로 갈라져 앉는다", () => {
+    // 넘침은 S 를 먼저 본다(링크 수열이 위→아래 단조라 아래쪽이 뒤 목적지와 가깝다).
+    const m = mod.machines[0];
+    const [, a, b] = mod.outputPorts;
+    expect(a.cells.every((c) => c.y > m.origin.y + m.size.h - 1)).toBe(true); // 아래 바깥
+    expect(b.cells.every((c) => c.y < m.origin.y)).toBe(true); // 위 바깥
+  });
+
+  it("전부 W 로 나간다 — 바깥에 앉아도 모서리에서 꺾인다", () => {
+    expect(mod.outputPorts.every((p) => p.face === "W")).toBe(true);
+  });
+
+  it("벨트끼리 새지 않고 셀도 안 겹친다", () => {
+    expect(beltLeaks(mod)).toEqual([]);
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const c of mod.cells) {
+      const k = `${c.x},${c.y}`;
+      if (seen.has(k)) dup++;
+      seen.add(k);
+    }
+    expect(dup).toBe(0);
+  });
+});
