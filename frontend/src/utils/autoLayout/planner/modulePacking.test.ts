@@ -79,6 +79,9 @@ describe("packModuleTree", () => {
     expect(res.hops[0].from.line.role).toBe("output");
     expect(res.hops[0].to.line.role).toBe("input");
     expect(res.hops[0].to.line.name).toBe("copper-cable");
+    // rate 미상(옛 탭/다이렉트 경로) — 포트가 교환 가능해 linkId 가 없다. seq(위치)가 유일한 구분.
+    expect(res.hops[0].linkId).toBeUndefined();
+    expect(res.linkMismatches).toEqual([]);
   });
 
   it("raw 포트 = 짝 못 지은 포트 **전부** (child 없는 입력 + 루트 출력)", () => {

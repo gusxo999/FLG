@@ -40,6 +40,25 @@ export interface MachineLink {
   inserterCount: number;
 }
 
+/**
+ * 자식→부모 간선 하나의 **벨트(그룹)** — [groupLinkBelts] 가 트렁크 공유로 묶어 낸 결과.
+ * "자식 머신 하나(`fromMachine`)가 부모 머신 여러 개(`taps`)에 판다"는 사실을 **행 여러 개로
+ * 흩어 저장하지 않고 레코드 하나에 묶어 담는다** — 그룹 하나 = 물리 벨트 하나 = 포트 한 쌍.
+ *
+ * `id` 는 이 함수(그룹핑)가 아니라 간선의 양끝(자식·부모 노드 id)을 아는 호출자
+ * ([edgeLinkGroups])가 채운다 — 그래서 여기선 항상 `undefined` 로 나온다.
+ */
+export interface MachineLinkGroup {
+  /** 그룹 신원([linkGroupId]) — 이 벨트로 난 포트의 [ModulePort.linkId] 가 그대로 든다. */
+  id?: string;
+  /** 이 그룹이 나가는 자식 머신 인덱스 — 그룹 내내 고정(트렁크는 자식 쪽에서 안 갈린다). */
+  fromMachine: number;
+  /** 운반 품목. */
+  item: string;
+  /** 이 벨트가 먹이는 목적지 목록 — 예전엔 행 여러 개였던 것. */
+  taps: { toMachine: number; inserterCount: number }[];
+}
+
 export interface AllocateMachineLinksInput {
   /** 자식 머신 대수(≥1). */
   childCount: number;
@@ -77,21 +96,23 @@ export function maxInsertersPerBelt(beltThroughput: number, inserterThroughput: 
  * 여럿을 탭)가 되고, 큰 입력(링크가 이미 그릇을 채움)은 자연히 점대점으로 남는다 —
  * 트렁크 vs 점대점의 **별도 판정이 없다**(그릇 규칙 하나가 가른다).
  *
- * 자식 출력 emit 과 부모 입력 emit 이 **같은 배열에 같은 cap 으로** 이 함수를 돌리므로
- * 그룹이 양쪽에서 일치한다 → 그룹 단위 1:1 짝짓기(index-zip)가 유지된다.
+ * 한 간선당 이 함수는 [edgeLinkGroups] 를 거쳐 **한 번만** 불리고([packModuleTree] 캐시),
+ * 자식 출력 emit 과 부모 입력 emit 은 그 결과 [MachineLinkGroup] 객체를 그대로 참조한다 —
+ * "같은 입력이면 같은 출력"이라는 결정성에 기대어 양쪽이 따로 계산해 우연히 일치하길
+ * 바라던 옛 구조(2026-07-21 이전)를 없앴다.
  *
  * @param cap 그룹 인서터 합의 상한 — 호출자가 `min(그릇, 자식 머신 좌석)` 으로 준다
  *            (그룹 전체가 자식 머신 하나의 면 좌석에 연속으로 앉아야 하므로).
  */
-export function groupLinkBelts(links: MachineLink[], cap: number): MachineLink[][] {
-  const groups: MachineLink[][] = [];
+export function groupLinkBelts(links: MachineLink[], cap: number): MachineLinkGroup[] {
+  const groups: MachineLinkGroup[] = [];
   for (const l of links) {
     const g = groups[groups.length - 1];
-    const sum = g?.reduce((s, x) => s + x.inserterCount, 0) ?? 0;
-    if (g && g[0].item === l.item && g[0].fromMachine === l.fromMachine && sum + l.inserterCount <= cap) {
-      g.push(l);
+    const sum = g?.taps.reduce((s, t) => s + t.inserterCount, 0) ?? 0;
+    if (g && g.item === l.item && g.fromMachine === l.fromMachine && sum + l.inserterCount <= cap) {
+      g.taps.push({ toMachine: l.toMachine, inserterCount: l.inserterCount });
     } else {
-      groups.push([l]);
+      groups.push({ fromMachine: l.fromMachine, item: l.item, taps: [{ toMachine: l.toMachine, inserterCount: l.inserterCount }] });
     }
   }
   return groups;

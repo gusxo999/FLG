@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
+import * as allocateMachineLinksModule from "../module/allocateMachineLinks";
 
 // 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 홉으로 이어지는지.
 // 케이스 A: 작은 링크(팔 1) → 트렁크 공유(그룹 하나 = 벨트 하나가 부모 머신 여럿을 탭).
@@ -58,6 +59,12 @@ describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 �
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
   });
 
+  it("HopSpec.linkId 가 채널 예약 키로 그대로 흐른다 — seq 위치가 아니라 신원", () => {
+    const hop = pack.hops.find((h) => h.item === "x")!;
+    expect(hop.linkId).toBeDefined();
+    expect(hop.linkId).toBe(hop.from.linkId);
+  });
+
   it("라우팅 실패 0", () => {
     const hop = routeModuleHops(pack, {
       beltEntityName: "transport-belt",
@@ -67,6 +74,10 @@ describe("트렁크 공유 — 작은 입력은 벨트 하나가 부모 머신 �
     expect(hop.failures).toBe(0);
     // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
     expect(hop.dijkstraFallback).toBe(0);
+  });
+
+  it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
+    expect(pack.linkMismatches).toEqual([]);
   });
 });
 
@@ -106,6 +117,10 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
     expect(hop.failures).toBe(0);
     // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
     expect(hop.dijkstraFallback).toBe(0);
+  });
+
+  it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
+    expect(pack.linkMismatches).toEqual([]);
   });
 });
 
@@ -159,5 +174,65 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
     expect(hop.failures).toBe(0);
     expect(hop.planned).toBe(4);
     expect(hop.dijkstraFallback).toBe(0);
+  });
+});
+
+// 신원이 자식 구분을 잃지 않는지 — 같은 부모·같은 품목을 자식 **둘**이 먹인다. inputLinksOf
+// 가 두 자식의 그룹을 평평하게 이어붙이면서도 groupIndex 를 자식마다 따로 세야
+// linkGroupId 가 outputLinksOf(각 자식) 와 어긋나지 않는다(2026-07-21, 이 세션에서 고친 지점).
+describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자식이 둘", () => {
+  const specs: NodeSpec[] = [
+    {
+      id: "p", depth: 0, machine: M, count: 1,
+      lines: [inL("x"), outL("prod")],
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 6], ["output:prod", 6]]) },
+    },
+    {
+      id: "c1", depth: 1, parentId: "p", machine: M, count: 1,
+      lines: [outL("x")],
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["output:x", 6]]) },
+    },
+    {
+      id: "c2", depth: 1, parentId: "p", machine: M, count: 1,
+      lines: [outL("x")],
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["output:x", 6]]) },
+    },
+  ];
+  const pack = packModuleTree(specs, config);
+
+  it("두 간선이 서로 다른 신원으로 각자 짝을 찾는다 (mismatch 0)", () => {
+    expect(pack.linkMismatches).toEqual([]);
+  });
+
+  it("홉 2개, raw 0 — 자식마다 하나씩 정확히 짝지어진다", () => {
+    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
+    expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
+  });
+});
+
+// 간선당 1회 계산(MachineLinkGroup 리팩터 회귀 테스트, 2026-07-22) — 예전엔 outputLinksOf
+// (자식 쪽)·inputLinksOf(부모 쪽)가 같은 간선에 대해 edgeLinkGroups 를 각자 독립으로 두 번
+// 불렀다("결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 양쪽이 일치하길 기대하던
+// 구조). packModuleTree 가 간선당 사전 캐시 1개만 만들고 양쪽이 그 캐시를 참조하는지,
+// edgeLinkGroups 내부에서 트렁크 공유를 실제로 계산하는 groupLinkBelts(cross-module import
+// — 같은 파일 안 호출과 달리 vi.spyOn 이 가로챌 수 있다) 호출 횟수로 확인한다.
+describe("링크 그룹 계산 — 간선당 정확히 1회(이중 계산 회귀 방지)", () => {
+  it("자식→부모 간선 하나에 groupLinkBelts 가 딱 한 번 불린다", () => {
+    const spy = vi.spyOn(allocateMachineLinksModule, "groupLinkBelts");
+    const specs: NodeSpec[] = [
+      {
+        id: "p", depth: 0, machine: M, count: 2,
+        lines: [inL("x"), outL("prod")],
+        supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 12], ["output:prod", 12]]) },
+      },
+      {
+        id: "c", depth: 1, parentId: "p", machine: M, count: 2,
+        lines: [outL("x")],
+        supplyCapacity: { tapCapacity: 6, lineRates: new Map([["output:x", 24]]) },
+      },
+    ];
+    packModuleTree(specs, config);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

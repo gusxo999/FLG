@@ -9,7 +9,7 @@ import {
   type DeliveryInput,
   type ExportInput,
 } from "./channelGeometryPlanner";
-import { packModuleTree, hopKey, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
 import { cellKey } from "../util/helper";
@@ -208,7 +208,7 @@ describe("채널 기하 예약 — 파이프라인 불변식(§9)", () => {
     expect(hop.failures).toBe(0);
     expect(pack.channelGeometry).toBeDefined();
     for (const [i, hopSpec] of pack.hops.entries()) {
-      const g = pack.channelGeometry!.hops.get(hopKey(hopSpec.fromId, hopSpec.toId, hopSpec.item));
+      const g = pack.channelGeometry!.hops.get(hopMapKey(hopSpec));
       if (g && g.kind !== "undergroundCrossing") {
         expect(hop.routes[i].corridors).toHaveLength(0); // 지상 계획 = 지상 방출
       }

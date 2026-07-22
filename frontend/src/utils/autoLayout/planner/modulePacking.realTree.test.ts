@@ -56,6 +56,11 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
     expect(pack.hops.filter((h) => h.item === "electronic-circuit")).toHaveLength(1);
   });
 
+  // linkId 짝짓기가 자식·부모 양쪽에서 독립으로 재현되는지 — 실측 트리로 확인.
+  it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
+    expect(pack.linkMismatches).toEqual([]);
+  });
+
   it("moduleHop 이 충돌 없이 잇는다 (실패 0)", () => {
     const hop = routeModuleHops(pack, {
       beltEntityName: "transport-belt",

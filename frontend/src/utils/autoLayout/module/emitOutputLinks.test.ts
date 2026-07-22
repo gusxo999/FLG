@@ -16,7 +16,7 @@ const flat: MachineLink[] = [
   { fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 1 },
   { fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 1 },
 ];
-const groups = groupLinkBelts(flat, 3); // [[c0→p0, c0→p1], [c1→p1]]
+const groups = groupLinkBelts(flat, 3); // [{c0: taps p0,p1}, {c1: taps p1}]
 
 const base: ModuleInput = {
   machine: M,
@@ -44,7 +44,7 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
   const mod = generateModule(base);
 
   it("그룹핑: 같은 자식 머신의 작은 링크들이 한 벨트로 묶인다", () => {
-    expect(groups.map((g) => g.length)).toEqual([2, 1]);
+    expect(groups.map((g) => g.taps.length)).toEqual([2, 1]);
   });
 
   it("그룹마다 출력 포트 하나 (옛 트렁크였다면 gear 포트 1개뿐)", () => {
@@ -58,6 +58,16 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
   it("두 벨트가 서로 다른 행에서 나간다", () => {
     const ys = mod.outputPorts.map((p) => p.anchor.y);
     expect(new Set(ys).size).toBe(2);
+  });
+
+  // 순서 우선(문서 체크리스트 "(나)") — 정렬(부모 Y순 재배치)은 안 한다. 그룹 배열 순서가
+  // 곧 좌석 행 순서다(allocateLinkFaces 가 groups.forEach 로 위→아래 누적). 채널을 가로질러
+  // 교차하는 홉이 생겨도 channelGeometryPlanner 가 지하로 안전히 우회시키므로(정확성 문제
+  // 아님), 이 배열 순서를 재정렬할 필요가 없다는 게 사용자 결정이다 — 그 불변식을 못 박는다.
+  it("그룹 배열 순서 = 좌석 행 순서 — 정렬 없이 그대로", () => {
+    const rows = mod.outputPorts.map((p) => p.anchor.y);
+    const sorted = [...rows].sort((a, b) => a - b);
+    expect(rows).toEqual(sorted);
   });
 
   it("머신0 벨트는 팔 2개(그룹 합), 머신1 벨트는 팔 1개", () => {
@@ -101,7 +111,7 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
       tapCapacity: 6,
       lineRates: new Map([["input:heavy", 60], ["output:gear", 6]]), // heavy = 팔 10개 → 좌석 초과
     },
-    outputLinks: [[{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 1 }]],
+    outputLinks: [{ fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 1 }] }],
   });
 
   it("링크 없는 줄이 좌석을 넘겨 모듈은 direct 로 떨어진다", () => {
@@ -152,8 +162,8 @@ describe("거대 출력 — W면이 차면 gap 으로 넘어간다", () => {
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
-      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }],
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] },
     ],
   } as ModuleInput);
 
@@ -203,10 +213,10 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
       { name: "iron", kind: "belt", role: "input" },
     ],
     outputLinks: [
-      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
-      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과분
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과분
     ],
-    inputLinks: [[{ fromMachine: 9, toMachine: 0, item: "iron", inserterCount: 3 }]],
+    inputLinks: [{ fromMachine: 9, item: "iron", taps: [{ toMachine: 0, inserterCount: 3 }] }],
   } as ModuleInput);
 
   it("입력은 선호 면(E)을 그대로 얻는다", () => {
@@ -231,10 +241,10 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
     count: 3,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
-      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과 → gap0
-      [{ fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 2 }],
-      [{ fromMachine: 2, toMachine: 2, item: "gear", inserterCount: 2 }],
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과 → gap0
+      { fromMachine: 1, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] },
+      { fromMachine: 2, item: "gear", taps: [{ toMachine: 2, inserterCount: 2 }] },
     ],
   } as ModuleInput);
 
@@ -262,8 +272,8 @@ describe("gap 그룹의 벨트는 gap 안에 있다", () => {
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      [{ fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 3 }],
-      [{ fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 2 }], // W 초과 → gap
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과 → gap
     ],
   } as ModuleInput);
 

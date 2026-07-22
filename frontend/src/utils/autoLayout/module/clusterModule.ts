@@ -30,7 +30,7 @@ import {
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
-import type { MachineLink } from "./allocateMachineLinks";
+import type { MachineLinkGroup } from "./allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -89,6 +89,14 @@ export interface ModulePort {
   cells: PlacedCell[];
   /** 산출 근거(planner 슬롯 + 트렁크 seed 점수) — 표시·진단 전용, 좌표 없음. */
   meta: ModulePortMeta;
+  /**
+   * **링크 그룹 신원** — `${childId}→${parentId}:${item}#${groupIndex}`([linkGroupId]).
+   * [MachineLinkGroup]에서 난 포트만 갖는다 — 옛 탭/다이렉트 포트는 없다(undefined). 자식·
+   * 부모 양쪽 모듈이 packModuleTree 가 간선당 한 번만 계산해 캐시한 **같은 그룹 객체**를
+   * 참조하므로 이 값이 항상 일치한다 — [pairHopPorts] 가 배열 위치 대신 이 값으로 조회한다
+   * (2026-07-21, 옛 `seq` 위치-zip 이 방출 실패 시 조용히 밀리던 문제의 근치).
+   */
+  linkId?: string;
 }
 
 export interface GeneratedModule {
@@ -157,21 +165,22 @@ export interface ModuleInput {
   belts?: SpecBelt[];
   /**
    * **출력 fan-out 링크** — 이 노드의 출력을 부모 머신들에게 어떻게 나눠 주나
-   * ([allocateMachineLinks]). 각 링크 = 이 클러스터의 한 머신에서 나가는 벨트 하나(팔 n개).
-   * 부모를 봐야 정해지므로 부모-무시인 generateModule 이 못 만든다 — 트리를 아는
-   * packModuleTree 가 계산해 넣는다. **있으면 출력 방출이 "줄당 트렁크 하나"(fan-out 병합)
-   * 대신 "머신당·목적지별 벨트"로 갈라 나간다.** 미지정(rate 미상 등)이면 옛 트렁크 방출.
+   * ([allocateMachineLinks]). 각 그룹 = 이 클러스터의 한 머신에서 나가는 벨트 하나(목적지
+   * 목록 `taps`). 부모를 봐야 정해지므로 부모-무시인 generateModule 이 못 만든다 — 트리를
+   * 아는 packModuleTree 가 계산해 넣는다. **있으면 출력 방출이 "줄당 트렁크 하나"(fan-out
+   * 병합) 대신 "머신당·목적지별 벨트"로 갈라 나간다.** 미지정(rate 미상 등)이면 옛 트렁크 방출.
    *
-   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([groupLinkBelts] 트렁크 공유). 작은 링크들은
-   * 한 벨트에 묶이고(옛 입력 트렁크의 재현), 큰 링크는 혼자 탄다(점대점). 링크(회계)는 그대로.
+   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([groupLinkBelts] 트렁크 공유, [MachineLinkGroup]).
+   * 신원([linkGroupId])은 그룹 자신의 `id` 필드에 실려 온다 — `ModulePort.linkId` 가 된다.
    */
-  outputLinks?: MachineLink[][];
+  outputLinks?: MachineLinkGroup[];
   /**
    * **입력 fan-in 그룹** — `outputLinks` 의 거울: 같은 간선의 같은 그룹을 부모(toMachine)
-   * 관점에서 받은 것. 그룹마다 입력 트렁크 하나(그룹의 toMachine 들을 세로로 관통하는 벨트 +
-   * 머신별 탭)가 나서, 자식 출력 벨트와 **그룹 순서로 1:1** 짝지어진다. 미지정=옛 트렁크 입력.
+   * 관점에서 받은 것(같은 [MachineLinkGroup] 객체 — packModuleTree 가 간선당 한 번만 계산해
+   * 캐시한 것을 그대로 참조). 그룹마다 입력 트렁크 하나(그룹의 toMachine 들을 세로로 관통하는
+   * 벨트 + 머신별 탭)가 나서, 자식 출력 벨트와 **그룹 순서로 1:1** 짝지어진다. 미지정=옛 트렁크 입력.
    */
-  inputLinks?: MachineLink[][];
+  inputLinks?: MachineLinkGroup[];
   /**
    * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
@@ -218,11 +227,20 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outLinkGroups = input.outputLinks ?? [];
   const inLinkGroups = input.inputLinks ?? [];
   const faceLedger = new Map<string, number>();
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, (l) => l.fromMachine, "W", faceLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, (l) => l.toMachine, "E", faceLedger);
+  // 다열-머신(입력 트렁크) 그룹이 depth(레인)를 다투는 장부 — [tryLinkFace] 참고. 얕은
+  // 레인(기본)부터 시도하고, 겹치면 긴팔 레인으로 — 배정 단계에서 끝나 방출은 탐색 없이 깐다.
+  const spanLedger: SpanLedger = new Map();
+  const laneCandidates: { d: number; inserter: string }[] = [
+    { d: LINK_LANE_DEPTH, inserter: input.inserterEntityName },
+    ...(input.longInserter
+      ? [{ d: 1 + input.longInserter.reach, inserter: input.longInserter.entityName }]
+      : []),
+  ];
+  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, laneCandidates, spanLedger);
+  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, laneCandidates, spanLedger);
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, (l) => l.fromMachine, faceLedger, outFaces);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, (l) => l.toMachine, faceLedger, inFaces);
+  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, laneCandidates, spanLedger);
+  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, laneCandidates, spanLedger);
   const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
 
   const layout = layoutCluster(
@@ -307,8 +325,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샌다 — 2026-07-19 실측).
   //  ② planner 가 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
   const linkedKeys = new Set([
-    ...outLinkGroups.flat().map((l) => `output:${l.item}`),
-    ...inLinkGroups.flat().map((l) => `input:${l.item}`),
+    ...outLinkGroups.map((g) => `output:${g.item}`),
+    ...inLinkGroups.map((g) => `input:${g.item}`),
   ]);
   // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
   const placeLedger = new Map<string, number>();
@@ -333,23 +351,29 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     input.supplyCapacity,
   );
 
-  const plan = supply.plan;
-  if (!plan.ok) {
-    for (const l of plannedLines) unroutedLines.push(l);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
-  }
-
-  // ── 링크 방출 — tap/direct **이전에, 모드와 무관하게** ─────────────────────
-  // 링크 줄은 planner 를 안 거쳤고(위에서 뺐다) 자기 좌석·벨트·포트를 스스로 놓는다.
+  // ── 링크 방출 — tap/direct 판정과 **무관하게, 언제나 먼저** ────────────────
+  // 링크 줄은 planner 를 안 거쳤고(위에서 linkedKeys 로 뺐다) 자기 좌석·벨트·포트를 스스로
+  // 놓는다. **아래 !plan.ok 는 링크와 무관한 나머지 줄의 판정**이다 — 그 판정으로 링크
+  // 방출을 막으면, 이미 성공한 예약(면 배정·gap 폭이 layoutCluster 에 반영됨)을 시도조차
+  // 안 하고 버리게 된다(2026-07-21 발견 — 무관한 판정이 끝난 예약을 삼키는 순서 버그였다).
   // 먼저 놓아야 occupancy 가 채워져, 아래 나머지 줄 방출이 그 자리를 피한다.
   const lineOf = new Map(plannedLines.map((l) => [`${l.role}:${l.name}`, l]));
   if (outLinkGroups.length > 0) {
-    const m = new Map(outLinkGroups.flat().map((l) => [l.item, lineOf.get(`output:${l.item}`)!]));
-    emitOutputLinks({ links: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    const m = new Map(outLinkGroups.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
+    emitOutputLinks({ groups: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
   }
   if (inLinkGroups.length > 0) {
-    const m = new Map(inLinkGroups.flat().map((l) => [l.item, lineOf.get(`input:${l.item}`)!]));
-    emitInputLinks({ links: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+    const m = new Map(inLinkGroups.map((g) => [g.item, lineOf.get(`input:${g.item}`)!]));
+    emitInputLinks({ groups: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+  }
+
+  const plan = supply.plan;
+  if (!plan.ok) {
+    // 링크가 없는 나머지 줄만 unrouted — 링크 줄은 위에서 이미 성패가 갈렸다(자기 몫만
+    // unroutedLines 에 넣거나 포트를 냈다). 여기서 다시 넣으면 성공한 링크까지 오염된다.
+    for (const l of plannedLines) if (!linkedKeys.has(`${l.role}:${l.name}`)) unroutedLines.push(l);
+    fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -362,10 +386,21 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 어느 쪽이든 **탐색이 없다** — 자리는 planner 가 이미 못박았고 방출기는 깔기만 한다.
   if (supply.mode === "tap") {
     // 나머지 줄(유체·링크 없는 줄)만 — 링크 줄은 위에서 이미 놓았고 plan 에도 없다.
+    // [탭 인서팅]([emitTapInserting])과 [트렁크 파이프]([emitTrunkPipe])는 용어사전이 이미
+    // "나란한 유체판"으로 갈라놓은 두 개념이다 — 둘 다 같은 [buildTrunkContext](기둥 extent·
+    // stagger 기준)를 보고, 같은 seqRef 로 chestId 순번을 이어 쓰되, 서로의 줄을 건드리지
+    // 않는다(item ↔ pipe 는 line.kind 로 배타적).
+    const ctx = buildTrunkContext(plan, machines, input, isJumpableToClusterPipe);
+    const seqRef = { n: 0 };
     emitTapInserting({
       plan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
-      isJumpableToClusterPipe,
+      ctx, seqRef,
+    });
+    emitTrunkPipe({
+      plan, machines, input, prefix, occupancy,
+      cells, chests, inputPorts, outputPorts, unroutedLines,
+      ctx, seqRef,
     });
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
@@ -613,6 +648,19 @@ interface LinkFacePlan {
   laneDepth: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
+  /**
+   * `laneDepth` 에서 집는 탭 인서터 — reach 가 depth 를 결정하므로 depth 와 짝이다.
+   * 단일 머신 그룹(출력·gap)은 항상 기본 레인이라 안 씀(기존 상수 `input.inserterEntityName`).
+   */
+  inserter?: string;
+  /**
+   * **다열-머신(트렁크) 그룹이 지나가는 머신 index 구간**([minMi, maxMi], 포함). 단일 머신
+   * 그룹은 자기 행 밖을 못 벗어나 span 다툼이 없어 `undefined`. 있으면 [commitLinkFace] 가
+   * 그 구간 전체를 이 `laneDepth` 의 [spanLedger] 에 claim 한다 — 다른 다열-머신 그룹이
+   * 같은 구간·같은 depth 를 또 쓰지 못하게(2026-07-21, [발견 ④] 근치: 배정 단계에서
+   * depth 겹침을 막아 방출 시점 탐색을 없앤다).
+   */
+  spanMi?: [number, number];
 }
 
 /**
@@ -629,13 +677,18 @@ function seatKey(machineIndex: number, face: PortFace): string {
   return `${machineIndex}:${face}`;
 }
 
-/** 그룹이 머신마다 몇 팔을 쓰나. */
-function armsByMachine(group: MachineLink[], machineOf: (l: MachineLink) => number): Map<number, number> {
-  const by = new Map<number, number>();
-  for (const l of group) {
-    const mi = machineOf(l);
-    by.set(mi, (by.get(mi) ?? 0) + Math.max(1, l.inserterCount));
+/**
+ * 그룹이 머신마다 몇 팔을 쓰나. `side` 는 이 그룹을 **어느 쪽 관점**에서 보나다 —
+ * "from"(출력, 자식 머신 하나 고정) 이면 항목이 하나뿐이고, "to"(입력, 부모 머신 여럿)
+ * 이면 `taps` 를 그대로 목적지별로 편다.
+ */
+function armsByMachine(group: MachineLinkGroup, side: "from" | "to"): Map<number, number> {
+  if (side === "from") {
+    const total = group.taps.reduce((s, t) => s + Math.max(1, t.inserterCount), 0);
+    return new Map([[group.fromMachine, total]]);
   }
+  const by = new Map<number, number>();
+  for (const t of group.taps) by.set(t.toMachine, (by.get(t.toMachine) ?? 0) + Math.max(1, t.inserterCount));
   return by;
 }
 
@@ -646,12 +699,32 @@ function armsByMachine(group: MachineLink[], machineOf: (l: MachineLink) => numb
 const LINK_LANE_DEPTH = 2;
 
 /**
+ * `[face,depth]` 별로 **이미 그 depth 를 지나가는 머신 index 집합** — [tryLinkFace] 가 다열-
+ * 머신(트렁크) 그룹을 배정할 때 쓰는 장부. 단일 머신 그룹은 자기 행(=자기 머신) 밖을 못
+ * 벗어나므로 안 씀 — 트렁크만 남의 머신 위를 "지나가며" 겹칠 수 있다.
+ *
+ * 왜 머신 index(좌표 아님)로 재는가: [tryLinkFace] 는 좌표가 생기기 **전**에 불린다(면이
+ * 좌표보다 먼저). 그런데 트렁크 벨트는 자기 span(topT..botT)을 **일직선으로 관통**하므로,
+ * 그 구간에 걸리는 머신은 (자기가 그 머신에 팔이 있든 없든) 전부 그 depth 를 "쓴 것"과
+ * 같다 — 머신 index 구간 겹침만으로 실제 셀 충돌을 판정할 수 있다(정확한 행 몰라도 된다).
+ */
+type SpanLedger = Map<string, Set<number>>;
+
+function spanLedgerKey(face: PortFace, depth: number): string {
+  return `${face}:${depth}`;
+}
+
+/**
  * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
  * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
  * 옮길 수는 없다.
  *
  * 면마다 한계가 다르다:
- *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다.
+ *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다. **다열-머신
+ *    그룹**(arms.size>1, = 입력 트렁크)은 좌석과 별개로 **depth(레인)** 도 다퉈야 한다 —
+ *    자기 span 을 관통하는 depth 가 다른 트렁크와 겹치면 다음 레인 후보(긴팔)로, 그마저
+ *    없으면 이 면 자체가 실패([spanLedger]). 단일 머신 그룹(출력은 늘 이쪽)은 자기 행
+ *    밖을 안 벗어나 dispute 가 없으니 기본 레인 그대로.
  *  - **N/S(gap)**: 머신 위/아래 면의 d1 칸 = `machine.w` 개. v1 은 **면당 그룹 하나**
  *    (가로 벨트 한 줄만 깐다 — 레인 두 줄(긴팔)은 후속). 그리고 그 방향에 **gap 이 실제로
  *    있어야** 한다: 맨 위 머신에 N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
@@ -659,16 +732,18 @@ const LINK_LANE_DEPTH = 2;
 function tryLinkFace(
   machine: { w: number; h: number },
   count: number,
-  group: MachineLink[],
-  machineOf: (l: MachineLink) => number,
+  group: MachineLinkGroup,
+  side: "from" | "to",
   face: PortFace,
   used: Map<string, number>,
+  laneCandidates: { d: number; inserter: string }[],
+  spanLedger: SpanLedger,
 ): LinkFacePlan | undefined {
-  const arms = armsByMachine(group, machineOf);
+  const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
 
   if (face === "N" || face === "S") {
-    // gap 벨트는 머신 하나의 면만 훑는다(가로라 기둥을 관통할 수 없다).
+    // gap 벨트는 머신 하나의 면만 훑는다(가로라 기둥을 관통할 수 없다) — span 다툼 없음.
     if (arms.size !== 1) return undefined;
     const [mi, k] = [...arms][0];
     const gap = face === "S" ? mi : mi - 1;
@@ -681,14 +756,36 @@ function tryLinkFace(
   for (const [mi, k] of arms) {
     if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
   }
-  return { face, arms, laneDepth: LINK_LANE_DEPTH };
+
+  // span(min..max 머신 index)을 관통할 depth 를 고른다 — 단일 머신 그룹도 검사한다.
+  // (처음엔 "단일 머신은 자기 행 밖을 안 벗어나 안전하다"고 생각했지만 틀렸다: **다른**
+  // 다열-머신 그룹의 관통 벨트가 이 머신의 행을 지나갈 수 있다 — 검사 대상은 "나 vs 나"가
+  // 아니라 "나 vs 이 depth 를 지나가는 모든 것"이다. 출력(W)은 다열-머신 그룹이 아예 없어
+  // 이 검사가 항상 첫 후보에서 통과한다 — 손해 없이 안전만 늘어난다.
+  const mis = [...arms.keys()];
+  const minMi = Math.min(...mis);
+  const maxMi = Math.max(...mis);
+  for (const cand of laneCandidates) {
+    const claimed = spanLedger.get(spanLedgerKey(face, cand.d));
+    let blocked = false;
+    if (claimed) for (let mi = minMi; mi <= maxMi; mi++) if (claimed.has(mi)) { blocked = true; break; }
+    if (!blocked) {
+      return { face, arms, laneDepth: cand.d, inserter: cand.inserter, spanMi: [minMi, maxMi] };
+    }
+  }
+  return undefined; // 후보 depth 가 다 겹친다 — 이 면은 못 쓴다(정직한 실패, gap 폴백 또는 unrouted).
 }
 
 /** [tryLinkFace] 가 낸 배정을 장부에 확정한다. */
-function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>): void {
+function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>, spanLedger: SpanLedger): void {
   for (const [mi, k] of plan.arms) {
     const key = seatKey(mi, plan.face);
     used.set(key, (used.get(key) ?? 0) + k);
+  }
+  if (plan.spanMi) {
+    const key = spanLedgerKey(plan.face, plan.laneDepth);
+    const claimed = spanLedger.get(key) ?? spanLedger.set(key, new Set()).get(key)!;
+    for (let mi = plan.spanMi[0]; mi <= plan.spanMi[1]; mi++) claimed.add(mi);
   }
 }
 
@@ -711,17 +808,19 @@ function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>): void {
 function allocateLinkFaces(
   machine: { w: number; h: number },
   count: number,
-  groups: MachineLink[][],
-  machineOf: (l: MachineLink) => number,
+  groups: MachineLinkGroup[],
+  side: "from" | "to",
   prefer: PortFace,
   used: Map<string, number>,
+  laneCandidates: { d: number; inserter: string }[],
+  spanLedger: SpanLedger,
 ): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const plan = tryLinkFace(machine, count, g, machineOf, prefer, used);
+    const plan = tryLinkFace(machine, count, g, side, prefer, used, laneCandidates, spanLedger);
     if (plan) {
-      commitLinkFace(plan, used);
+      commitLinkFace(plan, used, spanLedger);
       plans[i] = plan;
     } else deferred.push(i);
   });
@@ -735,16 +834,18 @@ function allocateLinkFaces(
 function spillLinkFacesToGap(
   machine: { w: number; h: number },
   count: number,
-  groups: MachineLink[][],
-  machineOf: (l: MachineLink) => number,
+  groups: MachineLinkGroup[],
+  side: "from" | "to",
   used: Map<string, number>,
   out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
+  laneCandidates: { d: number; inserter: string }[],
+  spanLedger: SpanLedger,
 ): void {
   for (const i of out.deferred) {
     for (const face of ["S", "N"] as const) {
-      const plan = tryLinkFace(machine, count, groups[i], machineOf, face, used);
+      const plan = tryLinkFace(machine, count, groups[i], side, face, used, laneCandidates, spanLedger);
       if (!plan) continue;
-      commitLinkFace(plan, used);
+      commitLinkFace(plan, used, spanLedger);
       out.plans[i] = plan;
       break;
     }
@@ -768,14 +869,22 @@ function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]):
   return rows;
 }
 
-/** 면마다 링크가 먹은 **최대 좌석 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값. */
+/**
+ * 면마다 링크가 먹은 **최대 좌석 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값.
+ *
+ * W/E 만 반환하지 않는다 — `used` 의 키는 [tryLinkFace] 가 N/S(gap 스필)에도 똑같이
+ * 적는다(`seatKey(mi, "N"|"S")`). **지금은** planner 가 N/S 를 시도하는 유일한 경로
+ * (`input.nsFaces`)가 count=1 일 때만 켜지고, gap 스필은 count≥2 일 때만 생겨 서로
+ * 상호배타라 이 값이 없어도 조용히 안 터졌다 — 그건 우연이지 설계가 아니다. 계산해 둔
+ * 값을 버리지 않는 쪽이 항상 맞다(2026-07-21, [발견 ③] 근치).
+ */
 function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, number>> {
-  const by: Record<string, number> = {};
+  const by: Partial<Record<PlannedSide, number>> = {};
   for (const [k, v] of used) {
-    const face = k.slice(k.indexOf(":") + 1);
+    const face = k.slice(k.indexOf(":") + 1) as PlannedSide;
     by[face] = Math.max(by[face] ?? 0, v);
   }
-  return { W: by.W ?? 0, E: by.E ?? 0 };
+  return by;
 }
 
 /**
@@ -818,7 +927,7 @@ function placeLinkSeats(
  *   chest(포트) = beltTop + 2fv
  */
 function emitOutputLinks(args: {
-  links: MachineLink[][];
+  groups: MachineLinkGroup[];
   seats: (LinkSeats | undefined)[];
   lineOf: Map<string, IoLine>;
   machines: Container[];
@@ -830,12 +939,12 @@ function emitOutputLinks(args: {
   outputPorts: ModulePort[];
   unroutedLines: IoLine[];
 }): void {
-  const { links, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines } = args;
+  const { groups, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines } = args;
   let seq = 0;
 
-  links.forEach((group, gi) => {
-    const line = args.lineOf.get(group[0].item);
-    const m = machines[group[0].fromMachine];
+  groups.forEach((group, gi) => {
+    const line = args.lineOf.get(group.item);
+    const m = machines[group.fromMachine];
     if (!line || !m) return;
     const plan = args.seats[gi];
     if (!plan) {
@@ -845,7 +954,7 @@ function emitOutputLinks(args: {
     // 출력 그룹은 늘 자식 머신 **하나**다(fan-out 은 목적지가 갈릴 뿐 출발은 한 대).
     const face = plan.face;
     const fv = faceVector(face);
-    const rows = plan.slots.get(group[0].fromMachine)!;
+    const rows = plan.slots.get(group.fromMachine)!;
     // depth 는 **그 머신의 면**에서 잰다 — 가운데 머신의 N/S 면은 클러스터 끝면이 아니다.
     const mExt = { x0: m.origin.x, y0: m.origin.y, x1: m.origin.x + m.size.w - 1, y1: m.origin.y + m.size.h - 1 };
 
@@ -913,6 +1022,7 @@ function emitOutputLinks(args: {
       line, anchor: { ...chestAt },
       tapAnchor: { x: m.origin.x, y: trunkStart.y }, face: portFace,
       moduleWayOuts: [], chest, cells: beltCells,
+      linkId: group.id,
       meta: {
         // side = 어느 **변**이냐(채널 장부가 보는 것), face = 어느 쪽으로 **나가느냐**.
         // gap 좌석이어도 나가는 변은 W 다 — 둘은 다르다(모듈 머리말 "변 vs face").
@@ -932,7 +1042,7 @@ function emitOutputLinks(args: {
  * 넣음; belt=d2 세로(아래로 흐름 — 포트에서 받아 탭에 분배); 포트 인서터=d3, chest=d4(동).
  */
 function emitInputLinks(args: {
-  links: MachineLink[][];
+  groups: MachineLinkGroup[];
   seats: (LinkSeats | undefined)[];
   lineOf: Map<string, IoLine>;
   machines: Container[];
@@ -944,7 +1054,7 @@ function emitInputLinks(args: {
   inputPorts: ModulePort[];
   unroutedLines: IoLine[];
 }): void {
-  const { links, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines } = args;
+  const { groups, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines } = args;
   const ext = {
     x0: Math.min(...machines.map((m) => m.origin.x)),
     y0: Math.min(...machines.map((m) => m.origin.y)),
@@ -953,18 +1063,8 @@ function emitInputLinks(args: {
   };
   let seq = 0;
 
-  // 레인 후보 — 트렁크 벨트의 깊이와 그 깊이를 집을 수 있는 탭 인서터(옛 reach-레인 모델).
-  // 트렁크 하나가 여러 머신의 행을 관통하므로, 다른 그룹의 트렁크와 같은 깊이에서 겹치면
-  // 다음 레인(긴팔)으로 물러난다. 후보가 다 막히면 그룹 전체 unrouted(정직 폴백).
-  const sideLanes: { d: number; inserter: string }[] = [
-    { d: LINK_LANE_DEPTH, inserter: input.inserterEntityName },
-    ...(input.longInserter
-      ? [{ d: 1 + input.longInserter.reach, inserter: input.longInserter.entityName }]
-      : []),
-  ];
-
-  links.forEach((group, gi) => {
-    const line = args.lineOf.get(group[0].item);
+  groups.forEach((group, gi) => {
+    const line = args.lineOf.get(group.item);
     if (!line) return;
     const plan = args.seats[gi];
     if (!plan) { unroutedLines.push(line); return; } // 두 면 다 찼다 → 정직 폴백
@@ -998,19 +1098,19 @@ function emitInputLinks(args: {
       const b = faceCell(geomExt, face, d, topT);
       return isGap ? { x: botT, y: b.y } : b;
     };
-    // **gap 좌석은 물러날 곳이 없다** — gap 폭이 이 그룹의 `laneDepth` 로 이미 정해져 굳었으니
-    // 긴팔 레인으로 물러나면 벨트가 gap 밖(옆 머신 몸통)에 놓인다. 옆면(W/E)은 바깥이 열려
-    // 있으므로 종전대로 물러난다. 막히면 정직하게 unrouted.
-    const lanes = isGap ? [{ d: plan.laneDepth, inserter: input.inserterEntityName }] : sideLanes;
-    let lane: { d: number; inserter: string } | undefined;
-    for (const cand of lanes) {
-      const span: { x: number; y: number }[] = [];
-      for (let t = topT; t <= botT; t++) span.push(faceCell(geomExt, face, cand.d, t));
-      const te = trunkEndOf(cand.d);
-      span.push({ x: te.x + pfv.x, y: te.y + pfv.y }, { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }); // 포트 인서터·상자
-      if (span.every((c) => !occupancy.has(cellKey(c.x, c.y)))) { lane = cand; break; }
+    // 레인(depth)은 이미 배정 단계에서 결정됐다([tryLinkFace]의 spanLedger) — 다열-머신
+    // 그룹끼리 depth 를 다투는 계산은 거기서 끝났으므로 여기선 탐색하지 않는다(2026-07-21,
+    // 발견 ④ 근치). 단일 머신 그룹(gap 전부·입력도 일부)은 애초에 dispute 가 없어 기본
+    // 레인 그대로다 — `plan.inserter` 가 그때만 비어 있다.
+    const lane = { d: plan.laneDepth, inserter: plan.inserter ?? input.inserterEntityName };
+    const span: { x: number; y: number }[] = [];
+    for (let t = topT; t <= botT; t++) span.push(faceCell(geomExt, face, lane.d, t));
+    const te = trunkEndOf(lane.d);
+    span.push({ x: te.x + pfv.x, y: te.y + pfv.y }, { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }); // 포트 인서터·상자
+    if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
+      unroutedLines.push(line); // 안전망(구성상 발생 안 함 — spanLedger 가 이미 막았어야 한다)
+      return;
     }
-    if (!lane) { unroutedLines.push(line); return; }
 
     // ── 배치 확정 ──
     const beltTop = trunkEndOf(lane.d);
@@ -1060,6 +1160,7 @@ function emitInputLinks(args: {
       line, anchor: { ...chestAt },
       tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y }, face: portFace,
       moduleWayOuts: [], chest, cells: beltCells,
+      linkId: group.id,
       meta: {
         // side = 어느 변(장부가 보는 것), face = 어느 쪽으로 나가느냐. gap 이어도 변은 E.
         item: line.name, side: "E", laneDepth: lane.d,
@@ -1101,6 +1202,77 @@ function emitInputLinks(args: {
  * belt 가 기둥 **전체를 직선으로** 지나므로 모든 머신의 그 면 행이 belt 와 맞닿는다.
  * 옛 트렁크(씨앗에서 그리디로 성장)처럼 "둘러싸여 못 닿는 머신"이 **구성상** 없다.
  */
+/**
+ * [emitTapInserting]·[emitTrunkPipe] 가 함께 보는 값 — 기둥 extent, [pipeJumpToClusterPipe]
+ * 모드 여부, stagger 계산 기준. 두 방출기가 **각자 독립으로 재계산하면 어긋날 수 있는 값**을
+ * 한 곳에서 만들어 공유한다(예: 아이템 stagger 는 같은 면·같은 끝의 파이프 레인 깊이까지
+ * 알아야 하고, 그 반대도 마찬가지 — 둘이 따로 계산하면 두 계산이 다른 답을 낼 수 있다).
+ */
+interface TrunkContext {
+  ext: { x0: number; y0: number; x1: number; y1: number };
+  /** [pipeJumpToClusterPipe] 가 실제로 켜졌는가(가능 판정 + 그 면에 벨트가 있음). */
+  pipeJumpMode: boolean;
+  /** ClusterPipe 깊이 = 그 면 벨트 최대 깊이 + 2. */
+  clusterPipeDepth: number;
+  /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 ClusterPipe 깊이, 아니면 계획값 그대로. */
+  emitDepthOf: (p: PlannedLine) => number;
+  /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준. */
+  maxDepthAtEnd: Map<string, number>;
+}
+
+/** [TrunkContext.maxDepthAtEnd] 의 조회 키 — 같은 면·같은 끝(min/max)이면 같은 키. */
+function trunkEndKey(p: PlannedLine, lineEnds: ModuleInput["lineEnds"]): string {
+  return `${p.side}:${lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min"}`;
+}
+
+/**
+ * [TrunkContext] 를 만든다 — 좌표 배치 전, `plan.lines` 전체(아이템+유체)를 한 번 훑어야
+ * 나오는 값들이라 [emitTapInserting]/[emitTrunkPipe] 가 갈리기 **전**에 한 번만 계산한다.
+ *
+ * ── [pipeJumpToClusterPipe] 모드 — 유체 줄이 좌석 줄 대신 바깥 [ClusterPipe] 로 ──
+ * 점프 가능 판정(isJumpableToClusterPipe)이 참이어도, 그 면에 **벨트가 하나도 안 앉았으면**
+ * 넘을 것이 없다 → 옛 스파인(d=1)이 그대로 최선이라 점프하지 않는다(폭 낭비 0).
+ *
+ * ClusterPipe 깊이 = 그 면 벨트 최대 깊이 + 2:
+ *   +1 = [ClusterPipeTapCell] — 지하파이프는 **지하 방향으로만** 합류하고 옆(수직)으론
+ *        못 이어서, 탭이 ClusterPipe 줄 위에 앉으면 세로 연속이 끊긴다 → 1칸 안쪽.
+ *   +2 = ClusterPipe 본체(일반 파이프 세로줄).
+ * (나중에: 벨트를 지하벨트로 접으면 탭·ClusterPipe 를 더 안쪽으로 당길 수 있다 — 최적화 보류.)
+ */
+function buildTrunkContext(
+  plan: { ok: true; lines: PlannedLine[] },
+  machines: Container[],
+  input: ModuleInput,
+  isJumpableToClusterPipe: boolean,
+): TrunkContext {
+  const ext = {
+    x0: Math.min(...machines.map((m) => m.origin.x)),
+    y0: Math.min(...machines.map((m) => m.origin.y)),
+    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
+    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
+  };
+
+  const pipeFaceBeltMax = plan.lines.reduce(
+    (a, p) =>
+      p.line.kind === "belt" && p.side === input.fluidTrunk?.side
+        ? Math.max(a, p.clusterBeltDepth)
+        : a,
+    0,
+  );
+  const pipeJumpMode = isJumpableToClusterPipe && pipeFaceBeltMax > 0;
+  const clusterPipeDepth = pipeFaceBeltMax + 2;
+  const emitDepthOf = (p: PlannedLine): number =>
+    p.line.kind === "pipe" && pipeJumpMode ? clusterPipeDepth : p.clusterBeltDepth;
+
+  const maxDepthAtEnd = new Map<string, number>();
+  for (const p of plan.lines) {
+    const k = trunkEndKey(p, input.lineEnds);
+    maxDepthAtEnd.set(k, Math.max(maxDepthAtEnd.get(k) ?? 0, emitDepthOf(p)));
+  }
+
+  return { ext, pipeJumpMode, clusterPipeDepth, emitDepthOf, maxDepthAtEnd };
+}
+
 function emitTapInserting(args: {
   plan: { ok: true; lines: PlannedLine[] };
   machines: Container[];
@@ -1112,77 +1284,33 @@ function emitTapInserting(args: {
   inputPorts: ModulePort[];
   outputPorts: ModulePort[];
   unroutedLines: IoLine[];
-  /** generateModule 이 계산한 [isJumpableToClusterPipe] — planner 와 같은 값을 봐야 한다. */
-  isJumpableToClusterPipe: boolean;
+  ctx: TrunkContext;
+  /** [emitTrunkPipe] 와 chestId 순번을 이어 쓰기 위한 공유 카운터. */
+  seqRef: { n: number };
 }): void {
-  const { plan, machines, input, prefix, occupancy, cells, chests } = args;
-
-  // 머신 기둥의 실제 extent — belt 가 덮어야 할 범위.
-  const ext = {
-    x0: Math.min(...machines.map((m) => m.origin.x)),
-    y0: Math.min(...machines.map((m) => m.origin.y)),
-    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
-    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
-  };
+  const { plan, machines, input, prefix, occupancy, cells, chests, ctx } = args;
+  const ext = ctx.ext;
 
   // 면별로 이미 쓴 탭 좌석 행. 같은 면의 두 줄(가까운/먼 레인)은 belt 열은 다르지만
   // **좌석은 같은 d=1 열**에 앉으므로, 줄마다 다른 행을 줘야 겹치지 않는다.
   const slotOnFace = new Map<PlannedSide, number>();
-  let seq = 0;
-
-  // ── [pipeJumpToClusterPipe] 모드 — 유체 줄이 좌석 줄 대신 바깥 [ClusterPipe] 로 ──
-  //
-  // 점프 가능 판정(isJumpableToClusterPipe)이 참이어도, 그 면에 **벨트가 하나도 안 앉았으면**
-  // 넘을 것이 없다 → 옛 스파인(d=1)이 그대로 최선이라 점프하지 않는다(폭 낭비 0).
-  //
-  // ClusterPipe 깊이 = 그 면 벨트 최대 깊이 + 2:
-  //   +1 = [ClusterPipeTapCell] — 지하파이프는 **지하 방향으로만** 합류하고 옆(수직)으론
-  //        못 이어서, 탭이 ClusterPipe 줄 위에 앉으면 세로 연속이 끊긴다 → 1칸 안쪽.
-  //   +2 = ClusterPipe 본체(일반 파이프 세로줄).
-  // (나중에: 벨트를 지하벨트로 접으면 탭·ClusterPipe 를 더 안쪽으로 당길 수 있다 — 최적화 보류.)
-  const pipeFaceBeltMax = plan.lines.reduce(
-    (a, p) =>
-      p.line.kind === "belt" && p.side === input.fluidTrunk?.side
-        ? Math.max(a, p.clusterBeltDepth)
-        : a,
-    0,
-  );
-  const pipeJumpMode = args.isJumpableToClusterPipe && pipeFaceBeltMax > 0;
-  const clusterPipeDepth = pipeFaceBeltMax + 2;
-  /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 ClusterPipe 깊이, 아니면 계획값 그대로. */
-  const emitDepthOf = (p: PlannedLine): number =>
-    p.line.kind === "pipe" && pipeJumpMode ? clusterPipeDepth : p.clusterBeltDepth;
-
-  /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준(아래 참고). */
-  const endKey = (p: PlannedLine): string =>
-    `${p.side}:${(input.lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min")}`;
-  const maxDepthAtEnd = new Map<string, number>();
-  for (const p of plan.lines) {
-    const k = endKey(p);
-    maxDepthAtEnd.set(k, Math.max(maxDepthAtEnd.get(k) ?? 0, emitDepthOf(p)));
-  }
 
   for (const planned of plan.lines) {
+    if (planned.line.kind === "pipe") continue; // 유체는 [emitTrunkPipe] 가 처리한다.
     const line = planned.line;
     const face = planned.side as PortFace;
     const fv = faceVector(face); // 바깥 방향(머신 → 면)
-    const d = emitDepthOf(planned); // 가까운 belt=2, 먼=3, 케이스 B=4. 파이프=1 또는 ClusterPipe 깊이.
-    const isPipe = line.kind === "pipe";
+    const d = ctx.emitDepthOf(planned); // 가까운 belt=2, 먼=3, 케이스 B=4.
 
-    // 좌석 행 배정은 **인서터가 있는 줄만** 한다 — 트렁크 파이프는 인서터가 없어서 좌석
-    // 행을 안 먹는다(머신 유체 입구에 직접 닿는다). [Parallel Inserting]: 한 줄이 머신마다
-    // 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
-    const taps = isPipe ? 0 : Math.max(1, planned.requiredInserterCount ?? 1);
-    let slot = 0;
-    if (!isPipe) {
-      const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
-      slot = slotOnFace.get(planned.side) ?? 0;
-      if (slot + taps > lateralCap) {
-        args.unroutedLines.push(line); // 좌석 행 부족 — planner 용량과 어긋난 것(안전망).
-        continue;
-      }
-      slotOnFace.set(planned.side, slot + taps);
+    // [Parallel Inserting]: 한 줄이 머신마다 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
+    const taps = Math.max(1, planned.requiredInserterCount ?? 1);
+    const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
+    const slot = slotOnFace.get(planned.side) ?? 0;
+    if (slot + taps > lateralCap) {
+      args.unroutedLines.push(line); // 좌석 행 부족 — planner 용량과 어긋난 것(안전망).
+      continue;
     }
+    slotOnFace.set(planned.side, slot + taps);
 
     // 트렁크가 달리는 축(W/E 면 → 세로, N/S 면 → 가로)과 포트가 나가는 끝.
     const vertical = face === "W" || face === "E";
@@ -1203,19 +1331,20 @@ function emitTapInserting(args: {
     // 답은 반대다: **안쪽 레인을 바깥 레인의 끝보다 더 멀리** 뽑아, 안쪽 상자가 바깥 열이
     // 끝난 지점 너머에 앉게 한다. 그러면 안쪽 상자의 옆이 비어 길이 열린다.
     // belt·seat·chest 는 여전히 일직선·연속이라 [moduleHop] 계약은 그대로다.
-    const stagger = (maxDepthAtEnd.get(endKey(planned)) ?? d) - d;
+    // (기준값은 [buildTrunkContext] 가 아이템·파이프 줄을 함께 훑어 낸 것 — 같은 면의
+    // 파이프 레인이 더 깊으면 아이템도 그 깊이에 맞춰 물러난다.)
+    const stagger = (ctx.maxDepthAtEnd.get(trunkEndKey(planned, input.lineEnds)) ?? d) - d;
     const tBeltEnd = atMin ? t0 - stagger : t1 + stagger;
 
     const beltEnd = faceCell(ext, face, d, tBeltEnd); // 트렁크의 포트 쪽 끝(= trunkStart)
     const seat = { x: beltEnd.x + ev.x, y: beltEnd.y + ev.y }; // 포트 인서터
     const chestAt = { x: beltEnd.x + 2 * ev.x, y: beltEnd.y + 2 * ev.y }; // 포트 상자(anchor)
 
-    const chestId = `${prefix}-${line.role}-${line.name}-${seq++}`;
-    // 유체는 무한**파이프**, 아이템은 무한**상자**로 외부와 만난다.
+    const chestId = `${prefix}-${line.role}-${line.name}-${args.seqRef.n++}`;
     const chest: Container = {
       id: chestId,
-      kind: isPipe ? "infinity-pipe" : "infinity-chest",
-      entityName: isPipe ? "infinity-pipe" : "infinity-chest",
+      kind: "infinity-chest",
+      entityName: "infinity-chest",
       origin: { ...chestAt },
       size: { w: 1, h: 1 },
       content: line.name,
@@ -1225,64 +1354,52 @@ function emitTapInserting(args: {
 
     // belt 흐름 — 출력(collect)은 머신들이 놓은 것이 **포트 쪽으로** 모여 흐르고,
     // 입력(supply)은 포트로 들어온 것이 **기둥 안쪽으로** 퍼진다. 정반대다.
-    // (파이프는 흐름 방향이 없다 — 압력이 알아서 흐른다. beltDir 을 안 쓴다.)
     const flow = line.role === "output" ? ev : { x: -ev.x, y: -ev.y };
     const beltDir = vectorToDirection(flow.x, flow.y);
 
     const beltPair: PortPair = {
       producer: {
         containerId: line.role === "input" ? chestId : machines[0].id,
-        cell: { ...beltEnd }, face, kind: isPipe ? { fluid: line.name } : "item",
+        cell: { ...beltEnd }, face, kind: "item",
       },
       consumer: {
         containerId: line.role === "input" ? machines[0].id : chestId,
-        cell: { ...beltEnd }, face, kind: isPipe ? { fluid: line.name } : "item",
+        cell: { ...beltEnd }, face, kind: "item",
       },
     };
 
-    // ── 트렁크 한 줄 — 기둥 전체(+stagger)를 직선으로. 탐색 0. ──
-    // 아이템이면 belt, 유체면 [트렁크 파이프]. 파이프는 depth 1 이라 이 직선이 **모든 머신의
-    // 유체 입구 칸을 지나간다** — 그래서 인서터도, 탭도, 분기도 필요 없다(trunk-pipe §1).
+    // ── 트렁크 belt 한 줄 — 기둥 전체(+stagger)를 직선으로. 탐색 0. ──
     const beltCells: PlacedCell[] = [];
     const lo = Math.min(t0, tBeltEnd);
     const hi = Math.max(t1, tBeltEnd);
     for (let t = lo; t <= hi; t++) {
       const at = faceCell(ext, face, d, t);
       if (occupancy.has(cellKey(at.x, at.y))) continue; // 안전망(구성상 발생 안 함)
-      beltCells.push(
-        isPipe
-          ? makePipeCell(at, input.fluidTrunk!.pipeEntityName, beltPair)
-          : makeBeltCell(at, beltDir, planned.beltEntityName ?? input.beltEntityName, beltPair),
-      );
+      beltCells.push(makeBeltCell(at, beltDir, planned.beltEntityName ?? input.beltEntityName, beltPair));
     }
 
-    // ── 포트 끝 — 트렁크 끝 바깥에 일직선 ──
-    // 아이템: [인서터][상자]. 유체: [파이프][무한파이프] — **인서터가 없다**(유체는 인서터로
-    // 못 옮긴다). 칸 배치(anchor−ev, anchor−2·ev)는 같아서 [moduleHop] 포트 계약은 그대로다.
+    // ── 포트 끝 — 트렁크 끝 바깥에 [인서터][상자] 일직선 ──
+    // 칸 배치(anchor−ev, anchor−2·ev)는 [moduleHop] 포트 계약과 같다.
     const portPickup = line.role === "input" ? ev : { x: -ev.x, y: -ev.y };
     const portCells: PlacedCell[] = [
       makeContainerCell(chest, chestAt),
-      isPipe
-        ? makePipeCell(seat, input.fluidTrunk!.pipeEntityName, beltPair)
-        : makeInserterCell(seat, portPickup, input.inserterEntityName, beltPair),
+      makeInserterCell(seat, portPickup, input.inserterEntityName, beltPair),
     ];
 
-    // ── 탭 인서터 — 머신마다 [taps]개. 한 belt 를 나눠 집는다. 파이프는 탭이 없다. ──
+    // ── 탭 인서터 — 머신마다 [taps]개. 한 belt 를 나눠 집는다. ──
     //
-    // [Parallel Inserting]: 머신당 수요가 인서터 하나를 넘으면 좌석을 더 써서 **같은
-    // ClusterBelt 를 여러 번** 집는다. taps 개를 slot..slot+taps−1 연속 행에 앉힌다.
-    //
-    // 점프 모드의 유체 면: 좌석 줄(d=1)에서 **상자 행 하나는 [fluidboxPipeCell] 자리**다.
-    // 벨트 좌석은 그 행을 건너뛰어 앉는다 — 이게 "머신 유체 상자에 닿아야 하는 칸을 제외한
+    // 점프 모드의 유체 면: 좌석 줄(d=1)에서 **상자 행 하나는 [fluidboxPipeCell] 자리**다
+    // ([emitTrunkPipe] 가 그 행에 파이프를 놓는다). 이 아이템 줄이 **같은 면**을 쓰면 벨트
+    // 좌석은 그 행을 건너뛰어 앉아야 한다 — 이게 "머신 유체 상자에 닿아야 하는 칸을 제외한
     // 남는 공간을 활용한다"의 실체다. (용량은 insertingPlanner 좌석 예산이 이미 보장.)
     const skipRow =
-      pipeJumpMode && planned.side === input.fluidTrunk?.side
+      ctx.pipeJumpMode && planned.side === input.fluidTrunk?.side
         ? input.fluidTrunk!.fluidboxOffset!
         : undefined;
     const remapRow = (r: number) => (skipRow !== undefined && r >= skipRow ? r + 1 : r);
     const tapCells: PlacedCell[] = [];
     const seatDepth = tapSeatDepth(planned);
-    for (const m of isPipe ? [] : machines) {
+    for (const m of machines) {
       for (let k = 0; k < taps; k++) {
         const seatRow = remapRow(slot + k);
         const t = (vertical ? m.origin.y : m.origin.x) + seatRow;
@@ -1304,6 +1421,127 @@ function emitTapInserting(args: {
       }
     }
 
+    for (const c of [...beltCells, ...portCells, ...tapCells]) {
+      cells.push(c);
+      occupancy.add(cellKey(c.x, c.y));
+    }
+
+    const port: ModulePort = {
+      line,
+      anchor: { ...chestAt },
+      tapAnchor: { ...beltEnd }, // = anchor − 2·faceVec(exitFace). moduleHop 계약.
+      face: exitFace, // **나가는 방향**(N/S) — 변(meta.side, W/E)과 다르다.
+      moduleWayOuts: [], // 전 포트 emit 후 fillModuleWayOuts 가 채운다.
+      chest,
+      cells: beltCells, // 트렁크 spine — Routing 선이 벨트를 따라간다.
+      meta: {
+        item: line.name,
+        side: planned.side, // 채널 장부·반출 계획이 보는 값 — 어느 **변**이냐.
+        laneDepth: d,
+        // meta.inserter 는 소비자(채널 장부·골든)가 보는 'normal'|'long' 라벨이다 — planner 의
+        // reach 를 여기서 이진 라벨로 접는다.
+        inserter:
+          planned.reach === undefined ? undefined : planned.reach >= 2 ? "long" : "normal",
+        amount: line.amount,
+        endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
+      },
+    };
+    if (line.role === "output") args.outputPorts.push(port);
+    else args.inputPorts.push(port);
+  }
+}
+
+/**
+ * **트렁크 파이프 방출** — [emitTapInserting](탭 인서팅)과 나란한 유체판(용어사전 정의).
+ * 유체 줄마다 파이프 한 줄을 머신 기둥 전체에 직선으로 깔아 모든 머신의 유체 입구 칸에
+ * 직접 닿게 한다. **인서터가 없다** — 유체는 인서터로 못 옮긴다. 포트는 무한**파이프**로
+ * 끝난다. 기하 계약([moduleHop] anchor/seat/trunkStart)과 stagger 기준은 [emitTapInserting]
+ * 과 같은 [TrunkContext] 를 보므로 서로 어긋나지 않는다.
+ *
+ * 점프 모드([pipeJumpToClusterPipe])면 좌석 줄(d=1)의 유체 상자 칸만 먹고, 벨트들을 지하로
+ * 넘어 바깥 [ClusterPipe] 로 합류한다 — 그래야 그 면의 나머지 좌석이 아이템 줄에 돌아간다.
+ */
+function emitTrunkPipe(args: {
+  plan: { ok: true; lines: PlannedLine[] };
+  machines: Container[];
+  input: ModuleInput;
+  prefix: string;
+  occupancy: Set<string>;
+  cells: PlacedCell[];
+  chests: Container[];
+  inputPorts: ModulePort[];
+  outputPorts: ModulePort[];
+  unroutedLines: IoLine[];
+  ctx: TrunkContext;
+  /** [emitTapInserting] 과 chestId 순번을 이어 쓰기 위한 공유 카운터. */
+  seqRef: { n: number };
+}): void {
+  const { plan, machines, input, prefix, occupancy, cells, chests, ctx } = args;
+  const ext = ctx.ext;
+
+  for (const planned of plan.lines) {
+    if (planned.line.kind !== "pipe") continue; // 아이템은 [emitTapInserting] 이 처리한다.
+    const line = planned.line;
+    const face = planned.side as PortFace;
+    const fv = faceVector(face); // 바깥 방향 — 점프 지하파이프의 방향 계산에만 쓰인다.
+    const d = ctx.emitDepthOf(planned); // 파이프=1 또는 ClusterPipe 깊이.
+
+    const vertical = face === "W" || face === "E";
+    const t0 = vertical ? ext.y0 : ext.x0;
+    const t1 = vertical ? ext.y1 : ext.x1;
+    const atMin = (input.lineEnds?.get(`${line.role}:${line.name}`) ?? "min") === "min";
+    const exitFace: PortFace = vertical ? (atMin ? "N" : "S") : atMin ? "W" : "E";
+    const ev = faceVector(exitFace);
+
+    // stagger — [emitTapInserting] 과 같은 기준([TrunkContext.maxDepthAtEnd]).
+    const stagger = (ctx.maxDepthAtEnd.get(trunkEndKey(planned, input.lineEnds)) ?? d) - d;
+    const tBeltEnd = atMin ? t0 - stagger : t1 + stagger;
+
+    const beltEnd = faceCell(ext, face, d, tBeltEnd);
+    const seat = { x: beltEnd.x + ev.x, y: beltEnd.y + ev.y };
+    const chestAt = { x: beltEnd.x + 2 * ev.x, y: beltEnd.y + 2 * ev.y };
+
+    const chestId = `${prefix}-${line.role}-${line.name}-${args.seqRef.n++}`;
+    const chest: Container = {
+      id: chestId,
+      kind: "infinity-pipe",
+      entityName: "infinity-pipe",
+      origin: { ...chestAt },
+      size: { w: 1, h: 1 },
+      content: line.name,
+      role: line.role,
+    };
+    chests.push(chest);
+
+    // 파이프는 흐름 방향이 없다 — 압력이 알아서 흐른다.
+    const beltPair: PortPair = {
+      producer: {
+        containerId: line.role === "input" ? chestId : machines[0].id,
+        cell: { ...beltEnd }, face, kind: { fluid: line.name },
+      },
+      consumer: {
+        containerId: line.role === "input" ? machines[0].id : chestId,
+        cell: { ...beltEnd }, face, kind: { fluid: line.name },
+      },
+    };
+
+    // ── 트렁크 파이프 한 줄 — depth 1 이면 이 직선이 모든 머신의 유체 입구 칸을 지나간다
+    // (trunk-pipe §1) — 그래서 인서터도, 탭도, 분기도 필요 없다.
+    const beltCells: PlacedCell[] = [];
+    const lo = Math.min(t0, tBeltEnd);
+    const hi = Math.max(t1, tBeltEnd);
+    for (let t = lo; t <= hi; t++) {
+      const at = faceCell(ext, face, d, t);
+      if (occupancy.has(cellKey(at.x, at.y))) continue; // 안전망(구성상 발생 안 함)
+      beltCells.push(makePipeCell(at, input.fluidTrunk!.pipeEntityName, beltPair));
+    }
+
+    // ── 포트 끝 — [파이프][무한파이프] 일직선. 인서터가 없다. ──
+    const portCells: PlacedCell[] = [
+      makeContainerCell(chest, chestAt),
+      makePipeCell(seat, input.fluidTrunk!.pipeEntityName, beltPair),
+    ];
+
     // ── [pipeJumpToClusterPipe] — 머신마다 상자 칸에서 지하로 벨트들을 넘어 ClusterPipe 로 ──
     //
     //   머신 | d1 fluidboxPipeCell | d2..dN 벨트(지하로 통과) | dN+1 ClusterPipeTapCell | dN+2 ClusterPipe
@@ -1313,9 +1551,9 @@ function emitTapInserting(args: {
     //  - fluidboxPipeCell: 표면이 머신 유체 상자를 향한다(−fv). 터널은 +fv 로 진행.
     //  - ClusterPipeTapCell: 표면이 바깥 ClusterPipe 를 향한다(+fv).
     const jumpCells: PlacedCell[] = [];
-    if (isPipe && pipeJumpMode) {
+    if (ctx.pipeJumpMode) {
       const fbOffset = input.fluidTrunk!.fluidboxOffset!;
-      const tapDepth = clusterPipeDepth - 1;
+      const tapDepth = ctx.clusterPipeDepth - 1;
       for (const m of machines) {
         const row = (vertical ? m.origin.y : m.origin.x) + fbOffset;
         const boxCell = faceCell(ext, face, 1, row);
@@ -1340,7 +1578,7 @@ function emitTapInserting(args: {
       }
     }
 
-    for (const c of [...beltCells, ...portCells, ...tapCells, ...jumpCells]) {
+    for (const c of [...beltCells, ...portCells, ...jumpCells]) {
       cells.push(c);
       occupancy.add(cellKey(c.x, c.y));
     }
@@ -1348,18 +1586,16 @@ function emitTapInserting(args: {
     const port: ModulePort = {
       line,
       anchor: { ...chestAt },
-      tapAnchor: { ...beltEnd }, // = anchor − 2·faceVec(exitFace). moduleHop 계약.
-      face: exitFace, // **나가는 방향**(N/S) — 변(meta.side, W/E)과 다르다.
-      moduleWayOuts: [], // 전 포트 emit 후 fillModuleWayOuts 가 채운다.
+      tapAnchor: { ...beltEnd },
+      face: exitFace,
+      moduleWayOuts: [],
       chest,
-      cells: beltCells, // 트렁크 spine — Routing 선이 벨트를 따라간다.
+      cells: beltCells,
       meta: {
         item: line.name,
-        side: planned.side, // 채널 장부·반출 계획이 보는 값 — 어느 **변**이냐.
+        side: planned.side,
         laneDepth: d,
-        // meta.inserter 는 소비자(채널 장부·골든)가 보는 'normal'|'long' 라벨이다 — planner 의
-        // reach 를 여기서 이진 라벨로 접는다. 파이프는 인서터가 없어 undefined. (reach>2 가
-        // ModuleInput 까지 흘러오면 이 라벨은 무손실이 아니게 되나, v1 은 1·긴팔뿐이라 안전.)
+        // 파이프는 인서터가 없어 undefined.
         inserter:
           planned.reach === undefined ? undefined : planned.reach >= 2 ? "long" : "normal",
         amount: line.amount,

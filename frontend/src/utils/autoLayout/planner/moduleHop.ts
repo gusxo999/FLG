@@ -56,7 +56,7 @@ import {
 } from "../containerRouting";
 import { cellKey, faceVector, segment } from "../util/helper";
 import type { ModulePort } from "../module/clusterModule";
-import { hopKey, type HopGeometry, type HopSpec, type PackResult } from "./modulePacking";
+import { hopMapKey, type HopGeometry, type HopSpec, type PackResult } from "./modulePacking";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 
 export interface HopConfig {
@@ -206,7 +206,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   const plannedChains = new Map<string, DijkstraResult>();
   if (geo) {
     for (const hop of pack.hops) {
-      const k = hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
+      const k = hopMapKey(hop);
       const g = geo.hops.get(k);
       if (!g) continue;
       if (g.kind === "undergroundCrossing" && maxJump < 2) continue; // 지하 미허용 — dijkstra 로
@@ -236,7 +236,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
       continue;
     }
 
-    const k = hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
+    const k = hopMapKey(hop);
     const chain = plannedChains.get(k);
     let route: HopRoute;
     if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop)) {

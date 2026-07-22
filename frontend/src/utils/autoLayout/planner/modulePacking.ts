@@ -31,6 +31,7 @@ import {
   groupLinkBelts,
   maxInsertersPerBelt,
   type MachineLink,
+  type MachineLinkGroup,
 } from "../module/allocateMachineLinks";
 import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
@@ -117,8 +118,19 @@ export interface HopSpec {
   fromId: string;
   /** 부모 모듈 id(입력 측 owner). Routing to.containerId 유도용. */
   toId: string;
-  /** 같은 (from,to,item) 짝들 사이의 index — 1:1 방출이라 여럿이다. hopKey 구성 요소. */
+  /**
+   * 같은 (from,to,item) 짝들 사이의 index — **신원 없는(옛 탭/다이렉트) 홉만** 쓴다.
+   * 포트가 물리적으로 교환 가능해 위치가 곧 정답이라 정직한 값이다. `linkId` 가 있으면
+   * 이 값은 무시된다(신원이 있는데 위치로 다시 구분할 이유가 없다) — [hopMapKey] 참고.
+   */
   seq: number;
+  /**
+   * **링크 그룹 신원**([ModulePort.linkId] 의 사본, `from`/`to` 양쪽이 같은 값이라야 짝이
+   * 성립했으므로 어느 쪽에서 가져와도 같다). 있으면 [hopMapKey] 가 이 값을 채널 예약 키로
+   * 그대로 쓴다 — `seq` 처럼 "성공한 짝 배열의 몇 번째"가 아니라 **그 벨트 자체의 신원**이라
+   * 형제 홉이 실패해도 이 값은 안 흔들린다(2026-07-21, seq 의 마지막 남은 위치-의존 제거).
+   */
+  linkId?: string;
 }
 
 /** 홉의 결정적 방출 지시(절대 좌표) — 통합 장부의 배정을 트랙 index→x 로 변환한 것. */
@@ -135,27 +147,56 @@ export type HopGeometry =
 
 /** 채널 기하 예약 결과 — moduleHop(납품 방출)·modulePerimeterPass(반출 재생)가 소비. */
 export interface PackChannelGeometry {
-  /** [hopKey] → 방출 지시. 없는 홉 = fallback(기존 dijkstra). */
+  /** [hopMapKey] → 방출 지시. 없는 홉 = fallback(기존 dijkstra). */
   hops: Map<string, HopGeometry>;
   /** 반출 경로 예약 셀(절대 cellKey) — 폴백 dijkstra 홉이 침범하면 안 되는 자리. */
   reservedExportCells: Set<string>;
 }
 
 /**
- * HopSpec 식별 키 — PackChannelGeometry.hops 의 조회 키.
+ * **신원 없는(옛 탭/다이렉트, 교환 가능) 홉만을 위한** 위치 기반 키. **직접 부르지 않는다** —
+ * 모든 소비처는 [hopMapKey] 를 쓴다. 밖으로 안 내보내는 이유: 이 함수만 부르면 `linkId` 를
+ * 빠뜨린 채 `seq=0` 기본값으로 **엉뚱한 홉**을 조회하게 된다(2026-07-21, 바로 이 실수가
+ * `channelGeometryPlanner.test.ts` 에 있었다 — count=1 픽스처라 우연히 안 터졌을 뿐이었다).
  *
  * 1:1 방출(트렁크 비활성)에서는 자식 출력 포트가 머신 수만큼, 부모 입력 포트도 머신 수만큼
- * 있으므로 같은 (from,to,item) 홉이 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다.
+ * 있으므로 같은 (from,to,item) 홉이 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다 —
+ * 포트가 물리적으로 교환 가능해 위치가 곧 정직한 유일한 신원이기 때문이다.
  */
-export function hopKey(fromId: string, toId: string, item: string, seq = 0): string {
+function hopKey(fromId: string, toId: string, item: string, seq = 0): string {
   return `${fromId}→${toId}:${item}#${seq}`;
+}
+
+/**
+ * `PackChannelGeometry.hops`/[reservationEmittable] 의 조회 키 — 소비처가 부를 **유일한**
+ * 함수. 신원(`linkId`)이 있으면 그대로 쓰고, 없으면(교환 가능 포트) [hopKey] 로 위치 기반
+ * 키를 만든다.
+ */
+export function hopMapKey(hop: { fromId: string; toId: string; item: string; seq: number; linkId?: string }): string {
+  return hop.linkId ?? hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
+}
+
+/**
+ * **링크 그룹 신원** — 자식→부모 간선의 몇 번째 벨트인가. [edgeLinkGroups] 가 자식·부모
+ * 양쪽에서 **같은 값으로(child, parent, item, config)** 독립으로 계산되므로, 이 키를
+ * 대화 없이 양쪽이 동일하게 재현할 수 있다. `ModulePort.linkId` 가 이 값을 그대로 든다.
+ */
+function linkGroupId(childId: string, parentId: string, item: string, groupIndex: number): string {
+  return `${childId}→${parentId}:${item}#${groupIndex}`;
 }
 
 /**
  * 자식 출력 포트 ↔ 부모 입력 포트 **짝짓기** (같은 품목).
  *
- * 트렁크가 없으므로 양쪽 다 포트가 여러 개다(머신마다 하나). 등장 순서대로 **1:1 로 짝**
- * 짓고, 개수가 안 맞으면 남는 쪽은 짝이 없다 — 부모 입력이 남으면 무한상자로 남아
+ * 두 종류가 섞여 들어온다:
+ *  - **신원 있는 포트**([ModulePort.linkId], link 그룹에서 난 포트) — 상대가 **정해져 있다**.
+ *    `linkId` 로 직접 조회한다(추측이 아니라 조회). 못 찾으면 **예약 불변식이 깨졌다는
+ *    신호**([channel-geometry-reservation] 철학)라 그 포트만 raw 로 남기고 `mismatches` 에
+ *    사유를 남긴다 — `modulePerimeterPass.fail` 과 같은 관용구(skip, throw 안 함).
+ *  - **신원 없는 포트**(옛 탭/다이렉트) — 물리적으로 교환 가능해 정답이 없다. 등장 순서대로
+ *    **1:1 로 짝**짓는다(기존 동작 그대로).
+ *
+ * 개수가 안 맞으면(신원 없는 쪽) 남는 쪽은 짝이 없다 — 부모 입력이 남으면 무한상자로 남아
  * 외부에서 공급받고(raw), 자식 출력이 남으면 무한상자 sink 로 남는다. 둘 다 perimeter 로
  * 나가야 하므로 `rawPorts` 에 들어간다.
  *
@@ -167,14 +208,34 @@ function pairHopPorts(
   parentMod: GeneratedModule,
   item: string,
   usedIn: Set<string>,
+  mismatches: string[],
 ): { out: ModulePort; inp: ModulePort }[] {
   const outs = childMod.outputPorts.filter((p) => p.line.name === item);
   const ins = parentMod.inputPorts.filter((p) => p.line.name === item && !usedIn.has(p.chest.id));
   const pairs: { out: ModulePort; inp: ModulePort }[] = [];
-  for (let i = 0; i < Math.min(outs.length, ins.length); i++) {
-    usedIn.add(ins[i].chest.id);
-    pairs.push({ out: outs[i], inp: ins[i] });
+
+  // ① 신원이 있는 쪽 — 조회. 배열 위치가 아니라 linkId 로 짝을 찾는다.
+  const insById = new Map(ins.filter((p) => p.linkId !== undefined).map((p) => [p.linkId!, p]));
+  const exchangeableOuts: ModulePort[] = [];
+  for (const out of outs) {
+    if (out.linkId === undefined) { exchangeableOuts.push(out); continue; }
+    const inp = insById.get(out.linkId);
+    if (!inp) {
+      mismatches.push(`${out.linkId}: no matching parent input port (child emitted, parent didn't)`);
+      continue;
+    }
+    usedIn.add(inp.chest.id);
+    insById.delete(out.linkId);
+    pairs.push({ out, inp });
   }
+
+  // ② 신원이 없는 쪽(옛 탭/다이렉트) — 교환 가능이라 위치-zip 이 정답이다(기존 동작 그대로).
+  const exchangeableIns = ins.filter((p) => p.linkId === undefined && !usedIn.has(p.chest.id));
+  for (let i = 0; i < Math.min(exchangeableOuts.length, exchangeableIns.length); i++) {
+    usedIn.add(exchangeableIns[i].chest.id);
+    pairs.push({ out: exchangeableOuts[i], inp: exchangeableIns[i] });
+  }
+
   return pairs;
 }
 
@@ -188,6 +249,13 @@ export interface PackResult {
   lanePlan: LanePlan;
   /** 채널 기하 예약(통합 장부) — config.channelGeometry 일 때만. */
   channelGeometry?: PackChannelGeometry;
+  /**
+   * **링크 신원 불일치** — 자식이 `linkId` 를 선언한 그룹을 냈는데 부모 쪽에서 짝을 못 찾은
+   * 경우([pairHopPorts]). 정상적으로 있을 수 있는 일이 **아니다**: 신원은 자식·부모가 같은
+   * [edgeLinkGroups] 를 독립으로 돌려 나온 값이라 원래는 항상 일치해야 한다. 여기 항목이
+   * 있으면 예약 불변식이 깨진 것 — 조사 대상이지 정상 경로가 아니다. 비어 있으면 `[]`.
+   */
+  linkMismatches: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,20 +296,25 @@ export function edgeMachineLinks(
 /**
  * 한 엣지의 링크를 **벨트 그룹**으로 — [groupLinkBelts] 트렁크 공유. 그룹 하나 = 벨트 하나 =
  * 포트 한 쌍. cap = min(그릇, 자식 머신 좌석) — 그룹 전체가 자식 머신 하나의 면에 앉는다.
- * 자식(출력 emit)과 부모(입력 emit)가 여기서 나온 **같은 그룹**을 받아 짝이 어긋나지 않는다.
+ *
+ * 이 함수는 간선당 [packModuleTree] 안에서 **한 번만** 불린다(사전 캐시) — 자식(출력 emit)과
+ * 부모(입력 emit)는 그 결과 [MachineLinkGroup] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.
+ * `id`([linkGroupId])도 여기서 한 번 매겨져 그룹 안에 실린다.
  */
 export function edgeLinkGroups(
   child: NodeSpec,
   parent: NodeSpec,
   item: string,
   config: PackConfig,
-): MachineLink[][] | undefined {
+): MachineLinkGroup[] | undefined {
   const links = edgeMachineLinks(child, parent, item, config);
   if (!links || links.length === 0) return undefined;
   // edgeMachineLinks 가 링크를 냈으면 throughput·belts 는 존재한다(같은 전제).
   const tp = Math.min(config.throughput!.normal, config.throughput!.long);
   const cap = Math.min(maxInsertersPerBelt(config.belts![0].throughput, tp), child.machine.h);
-  return groupLinkBelts(links, cap);
+  const groups = groupLinkBelts(links, cap);
+  groups.forEach((g, gi) => { g.id = linkGroupId(child.id, parent.id, item, gi); });
+  return groups;
 }
 
 export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
@@ -286,36 +359,43 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
   // 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위.
   const IDENTITY: Orientation = { rotation: 0, reflect: false };
-  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [MachineLink] 목록.
-  // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
-  const outputLinksOf = (s: NodeSpec): MachineLink[][] | undefined => {
-    if (!s.parentId) return undefined;
+
+  // 간선당 [edgeLinkGroups] 를 **한 번만** 계산해 자식 id 로 캐시한다(간선 = 자식→부모,
+  // 자식 하나는 출력 품목이 하나뿐이므로 childId 만으로 간선이 유일하게 식별된다).
+  // 자식 쪽(outputLinksOf)과 부모 쪽(inputLinksOf)이 예전엔 이 계산을 각자 독립으로
+  // 두 번 돌려 "결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 일치를 기대했다
+  // (2026-07-21 이전) — 이제 한 번 계산된 같은 객체를 양쪽이 그대로 참조한다.
+  const linkGroupCache = new Map<string, MachineLinkGroup[]>();
+  for (const s of specs) {
+    if (!s.parentId) continue;
     const product = productOf(s);
-    if (!product) return undefined;
-    return edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
-  };
+    if (!product) continue;
+    const groups = edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
+    if (groups) linkGroupCache.set(s.id, groups);
+  }
+  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [MachineLinkGroup] 목록.
+  // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
+  const outputLinksOf = (s: NodeSpec): MachineLinkGroup[] | undefined => linkGroupCache.get(s.id);
   // 입력 fan-in 그룹 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 그룹을 모은다.
-  // 같은 간선에 같은 edgeLinkGroups 라 자식 쪽과 그룹이 일치 → 그룹 순서 1:1 짝짓기 성립.
-  const inputLinksOf = (s: NodeSpec): MachineLink[][] | undefined => {
+  // 캐시에서 그대로 가져오므로 자식 쪽과 그룹 객체(및 id)가 완전히 일치한다.
+  const inputLinksOf = (s: NodeSpec): MachineLinkGroup[] | undefined => {
     const kids = childIdsByParent.get(s.id) ?? [];
-    const groups: MachineLink[][] = [];
+    const groups: MachineLinkGroup[] = [];
     for (const cid of kids) {
-      const c = byId.get(cid)!;
-      const product = productOf(c);
-      if (!product) continue;
-      const g = edgeLinkGroups(c, s, product, config);
+      const g = linkGroupCache.get(cid);
       if (g) groups.push(...g);
     }
     return groups.length > 0 ? groups : undefined;
   };
-  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule =>
-    generateModule({
+  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
+    return generateModule({
       ...toModuleInput(s, config, childFedItems(s)),
       lineEnds,
       nsExposure: nsExposureOf(s),
       outputLinks: outputLinksOf(s),
       inputLinks: inputLinksOf(s),
     });
+  };
 
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
   const pass1 = new Map<string, GeneratedModule>();
@@ -405,17 +485,19 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const hopSeeds: { depth: number; key: string; startY: number; endY: number; eligible: boolean }[] = [];
   const pairedChestIds = new Set<string>();
   const usedParentIn = new Map<string, Set<string>>();
-  /** [자식 id] → 짝지은 (출력상자 id, 입력상자 id) 쌍들. 7)이 absById 로 재구성한다. */
-  const hopPairs = new Map<string, { item: string; outId: string; inId: string }[]>();
+  /** [pairHopPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
+  const linkMismatches: string[] = [];
+  /** [자식 id] → 짝지은 (출력상자 id, 입력상자 id, linkId) 쌍들. 7)이 absById 로 재구성한다. */
+  const hopPairs = new Map<string, { item: string; outId: string; inId: string; linkId?: string }[]>();
   for (const s of specs) {
     if (!s.parentId) continue;
     const product = productOf(s);
     if (!product) continue;
     const used = usedParentIn.get(s.parentId) ?? usedParentIn.set(s.parentId, new Set()).get(s.parentId)!;
-    const pairs = pairHopPorts(oriented.get(s.id)!.module, oriented.get(s.parentId)!.module, product, used);
+    const pairs = pairHopPorts(oriented.get(s.id)!.module, oriented.get(s.parentId)!.module, product, used, linkMismatches);
     hopPairs.set(
       s.id,
-      pairs.map((p) => ({ item: product, outId: p.out.chest.id, inId: p.inp.chest.id })),
+      pairs.map((p) => ({ item: product, outId: p.out.chest.id, inId: p.inp.chest.id, linkId: p.out.linkId })),
     );
     pairs.forEach(({ out, inp }, i) => {
       pairedChestIds.add(out.chest.id);
@@ -428,7 +510,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       });
       hopSeeds.push({
         depth: s.depth,
-        key: hopKey(s.id, s.parentId!, product, i),
+        key: hopMapKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId }),
         startY: cy,
         endY: py,
         eligible:
@@ -528,7 +610,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const from = portByChestId.get(pr.outId);
       const to = portByChestId.get(pr.inId);
       if (from && to)
-        hops.push({ item: pr.item, from, to, fromId: s.id, toId: s.parentId!, seq: i });
+        hops.push({ item: pr.item, from, to, fromId: s.id, toId: s.parentId!, seq: i, linkId: pr.linkId });
     }
   }
   for (const s of specs) {
@@ -555,7 +637,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     : undefined;
 
   const bbox = config.reservePerimeterLanes ? expandBbox(rawBbox, lanePlan.marginNeeds) : rawBbox;
-  return { placements, hops, rawPorts, bbox, lanePlan, channelGeometry };
+  return { placements, hops, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches };
 }
 
 /**
@@ -728,6 +810,7 @@ function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedMod
     chest: chestById.get(p.chest.id) ?? ctn(p.chest),
     cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
     meta: p.meta, // 산출 근거 — 좌표 없음(이동 불변).
+    linkId: p.linkId, // 그룹 신원 — 좌표 없음(이동 불변). 안 옮기면 pairHopPorts 가 못 찾는다.
   });
   return {
     machines: mod.machines.map(ctn),
