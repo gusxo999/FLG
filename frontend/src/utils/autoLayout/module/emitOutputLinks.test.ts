@@ -1,6 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type ModuleInput } from "./clusterModule";
+import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
 import { groupLinkBelts, type MachineLink } from "./allocateMachineLinks";
+import { directionToVector } from "../containerRouting";
+
+/**
+ * **한 그룹의 벨트가 다른 그룹의 벨트로 흘러들면 안 된다.**
+ *
+ * 그룹 하나 = 벨트 하나 = 포트 한 쌍인데, 벨트 A 의 끝 칸이 벨트 B 를 향해 있으면 A 의 물건이
+ * B 를 타고 **B 의 포트로 나간다** — 품목이 같아 오염은 없지만 장부가 통째로 거짓이 된다
+ * (A 의 부모는 굶고 B 의 부모는 넘친다). 셀이 안 겹치는지(occupancy)만 봐서는 절대 못 잡는다.
+ */
+function beltLeaks(mod: GeneratedModule): string[] {
+  const owner = new Map<string, number>();
+  const ports = [...mod.outputPorts, ...mod.inputPorts];
+  ports.forEach((p, i) => p.cells.forEach((c) => owner.set(`${c.x},${c.y}`, i)));
+  const leaks: string[] = [];
+  ports.forEach((p, i) => {
+    for (const c of p.cells) {
+      const v = directionToVector(c.cell.direction);
+      const into = owner.get(`${c.x + v.x},${c.y + v.y}`);
+      if (into !== undefined && into !== i) leaks.push(`port${i} (${c.x},${c.y}) → port${into}`);
+    }
+  });
+  return leaks;
+}
 
 // 출력 fan-out 방출 검증 — 링크 그룹(=벨트) 단위로 "머신당·목적지별" belt 가 갈라 나온다.
 // count≥2, W/E 에 앉는 중간 출력 케이스. 그룹핑은 packModuleTree(edgeLinkGroups)가 하므로
@@ -230,6 +253,10 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
     expect(mod.outputPorts).toHaveLength(2);
     expect(mod.unroutedLines).toHaveLength(0);
   });
+
+  it("입력·출력이 섞여 있어도 벨트끼리 새지 않는다", () => {
+    expect(beltLeaks(mod)).toEqual([]);
+  });
 });
 
 // gap 폭은 **자리마다 다르다** — 우리가 고르는 값이 아니라 그 gap 을 지나는 가로 벨트에서
@@ -262,6 +289,31 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
     expect(mod.outputPorts).toHaveLength(4);
     expect(mod.outputPorts.reduce((s, p) => s + p.cells.length, 0)).toBe(9);
     expect(mod.unroutedLines).toHaveLength(0);
+  });
+});
+
+// 벨트가 자기 구간 끝에서 **포트 쪽으로 꺾이지 않고** 면을 따라 계속 흐르면, 바로 옆 머신
+// 그룹의 벨트로 물건이 흘러든다. 머신 사이 gap 이 0 이면 두 벨트가 실제로 맞닿는다.
+describe("이웃 머신 그룹의 벨트로 물건이 새지 않는다", () => {
+  // 머신0 이 W면 3행을 꽉 채우고(rows 0,1,2), 머신1 그룹은 바로 다음 행(row 3)에서 시작한다
+  // — gap 이 0 이라 두 벨트가 세로로 맞닿는다.
+  const mod = generateModule({
+    ...linkedBase,
+    lines: [{ name: "gear", kind: "belt", role: "output" }],
+    outputLinks: [
+      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
+      { fromMachine: 1, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] },
+    ],
+  } as ModuleInput);
+
+  it("두 벨트가 실제로 맞닿는 배치다 (전제 확인)", () => {
+    const ys = mod.outputPorts.flatMap((p) => p.cells.map((c) => c.y));
+    expect(new Set(mod.outputPorts.flatMap((p) => p.cells.map((c) => c.x))).size).toBe(1); // 같은 열
+    expect(Math.max(...ys) - Math.min(...ys)).toBe(ys.length - 1); // 빈 행 없이 연속
+  });
+
+  it("머신1 의 물건이 머신0 의 벨트로 흘러들지 않는다", () => {
+    expect(beltLeaks(mod)).toEqual([]);
   });
 });
 

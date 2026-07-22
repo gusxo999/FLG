@@ -994,12 +994,18 @@ function emitOutputLinks(args: {
 
     // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W 면은 위로, N/S 면은 서쪽으로.
     const beltDir = face === "W" ? vectorToDirection(0, -1) : vectorToDirection(-1, 0);
+    // **끝 칸은 면을 따라 계속 흐르지 않고 포트 쪽으로 꺾는다.** 안 꺾으면 이 그룹의 물건이
+    // 면을 따라 더 흘러 **이웃 그룹의 벨트로 넘어간다**(머신 사이 gap 이 0 이면 두 벨트가 실제로
+    // 맞닿는다). 품목이 같아 오염은 안 나지만 장부가 통째로 거짓이 된다 — 이쪽 부모는 굶고
+    // 저쪽 부모는 넘친다. 셀 겹침(occupancy)만 봐서는 못 잡는 종류다(2026-07-22 수정).
+    // 꺾은 칸의 다음 칸은 이 그룹의 포트 인서터라 언제나 비어 있다(다른 그룹의 행과 안 겹친다).
     const beltCells: PlacedCell[] = [];
     let blocked = false;
     for (const t of rows) {
       const at = faceCell(mExt, face, laneDepth, t);
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; break; }
-      beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 선택은 후속
+      const dir = t === topT ? vectorToDirection(pfv.x, pfv.y) : beltDir;
+      beltCells.push(makeBeltCell(at, dir, input.beltEntityName, portPair)); // 벨트 티어 선택은 후속
     }
     if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
@@ -1144,10 +1150,14 @@ function emitInputLinks(args: {
 
     // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
     const beltDir = isGap ? vectorToDirection(-1, 0) : vectorToDirection(0, 1);
+    // [emitOutputLinks] 의 거울: **먼 쪽 끝 칸이 면을 따라 더 흐르면 이웃 그룹의 벨트로 넘어간다.**
+    // 여기선 포트가 위(topT)라 먼 끝이 `botT` 다. 바깥(pfv=E)으로 꺾어 거기서 멈춘다 — 그 칸은
+    // 이 그룹의 행이라 다른 그룹의 벨트가 없다. gap 은 면당 그룹이 하나뿐이라 다툼이 없어 그대로.
     const beltCells: PlacedCell[] = [];
     for (let t = topT; t <= botT; t++) {
       const at = faceCell(geomExt, face, lane.d, t);
-      beltCells.push(makeBeltCell(at, beltDir, input.beltEntityName, portPair)); // 벨트 티어 후속
+      const dir = !isGap && t === botT ? vectorToDirection(pfv.x, pfv.y) : beltDir;
+      beltCells.push(makeBeltCell(at, dir, input.beltEntityName, portPair)); // 벨트 티어 후속
       occupancy.add(cellKey(at.x, at.y));
     }
     const fv = faceVector(face);
