@@ -36,6 +36,7 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
 import type { Container, PlacedCell } from "../containerModel";
 import type { Orientation } from "../module/moduleTransform";
+import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 
 /** 채널 폭 하한(셀). 단일 홉(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
 const MODULE_CHANNEL_MIN = 4;
@@ -664,7 +665,15 @@ function materializeChannelGeometry(args: {
   for (const seed of hopSeeds) {
     if (!seed.eligible) continue;
     const plan = geometryPlans.get(seed.depth)?.deliveries.get(seed.key);
-    if (!plan || plan.kind === "fallback") continue;
+    if (!plan || plan.kind === "fallback") {
+      // **장부가 왜 포기했는지는 여기서만 알 수 있다** — 아래로 안 내려보내면 소비처는
+      // "계획이 없다"만 보고 이유를 영영 못 본다(2026-07-22 조사에서 계측을 새로 만들어야
+      // 했던 자리). 포기한 홉 하나가 탐색으로 내려가면 남의 계획까지 밟아 **연쇄**하므로
+      // ([moduleHop] 의 "예약 무시 재시도"), 이 한 줄이 그 연쇄의 출발점을 가리킨다.
+      if (AUTO_LAYOUT_COORD_DUMP)
+        console.log("[channelGeometry] 계획 포기 —", seed.key, plan ? plan.reason : "계획 자체가 없음");
+      continue;
+    }
     const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
     if (plan.kind === "straight") hops.set(seed.key, { kind: "straight" });
     else if (plan.kind === "staircase") hops.set(seed.key, { kind: "staircase", trackX: tx(plan.track) });
