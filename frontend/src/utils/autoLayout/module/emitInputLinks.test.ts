@@ -77,10 +77,10 @@ describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴�
   });
 });
 
-// **반출 사다리(입력 쪽)** — [emitOutputLinks] 의 거울. 입력의 포트는 **동쪽**이라 좌석도
+// **[[ParallelBelt]] — 막힌 면, 입력 쪽** — [emitOutputLinks] 의 거울. 입력의 포트는 **동쪽**이라 좌석도
 // 동쪽부터 채운다: 그래야 포트에 가까운 그룹이 얕은 줄을 쓰고, 먼 그룹의 줄이 가까운 그룹의
 // 열 위를 밟지 않는다(출력은 포트가 서쪽이라 서→동으로 채운다).
-describe("gap 반출 사다리(입력) — 한 면에 벨트 여러 줄", () => {
+describe("ParallelBelt(막힌 면, 입력) — 한 면에 벨트 여러 줄, 합류 없음", () => {
   const linked = {
     machine: M,
     count: 2,
@@ -104,13 +104,13 @@ describe("gap 반출 사다리(입력) — 한 면에 벨트 여러 줄", () => 
     expect(mod.unroutedLines).toHaveLength(0);
   });
 
-  it("gap 두 그룹이 서로 다른 줄에 선다 (사다리)", () => {
+  it("gap 두 그룹이 서로 다른 줄에 선다 — 합류하지 않는다", () => {
     const [, a, b] = mod.inputPorts;
     expect(Math.abs(a.anchor.y - b.anchor.y)).toBe(1);
   });
 
   it("좌석을 동쪽부터 채운다 — 첫 gap 그룹이 더 동쪽에 앉는다", () => {
-    // 벨트의 **동쪽 끝**으로는 못 잰다 — 사다리를 탄 그룹도 반출 줄이 동쪽 변까지 가므로
+    // 벨트의 **동쪽 끝**으로는 못 잰다 — 자기 줄로 내려간 그룹도 반출 줄이 동쪽 변까지 가므로
     // 둘 다 같은 값이 나온다. 좌석이 어디까지 뻗었나(= 서쪽 끝)를 봐야 순서가 드러난다.
     const [, a, b] = mod.inputPorts;
     const westmost = (p: (typeof mod.inputPorts)[number]) => Math.min(...p.cells.map((c) => c.x));
