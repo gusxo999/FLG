@@ -491,7 +491,19 @@ function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null 
           const cur = cells[cells.length - 1];
           const j = jumps[0];
           // 이 구간(cur→target) 위에서 지하 입구를 만나나?
-          if (j && onSegment(cur, target, j.from)) {
+          //
+          // **점프가 이 구간과 같은 방향으로 뻗어야만 이 구간의 것이다**(2026-07-22 수정).
+          // [onSegment] 는 끝점을 포함하므로, 계단 **모서리에서 시작하는 점프**는 그 앞
+          // 구간(수직)에서도 "구간 위"로 잡힌다. 그걸 먹으면 점프가 우리를 모서리 **너머로**
+          // 데려가고, 코드는 여전히 원래 목표(모서리)로 걸어가려 해서 **왔던 길을 되돌아
+          // 간다** — 같은 칸을 세 번 지나며 지상 점유로 붙잡는다. 그 가짜 점유가 다른 홉의
+          // 정당한 트랙과 부딪히고, 상호 검사가 **둘 다** 폴백시킨다(관측: 홉 5개 중 2개).
+          // 방향이 같은지만 보면 그 구간의 점프인지 아닌지가 갈린다.
+          const sameDir =
+            j !== undefined &&
+            Math.sign(target.x - cur.x) === Math.sign(j.to.x - j.from.x) &&
+            Math.sign(target.y - cur.y) === Math.sign(j.to.y - j.from.y);
+          if (j && sameDir && onSegment(cur, target, j.from)) {
             push(j.from);
             cells.push({ ...j.to });
             const dx = Math.sign(j.to.x - j.from.x);
