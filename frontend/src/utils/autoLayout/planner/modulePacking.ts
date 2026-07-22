@@ -275,7 +275,11 @@ export function edgeMachineLinks(
   item: string,
   config: PackConfig,
 ): MachineLink[] | undefined {
-  const tp = config.throughput ? Math.min(config.throughput.normal, config.throughput.long) : 0;
+  // 팔 하나의 처리량 = [SupplyCapacity.tapCapacity] — **여기서 다시 유도하지 않는다.**
+  // 예전엔 `min(throughput.normal, throughput.long)` 을 자체 계산했는데, 같은 값을
+  // moduleWizard 도 따로 계산해 `tapCapacity` 에 담고 있었다. 유도가 두 곳에 있으면 한쪽만
+  // 고쳐도 조용히 어긋난다 — 실제로 그렇게 어긋났다(2026-07-22 벨트 포화). 한 곳만 읽는다.
+  const tp = child.supplyCapacity?.tapCapacity ?? 0;
   const belt = config.belts?.[0]?.throughput ?? 0;
   if (tp <= 0 || belt <= 0 || child.count <= 0 || parent.count <= 0) return undefined;
   const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);

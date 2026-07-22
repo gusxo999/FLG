@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
 import * as allocateMachineLinksModule from "../module/allocateMachineLinks";
@@ -27,6 +27,55 @@ const config: PackConfig = {
   reservePerimeterLanes: true,
   beltMaxUndergroundDistance: 4,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **팔 하나의 처리량은 그 좌석에 실제로 앉는 팔의 것이어야 한다** (2026-07-23).
+//
+// 실측(1.txt, kr-glass 20/s)에서 벨트 한 줄이 팔 7개(70/s)를 받았다 — 벨트는 45/s 다.
+// 원인은 `tapCapacity` 가 `min(fast 10, long-handed 1.2) = 1.2` 였던 것. 링크 좌석은 d1 에
+// 앉아 d2 를 집으므로 **긴팔이 앉을 수 없는데도**(reach 는 고정 거리다) 긴팔 속도로 셌다.
+// 그 하나가 두 곳을 동시에 망가뜨렸다:
+//  - 팔 개수를 8배로 세서 면(7행)을 넘쳐 [7,3] 으로 갈리고,
+//  - 그릇이 `45÷1.2 = 37` 이 되어 **벨트 상한이 사실상 사라졌다**.
+// 그래서 검사할 불변식은 하나다: **한 링크의 팔이 나르는 양은 그 벨트를 넘지 않는다.**
+// ─────────────────────────────────────────────────────────────────────────────
+describe("그릇 — 링크 하나가 자기 벨트를 넘지 않는다", () => {
+  // 실측 그대로: 벨트 45/s, fast 10/s, long-handed 1.2/s.
+  const real: PackConfig = {
+    ...config,
+    throughput: { normal: 10, long: 1.2 },
+    belts: [{ entityName: "express-transport-belt", throughput: 45 }],
+  };
+  // kr-sand(자식 4대, 48/s) → kr-glass(부모 5대, 40/s).
+  const child: NodeSpec = {
+    id: "c", depth: 1, parentId: "p", machine: M, count: 4,
+    lines: [outL("kr-sand")],
+    // moduleWizard 가 채우는 값 = **reach-1 중 가장 빠른 팔**(= fast 10). min 이 아니다.
+    supplyCapacity: { tapCapacity: 10, lineRates: new Map([["output:kr-sand", 48]]) },
+  };
+  const parent: NodeSpec = {
+    id: "p", depth: 0, machine: M, count: 5,
+    lines: [inL("kr-sand"), outL("kr-glass")],
+    supplyCapacity: { tapCapacity: 10, lineRates: new Map([["input:kr-sand", 40]]) },
+  };
+
+  const links = edgeMachineLinks(child, parent, "kr-sand", real)!;
+
+  it("어떤 링크도 벨트 처리량을 넘겨 싣지 않는다", () => {
+    expect(links.length).toBeGreaterThan(0);
+    for (const l of links) {
+      // 고칠 때까지: tapCap 1.2 → 그릇 37 → 팔 7개 → 70/s > 45/s 로 여기서 터진다.
+      expect(l.inserterCount * 10).toBeLessThanOrEqual(45);
+    }
+  });
+
+  it("자식 머신 하나가 요구하는 팔이 면 좌석(3행)을 안 넘는다", () => {
+    // 팔을 느린 팔로 세면 머신당 10개를 요구해 면이 넘치고 벨트가 갈려 나갔다.
+    const byMachine = new Map<number, number>();
+    for (const l of links) byMachine.set(l.fromMachine, (byMachine.get(l.fromMachine) ?? 0) + l.inserterCount);
+    for (const arms of byMachine.values()) expect(arms).toBeLessThanOrEqual(M.h);
+  });
+});
 
 describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도 따로", () => {
   // 부모 2대(머신당 6 = 팔 1), 자식 2대(머신당 12). 링크: (c0→p0,1),(c0→p1,1).

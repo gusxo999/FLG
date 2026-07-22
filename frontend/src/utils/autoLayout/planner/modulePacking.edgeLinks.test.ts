@@ -61,9 +61,12 @@ describe("edgeMachineLinks — 전제 미충족이면 undefined(지어내지 않
     expect(edgeMachineLinks(noRate, parent, "x", config)).toBeUndefined();
   });
 
-  it("인서터 처리량(throughput) 없으면 undefined", () => {
-    const noTp: PackConfig = { ...config, throughput: undefined };
-    expect(edgeMachineLinks(child, parent, "x", noTp)).toBeUndefined();
+  // 팔 하나의 처리량 출처는 **`supplyCapacity.tapCapacity` 하나뿐**이다(2026-07-23).
+  // 예전엔 `config.throughput` 에서 여기서 다시 유도했는데, moduleWizard 도 같은 값을
+  // 따로 계산해 담고 있어 유도가 두 곳이었다 — 한쪽만 고쳐 조용히 어긋났다(벨트 포화).
+  it("팔 처리량(tapCapacity) 없으면 undefined", () => {
+    const noTp: NodeSpec = { ...child, supplyCapacity: { lineRates: new Map([["output:x", 10]]) } };
+    expect(edgeMachineLinks(noTp, parent, "x", config)).toBeUndefined();
   });
 
   it("벨트 없으면 undefined", () => {
