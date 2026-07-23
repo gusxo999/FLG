@@ -30,7 +30,7 @@ import {
   type PipeFlowPipe,
 } from "../module/pipeFlow";
 import type { RecipeTreeNode } from "../types";
-import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
@@ -221,33 +221,6 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   });
 
   // **왜 팔이 그만큼 앉았나** — 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느
-  // 식에서 나왔는지 좌표만 보고는 못 가린다. 세 후보가 같은 값을 낼 수 있기 때문이다:
-  // 팔 개수(수요÷tapCap) · 그릇(벨트÷tapCap) · 면 좌석(머신 변 길이). 셋을 나란히 찍어
-  // **어느 것이 실제로 물린 상한인지** 드러낸다.
-  //
-  // `tapCap` 이 두 열에 동시에 들어가는 게 핵심이다 — 팔 개수엔 **느린 팔**이 보수적이고
-  // 그릇엔 **빠른 팔**이 보수적인데, 지금은 둘 다 min(normal, long) 하나를 본다.
-  // 그래서 `그릇×normalTp` 열(= 그 벨트가 실제로 받는 부하)이 벨트 처리량을 넘으면 포화다.
-  if (AUTO_LAYOUT_COORD_DUMP) {
-    const fastest = options.belts?.[0]?.throughput ?? 0;
-    console.log(
-      `[팔·벨트 상한] normalTp=${normalTp} longTp=${longTp} tapCap=min=${tapCap} 벨트(최속)=${fastest}`,
-    );
-    for (const s of specs) {
-      const rows = { WE: s.machine.h, NS: s.machine.w };
-      for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
-        const arms = Math.max(1, Math.ceil(rate / s.count / tapCap));
-        const grail = Math.max(1, Math.floor(fastest / tapCap));
-        console.log(
-          `  ${s.id} ${key}: 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} ` +
-            `→ 팔/머신=${arms} · 그릇=${grail} · 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
-            `|| 그릇 가득 실부하=${(grail * normalTp).toFixed(1)}/s vs 벨트 ${fastest}/s` +
-            `${grail * normalTp > fastest ? "  ← 포화" : ""}`,
-        );
-      }
-    }
-  }
-
   const packConfig: PackConfig = {
     inserterEntityName: options.inserterEntityName,
     beltEntityName: options.beltEntityName,
@@ -267,6 +240,52 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
       ? options.beltMaxUndergroundDistance
       : 0,
   };
+
+  // **왜 팔이 그만큼 앉았나** — 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느
+  // 식에서 나왔는지 좌표만 보고는 못 가린다. 그런데 줄마다 **누가 세느냐**부터 갈린다:
+  //  - **링크 줄**(자식↔부모): [allocateMachineLinks] 가 간선별로 벨트를 쪼갠다. 팔 개수는
+  //    링크마다 다르므로 `requiredInserterCount`(아래 팔/머신)는 **쓰이지 않는다** — 참고용.
+  //  - **외부 줄**(raw 입력·최종 출력): `requiredInserterCount` 가 그대로 배치를 정한다.
+  // 두 줄을 섞어 팔/머신만 보면 링크 줄에서 헛다리를 짚는다(실측 오해). 그래서 갈라 찍는다.
+  //
+  // 세 상한(팔 개수·그릇·면 좌석)이 같은 값을 낼 수 있어 나란히 둔다. `그릇×normalTp` 열(=
+  // 그 벨트가 실제로 받는 부하)이 벨트 처리량을 넘으면 그 자리가 포화다.
+  if (AUTO_LAYOUT_COORD_DUMP) {
+    const fastest = options.belts?.[0]?.throughput ?? 0;
+    const nodeById = new Map(specs.map((s) => [s.id, s]));
+    console.log(`[팔·벨트 상한] normalTp=${normalTp} longTp=${longTp} tapCap(reach1최속)=${tapCap} 벨트(최속)=${fastest}`);
+    for (const s of specs) {
+      const rows = { WE: s.machine.h, NS: s.machine.w };
+      for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
+        const [role, name] = key.split(":");
+        // 이 줄이 링크인가 — 출력이면 부모가, 입력이면 자식이 같은 품목을 주고받나.
+        const parent = s.parentId ? nodeById.get(s.parentId) : undefined;
+        const child = specs.find((c) => c.parentId === s.id && c.lines.some((l) => l.role === "output" && l.name === name));
+        const linkEdge =
+          role === "output" && parent?.lines.some((l) => l.role === "input" && l.name === name)
+            ? edgeMachineLinks(s, parent, name, packConfig)
+            : role === "input" && child
+              ? edgeMachineLinks(child, s, name, packConfig)
+              : undefined;
+        if (linkEdge) {
+          const arms = linkEdge.map((l) => l.inserterCount);
+          console.log(
+            `  ${s.id} ${key}: [링크] 벨트 ${linkEdge.length}줄, 줄당 팔 [${arms}] ` +
+              `→ 최대 실부하 ${Math.max(...arms) * normalTp}/s vs 벨트 ${fastest}/s (allocateMachineLinks 가 셈)`,
+          );
+        } else {
+          const arms = Math.max(1, Math.ceil(rate / s.count / tapCap));
+          const grail = Math.max(1, Math.floor(fastest / tapCap));
+          console.log(
+            `  ${s.id} ${key}: [외부] 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} ` +
+              `→ 팔/머신=${arms} · 그릇=${grail} · 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
+              `|| 그릇 가득 실부하=${(grail * normalTp).toFixed(1)}/s vs 벨트 ${fastest}/s` +
+              `${grail * normalTp > fastest ? "  ← 포화" : ""}`,
+          );
+        }
+      }
+    }
+  }
 
   const pack = packModuleTree(specs, packConfig);
   // 미탭(과용량 등) 있는 모듈 → 폴백.
