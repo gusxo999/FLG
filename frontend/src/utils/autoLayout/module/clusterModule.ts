@@ -757,13 +757,9 @@ function seatKey(machineIndex: number, face: PortFace): string {
  * 이면 `taps` 를 그대로 목적지별로 편다.
  */
 function armsByMachine(group: MachineLinkGroup, side: "from" | "to"): Map<number, number> {
-  if (side === "from") {
-    const total = group.taps.reduce((s, t) => s + Math.max(1, t.inserterCount), 0);
-    return new Map([[group.fromMachine, total]]);
-  }
-  const by = new Map<number, number>();
-  for (const t of group.taps) by.set(t.toMachine, (by.get(t.toMachine) ?? 0) + Math.max(1, t.inserterCount));
-  return by;
+  // 구조가 대칭이라 그냥 그쪽을 본다([MachineLinkGroup] — 2026-07-23 정의 확장 전에는
+  // fromMachine(스칼라)과 taps(배열)를 각각 풀어 Map 으로 만들어야 했다).
+  return group[side];
 }
 
 /**

@@ -39,10 +39,11 @@ const flat: MachineLink[] = [
   { fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 1 },
   { fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 1 },
 ];
+// 회계(MachineLink) → 벨트(MachineLinkGroup). 내부 링크는 양쪽 다 머신 하나씩이다.
 const groups: MachineLinkGroup[] = flat.map((l) => ({
-  fromMachine: l.fromMachine,
   item: l.item,
-  taps: [{ toMachine: l.toMachine, inserterCount: l.inserterCount }],
+  from: new Map([[l.fromMachine, l.inserterCount]]),
+  to: new Map([[l.toMachine, l.inserterCount]]),
 }));
 
 const base: ModuleInput = {
@@ -71,7 +72,7 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
   const mod = generateModule(base);
 
   it("링크 하나 = 벨트 하나 — 목적지가 다르면 안 묶는다", () => {
-    expect(groups.map((g) => g.taps.length)).toEqual([1, 1, 1]);
+    expect(groups.map((g) => g.to.size)).toEqual([1, 1, 1]);
   });
 
   it("그룹마다 출력 포트 하나 (옛 트렁크였다면 gear 포트 1개뿐)", () => {
@@ -147,7 +148,7 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
       tapCapacity: 6,
       lineRates: new Map([["input:heavy", 60], ["output:gear", 6]]), // heavy = 팔 10개 → 좌석 초과
     },
-    outputLinks: [{ fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 1 }] }],
+    outputLinks: [{ item: "gear", from: new Map([[0, 1]]), to: new Map([[0, 1]]) }],
   });
 
   it("링크 없는 줄이 좌석을 넘겨 모듈은 direct 로 떨어진다", () => {
@@ -198,8 +199,8 @@ describe("거대 출력 — W면이 차면 gap 으로 넘어간다", () => {
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] },
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) },
     ],
   } as ModuleInput);
 
@@ -249,10 +250,10 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
       { name: "iron", kind: "belt", role: "input" },
     ],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과분
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과분
     ],
-    inputLinks: [{ fromMachine: 9, item: "iron", taps: [{ toMachine: 0, inserterCount: 3 }] }],
+    inputLinks: [{ item: "iron", from: new Map([[9, 3]]), to: new Map([[0, 3]]) }],
   } as ModuleInput);
 
   it("입력은 선호 면(E)을 그대로 얻는다", () => {
@@ -281,10 +282,10 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
     count: 3,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과 → gap0
-      { fromMachine: 1, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] },
-      { fromMachine: 2, item: "gear", taps: [{ toMachine: 2, inserterCount: 2 }] },
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과 → gap0
+      { item: "gear", from: new Map([[1, 2]]), to: new Map([[1, 2]]) },
+      { item: "gear", from: new Map([[2, 2]]), to: new Map([[2, 2]]) },
     ],
   } as ModuleInput);
 
@@ -314,8 +315,8 @@ describe("이웃 머신 그룹의 벨트로 물건이 새지 않는다", () => {
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
-      { fromMachine: 1, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] },
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
+      { item: "gear", from: new Map([[1, 1]]), to: new Map([[1, 1]]) },
     ],
   } as ModuleInput);
 
@@ -341,9 +342,9 @@ describe("ParallelBelt(막힌 면) — 한 면에 벨트 여러 줄, 합류 없�
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] }, // W 를 채움
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] }, // → gap 1번째
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 1 }] }, // → gap 2번째
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) }, // W 를 채움
+      { item: "gear", from: new Map([[0, 1]]), to: new Map([[1, 1]]) }, // → gap 1번째
+      { item: "gear", from: new Map([[0, 1]]), to: new Map([[1, 1]]) }, // → gap 2번째
     ],
   } as ModuleInput);
 
@@ -393,8 +394,8 @@ describe("gap 그룹의 벨트는 gap 안에 있다", () => {
     ...linkedBase,
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] },
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // W 초과 → gap
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과 → gap
     ],
   } as ModuleInput);
 
@@ -429,9 +430,9 @@ describe("클러스터 양 끝 — 머신 하나뿐이어도 넘친 그룹이 �
     count: 1, // gap 이 하나도 없다
     lines: [{ name: "gear", kind: "belt", role: "output" }],
     outputLinks: [
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 0, inserterCount: 3 }] }, // W 를 채움
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 1, inserterCount: 2 }] }, // → 아래쪽 바깥
-      { fromMachine: 0, item: "gear", taps: [{ toMachine: 2, inserterCount: 2 }] }, // → 위쪽 바깥
+      { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) }, // W 를 채움
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // → 아래쪽 바깥
+      { item: "gear", from: new Map([[0, 2]]), to: new Map([[2, 2]]) }, // → 위쪽 바깥
     ],
   } as ModuleInput);
 

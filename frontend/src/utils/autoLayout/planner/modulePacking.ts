@@ -317,11 +317,13 @@ export function edgeLinkGroups(
 ): MachineLinkGroup[] | undefined {
   const links = edgeMachineLinks(child, parent, item, config);
   if (!links || links.length === 0) return undefined;
+  // 내부 링크는 양쪽 다 머신 하나씩 — 자식이 내놓고 부모가 받는다([MachineLinkGroup]).
+  // 외부 줄은 한쪽이 비는데(밖), 그건 다른 호출부가 만든다.
   return links.map((l, gi) => ({
     id: linkGroupId(child.id, parent.id, item, gi),
-    fromMachine: l.fromMachine,
     item: l.item,
-    taps: [{ toMachine: l.toMachine, inserterCount: l.inserterCount }],
+    from: new Map([[l.fromMachine, l.inserterCount]]),
+    to: new Map([[l.toMachine, l.inserterCount]]),
   }));
 }
 

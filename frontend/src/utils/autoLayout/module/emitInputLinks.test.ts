@@ -12,13 +12,9 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 /** 머신 여럿에 걸친 그룹 — v1 의 [edgeLinkGroups] 는 이런 걸 내지 않는다(안전망 확인용). */
 const spanning: MachineLinkGroup[] = [
   {
-    fromMachine: 0,
     item: "x",
-    taps: [
-      { toMachine: 0, inserterCount: 1 },
-      { toMachine: 1, inserterCount: 1 },
-      { toMachine: 2, inserterCount: 1 },
-    ],
+    from: new Map([[0, 3]]),
+    to: new Map([[0, 1], [1, 1], [2, 1]]),
   },
 ];
 
@@ -57,8 +53,8 @@ describe("머신 여럿에 걸친 그룹 — 조용히 겹치는 대신 정직�
 
 describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴다", () => {
   const disjoint: MachineLinkGroup[] = [
-    { fromMachine: 0, item: "x", taps: [{ toMachine: 0, inserterCount: 1 }] },
-    { fromMachine: 1, item: "x", taps: [{ toMachine: 1, inserterCount: 1 }] },
+    { item: "x", from: new Map([[0, 1]]), to: new Map([[0, 1]]) },
+    { item: "x", from: new Map([[1, 1]]), to: new Map([[1, 1]]) },
   ];
   const mod = generateModule({ ...base, inputLinks: disjoint });
 
@@ -93,9 +89,9 @@ describe("ParallelBelt(막힌 면, 입력) — 한 면에 벨트 여러 줄, 합
   const mod = generateModule({
     ...linked,
     inputLinks: [
-      { fromMachine: 0, item: "x", taps: [{ toMachine: 0, inserterCount: 3 }] }, // E 를 채움
-      { fromMachine: 1, item: "x", taps: [{ toMachine: 0, inserterCount: 1 }] }, // → gap 1번째
-      { fromMachine: 2, item: "x", taps: [{ toMachine: 0, inserterCount: 1 }] }, // → gap 2번째
+      { item: "x", from: new Map([[0, 3]]), to: new Map([[0, 3]]) }, // E 를 채움
+      { item: "x", from: new Map([[1, 1]]), to: new Map([[0, 1]]) }, // → gap 1번째
+      { item: "x", from: new Map([[2, 1]]), to: new Map([[0, 1]]) }, // → gap 2번째
     ],
   } as ModuleInput);
 
