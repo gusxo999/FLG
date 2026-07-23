@@ -569,7 +569,6 @@ export interface ContainerWizardInput {
   selectedBelts: ReadonlyArray<string>;
   selectedUndergroundPipes: ReadonlyArray<string>;
   selectedUndergroundBelts: ReadonlyArray<string>;
-  primaryInserter?: string;
   primaryBelt?: string;
   inserterOverrides?: Record<string, { throughput?: number; stackSize?: number }>;
   /** 외부 포트 default — 1차 구현은 'top-left' 만 지원 */
