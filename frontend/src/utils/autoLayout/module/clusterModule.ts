@@ -606,6 +606,86 @@ function tapInserterName(input: ModuleInput, planned: PlannedLine): string {
 }
 
 /**
+ * **링크 포트의 상자·짝** — 트렁크 끝(포트가 붙는 belt 칸)에서 `[belt끝][인서터][상자]` 의
+ * 상자 자리(anchor)와 그 짝([PortPair])을 낸다. [emitOutputLinks]·[emitInputLinks] 공통.
+ *
+ * belt 셀들이 이 `portPair` 를 참조하므로 **belt 를 깔기 전에** 불러야 한다. 방출 방식이
+ * 출력/입력에서 뒤집히는 축은 **흐름 방향** 하나뿐이다: 출력은 머신→상자(collect), 입력은
+ * 상자→머신(supply). 그래서 producer/consumer 만 role 로 갈린다.
+ */
+function makeLinkPortChest(o: {
+  role: "input" | "output";
+  trunkEnd: { x: number; y: number };
+  portFace: PortFace;
+  pfv: { x: number; y: number };
+  line: IoLine;
+  machineId: string;
+  chestId: string;
+}): { chest: Container; portPair: PortPair; seatCell: { x: number; y: number }; chestAt: { x: number; y: number } } {
+  const seatCell = { x: o.trunkEnd.x + o.pfv.x, y: o.trunkEnd.y + o.pfv.y }; // 포트 인서터
+  const chestAt = { x: o.trunkEnd.x + 2 * o.pfv.x, y: o.trunkEnd.y + 2 * o.pfv.y }; // 포트 상자(anchor)
+  const chest: Container = {
+    id: o.chestId, kind: "infinity-chest", entityName: "infinity-chest",
+    origin: { ...chestAt }, size: { w: 1, h: 1 }, content: o.line.name, role: o.role,
+  };
+  const port = (id: string) => ({ containerId: id, cell: { ...o.trunkEnd }, face: o.portFace, kind: "item" as const });
+  const portPair: PortPair =
+    o.role === "output"
+      ? { producer: port(o.machineId), consumer: port(o.chestId) } // 머신 → 상자
+      : { producer: port(o.chestId), consumer: port(o.machineId) }; // 상자 → 머신
+  return { chest, portPair, seatCell, chestAt };
+}
+
+/**
+ * **링크 포트의 끝을 놓는다** — belt 를 깐 뒤 `[포트 인서터][상자]` 를 세우고 [ModulePort]
+ * 를 push 한다. [emitOutputLinks]·[emitInputLinks] 공통. belt 셀은 caller 가 이미 만들어
+ * 넘긴다(`beltCells`). 좌석 탭 인서터도 caller 가 이 함수 **전에** 놓는다(cells 순서 보존).
+ *
+ * role 로 갈리는 것: 포트 인서터의 **집는 쪽**(출력은 belt→상자 = −pfv, 입력은 상자→belt =
+ * pfv), 포트가 서는 **변**(meta.side: 출력 W · 입력 E), `endPreference` 조회 키.
+ */
+function pushLinkPortEnd(o: {
+  role: "input" | "output";
+  seatCell: { x: number; y: number };
+  chestAt: { x: number; y: number };
+  chest: Container;
+  portPair: PortPair;
+  portFace: PortFace;
+  pfv: { x: number; y: number };
+  beltCells: PlacedCell[];
+  line: IoLine;
+  linkId?: string;
+  tapAnchor: { x: number; y: number };
+  laneDepth: number;
+  inserterEntityName: string;
+  lineEnds: ModuleInput["lineEnds"];
+  cells: PlacedCell[];
+  chests: Container[];
+  occupancy: Set<string>;
+  ports: ModulePort[];
+}): void {
+  const pickup = o.role === "output" ? { x: -o.pfv.x, y: -o.pfv.y } : o.pfv;
+  o.cells.push(
+    ...o.beltCells,
+    makeInserterCell(o.seatCell, pickup, o.inserterEntityName, o.portPair),
+    makeContainerCell(o.chest, o.chestAt),
+  );
+  for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
+  o.occupancy.add(cellKey(o.seatCell.x, o.seatCell.y));
+  o.occupancy.add(cellKey(o.chestAt.x, o.chestAt.y));
+  o.chests.push(o.chest);
+  o.ports.push({
+    line: o.line, anchor: { ...o.chestAt }, tapAnchor: o.tapAnchor, face: o.portFace,
+    moduleWayOuts: [], chest: o.chest, cells: o.beltCells, linkId: o.linkId,
+    meta: {
+      item: o.line.name, side: o.role === "output" ? "W" : "E", laneDepth: o.laneDepth,
+      inserter: o.laneDepth === 2 ? "normal" : "long",
+      amount: o.line.amount, endPreference: o.lineEnds?.get(`${o.role}:${o.line.name}`),
+    },
+  });
+}
+
+/**
  * **탭 인서터가 앉는 clusterBeltDepth** — 벨트 깊이에서 인서터의 팔 길이(reach)를 뺀 값.
  *
  * 인서터는 자기 자리에서 reach 만큼 **바깥에서 집고 안쪽에 놓는다**. 그러니 `벨트 깊이 − reach`
@@ -973,17 +1053,10 @@ function emitOutputLinks(args: {
     // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
     const trunkStart =
       face === "W" ? belt0 : { x: m.origin.x, y: faceCell(mExt, face, exitDepth, topT).y };
-    const seatCell = { x: trunkStart.x + pfv.x, y: trunkStart.y + pfv.y }; // 출구 인서터
-    const chestAt = { x: trunkStart.x + 2 * pfv.x, y: trunkStart.y + 2 * pfv.y }; // 포트 상자
     const chestId = `${prefix}-output-${line.name}-${seq++}`;
-    const chest: Container = {
-      id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
-      origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "output",
-    };
-    const portPair: PortPair = {
-      producer: { containerId: m.id, cell: { ...trunkStart }, face: portFace, kind: "item" },
-      consumer: { containerId: chestId, cell: { ...trunkStart }, face: portFace, kind: "item" },
-    };
+    const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
+      role: "output", trunkEnd: trunkStart, portFace, pfv, line, machineId: m.id, chestId,
+    });
 
     // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W 면은 위로, N/S 면은 서쪽으로.
     const beltDirV = face === "W" ? { x: 0, y: -1 } : { x: -1, y: 0 };
@@ -1034,28 +1107,12 @@ function emitOutputLinks(args: {
       cells.push(makeInserterCell(seat, inward, input.inserterEntityName, pair));
       occupancy.add(cellKey(seat.x, seat.y));
     }
-    cells.push(
-      ...beltCells,
-      // 출구 인서터는 **포트 면**을 따른다(belt 에서 집어 chest 로) — N/S 좌석이어도 서쪽.
-      makeInserterCell(seatCell, { x: -pfv.x, y: -pfv.y }, input.inserterEntityName, portPair),
-      makeContainerCell(chest, chestAt),
-    );
-    for (const bc of beltCells) occupancy.add(cellKey(bc.x, bc.y));
-    occupancy.add(cellKey(seatCell.x, seatCell.y));
-    occupancy.add(cellKey(chestAt.x, chestAt.y));
-    chests.push(chest);
-
-    outputPorts.push({
-      line, anchor: { ...chestAt },
-      tapAnchor: { x: m.origin.x, y: trunkStart.y }, face: portFace,
-      moduleWayOuts: [], chest, cells: beltCells,
-      linkId: group.id,
-      meta: {
-        // side = 어느 **변**이냐(채널 장부가 보는 것), face = 어느 쪽으로 **나가느냐**.
-        // gap 좌석이어도 나가는 변은 W 다 — 둘은 다르다(모듈 머리말 "변 vs face").
-        item: line.name, side: "W", laneDepth, inserter: laneDepth === 2 ? "normal" : "long",
-        amount: line.amount, endPreference: input.lineEnds?.get(`output:${line.name}`),
-      },
+    // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로). tapAnchor: W 는 서쪽 끝.
+    pushLinkPortEnd({
+      role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
+      line, linkId: group.id, tapAnchor: { x: m.origin.x, y: trunkStart.y },
+      laneDepth, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      cells, chests, occupancy, ports: outputPorts,
     });
   });
 }
@@ -1171,17 +1228,10 @@ function emitInputLinks(args: {
 
     // ── 배치 확정 ──
     const beltTop = trunkEndOf(lane.d);
-    const seatCell = { x: beltTop.x + pfv.x, y: beltTop.y + pfv.y }; // 포트 인서터
-    const chestAt = { x: beltTop.x + 2 * pfv.x, y: beltTop.y + 2 * pfv.y }; // 포트 상자(anchor)
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
-    const chest: Container = {
-      id: chestId, kind: "infinity-chest", entityName: "infinity-chest",
-      origin: { ...chestAt }, size: { w: 1, h: 1 }, content: line.name, role: "input",
-    };
-    const portPair: PortPair = { // 입력: 상자(소스) → 트렁크 belt → 머신들
-      producer: { containerId: chestId, cell: { ...beltTop }, face: portFace, kind: "item" },
-      consumer: { containerId: m0.id, cell: { ...beltTop }, face: portFace, kind: "item" },
-    };
+    const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
+      role: "input", trunkEnd: beltTop, portFace, pfv, line, machineId: m0.id, chestId,
+    });
 
     const beltCells: PlacedCell[] = path.map((c) =>
       makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), input.beltEntityName, portPair), // 티어는 후속
@@ -1198,27 +1248,12 @@ function emitInputLinks(args: {
         occupancy.add(cellKey(seat.x, seat.y));
       }
     }
-    cells.push(
-      ...beltCells,
-      // 포트 인서터는 **포트 면**을 따른다(상자에서 집어 belt 로) — gap 좌석이어도 동쪽.
-      makeInserterCell(seatCell, pfv, input.inserterEntityName, portPair),
-      makeContainerCell(chest, chestAt),
-    );
-    occupancy.add(cellKey(seatCell.x, seatCell.y));
-    occupancy.add(cellKey(chestAt.x, chestAt.y));
-    chests.push(chest);
-
-    inputPorts.push({
-      line, anchor: { ...chestAt },
-      tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y }, face: portFace,
-      moduleWayOuts: [], chest, cells: beltCells,
-      linkId: group.id,
-      meta: {
-        // side = 어느 변(장부가 보는 것), face = 어느 쪽으로 나가느냐. gap 이어도 변은 E.
-        item: line.name, side: "E", laneDepth: lane.d,
-        inserter: lane.d === 2 ? "normal" : "long",
-        amount: line.amount, endPreference: input.lineEnds?.get(`input:${line.name}`),
-      },
+    // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로). tapAnchor: E 는 동쪽 끝.
+    pushLinkPortEnd({
+      role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
+      line, linkId: group.id, tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y },
+      laneDepth: lane.d, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      cells, chests, occupancy, ports: inputPorts,
     });
   });
 }
