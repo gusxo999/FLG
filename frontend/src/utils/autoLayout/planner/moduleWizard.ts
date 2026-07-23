@@ -21,6 +21,7 @@ import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
+import { externalLineGroups } from "../module/allocateMachineLinks";
 import { chooseMachineDirection } from "../module/fluidPorts";
 import {
   collectPipeFlow,
@@ -246,7 +247,6 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     };
   });
 
-  // **왜 팔이 그만큼 앉았나** — 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느
   const packConfig: PackConfig = {
     inserterEntityName: options.inserterEntityName,
     beltEntityName: options.beltEntityName,
@@ -280,8 +280,14 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     const fastest = options.belts?.[0]?.throughput ?? 0;
     const nodeById = new Map(specs.map((s) => [s.id, s]));
     console.log(`[팔·벨트 상한] normalTp=${normalTp} longTp=${longTp} tapCap(reach1최속)=${tapCap} 벨트(최속)=${fastest}`);
+    const grail = Math.max(1, Math.floor(fastest / tapCap));
     for (const s of specs) {
       const rows = { WE: s.machine.h, NS: s.machine.w };
+      // 이 모듈의 **모든** 벨트 줄을 한 장부로 본다 — 링크 줄은 [edgeMachineLinks],
+      // 외부 줄은 [externalLineGroups]. 둘 다 [MachineLinkGroup] 이라 아래 출력이 하나다.
+      const ext = new Map(
+        externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}).map((g) => [g.id!, g]),
+      );
       for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
         const [role, name] = key.split(":");
         // 이 줄이 링크인가 — 출력이면 부모가, 입력이면 자식이 같은 품목을 주고받나.
@@ -293,22 +299,24 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
             : role === "input" && child
               ? edgeMachineLinks(child, s, name, packConfig)
               : undefined;
-        if (linkEdge) {
-          const arms = linkEdge.map((l) => l.inserterCount);
-          console.log(
-            `  ${s.id} ${key}: [링크] 벨트 ${linkEdge.length}줄, 줄당 팔 [${arms}] ` +
-              `→ 최대 실부하 ${Math.max(...arms) * normalTp}/s vs 벨트 ${fastest}/s (allocateMachineLinks 가 셈)`,
-          );
-        } else {
-          const arms = Math.max(1, Math.ceil(rate / s.count / tapCap));
-          const grail = Math.max(1, Math.floor(fastest / tapCap));
-          console.log(
-            `  ${s.id} ${key}: [외부] 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} ` +
-              `→ 팔/머신=${arms} · 그릇=${grail} · 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
-              `|| 그릇 가득 실부하=${(grail * normalTp).toFixed(1)}/s vs 벨트 ${fastest}/s` +
-              `${grail * normalTp > fastest ? "  ← 포화" : ""}`,
-          );
-        }
+        const g = ext.get(`ext:${key}`);
+        const who = linkEdge ? "링크" : g ? "외부" : "미상";
+        // **벨트 줄 수와 줄당 팔**은 두 줄에서 뜻이 조금 다르다 — 누가 셌는지 밝힌다:
+        //  - 링크: [allocateMachineLinks] 가 **이미 쪼갠 결과**. 줄마다 팔 수가 다를 수 있다.
+        //  - 외부: 그룹은 줄 하나(안 쪼갠다) → 여기서 **그릇으로 유도한 예측**을 찍는다.
+        //    실제 쪼개기는 [clusterPortPlanner] 의 배정 수가 하므로, 이 예측과 화면이
+        //    어긋나면 그 둘이 다른 수를 보고 있다는 뜻이다(그게 이 로그의 쓸모다).
+        const armsOf = (m: Map<number, number>): number => [...m.values()].reduce((a, b) => a + b, 0);
+        const total = g ? armsOf(g.from.size > 0 ? g.from : g.to) : 0;
+        const belts = linkEdge ? linkEdge.length : g ? Math.ceil(total / grail) : 0;
+        const perBelt = linkEdge ? linkEdge.map((l) => l.inserterCount) : g ? [Math.min(total, grail)] : [];
+        const load = perBelt.length > 0 ? Math.max(...perBelt) * normalTp : 0;
+        console.log(
+          `  ${s.id} ${key}: [${who}] 벨트 ${belts}줄, 줄당 팔 [${perBelt}]${g ? ` (총 ${total})` : ""} ` +
+            `· 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} · 그릇=${grail} ` +
+            `· 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
+            `|| 최대 실부하 ${load.toFixed(1)}/s vs 벨트 ${fastest}/s${load > fastest ? "  ← 포화" : ""}`,
+        );
       }
     }
   }

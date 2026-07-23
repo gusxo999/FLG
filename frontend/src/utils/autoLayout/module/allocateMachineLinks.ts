@@ -25,6 +25,8 @@
  * 두 방향은 `min(그릇, 부모올림, 자식내림)` 한 줄에서 자동으로 절충된다.
  */
 
+import { requiredInserterCount, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
+
 /** 자식 머신 하나 → 부모 머신 하나로 가는, 인서터 n개가 채우는 벨트 하나. */
 export interface MachineLink {
   /** 자식 머신 인덱스(배치 순서 = 위에서 아래로). */
@@ -156,4 +158,56 @@ export function allocateMachineLinks(input: AllocateMachineLinksInput): MachineL
     }
   }
   return links;
+}
+
+/**
+ * **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 낸다** — 2026-07-23 사장님 결정.
+ *
+ * ## 왜 같은 구조인가
+ * 모듈 밖과 주고받는 줄도 물리적으로 링크와 **똑같은 일**이다: 머신 면에 팔을 앉히고
+ * 벨트 한 줄로 나른다. 다른 건 상대가 안(부모·자식 머신)이냐 밖(무한상자)이냐 하나뿐이라,
+ * [MachineLinkGroup] 의 빈 쪽으로 표현된다:
+ *
+ *  - **원료(input)**: `from` 이 빔 = 밖에서 온다, `to` = 이 클러스터 머신들.
+ *  - **완제품(output)**: `from` = 이 클러스터 머신들, `to` 가 빔 = 밖으로 간다.
+ *
+ * 그래서 "링크 있는 줄 / 없는 줄"이라는 갈래가 **자료 구조에서는 사라진다** — 남는 갈래는
+ * 하나뿐이다: **수량을 아나 모르나**. 아는 줄은 여기서 그룹이 되고, 모르는 줄은 그룹이 안
+ * 된다([edgeMachineLinks] 도 같은 문턱에서 `undefined` 를 낸다). 지어낸 숫자로 그룹을
+ * 만들면 그 순간 벨트 부하 계산이 거짓말을 시작한다.
+ *
+ * ## 여기서 벨트를 쪼개지 않는다 (일부러)
+ * 그룹 하나 = 벨트 하나지만, 이 함수는 **줄 하나당 그룹 하나**만 낸다. 수요가 벨트 한 줄을
+ * 넘을 때 몇 줄로 늘릴지는 이미 [determineBeltCount] 와 [clusterPortPlanner] 의 배정 수가
+ * 정하고 있다. 여기서 또 쪼개면 **같은 수를 두 곳이 각자 유도**하게 되고, 그게 이 세션에
+ * 고친 버그들의 공통 원인이었다(tapCapacity 세 출처·배정 수 두 출처). 쪼개기를 여기로
+ * 옮긴다면 저쪽에서 **빼면서** 옮겨야 한다.
+ *
+ * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
+ */
+export function externalLineGroups(
+  lines: ReadonlyArray<IoLine>,
+  machineCount: number,
+  cap: SupplyCapacity,
+  linkedKeys?: ReadonlySet<string>,
+): MachineLinkGroup[] {
+  const n = Math.max(1, machineCount);
+  const groups: MachineLinkGroup[] = [];
+  for (const line of lines) {
+    // 유체는 팔로 나르지 않는다 — 트렁크 파이프의 일이라 벨트 장부에 안 올린다.
+    if (line.kind !== "belt") continue;
+    const key = `${line.role}:${line.name}`;
+    if (linkedKeys?.has(key)) continue;
+    const arms = requiredInserterCount(line, n, cap);
+    if (arms === undefined) continue; // 수량 미상 — 그룹으로 안 만든다(옛 경로가 맡는다).
+    const mine = new Map<number, number>();
+    for (let i = 0; i < n; i++) mine.set(i, arms);
+    groups.push({
+      id: `ext:${key}`,
+      item: line.name,
+      from: line.role === "output" ? mine : new Map(),
+      to: line.role === "output" ? new Map() : mine,
+    });
+  }
+  return groups;
 }
