@@ -63,8 +63,34 @@ export interface ModulePipelineArgs {
 
 /**
  * 모듈 경로로 후보 leaf 생성. 적격(전부 item·미탭0·홉성공) 아니면 null.
+ *
+ * **진단 로그를 후보에 담는다.** 위저드가 계산 중 찍는 로그(`[팔·벨트 상한]`·
+ * `[perimeterPass]`·`[channelGeometry]`·`모듈 경로 포기` …)를 콘솔에 바로 뱉지 않고
+ * 캡처해 [CandidateLeaf.moduleDiagnostics] 에 담는다 — 후보를 **클릭할 때** 환경 정보와
+ * 함께 한 시점에 출력하기 위해서다(그전엔 6번 버튼과 후보 클릭 두 시점으로 흩어졌다).
+ * 후보가 안 나오면(null) 담을 데가 없으니 캡처한 로그를 그 자리에서 뱉는다.
+ * `AUTO_LAYOUT_COORD_DUMP` 가 꺼져 있으면 캡처하지 않는다(오버헤드 0).
  */
 export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
+  if (!AUTO_LAYOUT_COORD_DUMP) return runModulePipeline(args);
+
+  const captured: string[] = [];
+  const fmt = (a: unknown): string => (typeof a === "string" ? a : JSON.stringify(a));
+  const orig = { log: console.log, warn: console.warn, info: console.info };
+  const cap = (tag: string) => (...a: unknown[]): void => { captured.push(tag + a.map(fmt).join(" ")); };
+  console.log = cap(""); console.warn = cap("[warn] "); console.info = cap("[info] ");
+  let leaf: CandidateLeaf | null;
+  try {
+    leaf = runModulePipeline(args);
+  } finally {
+    console.log = orig.log; console.warn = orig.warn; console.info = orig.info;
+  }
+  if (leaf) leaf.moduleDiagnostics = captured;
+  else captured.forEach((l) => orig.info(l)); // 후보 없음 → 클릭도 없으니 지금 뱉는다
+  return leaf;
+}
+
+function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   const { input, metas, parentOf, order, makeId } = args;
   const { recipeMap, entityMap } = useGameDataStore.getState();
 

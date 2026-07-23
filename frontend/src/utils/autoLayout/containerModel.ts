@@ -358,6 +358,13 @@ export interface CandidateLeaf extends CandidateNodeBase {
   routings: Routing[];
   /** O1 점수 — 내부 영역 bbox 의 |W − H|. 작을수록 정사각형에 가까움 */
   squarenessPenalty: number;
+  /**
+   * 이 후보를 **만드는 동안** 나온 진단 로그(모듈 경로 전용) — 위저드 실행 시점이 아니라
+   * **후보를 클릭할 때** 환경 정보와 함께 출력한다. 위저드가 계산 중 찍는 로그가 후보
+   * 생성 시점(6번 버튼)과 적용 시점(후보 클릭)으로 흩어지던 것을 한 시점으로 모은다.
+   * 모듈 경로가 아닌 후보(옛 경로)는 없음. `AUTO_LAYOUT_COORD_DUMP` 일 때만 채워진다.
+   */
+  moduleDiagnostics?: string[];
 }
 
 /** 실패 leaf — 라우팅 실패 / 모든 port 조합 소진 등. */

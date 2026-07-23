@@ -294,7 +294,12 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
             })),
           };
         }),
-      }, null, 2));
+      }, null, 2)
+        // 위저드가 이 후보를 **만드는 동안** 찍은 진단(6번 버튼 시점에 흩어져 나오던 것)을
+        // 환경 정보 로그 뒤에 붙여 **후보 클릭 한 시점**에 함께 낸다.
+        + (leaf.moduleDiagnostics?.length
+          ? '\n\n─── 위저드 진단 (후보 생성 시점) ───\n' + leaf.moduleDiagnostics.join('\n')
+          : ''));
 
       console.log('[autoLayout debug] handleApplyCandidate\n' + JSON.stringify({
         'internal.containers': leaf.internal.containers.map((c) => ({
