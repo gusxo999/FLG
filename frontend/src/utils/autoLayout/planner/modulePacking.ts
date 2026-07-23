@@ -822,15 +822,19 @@ function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedMod
   const ctn = (c: Container): Container => ({ ...c, origin: pt(c.origin) });
   const chestById = new Map<string, Container>();
   const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
+  // **`...p` / `...mod` 를 먼저 편다.** 이 함수는 평행이동만 하는데, 예전엔 필드를 하나씩 적어
+  // 재구성해서 **좌표와 무관한 필드가 새로 생길 때마다 여기서 조용히 사라졌다** — 옮길 것만
+  // 덮어쓰면 그 실수가 구조적으로 불가능해진다(2026-07-24 `beltMerges` 가 여기서 증발했다.
+  // 같은 모양의 재구성이 moduleTransform 에도 있었고 거기서도 `supply` 를 잃고 있었다).
   const port = (p: ModulePort): ModulePort => ({
-    line: p.line, anchor: pt(p.anchor), tapAnchor: pt(p.tapAnchor), face: p.face,
-    moduleWayOuts: p.moduleWayOuts, // 방향 집합 — 평행이동 불변.
+    ...p,
+    anchor: pt(p.anchor),
+    tapAnchor: pt(p.tapAnchor),
     chest: chestById.get(p.chest.id) ?? ctn(p.chest),
     cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
-    meta: p.meta, // 산출 근거 — 좌표 없음(이동 불변).
-    linkId: p.linkId, // 그룹 신원 — 좌표 없음(이동 불변). 안 옮기면 pairHopPorts 가 못 찾는다.
   });
   return {
+    ...mod,
     machines: mod.machines.map(ctn),
     chests,
     cells: mod.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
@@ -838,8 +842,6 @@ function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedMod
     inputPorts: mod.inputPorts.map(port),
     outputPorts: mod.outputPorts.map(port),
     bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
-    unroutedLines: mod.unroutedLines,
-    supply: mod.supply, // 공급 방식 판정 — 좌표 없음(이동 불변).
   };
 }
 

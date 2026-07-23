@@ -122,8 +122,10 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
 
   const ring = mod.ring.map((c) => tileXf(c.x, c.y, o));
 
+  // 포트도 **펴서 덮어쓴다** — 필드별 재구성은 `tapAnchor`·`meta`·`linkId` 처럼 좌표와 무관한
+  // 신원/계약 필드를 조용히 떨어뜨린다(아래 `shiftPort` 도 같다).
   const xfPort = (port: ModulePort): ModulePort => ({
-    line: port.line,
+    ...port,
     anchor: tileXf(port.anchor.x, port.anchor.y, o),
     face: faceXf(port.face, o),
     chest: chestById.get(port.chest.id) ?? port.chest,
@@ -151,9 +153,8 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
   const sCells = cells.map((p) => ({ x: p.x + dx, y: p.y + dy, cell: p.cell }));
   const sRing = ring.map(shiftPt);
   const shiftPort = (port: ModulePort): ModulePort => ({
-    line: port.line,
+    ...port,
     anchor: shiftPt(port.anchor),
-    face: port.face,
     chest: sChestById.get(port.chest.id) ?? shiftContainer(port.chest),
   });
 
@@ -164,7 +165,12 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
     h = Math.max(h, m.origin.y + m.size.h);
   }
 
+  // **`...mod` 를 먼저 편다** — 이 함수는 좌표를 옮기는 일만 하는데, 예전엔 필드를 하나씩
+  // 적어 재구성해서 **좌표와 무관한 필드가 조용히 사라졌다**(`supply` 가 그래서 계속
+  // undefined 였고, 폴백 사유가 "사유 없음"으로 찍혔다. 2026-07-24 `beltMerges` 를 추가하다
+  // 발견). 옮길 것만 아래에서 덮어쓰면, 나중에 필드가 늘어도 여기서 안 잃는다.
   return {
+    ...mod,
     machines: sMachines,
     chests: sChests,
     cells: sCells,
@@ -172,7 +178,6 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
     inputPorts: inputPorts.map(shiftPort),
     outputPorts: outputPorts.map(shiftPort),
     bbox: { x: 0, y: 0, w, h },
-    unroutedLines: mod.unroutedLines,
   };
 }
 

@@ -321,6 +321,16 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   }
 
   const pack = packModuleTree(specs, packConfig);
+  // **합치기 결과** — 화면만 보면 "합쳐진 한 줄"과 "원래부터 한 줄"이 똑같이 생겼다.
+  // 그래서 [mergeParallelBelts] 가 실제로 무엇을 몇 줄로 만들었는지 여기서 밝힌다.
+  if (AUTO_LAYOUT_COORD_DUMP) {
+    for (const pl of pack.placements)
+      for (const m of pl.module.beltMerges ?? [])
+        console.log(
+          `[합치기] ${pl.id} ${m.line}: ${m.before}줄 → ${m.after}줄` +
+            (m.before === m.after ? "  (안 합침 — 그릇 초과이거나 자리 없음)" : "  ✓"),
+        );
+  }
   // 미탭(과용량 등) 있는 모듈 → 폴백.
   for (const pl of pack.placements) {
     if (pl.module.unroutedLines.length > 0) {

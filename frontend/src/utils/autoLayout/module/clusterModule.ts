@@ -127,6 +127,14 @@ export interface GeneratedModule {
   supply?: InsertingDecisionResult;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
+  /**
+   * **[진단] 합치기 결과**([mergeParallelBelts]) — 줄마다 벨트가 몇 줄에서 몇 줄이 됐나.
+   *
+   * 실측할 때 이게 없으면 **화면만 보고는 합쳐진 건지 원래 한 줄이었는지 구분이 안 된다**.
+   * `module/` 은 콘솔을 안 쓰므로(순수) 데이터로 내고, [moduleWizard] 가 찍는다.
+   * `before === after` = 안 합쳐짐(그릇 초과이거나, 합쳐 봤지만 자리가 없어 되돌림).
+   */
+  beltMerges?: { line: string; before: number; after: number }[];
 }
 
 export interface ModuleInput {
@@ -423,28 +431,49 @@ export function generateModule(input: ModuleInput): GeneratedModule {
    * 실패가 손해가 아니라는 것이 이 순서의 전부다 — 합치기는 통로 트랙을 아끼는 **최적화**일
    * 뿐이고, 못 아끼면 원래 모양이 그대로 남는다.
    */
+  const beltMerges: { line: string; before: number; after: number }[] = [];
   const tryMerged = (
     emit: (groups: MachineLinkGroup[], seats: (LinkSeats | undefined)[]) => void,
     groups: MachineLinkGroup[],
     seats: (LinkSeats | undefined)[],
     side: "from" | "to",
+    role: "input" | "output",
     ports: ModulePort[],
   ): void => {
     if (groups.length === 0) return;
+    // 줄마다 벨트가 몇 줄인가 — 합치기 전/후를 같은 방법으로 세서 진단에 남긴다.
+    const countByItem = (gs: MachineLinkGroup[]): Map<string, number> => {
+      const c = new Map<string, number>();
+      for (const g of gs) c.set(g.item, (c.get(g.item) ?? 0) + 1);
+      return c;
+    };
+    const before = countByItem(groups);
+    const note = (after: Map<string, number>): void => {
+      for (const [item, b] of before)
+        beltMerges.push({ line: `${role}:${item}`, before: b, after: after.get(item) ?? 0 });
+    };
+
     const merged = mergeParallelBelts(groups, seats, side, mergeGrail);
-    if (merged.groups.length === groups.length) return emit(groups, seats); // 합칠 게 없었다
+    if (merged.groups.length === groups.length) {
+      note(before); // 합칠 게 없었다(그릇 초과이거나 애초에 한 줄)
+      return emit(groups, seats);
+    }
     const snap = {
       cells: cells.length, chests: chests.length, ports: ports.length,
       unrouted: unroutedLines.length, occ: new Set(occupancy),
     };
     emit(merged.groups, merged.seats);
-    if (unroutedLines.length === snap.unrouted) return; // 전부 깔렸다 — 합친 채로 간다
+    if (unroutedLines.length === snap.unrouted) {
+      note(countByItem(merged.groups)); // 전부 깔렸다 — 합친 채로 간다
+      return;
+    }
     cells.length = snap.cells;
     chests.length = snap.chests;
     ports.length = snap.ports;
     unroutedLines.length = snap.unrouted;
     occupancy.clear();
     for (const k of snap.occ) occupancy.add(k);
+    note(before); // 자리가 없어 되돌림 — ParallelBelt 그대로
     emit(groups, seats);
   };
 
@@ -453,14 +482,14 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       const m = new Map(g.map((x) => [x.item, lineOf.get(`output:${x.item}`)!]));
       emitOutputLinks({ groups: g, seats: s, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
     },
-    outLinkGroups, outSeats, "from", outputPorts,
+    outLinkGroups, outSeats, "from", "output", outputPorts,
   );
   tryMerged(
     (g, s) => {
       const m = new Map(g.map((x) => [x.item, lineOf.get(`input:${x.item}`)!]));
       emitInputLinks({ groups: g, seats: s, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
     },
-    inLinkGroups, inSeats, "to", inputPorts,
+    inLinkGroups, inSeats, "to", "input", inputPorts,
   );
 
   const plan = supply.plan;
@@ -469,7 +498,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // unroutedLines 에 넣거나 포트를 냈다). 여기서 다시 넣으면 성공한 링크까지 오염된다.
     for (const l of plannedLines) if (!linkedKeys.has(`${l.role}:${l.name}`)) unroutedLines.push(l);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, beltMerges };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -499,7 +528,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       ctx, seqRef,
     });
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, beltMerges };
   }
 
   // ── 다이렉트 인서팅(1:1) 방출 ───────────────────────────────────────────────
@@ -621,6 +650,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     bbox,
     unroutedLines,
     supply,
+    beltMerges,
   };
 }
 
