@@ -30,7 +30,7 @@ import {
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
-import type { MachineLinkGroup } from "./allocateMachineLinks";
+import { externalLineGroups, isInternalLink, type MachineLinkGroup } from "./allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -224,17 +224,55 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 순서가 뒤집힌 이유: gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고, **gap 폭 = 그
   // gap 을 지나는 가로 벨트 수**다. 폭이 곧 머신 좌표를 정하므로 좌표보다 면이 먼저다.
   // 이 단계는 팔 **수**만 본다(좌표 없음) — 논리 층이 기하를 안 보는 그 성질 그대로다.
-  const outLinkGroups = input.outputLinks ?? [];
-  const inLinkGroups = input.inputLinks ?? [];
-  const faceLedger = new Map<string, number>();
-  // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
-  // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
-  const faceGroupLedger = new Map<string, number>();
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, faceGroupLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, faceGroupLedger);
-  // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, faceGroupLedger);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, faceGroupLedger);
+  const linkOut = input.outputLinks ?? [];
+  const linkIn = input.inputLinks ?? [];
+
+  // **외부 줄(원료·완제품)도 같은 그룹으로 만든다** — 2026-07-23 사장님 결정. 밖과 주고받는
+  // 것도 머신 면에 팔을 앉히고 벨트로 나르는 같은 일이라, 상대가 밖이라는 것만 빈 쪽으로
+  // 표현하면 아래 배정·방출이 그대로 먹는다([externalLineGroups]).
+  const extAll = externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, {
+    linkedKeys: new Set([
+      ...linkOut.map((g) => `output:${g.item}`),
+      ...linkIn.map((g) => `input:${g.item}`),
+    ]),
+    // 그릇 — 가장 빠른 벨트 기준. 벨트를 안 골랐으면 안 본다(없는 숫자를 지어내지 않는다).
+    beltThroughput: input.belts?.reduce((m, b) => Math.max(m, b.throughput), 0),
+    seatsPerFace: input.machine.h, // 선호 면은 언제나 W/E
+  });
+  const extOut = extAll.filter((g) => g.to.size === 0);
+  const extIn = extAll.filter((g) => g.from.size === 0);
+
+  /** 면 배정 한 판 — 장부가 새것이라 몇 번이고 다시 돌릴 수 있다(순수). */
+  const assign = (out: MachineLinkGroup[], inn: MachineLinkGroup[]) => {
+    const seatLedger = new Map<string, number>();
+    // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
+    // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
+    const groupLedger = new Map<string, number>();
+    const o = allocateLinkFaces(input.machine, count, out, "from", "W", seatLedger, groupLedger);
+    const i = allocateLinkFaces(input.machine, count, inn, "to", "E", seatLedger, groupLedger);
+    // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
+    spillLinkFacesToGap(input.machine, count, out, "from", seatLedger, o, groupLedger);
+    spillLinkFacesToGap(input.machine, count, inn, "to", seatLedger, i, groupLedger);
+    return { out, inn, o, i, seatLedger, groupLedger };
+  };
+
+  // **하나라도 자리를 못 잡으면 외부 줄 전체를 물린다** — 그러면 [insertingPlanner] 가 예전처럼
+  // 그 줄들을 맡으므로 **오늘 되던 모듈은 계속 된다**. 새 경로는 순수 이득만 가져간다
+  // (사장님 방향: "B는 항상 되니 모듈이 안 죽는다").
+  //
+  // 보는 것이 **외부 줄만이 아니라 전부**인 이유: 외부 줄이 자리를 잡느라 gap 을 먹으면, 정작
+  // 밀려나는 건 뒤에 배정되는 **링크 줄**이다(입력 링크가 E 면을 넘쳐 gap 을 찾는데 이미
+  // 외부 출력이 앉아 있는 모양 — 2026-07-23 확인). 외부만 보면 그 손해가 안 보인다.
+  const ext = extOut.length + extIn.length;
+  let asg = assign([...linkOut, ...extOut], [...linkIn, ...extIn]);
+  if (ext > 0 && !(asg.o.plans.every((p) => p) && asg.i.plans.every((p) => p)))
+    asg = assign(linkOut, linkIn);
+
+  const outLinkGroups = asg.out;
+  const inLinkGroups = asg.inn;
+  const faceLedger = asg.seatLedger;
+  const outFaces = asg.o;
+  const inFaces = asg.i;
   const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
 
   const layout = layoutCluster(
@@ -323,9 +361,17 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     ...inLinkGroups.map((g) => `input:${g.item}`),
   ]);
   // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
-  const placeLedger = new Map<string, number>();
-  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger, false);
-  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger, true); // 입력 포트는 동쪽
+  //
+  // **장부를 둘로 나눈다** — 두 방향이 gap 면을 **양쪽 끝에서 마주 보고** 채우기 때문이다
+  // (출력은 서→동, 입력은 동→서). 하나를 같이 쓰면 "이미 1칸 찼다"를 양쪽이 **자기 끝에서**
+  // 세어, 출력이 서쪽 첫 칸을, 입력이 "동쪽에서 1칸 건너뛴" 칸을 잡는다 — 폭이 3이면 그 둘이
+  // 같은 칸이다(2026-07-23 발견: 좌석 장부는 "3칸 중 3칸"이라 통과시키는데 좌표가 겹쳐, 입력
+  // 링크가 emit 단계에서 조용히 unrouted 로 떨어졌다).
+  //
+  // 총량 검사는 이미 [tryLinkFace] 가 **합친** 장부(faceLedger)로 했다. 합이 면 칸 수 이하이면
+  // 서쪽 n칸과 동쪽 m칸은 구조적으로 안 겹치므로, 여기서는 각자 자기 쪽만 세면 된다.
+  const outSeats = placeLinkSeats(machines, outFaces.plans, new Map(), false);
+  const inSeats = placeLinkSeats(machines, inFaces.plans, new Map(), true); // 입력 포트는 동쪽
   const seatRowsUsed = seatRowsByFace(faceLedger);
 
   const plannerInput = {
@@ -1125,7 +1171,9 @@ function emitOutputLinks(args: {
     // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로). tapAnchor: W 는 서쪽 끝.
     pushLinkPortEnd({
       role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      line, linkId: group.id, tapAnchor: { x: m0.origin.x, y: trunkStart.y },
+      // 신원은 **안에서 끝나는 링크에만** 단다 — 밖으로 나가는 줄에 달면 짝이 없어 홉이 통째로
+      // 건너뛰어진다([isInternalLink]).
+      line, linkId: isInternalLink(group) ? group.id : undefined, tapAnchor: { x: m0.origin.x, y: trunkStart.y },
       laneDepth, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts,
     });
@@ -1266,7 +1314,8 @@ function emitInputLinks(args: {
     // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로). tapAnchor: E 는 동쪽 끝.
     pushLinkPortEnd({
       role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      line, linkId: group.id, tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y },
+      // 신원은 **안에서 끝나는 링크에만** — [emitOutputLinks] 와 같은 이유.
+      line, linkId: isInternalLink(group) ? group.id : undefined, tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y },
       laneDepth: lane.d, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts,
     });

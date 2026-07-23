@@ -176,38 +176,94 @@ export function allocateMachineLinks(input: AllocateMachineLinksInput): MachineL
  * 된다([edgeMachineLinks] 도 같은 문턱에서 `undefined` 를 낸다). 지어낸 숫자로 그룹을
  * 만들면 그 순간 벨트 부하 계산이 거짓말을 시작한다.
  *
- * ## 여기서 벨트를 쪼개지 않는다 (일부러)
- * 그룹 하나 = 벨트 하나지만, 이 함수는 **줄 하나당 그룹 하나**만 낸다. 수요가 벨트 한 줄을
- * 넘을 때 몇 줄로 늘릴지는 이미 [determineBeltCount] 와 [clusterPortPlanner] 의 배정 수가
- * 정하고 있다. 여기서 또 쪼개면 **같은 수를 두 곳이 각자 유도**하게 되고, 그게 이 세션에
- * 고친 버그들의 공통 원인이었다(tapCapacity 세 출처·배정 수 두 출처). 쪼개기를 여기로
- * 옮긴다면 저쪽에서 **빼면서** 옮겨야 한다.
+ * ## 언제나 [[ParallelBelt]] 로 낸다 — 머신마다 자기 벨트 (2026-07-23 사장님 결정)
+ * 원료를 세 대에 먹이는 모양은 둘이다:
  *
- * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
+ * ```
+ *   A: 관통 한 줄            B: 머신마다 자기 벨트 (= [[ParallelBelt]])
+ *      ┌────┐ ▓                ┌────┐ ▓
+ *      │ m0 │◄▓                │ m0 │◄▓
+ *      └────┘ ▓                └────┘
+ *      ┌────┐ ▓                ┌────┐ ▓
+ *      │ m1 │◄▓                │ m1 │◄▓
+ *      └────┘ ▓                └────┘
+ * ```
+ *
+ * **이 함수는 언제나 B를 낸다.** A는 통로 트랙을 아끼지만, 두 가지를 더 치러야 한다 —
+ * 합친 벨트가 넘치지 않아야 하고(처리량), 머신 사이를 건너는 칸이 비어 있어야 한다(기하).
+ * 둘 다 **좌표가 생긴 뒤라야** 정확히 확인된다. 그래서 A는 나중에 **합치기 최적화**로
+ * 올리고, 못 합치면 B 그대로 둔다 — **실패해도 손해가 없는** 순서다.
+ *
+ * (사장님 근거였던 "B가 항상 더 넓으니 A 변환은 실패 불가"는 검증 결과 틀렸다. 자원이
+ * 둘이고 **교환**이다: A는 통로 트랙을 아끼는 대신 머신 사이 gap 행을 벨트로 밟는다 —
+ * B엔 없던 점유다. 그 gap 행에 다른 줄의 포트 상자가 앉아 있으면 A는 못 만든다.)
+ *
+ * ## 벨트 하나에 앉는 팔 수의 상한 두 개
+ * 한 머신 몫이 한 줄에 다 안 실리면 그 머신도 여러 줄로 갈린다. 상한은 둘이고 **둘 다
+ * 물리량**이라 작은 쪽을 쓴다:
+ *  - **그릇** — 벨트가 나르는 양 ÷ 팔이 나르는 양([maxInsertersPerBelt]).
+ *  - **면 좌석** — 그 면에 팔을 앉힐 칸 수. 벨트 하나에 붙는 팔은 **한 머신의 한 면**에서
+ *    오므로 그 면 길이를 넘을 수 없다.
+ *
+ * @param opts.linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
+ * @param opts.beltThroughput 벨트 한 줄의 초당 운반량. 미지정이면 그릇을 안 본다.
+ * @param opts.seatsPerFace 선호 면의 좌석 수(W/E 면이면 `machine.h`). 미지정이면 안 본다.
  */
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
   machineCount: number,
   cap: SupplyCapacity,
-  linkedKeys?: ReadonlySet<string>,
+  opts?: {
+    linkedKeys?: ReadonlySet<string>;
+    beltThroughput?: number;
+    seatsPerFace?: number;
+  },
 ): MachineLinkGroup[] {
   const n = Math.max(1, machineCount);
+  const tp = cap.tapCapacity ?? 0;
+  // 벨트 한 줄에 앉힐 팔 수 — 두 물리 상한의 작은 쪽. 둘 다 모르면 안 쪼갠다.
+  // 벨트 운반량의 출처는 둘이다(둘 다 **같은 물리량**이라 있는 대로 쓴다): 호출자가 고른 벨트
+  // 티어(`opts.beltThroughput`)와 [SupplyCapacity.beltCapacity]. 안 보면 넘치는 벨트를 조용히 깐다.
+  const belt = opts?.beltThroughput || cap.beltCapacity;
+  const limits: number[] = [];
+  if (belt !== undefined && belt > 0 && tp > 0) limits.push(maxInsertersPerBelt(belt, tp));
+  if (opts?.seatsPerFace !== undefined && opts.seatsPerFace > 0) limits.push(opts.seatsPerFace);
+  const perBelt = limits.length > 0 ? Math.max(1, Math.min(...limits)) : Infinity;
+
   const groups: MachineLinkGroup[] = [];
   for (const line of lines) {
     // 유체는 팔로 나르지 않는다 — 트렁크 파이프의 일이라 벨트 장부에 안 올린다.
     if (line.kind !== "belt") continue;
     const key = `${line.role}:${line.name}`;
-    if (linkedKeys?.has(key)) continue;
+    if (opts?.linkedKeys?.has(key)) continue;
     const arms = requiredInserterCount(line, n, cap);
     if (arms === undefined) continue; // 수량 미상 — 그룹으로 안 만든다(옛 경로가 맡는다).
-    const mine = new Map<number, number>();
-    for (let i = 0; i < n; i++) mine.set(i, arms);
-    groups.push({
-      id: `ext:${key}`,
-      item: line.name,
-      from: line.role === "output" ? mine : new Map(),
-      to: line.role === "output" ? new Map() : mine,
-    });
+    const out = line.role === "output";
+    for (let mi = 0; mi < n; mi++) {
+      // **팔을 깎지 않는다** — 한 줄에 다 못 실으면 줄을 늘린다. 깎으면 조용히 굶는다.
+      for (let left = arms, b = 0; left > 0; b++) {
+        const k = Math.min(perBelt, left);
+        const mine = new Map([[mi, k]]);
+        groups.push({
+          id: `ext:${key}#m${mi}b${b}`,
+          item: line.name,
+          from: out ? mine : new Map(),
+          to: out ? new Map() : mine,
+        });
+        left -= k;
+      }
+    }
   }
   return groups;
+}
+
+/**
+ * 이 그룹이 **모듈 안에서 끝나나** — 양쪽 다 이 클러스터 머신인가.
+ *
+ * 거짓이면 한쪽이 밖이다(원료·완제품). 그때는 상대할 모듈 포트가 없으므로 **간선 신원
+ * ([ModulePort.linkId])을 달지 않는다** — 짝 없는 신원을 달면 `pairHopPorts` 가 짝을 못
+ * 찾아 그 홉을 통째로 건너뛴다.
+ */
+export function isInternalLink(group: MachineLinkGroup): boolean {
+  return group.from.size > 0 && group.to.size > 0;
 }

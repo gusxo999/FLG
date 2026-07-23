@@ -34,13 +34,23 @@ const config: PackConfig = {
   beltMaxUndergroundDistance: 4,
 };
 
-/** 지하 횡단이 실제로 계획되는 형상 — 부모 2 / 자식 4, 머신당 팔 5개. */
+/**
+ * 지하 횡단이 실제로 계획되는 형상 — 부모 2 / 자식 4, 머신당 팔 5개.
+ *
+ * **`output:prod` 는 60 이 아니라 24다**(2026-07-23). 외부 줄이 [[ParallelBelt]]로 나가게
+ * 되면서 이 줄의 **양이 부모 모듈의 모양을 바꾼다** — 60 이면 머신당 팔 5개가 W 면(3칸)을
+ * 넘쳐 gap 으로 벌어지고, 그러면 이 테스트가 재현하려는 계단·교차 형상 자체가 사라진다.
+ * 24 면 팔 2개라 W 한 면에 앉고, 옛 형상이 그대로 나온다.
+ *
+ * 이 수를 여기 적어 두는 이유: 위의 `it("전제 확인")` 이 **바로 이 드리프트를 잡으라고**
+ * 있는 것이고, 실제로 잡았다. 전제가 또 깨지면 그 테스트가 먼저 빨개진다.
+ */
 function pack() {
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 2,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
+      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 60], ["output:prod", 24]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 4,
