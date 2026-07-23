@@ -39,6 +39,7 @@ import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
 import { moduleExtent, type PackResult } from "./modulePacking";
+import { seatIsBeltFeeder } from "./moduleHop";
 import type { LaneAssignment } from "./perimeterLanePlanner";
 import { routePortToPerimeter, type Rect } from "./perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../module/pipeFlow";
@@ -266,7 +267,19 @@ export function relocateChestsToPerimeter(
     // feeder 로 덮여 인서터가 인서터를 집게 된다) → 그런 배정은 예약 위반으로 skip.
     // **유체는 이 제약이 없다** — feeder 가 아예 없어서 경로 전체가 파이프다(길이 1도 유효).
     if (!isFluid && res.path.length < 2) { fail(port.chest.id, `perimeter too close (${res.path.length})`); continue; }
-    const path = [anchor, ...res.path];
+
+    // **좌석의 운명은 포트 종류가 가른다**([seatIsBeltFeeder], moduleHop 과 같은 판정).
+    //  - **belt→상자 피더**(링크/탭 방출): 좌석은 트렁크 belt 에서 집어 상자로 넣던 것인데,
+    //    상자가 멀리 이사하면 좌석 뒤에도 belt(이사 경로)가 붙어 **belt→belt** 가 된다 — 하는
+    //    일 없이 처리량만 인서터 속도로 깎는다(실측: kr-glass 20/s 가 좌석+feeder 2개 직렬로
+    //    10/s 병목). 좌석도 떼고 그 자리를 belt 로 메워 트렁크가 이사 belt 로 **곧장 흐르게** 한다.
+    //  - **머신 투입 인서터**(다이렉트 1:1): 머신에 재료를 넣는 유일한 물건이라 떼면 굶는다. 유지.
+    // 유체는 좌석이 없다(파이프).
+    const stripSeat = !isFluid && seatIsBeltFeeder(port);
+    // 피더면 좌석 자리도 경로 앞(트렁크쪽)에 넣어 belt 로 덮는다. 그러면 트렁크 헤드는 좌석보다
+    // 한 칸 더 안쪽이다([layPath] 의 input belt[0] 방향 계산용).
+    const path = stripSeat ? [seat, anchor, ...res.path] : [anchor, ...res.path];
+    const trunkHead = stripSeat ? { x: seat.x - fv.x, y: seat.y - fv.y } : seat;
 
     const isInput = port.line.role === "input";
     if (isFluid && !config.pipeEntityName) { fail(port.chest.id, "no pipe prototype"); continue; }
@@ -289,13 +302,14 @@ export function relocateChestsToPerimeter(
 
     const { belts, feeder, chestCell } = isFluid
       ? layPipePath(path, port.chest, config.pipeEntityName!)
-      : layPath(path, seat, isInput, port.chest, config);
+      : layPath(path, trunkHead, isInput, port.chest, config);
 
     // ── 설명 축적(모듈 그래프 미변형) ──
     // 옛 chest ghost(@anchor)·feeder(@anchor−fv) 는 떼어낼 좌표로, 새 belt/feeder/chest 셀은
     // 놓을 셀로, 상자 새 위치·belt 는 relocation 으로 반환한다. occ 는 로컬로만 갱신해
     // 뒤 상자가 앞 상자의 belt 를 피하게 한다(결정성).
-    droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost 만. seat 인서터는 유지.
+    droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost.
+    if (stripSeat) droppedCellKeys.add(cellKey(seat.x, seat.y)); // 피더 좌석도 belt 로 대체.
     addedCells.push(...belts, ...(feeder ? [feeder] : []), chestCell);
     if (isFluid) for (const c of path) laidPipes.push({ x: c.x, y: c.y, fluid: port.line.name });
     for (const b of belts) occ.add(cellKey(b.x, b.y));

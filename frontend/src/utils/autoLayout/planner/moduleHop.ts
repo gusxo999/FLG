@@ -146,7 +146,7 @@ function portGeometry(port: ModulePort): {
  * 판정은 기하에서 **유도**한다 — 포트가 깐 벨트 셀에 `trunkStart`(= anchor − 2·faceVec)
  * 가 있으면 좌석 건너편이 벨트다. 새 플래그를 심으면 방출기와 여기가 따로 놀 수 있다.
  */
-function seatIsBeltFeeder(port: ModulePort): boolean {
+export function seatIsBeltFeeder(port: ModulePort): boolean {
   const { trunkStart } = portGeometry(port);
   return port.cells.some(
     (c) =>

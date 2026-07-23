@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
 import { relocateChestsToPerimeter } from "./modulePerimeterPass";
-import { PERIMETER_MARGIN } from "../util/helper";
+import { PERIMETER_MARGIN, faceVector } from "../util/helper";
+import { seatIsBeltFeeder } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 
@@ -134,11 +135,67 @@ describe("relocateChestsToPerimeter", () => {
       const old = survBefore.get(r.chestId)!;
       expect(res.droppedCellKeys.has(`${old.x},${old.y}`)).toBe(true);
     }
-    // 상자별 **1칸(옛 상자 ghost)만** 떼어낸다 — seat 인서터는 **남긴다.**
-    // 그게 머신에 물건을 넣는(빼는) 유일한 수단이라 덮으면 머신이 굶는다. 옛 트렁크
-    // 시절엔 그 자리를 belt 로 재사용해 2칸을 뗐지만, 지금은 anchor 한 칸만 비워 belt 로
-    // 쓴다([modulePerimeterPass] 주석 + PERIMETER_MARGIN=2 의 이유).
-    expect(res.droppedCellKeys.size).toBe(res.relocated);
+    // 상자마다 **anchor(옛 상자 자리)는 반드시** 떼고, 좌석은 종류에 따라 갈린다:
+    //  - belt→상자 피더(링크/트렁크): 좌석도 떼서 belt 로 메운다(anchor + seat = 2칸).
+    //  - 머신 투입 인서터(다이렉트 1:1): 좌석은 유지(anchor 1칸).
+    // 따라서 뗀 칸 수는 [relocated, 2×relocated] 사이다. (좌석까지 떼는 걸 콕 집어 보는
+    // 것은 아래 "belt→상자 피더 좌석을 뗀다" 전용 테스트.)
+    expect(res.droppedCellKeys.size).toBeGreaterThanOrEqual(res.relocated);
+    expect(res.droppedCellKeys.size).toBeLessThanOrEqual(res.relocated * 2);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // **belt→상자 피더 좌석을 뗀다** (2026-07-23).
+  //
+  // 포트는 `트렁크벨트 — 좌석(인서터) — 상자` 다. 상자를 외곽으로 이사하면 좌석 뒤에도
+  // belt(이사 경로)가 붙어 좌석이 **belt→belt** 가 된다 — 하는 일 없이 처리량만 인서터
+  // 속도로 깎는다(실측: kr-glass 20/s 가 좌석+feeder 2개 직렬로 10/s 병목). 그래서 좌석도
+  // 떼고 그 자리를 belt 로 메워야 한다. moduleHop 이 모듈↔모듈 홉에서 이미 하는 것과 같은
+  // 판정([seatIsBeltFeeder])을 이사 pass 도 써야 한다.
+  //
+  // 되돌려 확인: modulePerimeterPass 의 `stripSeat` 를 지우면 seat 이 droppedCellKeys 에서
+  // 빠지고 그 자리에 belt 가 안 깔려 이 테스트가 깨진다(= 인서터 2개 직렬이 남는다).
+  // ───────────────────────────────────────────────────────────────────────────
+  it("belt→상자 피더 좌석을 belt 로 대체한다 — 인서터 2개 직렬 병목 제거", () => {
+    const pack = packModuleTree(specs, config);
+    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
+
+    // 이사 전: 살아남는 상자마다 그 포트의 좌석 좌표와 피더 여부를 기록한다.
+    const seatOf = new Map<string, { x: number; y: number; feeder: boolean }>();
+    for (const pl of pack.placements)
+      for (const port of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
+        if (hop.strippedChestIds.has(port.chest.id)) continue;
+        const fv = faceVector(port.face);
+        seatOf.set(port.chest.id, {
+          x: port.anchor.x - fv.x,
+          y: port.anchor.y - fv.y,
+          feeder: seatIsBeltFeeder(port),
+        });
+      }
+
+    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+      beltEntityName: "transport-belt",
+      inserterEntityName: "inserter",
+    });
+
+    const beltAt = new Set(
+      res.addedCells
+        .filter((c) => c.cell.entityType === EntityType.Belt || c.cell.entityType === EntityType.UndergroundBelt)
+        .map((c) => `${c.x},${c.y}`),
+    );
+
+    let checkedFeeder = 0;
+    for (const r of res.relocations) {
+      const s = seatOf.get(r.chestId);
+      if (!s || !s.feeder) continue; // 다이렉트(머신 투입) 좌석은 유지가 정상 — 대상 아님
+      checkedFeeder++;
+      const key = `${s.x},${s.y}`;
+      expect(res.droppedCellKeys.has(key), `좌석 ${key} 를 떼야 한다`).toBe(true);
+      expect(beltAt.has(key), `좌석 ${key} 자리를 belt 로 메워야 한다`).toBe(true);
+    }
+    // 이 셋업(throughput 미지정 → 옛 트렁크 방출)은 belt 포트가 전부 피더라, 최소 하나는
+    // 검증돼야 한다 — 0 이면 판정 자체가 죽은 것이라 이 테스트가 계측기 노릇을 못 한다.
+    expect(checkedFeeder).toBeGreaterThan(0);
   });
 
   it("결정적 — 같은 입력 → 같은 relocations", () => {
