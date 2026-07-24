@@ -87,6 +87,45 @@ export interface MachineLinkGroup {
   to: Map<number, number>;
 }
 
+/**
+ * **밖과 주고받는 줄을 [MachineLinkGroup] 하나로 조립한다** — "빈 쪽 = 밖" 규약의 단일 출처.
+ *
+ * 이 규약이 예전엔 여러 곳(만드는 [externalLineGroups], 읽는 [emitTapInserting])에 흩어져
+ * 있었다. 같은 규약을 두 곳이 각자 알면 한쪽만 바뀌어도 조용히 어긋난다 — 그래서 만들기
+ * ([makeLink])와 읽기([readLinkRole])를 여기 한 쌍으로 모은다.
+ *
+ * `make…` 는 이 프로젝트의 **저수준 조립** 관습이다([makeBeltCell]·[makeLinkPortChest] 등) —
+ * 그룹 하나를 조립할 뿐, [allocateMachineLinks]·[edgeMachineLinks] 같은 **유도**와 층이 다르다.
+ *
+ *  - **원료(input)**: 밖에서 온다 → `from` 이 비고, `to` 에 이 머신들.
+ *  - **완제품(output)**: 밖으로 간다 → `to` 가 비고, `from` 에 이 머신들.
+ */
+export function makeLink(
+  item: string,
+  role: "input" | "output",
+  arms: Map<number, number>,
+): MachineLinkGroup {
+  const empty = new Map<number, number>();
+  return {
+    item,
+    from: role === "output" ? arms : empty,
+    to: role === "output" ? empty : arms,
+  };
+}
+
+/**
+ * **밖과 주고받는 그룹의 방향을 읽는다** — [makeLink] 의 역([isInternalLink] 로 안↔안이 아님을
+ * 이미 안 그룹에만 쓴다). 빈 쪽이 밖이므로, 머신이 든 쪽이 곧 역할이다:
+ *  - `to` 에 머신 → **input**(밖에서 받는다 = 원료).
+ *  - `from` 에 머신 → **output**(밖으로 낸다 = 완제품).
+ *
+ * `find…` 가 아니다 — 다른 링크를 **찾는** 건 [pairHopPorts] 의 일이고, 이건 이 그룹 자신의
+ * **속성**을 읽을 뿐이다.
+ */
+export function readLinkRole(group: MachineLinkGroup): "input" | "output" {
+  return group.to.size > 0 ? "input" : "output";
+}
+
 export interface AllocateMachineLinksInput {
   /** 자식 머신 대수(≥1). */
   childCount: number;
@@ -202,12 +241,8 @@ export function externalLineGroups(
     if (arms === undefined) continue; // 수량 미상 — 그룹으로 안 만든다(옛 경로가 맡는다).
     const mine = new Map<number, number>();
     for (let i = 0; i < n; i++) mine.set(i, arms);
-    groups.push({
-      id: `ext:${key}`,
-      item: line.name,
-      from: line.role === "output" ? mine : new Map(),
-      to: line.role === "output" ? new Map() : mine,
-    });
+    // "빈 쪽 = 밖" 규약은 [makeLink] 한 곳에만 — 여기선 신원(id)만 얹는다.
+    groups.push({ id: `ext:${key}`, ...makeLink(line.name, line.role, mine) });
   }
   return groups;
 }

@@ -30,7 +30,7 @@ import {
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
-import { externalLineGroups, type MachineLinkGroup } from "./allocateMachineLinks";
+import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "./allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -392,7 +392,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // 기하·수치 불변(점수 불변). 다음 단계에서 group 의 `from`/`to`(머신마다 팔)를 실제로 쓴다.
     const groupOf = new Map<string, MachineLinkGroup>();
     for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, linkedKeys)) {
-      groupOf.set(`${g.to.size > 0 ? "input" : "output"}:${g.item}`, g);
+      groupOf.set(`${readLinkRole(g)}:${g.item}`, g);
     }
     emitTapInserting({
       plan, machines, input, prefix, occupancy,
