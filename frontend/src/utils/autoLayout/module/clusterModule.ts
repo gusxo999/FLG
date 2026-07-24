@@ -30,12 +30,7 @@ import {
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
-import {
-  externalLineGroups,
-  isInternalLink,
-  maxInsertersPerBelt,
-  type MachineLinkGroup,
-} from "./allocateMachineLinks";
+import type { MachineLinkGroup } from "./allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -127,14 +122,6 @@ export interface GeneratedModule {
   supply?: InsertingDecisionResult;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
-  /**
-   * **[진단] 합치기 결과**([mergeParallelBelts]) — 줄마다 벨트가 몇 줄에서 몇 줄이 됐나.
-   *
-   * 실측할 때 이게 없으면 **화면만 보고는 합쳐진 건지 원래 한 줄이었는지 구분이 안 된다**.
-   * `module/` 은 콘솔을 안 쓰므로(순수) 데이터로 내고, [moduleWizard] 가 찍는다.
-   * `before === after` = 안 합쳐짐(그릇 초과이거나, 합쳐 봤지만 자리가 없어 되돌림).
-   */
-  beltMerges?: { line: string; before: number; after: number }[];
 }
 
 export interface ModuleInput {
@@ -237,64 +224,17 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 순서가 뒤집힌 이유: gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고, **gap 폭 = 그
   // gap 을 지나는 가로 벨트 수**다. 폭이 곧 머신 좌표를 정하므로 좌표보다 면이 먼저다.
   // 이 단계는 팔 **수**만 본다(좌표 없음) — 논리 층이 기하를 안 보는 그 성질 그대로다.
-  const linkOut = input.outputLinks ?? [];
-  const linkIn = input.inputLinks ?? [];
-
-  // **외부 줄(원료·완제품)도 같은 그룹으로 만든다** — 2026-07-23 사장님 결정. 밖과 주고받는
-  // 것도 머신 면에 팔을 앉히고 벨트로 나르는 같은 일이라, 상대가 밖이라는 것만 빈 쪽으로
-  // 표현하면 아래 배정·방출이 그대로 먹는다([externalLineGroups]).
-  // 벨트 한 줄의 운반량 — 고른 벨트 중 가장 빠른 것, 없으면 [SupplyCapacity] 가 들고 온 값.
-  const beltTp =
-    input.belts?.reduce((m, b) => Math.max(m, b.throughput), 0) || input.supplyCapacity?.beltCapacity;
-  const tapTp = input.supplyCapacity?.tapCapacity ?? 0;
-  /**
-   * **그릇** — 벨트 한 줄에 앉힐 수 있는 팔 수. 쪼갤 때도([externalLineGroups]) 합칠 때도
-   * ([mergeParallelBelts]) **같은 수를 본다** — 다르게 보면 한쪽이 쪼갠 걸 다른 쪽이 도로
-   * 합쳐 벨트가 넘친다. 모르면 `Infinity`(상한 없음)가 아니라 **합치지 않는다**로 간다.
-   */
-  const mergeGrail = beltTp && beltTp > 0 && tapTp > 0 ? maxInsertersPerBelt(beltTp, tapTp) : 0;
-  const extAll = externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, {
-    linkedKeys: new Set([
-      ...linkOut.map((g) => `output:${g.item}`),
-      ...linkIn.map((g) => `input:${g.item}`),
-    ]),
-    beltThroughput: beltTp,
-    seatsPerFace: input.machine.h, // 선호 면은 언제나 W/E
-  });
-  const extOut = extAll.filter((g) => g.to.size === 0);
-  const extIn = extAll.filter((g) => g.from.size === 0);
-
-  /** 면 배정 한 판 — 장부가 새것이라 몇 번이고 다시 돌릴 수 있다(순수). */
-  const assign = (out: MachineLinkGroup[], inn: MachineLinkGroup[]) => {
-    const seatLedger = new Map<string, number>();
-    // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
-    // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
-    const groupLedger = new Map<string, number>();
-    const o = allocateLinkFaces(input.machine, count, out, "from", "W", seatLedger, groupLedger);
-    const i = allocateLinkFaces(input.machine, count, inn, "to", "E", seatLedger, groupLedger);
-    // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-    spillLinkFacesToGap(input.machine, count, out, "from", seatLedger, o, groupLedger);
-    spillLinkFacesToGap(input.machine, count, inn, "to", seatLedger, i, groupLedger);
-    return { out, inn, o, i, seatLedger, groupLedger };
-  };
-
-  // **하나라도 자리를 못 잡으면 외부 줄 전체를 물린다** — 그러면 [insertingPlanner] 가 예전처럼
-  // 그 줄들을 맡으므로 **오늘 되던 모듈은 계속 된다**. 새 경로는 순수 이득만 가져간다
-  // (사장님 방향: "B는 항상 되니 모듈이 안 죽는다").
-  //
-  // 보는 것이 **외부 줄만이 아니라 전부**인 이유: 외부 줄이 자리를 잡느라 gap 을 먹으면, 정작
-  // 밀려나는 건 뒤에 배정되는 **링크 줄**이다(입력 링크가 E 면을 넘쳐 gap 을 찾는데 이미
-  // 외부 출력이 앉아 있는 모양 — 2026-07-23 확인). 외부만 보면 그 손해가 안 보인다.
-  const ext = extOut.length + extIn.length;
-  let asg = assign([...linkOut, ...extOut], [...linkIn, ...extIn]);
-  if (ext > 0 && !(asg.o.plans.every((p) => p) && asg.i.plans.every((p) => p)))
-    asg = assign(linkOut, linkIn);
-
-  const outLinkGroups = asg.out;
-  const inLinkGroups = asg.inn;
-  const faceLedger = asg.seatLedger;
-  const outFaces = asg.o;
-  const inFaces = asg.i;
+  const outLinkGroups = input.outputLinks ?? [];
+  const inLinkGroups = input.inputLinks ?? [];
+  const faceLedger = new Map<string, number>();
+  // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
+  // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
+  const faceGroupLedger = new Map<string, number>();
+  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, faceGroupLedger);
+  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, faceGroupLedger);
+  // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
+  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, faceGroupLedger);
+  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, faceGroupLedger);
   const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
 
   const layout = layoutCluster(
@@ -383,17 +323,9 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     ...inLinkGroups.map((g) => `input:${g.item}`),
   ]);
   // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
-  //
-  // **장부를 둘로 나눈다** — 두 방향이 gap 면을 **양쪽 끝에서 마주 보고** 채우기 때문이다
-  // (출력은 서→동, 입력은 동→서). 하나를 같이 쓰면 "이미 1칸 찼다"를 양쪽이 **자기 끝에서**
-  // 세어, 출력이 서쪽 첫 칸을, 입력이 "동쪽에서 1칸 건너뛴" 칸을 잡는다 — 폭이 3이면 그 둘이
-  // 같은 칸이다(2026-07-23 발견: 좌석 장부는 "3칸 중 3칸"이라 통과시키는데 좌표가 겹쳐, 입력
-  // 링크가 emit 단계에서 조용히 unrouted 로 떨어졌다).
-  //
-  // 총량 검사는 이미 [tryLinkFace] 가 **합친** 장부(faceLedger)로 했다. 합이 면 칸 수 이하이면
-  // 서쪽 n칸과 동쪽 m칸은 구조적으로 안 겹치므로, 여기서는 각자 자기 쪽만 세면 된다.
-  const outSeats = placeLinkSeats(machines, outFaces.plans, new Map(), false);
-  const inSeats = placeLinkSeats(machines, inFaces.plans, new Map(), true); // 입력 포트는 동쪽
+  const placeLedger = new Map<string, number>();
+  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger, false);
+  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger, true); // 입력 포트는 동쪽
   const seatRowsUsed = seatRowsByFace(faceLedger);
 
   const plannerInput = {
@@ -420,77 +352,14 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 안 하고 버리게 된다(2026-07-21 발견 — 무관한 판정이 끝난 예약을 삼키는 순서 버그였다).
   // 먼저 놓아야 occupancy 가 채워져, 아래 나머지 줄 방출이 그 자리를 피한다.
   const lineOf = new Map(plannedLines.map((l) => [`${l.role}:${l.name}`, l]));
-
-  /**
-   * **합쳐서 깔아 보고, 하나라도 막히면 [[ParallelBelt]] 그대로 다시 깐다.**
-   *
-   * 되돌리기가 싸다: 막힌 그룹은 셀·상자·점유에 **아무 흔적도 안 남기고** 물러나고
-   * ([emitOutputLinks] 의 `push`/`blocked`), 이미 성공한 그룹만 지우면 된다. 그래서 길이
-   * 되돌리기 + 점유 스냅샷이면 충분하다.
-   *
-   * 실패가 손해가 아니라는 것이 이 순서의 전부다 — 합치기는 통로 트랙을 아끼는 **최적화**일
-   * 뿐이고, 못 아끼면 원래 모양이 그대로 남는다.
-   */
-  const beltMerges: { line: string; before: number; after: number }[] = [];
-  const tryMerged = (
-    emit: (groups: MachineLinkGroup[], seats: (LinkSeats | undefined)[]) => void,
-    groups: MachineLinkGroup[],
-    seats: (LinkSeats | undefined)[],
-    side: "from" | "to",
-    role: "input" | "output",
-    ports: ModulePort[],
-  ): void => {
-    if (groups.length === 0) return;
-    // 줄마다 벨트가 몇 줄인가 — 합치기 전/후를 같은 방법으로 세서 진단에 남긴다.
-    const countByItem = (gs: MachineLinkGroup[]): Map<string, number> => {
-      const c = new Map<string, number>();
-      for (const g of gs) c.set(g.item, (c.get(g.item) ?? 0) + 1);
-      return c;
-    };
-    const before = countByItem(groups);
-    const note = (after: Map<string, number>): void => {
-      for (const [item, b] of before)
-        beltMerges.push({ line: `${role}:${item}`, before: b, after: after.get(item) ?? 0 });
-    };
-
-    const merged = mergeParallelBelts(groups, seats, side, mergeGrail);
-    if (merged.groups.length === groups.length) {
-      note(before); // 합칠 게 없었다(그릇 초과이거나 애초에 한 줄)
-      return emit(groups, seats);
-    }
-    const snap = {
-      cells: cells.length, chests: chests.length, ports: ports.length,
-      unrouted: unroutedLines.length, occ: new Set(occupancy),
-    };
-    emit(merged.groups, merged.seats);
-    if (unroutedLines.length === snap.unrouted) {
-      note(countByItem(merged.groups)); // 전부 깔렸다 — 합친 채로 간다
-      return;
-    }
-    cells.length = snap.cells;
-    chests.length = snap.chests;
-    ports.length = snap.ports;
-    unroutedLines.length = snap.unrouted;
-    occupancy.clear();
-    for (const k of snap.occ) occupancy.add(k);
-    note(before); // 자리가 없어 되돌림 — ParallelBelt 그대로
-    emit(groups, seats);
-  };
-
-  tryMerged(
-    (g, s) => {
-      const m = new Map(g.map((x) => [x.item, lineOf.get(`output:${x.item}`)!]));
-      emitOutputLinks({ groups: g, seats: s, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
-    },
-    outLinkGroups, outSeats, "from", "output", outputPorts,
-  );
-  tryMerged(
-    (g, s) => {
-      const m = new Map(g.map((x) => [x.item, lineOf.get(`input:${x.item}`)!]));
-      emitInputLinks({ groups: g, seats: s, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
-    },
-    inLinkGroups, inSeats, "to", "input", inputPorts,
-  );
+  if (outLinkGroups.length > 0) {
+    const m = new Map(outLinkGroups.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
+    emitOutputLinks({ groups: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+  }
+  if (inLinkGroups.length > 0) {
+    const m = new Map(inLinkGroups.map((g) => [g.item, lineOf.get(`input:${g.item}`)!]));
+    emitInputLinks({ groups: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+  }
 
   const plan = supply.plan;
   if (!plan.ok) {
@@ -498,7 +367,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // unroutedLines 에 넣거나 포트를 냈다). 여기서 다시 넣으면 성공한 링크까지 오염된다.
     for (const l of plannedLines) if (!linkedKeys.has(`${l.role}:${l.name}`)) unroutedLines.push(l);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, beltMerges };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -528,7 +397,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       ctx, seqRef,
     });
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, beltMerges };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
   // ── 다이렉트 인서팅(1:1) 방출 ───────────────────────────────────────────────
@@ -650,7 +519,6 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     bbox,
     unroutedLines,
     supply,
-    beltMerges,
   };
 }
 
@@ -1121,76 +989,6 @@ function placeLinkSeats(
 }
 
 /**
- * **[[ParallelBelt]] 를 관통 한 줄로 합친다 — 모양 B → 모양 A** (2026-07-23 사장님 방향).
- *
- * ```
- *   B: 머신마다 자기 벨트          A: 관통 한 줄
- *      ┌────┐ ▓→포트                 ┌────┐ ▓→포트
- *      │ m0 │◄▓                      │ m0 │◄▓
- *      └────┘                        └────┘ ▓
- *      ┌────┐ ▓→포트                 ┌────┐ ▓
- *      │ m1 │◄▓                      │ m1 │◄▓
- *      └────┘                        └────┘
- * ```
- *
- * A가 사는 것 = **모듈 밖으로 나가는 줄 수**(포트 = 통로 트랙). 치르는 것 = 머신 사이를
- * 건너는 벨트 칸. 그래서 **되면 이득, 안 되면 B 그대로**다 — 실패가 손해가 아닌 순서다.
- *
- * ## 합치지 않는 것 셋
- *  - **안에서 끝나는 링크**([isInternalLink]) — 자식·부모 모듈이 서로 대화 없이 포트를 1:1로
- *    맞추고 있다. 한쪽만 합치면 그 짝이 어긋나 홉이 샌다. (양쪽이 **같은 규칙으로** 합치게
- *    만들면 그때 열 수 있다 — 지금은 안 연다.)
- *  - **gap(N/S) 면** — 그쪽은 나가는 방향이 면과 평행이라 이미 깊이로 갈려 달린다. 합치는
- *    기하가 다르므로 따로 다룬다.
- *  - **그릇을 넘는 합** — 합친 벨트가 못 나르면 합치는 순간 조용히 굶는다. 넘으면 거기서
- *    끊고 **다음 벨트를 새로 시작**한다(합칠 수 있는 만큼은 합친다).
- *
- * 실제로 자리가 비었는지는 **여기서 안 본다** — 방출기가 칸마다 점유를 보고 막히면 통째로
- * 물러나고([emitOutputLinks] 의 `push`), 호출자가 B로 다시 깐다. 좌표를 아는 쪽이 보는 게
- * 맞고, 그러면 이 함수가 기하를 두 번 유도하지 않는다.
- */
-function mergeParallelBelts(
-  groups: MachineLinkGroup[],
-  seats: (LinkSeats | undefined)[],
-  side: "from" | "to",
-  perBelt: number,
-): { groups: MachineLinkGroup[]; seats: (LinkSeats | undefined)[] } {
-  const outG: MachineLinkGroup[] = [];
-  const outS: (LinkSeats | undefined)[] = [];
-  const openAt = new Map<string, number>(); // 아직 더 받을 수 있는 벨트 → outG 의 index
-  const total = (m: Map<number, number>): number => [...m.values()].reduce((a, b) => a + b, 0);
-  const start = (g: MachineLinkGroup, s: LinkSeats, key: string): void => {
-    openAt.set(key, outG.length);
-    outG.push({ ...g, from: new Map(g.from), to: new Map(g.to) });
-    outS.push({ ...s, arms: new Map(s.arms), slots: new Map(s.slots) });
-  };
-
-  groups.forEach((g, i) => {
-    const s = seats[i];
-    // 합칠 수 없는 것은 그대로 통과 — 순서도 유지한다(짝짓기가 순서를 본다).
-    if (!s || isInternalLink(g) || s.face === "N" || s.face === "S") {
-      outG.push(g);
-      outS.push(s);
-      return;
-    }
-    const key = `${g.item}:${s.face}:${s.laneDepth}:${s.exitDepth ?? s.laneDepth}`;
-    const at = openAt.get(key);
-    if (at === undefined) return start(g, s, key);
-
-    const tg = outG[at];
-    const ts = outS[at]!;
-    if (total(ts.arms) + total(s.arms) > perBelt) return start(g, s, key); // 그릇 초과 → 새 벨트
-
-    for (const [mi, k] of s.arms) {
-      tg[side].set(mi, (tg[side].get(mi) ?? 0) + k);
-      ts.arms.set(mi, (ts.arms.get(mi) ?? 0) + k);
-      ts.slots.set(mi, [...(ts.slots.get(mi) ?? []), ...(s.slots.get(mi) ?? [])]);
-    }
-  });
-  return { groups: outG, seats: outS };
-}
-
-/**
  * **출력 fan-out 방출** — 그룹마다 [allocateLinkSeats] 가 정한 면·행에 탭을 앉히고, 그 팔들을
  * 모으는 세로 belt 를 깔아 **그 면 바깥으로** 포트 하나를 낸다.
  *
@@ -1286,16 +1084,9 @@ function emitOutputLinks(args: {
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; return; }
       beltCells.push(makeBeltCell(at, vectorToDirection(v.x, v.y), input.beltEntityName, portPair)); // 티어는 후속
     };
-    // ① **수집** — 자기 좌석 구간을 덮는다. **목록이 아니라 구간**으로 돈다([emitInputLinks] ③
-    // 과 같은 모양): 좌석이 머신 여럿에 걸치면 그 사이에 **좌석 없는 행**이 생기는데, 목록만
-    // 깔면 거기가 비어 **벨트가 끊긴다**. 끊긴 벨트는 겹침 검사로 안 잡힌다 — 겹치는 게 아니라
-    // 비어 있는 것이라, 그림은 멀쩡하고 물건만 안 흐른다.
-    //
-    // 머신 하나짜리 그룹(지금 전부)은 좌석이 연속이라 구간 == 목록이다 — 동작 변화 0.
-    // 관통 그룹이 지나가는 남의 행은 `push` 가 점유를 보고 막으므로, 못 지나가면 그룹 통째로
-    // 물러난다(반만 깔린 벨트를 남기지 않는다).
-    const botT = allRows[allRows.length - 1];
-    for (let t = topT; t <= botT && !blocked; t++) {
+    // ① **수집** — 자기 좌석 구간만 덮는다.
+    for (const t of allRows) {
+      if (blocked) break;
       // 끝 칸: 자기 줄로 내려가야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
       const turn = exitDepth > laneDepth ? fv : pfv;
       push(faceCell(mExt, face, laneDepth, t), t === topT ? turn : beltDirV);
@@ -1334,9 +1125,7 @@ function emitOutputLinks(args: {
     // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로). tapAnchor: W 는 서쪽 끝.
     pushLinkPortEnd({
       role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      // 신원은 **안에서 끝나는 링크에만** 단다 — 밖으로 나가는 줄에 달면 짝이 없어 홉이 통째로
-      // 건너뛰어진다([isInternalLink]).
-      line, linkId: isInternalLink(group) ? group.id : undefined, tapAnchor: { x: m0.origin.x, y: trunkStart.y },
+      line, linkId: group.id, tapAnchor: { x: m0.origin.x, y: trunkStart.y },
       laneDepth, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts,
     });
@@ -1477,8 +1266,7 @@ function emitInputLinks(args: {
     // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로). tapAnchor: E 는 동쪽 끝.
     pushLinkPortEnd({
       role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      // 신원은 **안에서 끝나는 링크에만** — [emitOutputLinks] 와 같은 이유.
-      line, linkId: isInternalLink(group) ? group.id : undefined, tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y },
+      line, linkId: group.id, tapAnchor: { x: m0.origin.x + m0.size.w - 1, y: beltTop.y },
       laneDepth: lane.d, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts,
     });
