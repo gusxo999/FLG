@@ -30,7 +30,7 @@ import {
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
-import type { MachineLinkGroup } from "./allocateMachineLinks";
+import { externalLineGroups, type MachineLinkGroup } from "./allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
 import type { Direction } from "../../../types/layout";
@@ -386,10 +386,18 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // 않는다(item ↔ pipe 는 line.kind 로 배타적).
     const ctx = buildTrunkContext(plan, machines, input, isJumpableToClusterPipe);
     const seqRef = { n: 0 };
+    // **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 — 방출기가 링크와 같은 자료구조를 본다.**
+    // 링크 방출([emitOutputLinks])이 이미 group 을 주 자료로 보므로, 탭 방출도 여기 맞춘다
+    // (자료구조 통일 1단계). 팔 수는 [requiredInserterCount] 에서 오므로 planner 값과 **같다** →
+    // 기하·수치 불변(점수 불변). 다음 단계에서 group 의 `from`/`to`(머신마다 팔)를 실제로 쓴다.
+    const groupOf = new Map<string, MachineLinkGroup>();
+    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, linkedKeys)) {
+      groupOf.set(`${g.to.size > 0 ? "input" : "output"}:${g.item}`, g);
+    }
     emitTapInserting({
       plan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
-      ctx, seqRef,
+      ctx, seqRef, groupOf,
     });
     emitTrunkPipe({
       plan, machines, input, prefix, occupancy,
@@ -1389,9 +1397,17 @@ function emitTapInserting(args: {
   ctx: TrunkContext;
   /** [emitTrunkPipe] 와 chestId 순번을 이어 쓰기 위한 공유 카운터. */
   seqRef: { n: number };
+  /**
+   * 외부 줄의 [MachineLinkGroup] — 키 `${role}:${name}`. 방출기가 물건·팔 수를 여기서 읽는다
+   * (링크 방출과 같은 자료구조). 없는 줄(수량 미상·유체)은 옛 방식대로 `planned` 에서 읽는다.
+   */
+  groupOf: Map<string, MachineLinkGroup>;
 }): void {
   const { plan, machines, input, prefix, occupancy, cells, chests, ctx } = args;
   const ext = ctx.ext;
+  /** group 이 든 머신별 팔 수 — 외부 줄은 전 머신 균일이라 첫 값이 곧 그 값이다. */
+  const groupArms = (g: MachineLinkGroup): number =>
+    [...(g.from.size > 0 ? g.from : g.to).values()][0] ?? 1;
 
   // 면별로 이미 쓴 탭 좌석 행. 같은 면의 두 줄(가까운/먼 레인)은 belt 열은 다르지만
   // **좌석은 같은 d=1 열**에 앉으므로, 줄마다 다른 행을 줘야 겹치지 않는다.
@@ -1400,12 +1416,17 @@ function emitTapInserting(args: {
   for (const planned of plan.lines) {
     if (planned.line.kind === "pipe") continue; // 유체는 [emitTrunkPipe] 가 처리한다.
     const line = planned.line;
+    // **물건·팔 수는 group 에서 읽는다**(있으면) — 링크 방출과 같은 자료구조. group 의 팔 수는
+    // [requiredInserterCount] 라 planner 의 `requiredInserterCount` 와 **같은 값**이다(불변).
+    // group 이 없는 줄(수량 미상)만 옛 방식대로 `planned` 에서 읽는다.
+    const group = args.groupOf.get(`${line.role}:${line.name}`);
+    const item = group?.item ?? line.name;
     const face = planned.side as PortFace;
     const fv = faceVector(face); // 바깥 방향(머신 → 면)
     const d = ctx.emitDepthOf(planned); // 가까운 belt=2, 먼=3, 케이스 B=4.
 
     // [Parallel Inserting]: 한 줄이 머신마다 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
-    const taps = Math.max(1, planned.requiredInserterCount ?? 1);
+    const taps = Math.max(1, group ? groupArms(group) : (planned.requiredInserterCount ?? 1));
     const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
     const slot = slotOnFace.get(planned.side) ?? 0;
     if (slot + taps > lateralCap) {
@@ -1442,14 +1463,14 @@ function emitTapInserting(args: {
     const seat = { x: beltEnd.x + ev.x, y: beltEnd.y + ev.y }; // 포트 인서터
     const chestAt = { x: beltEnd.x + 2 * ev.x, y: beltEnd.y + 2 * ev.y }; // 포트 상자(anchor)
 
-    const chestId = `${prefix}-${line.role}-${line.name}-${args.seqRef.n++}`;
+    const chestId = `${prefix}-${line.role}-${item}-${args.seqRef.n++}`;
     const chest: Container = {
       id: chestId,
       kind: "infinity-chest",
       entityName: "infinity-chest",
       origin: { ...chestAt },
       size: { w: 1, h: 1 },
-      content: line.name,
+      content: item,
       role: line.role,
     };
     chests.push(chest);
@@ -1537,7 +1558,7 @@ function emitTapInserting(args: {
       chest,
       cells: beltCells, // 트렁크 spine — Routing 선이 벨트를 따라간다.
       meta: {
-        item: line.name,
+        item,
         side: planned.side, // 채널 장부·반출 계획이 보는 값 — 어느 **변**이냐.
         laneDepth: d,
         // meta.inserter 는 소비자(채널 장부·골든)가 보는 'normal'|'long' 라벨이다 — planner 의
