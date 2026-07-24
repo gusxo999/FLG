@@ -283,3 +283,49 @@ describe("유체 출력 반출 — 머신 유체 → 무한파이프", () => {
     expect(coal.chest.kind).toBe("infinity-chest");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 유체 관문 — **planner 가 아니라 generateModule 이 판정한다**(2026-07-24).
+//
+// 유체 줄의 면은 머신 fluid_box 가 강제하므로(fluidTrunk.side) planner 에 보내지 않고
+// generateModule 이 직접 [PlannedLine] 을 만든다. 그래서 "유체가 자리를 못 잡는" 세 경우의
+// 판정도 여기로 옮겨 왔다 — 예전엔 planClusterPorts 가 complex 로 냈다(pipe-side-unresolved
+// · fluid-requires-trunk-pipe · multi-fluid-not-supported).
+//
+// 셋 다 결과는 같다: **유체는 트렁크(tap)로만 성립하므로 통째로 정직히 실패**한다.
+// 반만 놓으면 유체를 못 받는 머신이 조용히 굶는다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패", () => {
+  it("fluidTrunk 가 없으면(회전 미해결) 전부 unrouted — 면을 지어내지 않는다", () => {
+    const { fluidTrunk: _drop, ...noTrunk } = plasticBar(3);
+    const mod = generateModule(noTrunk as ModuleInput);
+    expect(mod.unroutedLines.map((l) => l.name).sort()).toEqual(
+      ["coal", "petroleum-gas", "plastic-bar"].sort(),
+    );
+    expect(mod.inputPorts).toHaveLength(0);
+    expect(mod.outputPorts).toHaveLength(0);
+  });
+
+  it("유체가 둘이면 전부 unrouted — v1 은 모듈당 유체 한 줄", () => {
+    const base = plasticBar(3);
+    const mod = generateModule({ ...base, lines: [...base.lines, inFluid("water")] });
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("water");
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("petroleum-gas");
+    expect(mod.outputPorts).toHaveLength(0);
+  });
+
+  it("아이템이 탭에 못 서면(다이렉트) 유체까지 전부 unrouted — 유체는 다이렉트가 없다", () => {
+    // 긴팔이 없으면 파이프 면(E)은 케이스 B 를 못 써 아이템 벨트가 0줄 → W 한 줄에 3줄을
+    // 못 담아 탭이 깨진다. 아이템만이면 다이렉트로 물러나면 그만이지만, 유체는 인서터로
+    // 못 옮기므로 다이렉트가 아예 없다 → 이 모듈은 통째로 옛 경로로 넘어가야 한다.
+    const base = plasticBar(3);
+    const mod = generateModule({
+      ...base,
+      longInserter: undefined,
+      lines: [...base.lines, inItem("iron-plate")],
+    });
+    expect(mod.supply?.mode).toBe("direct");
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("petroleum-gas");
+    expect(mod.outputPorts).toHaveLength(0);
+  });
+});

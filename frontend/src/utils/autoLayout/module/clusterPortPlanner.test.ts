@@ -25,47 +25,30 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
     expect(plan).toEqual({ ok: true, lines: [] });
   });
 
-  // ── 트렁크 파이프(유체) — docs/auto-layout-wizard.trunk-pipe.md ──
+  // ── 파이프 면의 **아이템** 배치 — docs/auto-layout-wizard.trunk-pipe.md ──
+  // 유체 **줄** 자체는 여기서 안 다룬다(2026-07-24, generateModule 이 맡는다 →
+  // trunkPipe.test.ts "유체 관문"). 여기 남은 건 `pipeSide` 가 **아이템**을 어떻게 미느냐다.
 
-  it("유체 줄인데 pipeSide 가 없으면 complex — 면은 우리가 못 고른다", () => {
-    // 유체가 붙을 면은 머신 fluid_box 가 정한다. 호출자가 회전을 풀어 pipeSide 를 넘겨야
-    // 한다 — 못 풀었으면 지어내지 않고 옛 경로로 위임한다.
+  it("유체 줄이 들어오면 정직하게 거절 — 조용히 사라지면 그 머신이 굶는다", () => {
     const plan = planClusterPorts({
       lines: [item("iron", "input"), fluid("water", "input")],
       inserters: longInserters,
       outputSide: "W",
-    });
-    expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("pipe-side-unresolved");
-  });
-
-  it("다이렉트 인서팅은 유체를 못 다룬다 — 인서터로 유체를 옮길 수 없다", () => {
-    const plan = planClusterPorts({
-      lines: [fluid("water", "input")],
-      inserters: longInserters,
-      outputSide: "W",
       pipeSide: "E",
-      slotsPerFace: { WE: 3, NS: 3 }, // 1:1(다이렉트) 모드
     });
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("fluid-requires-trunk-pipe");
+    if (!plan.ok) expect(plan.reason).toBe("fluid-handled-by-generateModule");
   });
 
-  it("유체 = clusterBeltDepth 1 · reach 없음. 그 면의 아이템은 케이스 B(reach 2, d=4) 한 줄뿐", () => {
-    // 화학 공장 꼴: 유체 입력 1 + 아이템 입력 1 + 아이템 출력 1.
-    const lines = [
-      fluid("petroleum-gas", "input"),
-      item("coal", "input"),
-      item("plastic-bar", "output"),
-    ];
+  it("파이프 면의 아이템은 케이스 B(reach 2, d=4) 한 줄뿐", () => {
+    // 화학 공장 꼴의 **아이템 쪽**: 파이프가 E 면 좌석을 먹은 상태(pipeSide)에서의 배치.
+    const lines = [item("coal", "input"), item("plastic-bar", "output")];
     const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeSide: "E" });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const by = (n: string) => plan.lines.find((l) => l.line.name === n)!;
 
-    // 파이프: E 면(머신이 정함), clusterBeltDepth 1(머신에 닿아야 한다), reach 없음.
-    expect(by("petroleum-gas")).toMatchObject({ side: "E", clusterBeltDepth: 1, reach: undefined });
-    // 아이템 입력도 입력면(E) — 다만 좌석(depth 1)이 파이프라 케이스 B(reach 2)로 밀린다.
+    // 아이템 입력은 입력면(E) — 다만 좌석(depth 1)이 파이프라 케이스 B(reach 2)로 밀린다.
     expect(by("coal")).toMatchObject({ side: "E", clusterBeltDepth: 4, reach: 2 });
     // 출력은 평소대로 출력면(W) 가까운 벨트.
     expect(by("plastic-bar")).toMatchObject({ side: "W", clusterBeltDepth: 2, reach: 1 });
@@ -73,7 +56,6 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
 
   it("파이프 면은 아이템 벨트가 하나뿐 — 둘째 아이템 입력은 출력면으로 밀린다", () => {
     const lines = [
-      fluid("petroleum-gas", "input"),
       item("coal", "input"),
       item("iron-plate", "input"),
       item("thing", "output"),
@@ -83,22 +65,13 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
     if (!plan.ok) return;
     const sides = plan.lines.map((l) => `${l.line.name}:${l.side}${l.clusterBeltDepth}`);
     // E 면 벨트는 케이스 B 하나뿐(reach 2) → coal 이 쓰고, iron-plate 는 W 잔여 벨트로.
-    expect(sides).toEqual([
-      "petroleum-gas:E1",
-      "coal:E4",
-      "iron-plate:W3",
-      "thing:W2",
-    ]);
+    expect(sides).toEqual(["coal:E4", "iron-plate:W3", "thing:W2"]);
   });
 
   it("점프 가능하면 파이프 면 좌석이 살아난다 — reach 1 벨트가 그 면에 선다", () => {
     // isJumpableToClusterPipe: 파이프가 상자 칸 하나만 먹고 지하로 벨트를 넘어 ClusterPipe 로
     // 나간다 → 좌석 줄이 살아서 이 면은 일반 면과 같은 벨트 목록(케이스 B 아님).
-    const lines = [
-      fluid("petroleum-gas", "input"),
-      item("coal", "input"),
-      item("plastic-bar", "output"),
-    ];
+    const lines = [item("coal", "input"), item("plastic-bar", "output")];
     const plan = planClusterPorts({
       lines,
       inserters: longInserters,
@@ -109,15 +82,13 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const by = (n: string) => plan.lines.find((l) => l.line.name === n)!;
-    // 파이프 계획은 그대로 상자 칸(d1) — 실제 ClusterPipe 깊이는 방출기가 정한다.
-    expect(by("petroleum-gas")).toMatchObject({ side: "E", clusterBeltDepth: 1, reach: undefined });
     // 아이템 입력이 **가까운 벨트(d2, reach 1)** 로 — 케이스 B(d4, reach 2)가 아니다.
     expect(by("coal")).toMatchObject({ side: "E", clusterBeltDepth: 2, reach: 1 });
   });
 
   it("점프 가능 + reach {1}만: 유체 레시피가 케이스 B 없이 성립한다", () => {
     // 케이스 B 는 reach≥2 전용이라, 긴팔이 없으면 점프 없인 이 레시피가 complex 로 떨어졌다.
-    const lines = [fluid("water", "input"), item("a", "input"), item("b", "output")];
+    const lines = [item("a", "input"), item("b", "output")];
     const plan = planClusterPorts({
       lines,
       inserters: regularInserters,
@@ -134,7 +105,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
 
   it("reach≥2 인서터가 없으면 파이프 면에 아이템을 못 놓는다 — 케이스 B 는 긴팔 전용", () => {
     // reach 1 인서터는 좌석(depth 1)에 앉아야 하는데 그 자리가 파이프다.
-    const lines = [fluid("water", "input"), item("a", "input"), item("b", "input"), item("c", "output")];
+    const lines = [item("a", "input"), item("b", "input"), item("c", "output")];
     const plan = planClusterPorts({ lines, inserters: regularInserters, outputSide: "W", pipeSide: "E" });
     // W 면 벨트 1개(reach 1) 뿐 → 아이템 3줄을 못 담는다.
     expect(plan.ok).toBe(false);

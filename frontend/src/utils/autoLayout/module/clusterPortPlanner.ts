@@ -249,23 +249,20 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
 
   if (lines.length === 0) return { ok: true, lines: [] };
 
-  // ── 유체(pipe) 줄 — [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md) ──
-  // 면을 우리가 못 고른다(머신 fluid_box 가 정한다). 호출자가 머신을 돌려 그 면을 W/E 로
-  // 맞춘 결과가 `pipeSide` 다. depth 는 늘 1 — 파이프는 팔이 없어 머신에 닿아야 한다.
-  const pipeLines = lines.filter((l) => l.kind === "pipe");
+  // ── 유체(pipe) 줄은 **여기서 안 다룬다**(2026-07-24) ──────────────────────────
+  // 유체 면은 우리가 못 고른다 — 머신 fluid_box 가 강제하고, 그 결과(fluidTrunk.side)를 아는
+  // [generateModule] 이 유체 [PlannedLine] 을 직접 만든다. 자리를 못 잡는 세 경우
+  // (트렁크 미해결·다이렉트·다중 유체)의 판정도 그리로 옮겼다 — 셋 다 "통째로 정직히 실패"로
+  // 같은 결과다(테스트: trunkPipe.test.ts "유체 관문").
+  //
+  // 여기 남은 유체 관련 입력은 [PortPlannerInput.pipeSide] 하나뿐이고, 그건 **아이템** 배치용
+  // 이다: 그 면의 좌석(d1)을 파이프가 먹으므로 아이템을 케이스 B(깊이)로 민다.
+  //
+  // 그래도 **조용히 무시하지는 않는다** — 유체 줄이 여기까지 왔다면 배선이 어긋난 것이고,
+  // 조용히 사라지면 그 머신이 유체를 못 받고 굶는데 아무도 모른다.
   const beltLines = lines.filter((l) => l.kind === "belt");
-  if (pipeLines.length > 0) {
-    // 다이렉트 인서팅은 유체를 다룰 수 없다 — 상자와 머신을 인서터로 잇는 방식인데
-    // 유체엔 인서터가 없다. 유체는 **파이프로만** 연결된다 → 트렁크 파이프가 유일한 길.
-    if (input.slotsPerFace) {
-      return { ok: false, complex: true, reason: "fluid-requires-trunk-pipe" };
-    }
-    if (!input.pipeSide) {
-      return { ok: false, complex: true, reason: "pipe-side-unresolved" };
-    }
-    if (pipeLines.length > 1) {
-      return { ok: false, complex: true, reason: "multi-fluid-not-supported" }; // v1 범위(§5)
-    }
+  if (beltLines.length !== lines.length) {
+    return { ok: false, complex: true, reason: "fluid-handled-by-generateModule" };
   }
 
   const lanes = laneSlots(inserters);
@@ -322,10 +319,6 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
 
   /** 줄 → 그 줄의 배정들(줄 수만큼). 등장 순서 보존용. */
   const assigned = new Map<IoLine, PlannedLine[]>();
-  // 유체 줄 먼저 — 자리가 강제돼 **선택의 여지가 없다**. 자유도 없는 것부터 못박는다.
-  for (const line of pipeLines) {
-    assigned.set(line, [{ line, side: input.pipeSide!, clusterBeltDepth: 1, reach: undefined }]);
-  }
 
   // ── 면별 좌석 행 장부 ──
   // 벨트 자리와 **따로 세는 두 번째 자원**이다. 배정 하나는 벨트 슬롯 1개를 먹으면서 팔은

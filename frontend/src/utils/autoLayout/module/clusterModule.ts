@@ -268,9 +268,28 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
 
-  // 유체(pipe) 줄도 planner 로 보낸다 — [트렁크 파이프]가 자리를 잡는다(trunk-pipe §4).
-  // fluidTrunk 가 없으면(=호출자가 회전을 못 풀었으면) planner 가 complex 로 위임한다.
   const plannedLines = input.lines;
+
+  // ── 유체(pipe) 줄 — generateModule 이 직접 조립·면찍기(planner 유체 역할 제거) ──────
+  // 유체 면은 우리가 못 고른다 — 머신 fluid_box 가 강제하고 [ModuleInput.fluidTrunk].side
+  // 로 온다. 그래서 planner 에 안 보내고 여기서 [PlannedLine] 을 만든다([planClusterPorts]
+  // 가 하던 stamping 을 옮김: side=fluidTrunk.side, depth=1, reach 없음). planner 의 **케이스 B
+  // 아이템 예약은 그대로**다 — input.fluidTrunk.side 를 pipeSide 로 따로 받아 그 면 아이템을
+  // 깊이로 밀 뿐, 유체 **줄**은 안 본다.
+  const pipeLines = input.lines.filter((l) => l.kind === "pipe");
+  const pipePlanned: PlannedLine[] = input.fluidTrunk
+    ? pipeLines.map((line) => ({
+        line,
+        side: input.fluidTrunk!.side,
+        clusterBeltDepth: 1,
+        reach: undefined,
+      }))
+    : [];
+  // 유체는 트렁크(tap)로만 성립한다 — 자리가 아예 없으면(트렁크 미해결·다중 유체 v1 밖)
+  // 통째로 정직히 실패한다(현행 보존: 예전엔 planner 가 complex→다이렉트→!plan.ok 로
+  // 전부 unrouted 였다).
+  const fluidCannotPlace =
+    pipeLines.length > 0 && (!input.fluidTrunk || pipeLines.length > 1);
 
   // 안내원(planner): 보장된 columnTapCapacity 슬롯을 줄마다 1:1 못박는다
   // (natural-divergence 대체). 각 줄 → {면 W/E, 레인 near/far, 인서터}. 결과 순서가
@@ -329,7 +348,9 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const seatRowsUsed = seatRowsByFace(faceLedger);
 
   const plannerInput = {
-    lines: plannedLines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)),
+    lines: plannedLines.filter(
+      (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
+    ),
     inserters: plannerInserters,
     outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
     nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
@@ -362,7 +383,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   }
 
   const plan = supply.plan;
-  if (!plan.ok) {
+  // 유체는 트렁크(tap)로만 성립하므로, 자리가 없거나(fluidCannotPlace) 아이템이 다이렉트로
+  // 떨어지면(유체는 다이렉트 불가) 통째로 정직히 실패한다 — 유체 재료 하나가 안 되면 그
+  // 모듈은 옛 경로로 넘어가야 하기 때문(예전엔 planner 가 complex 로 같은 결과를 냈다).
+  const fluidNeedsTap = pipeLines.length > 0 && (fluidCannotPlace || supply.mode === "direct");
+  if (!plan.ok || fluidNeedsTap) {
     // 링크가 없는 나머지 줄만 unrouted — 링크 줄은 위에서 이미 성패가 갈렸다(자기 몫만
     // unroutedLines 에 넣거나 포트를 냈다). 여기서 다시 넣으면 성공한 링크까지 오염된다.
     for (const l of plannedLines) if (!linkedKeys.has(`${l.role}:${l.name}`)) unroutedLines.push(l);
@@ -384,7 +409,12 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // "나란한 유체판"으로 갈라놓은 두 개념이다 — 둘 다 같은 [buildTrunkContext](기둥 extent·
     // stagger 기준)를 보고, 같은 seqRef 로 chestId 순번을 이어 쓰되, 서로의 줄을 건드리지
     // 않는다(item ↔ pipe 는 line.kind 로 배타적).
-    const ctx = buildTrunkContext(plan, machines, input, isJumpableToClusterPipe);
+    // 아이템 plan(planner)과 유체 배정(pipePlanned, generateModule 이 직접 조립)을 합쳐 트렁크
+    // 기하를 **함께** 본다 — stagger 와 pipeJumpMode 는 아이템·유체를 한 번에 훑어야 어긋나지
+    // 않는다([buildTrunkContext]). 유체 PlannedLine 은 옛 planner 가 찍던 것과 값이 같아
+    // (side=fluidTrunk.side·depth=1) 기하·수치 불변이다.
+    const trunkPlan = { ok: true as const, lines: [...plan.lines, ...pipePlanned] };
+    const ctx = buildTrunkContext(trunkPlan, machines, input, isJumpableToClusterPipe);
     const seqRef = { n: 0 };
     // **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 — 방출기가 링크와 같은 자료구조를 본다.**
     // 링크 방출([emitOutputLinks])이 이미 group 을 주 자료로 보므로, 탭 방출도 여기 맞춘다
@@ -395,12 +425,12 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       groupOf.set(`${readLinkRole(g)}:${g.item}`, g);
     }
     emitTapInserting({
-      plan, machines, input, prefix, occupancy,
+      plan: trunkPlan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
       ctx, seqRef, groupOf,
     });
     emitTrunkPipe({
-      plan, machines, input, prefix, occupancy,
+      plan: trunkPlan, machines, input, prefix, occupancy,
       cells, chests, inputPorts, outputPorts, unroutedLines,
       ctx, seqRef,
     });
