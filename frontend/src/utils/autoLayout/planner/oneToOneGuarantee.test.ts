@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import { EntityType } from "../../../types/layout";
 import type { IoLine } from "../module/clusterPortPlanner";
@@ -60,7 +60,7 @@ const COUNTS: [number, number, number][] = [
 function run(specs: NodeSpec[]) {
   const pack = packModuleTree(specs, config);
   const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
-  const perim = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+  const perim = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
     beltEntityName: "transport-belt",
     inserterEntityName: "inserter",
   });

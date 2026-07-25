@@ -11,7 +11,7 @@ import {
 } from "./channelGeometryPlanner";
 import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
 
@@ -176,7 +176,7 @@ const specs: NodeSpec[] = [
 function runPipeline() {
   const pack = packModuleTree(specs, config);
   const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-  const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+  const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
     beltEntityName: "transport-belt",
     inserterEntityName: "inserter",
   });

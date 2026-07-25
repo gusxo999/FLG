@@ -13,7 +13,7 @@
  */
 import { packModuleTree, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import { routeModuleHops, type HopConfig } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./modulePerimeterPass";
 import { moduleExtent } from "./modulePacking";
 import { cellKey } from "../util/helper";
 import { EntityType } from "../../../types/layout";
@@ -64,7 +64,7 @@ export function measurePipeline(
 ): PipelineMetrics {
   const pack = packModuleTree(specs, config);
   const hop = routeModuleHops(pack, hopConfig);
-  const perim = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+  const perim = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
     beltEntityName: hopConfig.beltEntityName,
     inserterEntityName: config.inserterEntityName,
   });

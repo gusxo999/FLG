@@ -98,7 +98,7 @@ export interface PerimeterPassResult {
  * - chest: index n (= seat).
  * @param trunkNeighbor path[0] 안쪽으로 붙은 트렁크 헤드 셀(방향 계산용, input belt[0]가 향할 곳).
  */
-function layPath(
+function layBeltPath(
   path: { x: number; y: number }[],
   trunkNeighbor: { x: number; y: number },
   isInput: boolean,
@@ -195,7 +195,7 @@ function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number
  * (relocations)를 **설명으로 반환**한다 — 적용은 호출자(moduleWizard)가 Area 를 지을 때 한다.
  * 실패한 상자만 skip(로컬 ring 유지) — 항상 ok:true.
  */
-export function relocateChestsToPerimeter(
+export function rePathToPerimeter(
   pack: PackResult,
   strippedChestIds: Set<string>,
   hopCells: PlacedCell[],
@@ -261,7 +261,7 @@ export function relocateChestsToPerimeter(
     if (!res.ok) { fail(port.chest.id, `reservation not emittable: ${res.reason}`); continue; }
 
     const isFluid = port.line.kind === "pipe";
-    // layPath 입력 = [anchor, ...외곽경로]. anchor(옛 상자 자리)만 비운다 — seat 인서터는
+    // layBeltPath 입력 = [anchor, ...외곽경로]. anchor(옛 상자 자리)만 비운다 — seat 인서터는
     // 남아서 이 자리에 깔릴 belt 에서 집어 머신에 넣는다(픽업 셀 불변).
     // 벨트가 최소 1칸은 있어야 인서터가 집을 대상이 belt 다(길이 2 미만이면 anchor 가
     // feeder 로 덮여 인서터가 인서터를 집게 된다) → 그런 배정은 예약 위반으로 skip.
@@ -277,7 +277,7 @@ export function relocateChestsToPerimeter(
     // 유체는 좌석이 없다(파이프).
     const stripSeat = !isFluid && seatIsBeltFeeder(port);
     // 피더면 좌석 자리도 경로 앞(트렁크쪽)에 넣어 belt 로 덮는다. 그러면 트렁크 헤드는 좌석보다
-    // 한 칸 더 안쪽이다([layPath] 의 input belt[0] 방향 계산용).
+    // 한 칸 더 안쪽이다([layBeltPath] 의 input belt[0] 방향 계산용).
     const path = stripSeat ? [seat, anchor, ...res.path] : [anchor, ...res.path];
     const trunkHead = stripSeat ? { x: seat.x - fv.x, y: seat.y - fv.y } : seat;
 
@@ -302,7 +302,7 @@ export function relocateChestsToPerimeter(
 
     const { belts, feeder, chestCell } = isFluid
       ? layPipePath(path, port.chest, config.pipeEntityName!)
-      : layPath(path, trunkHead, isInput, port.chest, config);
+      : layBeltPath(path, trunkHead, isInput, port.chest, config);
 
     // ── 설명 축적(모듈 그래프 미변형) ──
     // 옛 chest ghost(@anchor)·feeder(@anchor−fv) 는 떼어낼 좌표로, 새 belt/feeder/chest 셀은

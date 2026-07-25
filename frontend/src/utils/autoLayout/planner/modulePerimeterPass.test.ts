@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";
 import { seatIsBeltFeeder } from "./moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
@@ -54,7 +54,7 @@ function onEdge(p: { x: number; y: number }, u: { minX: number; minY: number; ma
 /** 순수 결과 적용 후의 유효 셀 = (mod.cells − droppedCellKeys) + addedCells. moduleWizard 어댑터 동형. */
 function effectiveCells(
   pack: ReturnType<typeof packModuleTree>,
-  res: ReturnType<typeof relocateChestsToPerimeter>,
+  res: ReturnType<typeof rePathToPerimeter>,
 ): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
   for (const pl of pack.placements)
@@ -64,7 +64,7 @@ function effectiveCells(
   return out;
 }
 
-describe("relocateChestsToPerimeter", () => {
+describe("rePathToPerimeter", () => {
   it("순수 — pack 미변형(chest.origin·mod.cells 그대로), 이사 결과는 relocations 로 반환", () => {
     // 예약 on — 채널이 lane 만큼 넓어져야 channel-host 상자도 통로가 난다.
     const pack = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
@@ -77,7 +77,7 @@ describe("relocateChestsToPerimeter", () => {
     expect(survBefore.some((c) => !onEdge(c.origin, u))).toBe(true);
     const cellsBefore = JSON.stringify(pack.placements.map((pl) => pl.module.cells.length));
 
-    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -105,7 +105,7 @@ describe("relocateChestsToPerimeter", () => {
   it("유효 셀 겹침 0 — 적용(drop+add) 후에도 좌표 고유", () => {
     const pack = packModuleTree(specs, config);
     const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -121,7 +121,7 @@ describe("relocateChestsToPerimeter", () => {
     const pack = packModuleTree(specs, config);
     const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
     const survBefore = new Map(survivingChests(pack, hop.strippedChestIds).map((c) => [c.id, c.origin]));
-    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -173,7 +173,7 @@ describe("relocateChestsToPerimeter", () => {
         });
       }
 
-    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -202,7 +202,7 @@ describe("relocateChestsToPerimeter", () => {
     const run = () => {
       const pack = packModuleTree(specs, config);
       const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-      const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+      const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
         beltEntityName: "transport-belt",
         inserterEntityName: "inserter",
       });
@@ -228,7 +228,7 @@ describe("relocateChestsToPerimeter", () => {
     const pack = packModuleTree(branch, { ...config, reservePerimeterLanes: true, channelGeometry: true });
     const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
     expect(hop.failures).toBe(0);
-    const res = relocateChestsToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });

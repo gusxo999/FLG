@@ -33,7 +33,7 @@ import {
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { relocateChestsToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
@@ -433,11 +433,11 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   //     lane 안에 결정적 belt(직선 or ㄱ자)를 깔아 전역 외곽으로 옮긴다(탐색 없음). lane 이
   //     막히거나 미지원 배정(형제에 막힌 N/S 변→채널)인 상자만 건너뛰어 로컬 ring 에 남기고
   //     트리는 모듈 경로를 유지한다(회귀 0).
-  // relocateChestsToPerimeter 는 moduleHop 처럼 **순수**하다(pack 미변형) — 무엇을 떼고
+  // rePathToPerimeter 는 moduleHop 처럼 **순수**하다(pack 미변형) — 무엇을 떼고
   // (droppedCellKeys) 무엇을 놓고(addedCells) 상자가 어디로 가는지(relocations)를 반환하고,
   // 적용은 아래 어댑터에서 Area 를 지을 때 한다.
   const perim = AUTO_LAYOUT_PERIMETER_PASS
-    ? relocateChestsToPerimeter(pack, hopRes.strippedChestIds, hopRes.cells, {
+    ? rePathToPerimeter(pack, hopRes.strippedChestIds, hopRes.cells, {
         beltEntityName: options.beltEntityName,
         inserterEntityName: options.inserterEntityName,
         pipeEntityName: options.pipeEntityName, // 유체 포트는 파이프로 반출한다.
