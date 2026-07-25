@@ -37,6 +37,7 @@ tags: [moc]
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[진행]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
 | [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[진행]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인) | `#placement` `#fluid` |
 | [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). **실측 성공**(`wood ← water`, module 경로 1 홉). v1=모듈당 유체 1줄, 다-유체는 옛 경로 | `#placement` `#fluid` |
+| [.fluid-underground-crossing](auto-layout-wizard.fluid-underground-crossing.md) | ↳ **[계획]** 유체 지하 횡단을 장부 안으로 — 페어링 규칙(`isJumpAllowed`)은 라우터에 이미 있고 장부 행은 이미 절대 좌표. 모듈 내부 지하파이프 corridor 미기록 결함 포함 | `#placement` `#fluid` `#routing` |
 | [.fluid-hop-reservation](auto-layout-wizard.fluid-hop-reservation.md) | ↳ **[계획]** 유체 홉을 채널 기하 예약 안으로 — 장부는 이미 유체 트랙을 잡는데 라우터가 그 계획을 버린다. 인접(합류) 규칙 + 유체 지상 우선권 + 탐색 폴백 제거 | `#placement` `#fluid` `#routing` |
 | [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | ↳ **[계획]** 1:1 의 채널 예약 결함(지상 배정 all-or-nothing)과 수리 계획 + 지하 실패 시각화 — 트렁크 복귀로 긴급성 하락 | `#placement` `#routing` |
 | [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
