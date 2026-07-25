@@ -4,6 +4,17 @@ tags: [auto-layout, placement, routing]
 
 # S-LAYER — 인접 레이어 사이 라우팅 채널 예약
 
+> **⚠️ 상태(2026-07-25): 이 전략의 본체는 코드에서 삭제됐다** (리팩토링 Phase 3).
+> tidy-tree 배치·left-edge 트랙 배정·BFS 채널 라우팅은 `layeredWizard.ts` 에 더 이상 없다.
+>
+> **그러나 예약 철학은 살아 있다.** 모듈 파이프라인이 이걸 **상위 호환으로 계승**했다 —
+> 예약 단위가 "폭(몇 줄이 지나나)" 에서 "기하(어느 x·y 구간을 누가)" 로 올라갔다:
+> [[auto-layout-wizard.channel-geometry-reservation]] 가 현행 단일 출처다.
+>
+> 이 문서를 남기는 이유: **왜 채널을 비워 두는가**라는 근본 논거가 여기 있고,
+> 그건 새 설계에서도 그대로 유효하기 때문이다. 코드 인용은 이제 역사 기록으로 읽는다.
+
+
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md) — 배치/전략(§5.5 전략 등록부), [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 

@@ -90,15 +90,39 @@ Phase 3 이 S-LAYER 본체를 지우며 그 안에 심겨 있던 체크포인트
 
 ---
 
-## 후속 작업 (P6-1 이후)
+## 후속 작업 — 실행 결과 (2026-07-25)
 
-| # | 작업 | 트리거 |
+| # | 작업 | 상태 |
 |---|---|---|
-| P6-1 | `code-folders.md` 갱신 | Phase 3 파일 목록 변화 |
-| P6-2 | `auto-layout-wizard.md`·`placement-search.md` — 듀얼 경로/플래그 제거 반영 | Phase 5 |
-| P6-3 | `s-layer-channel-reservation.md` 상단에 "본체 삭제됨, 철학은 channel-geometry 가 계승" 노트 | Phase 3 |
-| P6-4 | 본 감사의 판정 실행(업데이트 3건 + 노트 2건) | P6-0 |
-| P6-5 | `known-limits.md` — "옛 경로로 폴백" → "fallback 실패" | Phase 3 |
-| ~~P6-6~~ | ~~시각화 체크포인트 재이식~~ — **불필요**. 기능을 재이식하는 대신 제거했다(실험용이었음) | — |
+| P6-1 | `code-folders.md` 갱신 | ✅ "폴더 밖 = 옛 경로" 를 실측대로 교체(공용 기반 vs 죽은 무리) + tsc 함정 정정 |
+| P6-2 | `auto-layout-wizard.md`·`placement-search.md` | ⚠️ **부분** — 상태 배너만 달았다. §5.5 전략 등록부·§7 흐름 재집필은 **새 전략 명명 후** |
+| P6-3 | `s-layer-channel-reservation.md` 노트 | ✅ 본체 삭제·철학 계승 명시 |
+| P6-4 | 감사 판정 실행 | ✅ priority-ordering(죽은 인용 2 수정 + P10·P11 추가), trunk-redesign(구현됨), cluster-redesign·pipeline-metrics 노트 |
+| P6-5 | `known-limits.md` | ✅ §12 해소 처리(단, 드래그 재라우팅은 여전히 무방비 — 범위만 줄음) |
+| ~~P6-6~~ | ~~시각화 체크포인트 재이식~~ | — 기능을 제거했다(실험용이었음) |
 
-**삭제 대상 문서는 없다.** 7개 모두 유지 또는 갱신이다.
+## 남은 결정 두 개
+
+### ① 모듈 파이프라인의 **전략 이름**
+
+`placement-search.md` §5.5 는 전략을 이름으로 등록한다(S-EXH·S-LAYER·S-DP·S-MEMO).
+지금 도는 것에는 이름이 없다 — "모듈 파이프라인"은 구현 서술어지 전략명이 아니다.
+이름이 정해져야 §5.5 등록부와 §7 흐름을 제대로 고칠 수 있다.
+(이 저장소 관례상 명명은 사용자 몴 — `trunk-redesign` 머릿말 참조.)
+
+### ② 죽은 옛 경로 무리 삭제 여부
+
+P6-1 실측으로 드러난 묶음. **사용자에게 보이는 UI 토글이 포함**돼 확인이 필요하다
+(README "폐기 결정 정책" 2항).
+
+| 항목 | 근거 |
+|---|---|
+| `clusterTrunkMerge.ts` (+테스트) | 임포트하는 프로덕션 코드 0개 |
+| `externalMergePass.wrapExternalsWithMerge` | 호출자 테스트뿐 |
+| `externalGatherPass.gatherExternalsToPoints` | 호출자 테스트뿐 |
+| `areaUnification.wrapExternalsAroundPerimeter` | 호출자 테스트뿐 |
+| `mergeGrouping.ts` | `externalMergePass` 만 쓴다 → 전이적 사망 |
+| `ContainerWizardInput.mergeSupplyBoxes` | 읽는 코드 없음 |
+| **디버 탭의 MERGE BOXES / GATHER BOXES 토글** | **아무 일도 안 한다** — 가리키던 패스가 사라졌다 |
+
+지우면 디버 탭에서 버튼 두 개가 없어진다. 남기면 거짓말하는 토글이 그대로 있다.

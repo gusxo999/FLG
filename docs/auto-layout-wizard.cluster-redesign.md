@@ -8,6 +8,11 @@ tags: [auto-layout, placement, routing]
 > **관련 문서:** [.machine-link](auto-layout-wizard.machine-link.md) · [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) · [.known-limits](auto-layout-wizard.known-limits.md)
 > **용어:** [[용어사전#ColumnCluster|ColumnCluster]] · [[용어사전#GridCluster|GridCluster]] · [[용어사전#ParallelBelt|ParallelBelt]] · [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]]
 > **상태:** 설계 (2026-07-22). 구현 미착수.
+>
+> **노트(2026-07-25):** 이 문서가 근거로 삼던 `pickClusterShape`(기둥 탭 용량 초과 →
+> 2D 필요 판정)는 **삭제됐다.** 유일한 호출처가 Phase 3 에서 지운 옛 S-LAYER
+> 경로였고, 모듈 경로는 `columnTapCapacity` 를 직접 쓴다. 이 설계를 착수할 때
+> **"판정기가 이미 있다"고 오해하지 말 것** — 새로 만들어야 한다.
 
 ## 한 줄 요약
 

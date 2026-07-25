@@ -34,15 +34,32 @@ tags: [auto-layout, placement, routing]
 
 | #   | 결정점                         | 현재 기준                                               | 분류    | 코드                                                                                                                                                                 |
 | --- | --------------------------- | --------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P1  | **연결 처리 순서** (외부상자 배치)      | 삽입 순서 = DFS 노드 → 재료 → 머신, 출력은 입력 뒤                  | **Q** | [layeredWizard.ts:530](../frontend/src/utils/autoLayout/layeredWizard.ts#L530), [areaUnification.ts:320](../frontend/src/utils/autoLayout/areaUnification.ts#L320) |
+| P1  | **연결 처리 순서** (외부상자 배치)      | 삽입 순서 = DFS 노드 → 재료 → 머신, 출력은 입력 뒤                  | **Q** | [areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) — 드래그 재라우팅 경로에만 남음. 위저드 본패스의 상자 배치는 P10/P11 로 대체됐다 |
 | P2  | **셀 후보 정렬** (한 연결 내)        | `machine.origin`(좌상단 코너) 맨해튼 거리 오름차순, 첫 라우팅 성공 셀 채택 | **Q** | [areaUnification.ts:341](../frontend/src/utils/autoLayout/areaUnification.ts#L341)                                                                                 |
 | P3  | **ring 성장 변 선택**            | 실패한 chest의 머신 최근접 변만 +1 (전체 링 성장 회피)                | **Q** | [areaUnification.ts:234](../frontend/src/utils/autoLayout/areaUnification.ts#L234)                                                                                 |
 | P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/routeFallback.ts#L143)                                                                                     |
 | P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73)                                                                                       |
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
-| P7  | **트렁크 seed 점수**             | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소                | **Q** | [trunkPath.ts:232](../frontend/src/utils/autoLayout/trunkPath.ts#L232)                                                                                             |
+| P7  | **트렁크 seed 점수**             | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소                | **Q** | [module/trunkPath.ts](../frontend/src/utils/autoLayout/module/trunkPath.ts)                                                                                             |
 | P8  | **머지 그룹핑 게이트**              | 용량(총수요 ≤ beltCap, 머신별 ≤ tapCap, 크기 ≤ maxTaps)       | **C** | [placement-search §7.2](auto-layout-wizard.placement-search.md)                                                                                                    |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
+| P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](auto-layout-wizard.fluid-hop-reservation.md) |
+| P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](auto-layout-wizard.fluid-hop-reservation.md) |
+
+### P10·P11 — "제약 센 것" 이 아니라 "실패하면 비싼 것" 먼저 (2026-07-25)
+
+§1 의 배치 원리는 fail-first(제약 큰 것 먼저)다. 유체를 넣을 때 그걸로는 부족했다 —
+유체와 아이템은 제약의 **종류**가 달라 비교가 안 된다. 대신 **밀렸을 때 잃는 것**으로 준다:
+
+| 순위 | 경로 | 밀리면 |
+|---|---|---|
+| 1 | 유체 납품 | 지하로 못 도망간다(지하파이프 페어링 미모델링) → **트리 전체 실패** |
+| 2 | 반출 | 상자가 로컬 ring 에 남는다 — 되돌릴 수 있는 손해 |
+| 3 | 아이템 납품 | 지하 횡단이 회수한다 — 사실상 손해 없음 |
+
+P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 홉이 막힐 때 도는 "예약 무시
+재시도"가 남의 계획 칸을 밟는데, 그게 유체 자리였으면 유체는 물러설 데가 없다.
+유체가 먼저 칸을 실제로 차지하면(`hopBelts`) 그 재시도가 밟을 수 없다.
 
 ---
 

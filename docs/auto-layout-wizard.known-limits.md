@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](auto-layout-wizard.entity-roles.md)
 
-본 문서는 **현재 구현 전략 `S-LAYER`** ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
+본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../frontend/src/utils/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
@@ -211,9 +211,18 @@ tags: [auto-layout, placement, routing]
 
 이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../frontend/src/utils/autoLayout/containerRouting.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
 
-**왜 일부러 놔뒀나:**
+**해소됨 (2026-07-25):**
 
-옛 경로는 폐기 대상인데 골든 스냅샷이 걸려 있어, 손대면 아이템 배치까지 회귀 위험을 진다. 새 경로가 옛 경로를 완전히 흡수하면 이 항목은 통째로 사라진다.
+예고대로 "새 경로가 옛 경로를 완전히 흡수하면 이 항목은 통째로 사라진다" — 그렇게 됐다.
+옛 S-LAYER 경로가 Phase 3 에서 삭제되면서 무방비로 파이프를 깔던 자리가 없어졌다.
+유체는 이제 전부 모듈 파이프라인을 타며 `PipeFlow` 가드를 거친다. 계획 경로도 같은
+지도를 본다(`plannedChainClear` 의 `fluidBlocked` —
+[.fluid-hop-reservation §8.3](auto-layout-wizard.fluid-hop-reservation.md)).
+
+> **다 사라진 건 아니다.** `containerRouting.emitFluidPath` 는 남아 있고, 사용자 드래그
+> 재라우팅(`areaUnification`)이 그걸 부른다. **그 경로는 여전히 가드를 안 거친다** —
+> 손으로 유체 상자를 끌어 다른 유체 관망 옆에 붙이면 조용히 오염된다. 범위가 줄었을 뿐이다.
+
 
 **찾는 법:**
 

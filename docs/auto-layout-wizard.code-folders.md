@@ -73,32 +73,41 @@ tags: [auto-layout, placement, routing]
 > 새 함수를 `util/` 에 넣기 전 확인: 이 함수가 "어디에 무엇을 놓을지" 를 *고르는가*, 아니면
 > 이미 고른 자리를 *채우거나 세기만* 하는가? 고른다면 `util/` 이 아니다.
 
-## 폴더 밖에 남은 것 — 옛 경로
+## 폴더 밖에 남은 것 — 공용 기반 + 죽은 무리 (2026-07-25 갱신)
 
-`autoLayout/` 바로 아래(폴더 없이) 남은 20여 개 파일이 옛 경로다. 모듈 파이프라인
-(`AUTO_LAYOUT_MODULE_PIPELINE`)이 켜져 있고 트리가 전부 simple-item 이면 새 경로가 먼저
-돌고, 유체가 섞이거나 실패할 때만 이 옛 경로로 내려간다. 대표: `layeredWizard`,
-`containerRouting`, `areaUnification`, `clusterTrunkMerge`, `externalMergePass`,
-`externalGatherPass`, `routeFallback`, `machinePlacer`, `externalPlacer`.
+예전엔 "폴더 밖 = 옛 경로" 였다. **지금은 아니다** — 옛 S-LAYER 본체가 Phase 3 에서
+삭제되면서, 폴더 밖 파일 대부분은 **새 경로도 쓰는 공용 기반**으로 남았고, 진짜
+옛 경로는 몇 개만 죽은 채 남았다.
 
-## 의존 방향 (분리 후 실측)
+**공용 기반 — 살아 있다:**
+`containerModel`(타입 — 32곳이 임포트), `debugFlags`, `buildSpec`, `recipeTree`,
+`wizardUtils`, `types`, `beltThroughput`, `inserterThroughput`, `containerRouting`(dijkstra —
+`planner/moduleHop` 이 쓴다), `areaUnification`(사용자 드래그 재라우팅), `routeFallback`,
+`machinePlacer`, `externalPlacer`, `portInference`, `moduleInspect`, `techGroup`, `layeredWizard`(진입점).
 
-- `module/` → `containerModel`(타입) + `util/` **뿐.** 옛 세계를 부르지 않는다.
-- `util/` → 타입 정의만.
-- 옛 파일이 새 폴더를 가져다 쓴다(old→new, 정상 방향). 예: `clusterTrunkMerge`·
-  `externalMergePass` → `module/trunkPath`, `layeredWizard` → `planner/moduleWizard`.
-- 새 코드가 옛 코드를 부르는 곳은 **두 군데만** 남았고 둘 다 정당하다:
-  `planner/moduleHop` → `containerRouting`(지하벨트 홉의 길찾기 = 진짜 길찾기),
-  `planner/moduleWizard` → 옛 오케스트레이션 조각들(진입점이라 엮는다).
+**죽은 무리 — 프로덕션 호출자 0개 (2026-07-25 실측):**
+
+| 파일/심볼 | 상태 |
+|---|---|
+| `clusterTrunkMerge.ts` | 임포트하는 프로덕션 코드 **0개**. 자기 테스트만 남음 |
+| `externalMergePass.wrapExternalsWithMerge` | 호출자 테스트뿐. 파일에서 **플래그만** 살아 있다(디버 탭) |
+| `externalGatherPass.gatherExternalsToPoints` | 같음 |
+| `areaUnification.wrapExternalsAroundPerimeter` | 호출자 테스트뿐(파일 자체는 드래그로 살아 있다) |
+| `mergeGrouping.ts` | `externalMergePass` 만 쓰므로 전이적으로 죽음 |
+| `ContainerWizardInput.mergeSupplyBoxes` | 타입에만 있고 **읽는 코드가 없다** |
+
+> ⚠️ 딜레마: 디버 탭(`AutoLayoutDebugTab`)의 **MERGE BOXES / GATHER BOXES 토글은 이제
+> 아무 일도 안 한다.** 그 플래그를 읽던 유일한 곳이 삭제된 옛 경로였기 때문이다.
+> 무리를 지울지 말지는 사용자 확인 대기(README "폐기 결정 정책" 2항).
 
 ## 검증
 
-폴더 이동만, 동작 변경 0. `npx tsc --noEmit` 통과, 전체 212개 테스트가 이동 전과 동일하게
-통과, 골든 스냅샷(상자 7개 이사·포기 0) 불변.
+폴더 이동 당시: 동작 변경 0, 212개 테스트 동일 통과, 골든 스냅샷 불변.
 
-> 함정: 이 저장소의 `tsc --noEmit` 은 테스트 파일을 검사하지 않는다. 심볼을 옮긴 뒤
-> tsc 가 통과해도 테스트의 import 가 옛 위치를 가리켜 런타임에 깨질 수 있다 —
-> 반드시 `vitest run` 까지 돌린다.
+> **함정(2026-07-25 정정):** 이 저장소에서 `npx tsc --noEmit` 은 테스트를 "검사 안 하는"
+> 게 아니라 **파일을 하나도 안 본다.** 루트 `tsconfig.json` 이 `files: []` + references 구조라
+> 그렇다. 반드시 **`npx tsc -b`** (= `npm run build` 앞단) 로 확인한다. 그래도 `vitest run`
+> 까지 돌리는 원칙은 그대로다 — 타입은 런타임을 다 잡지 못한다.
 
 ## modulePerimeterPass 순수화 (2026-07-11 완료)
 

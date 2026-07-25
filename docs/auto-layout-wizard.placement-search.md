@@ -4,6 +4,21 @@ tags: [auto-layout, placement, routing]
 
 # 배치 탐색 알고리즘 — 컨테이너 모델 + 전략 레이어
 
+> ## ⚠️ 상태 정정 (2026-07-25)
+>
+> **이 문서가 "현재 전략"이라 부르는 `S-LAYER` 는 코드에서 삭제됐다** (리팩토링 Phase 3).
+> tidy-tree 배치·left-edge 채널·BFS 1:1 라우팅은 더 이상 실행되지 않는다.
+>
+> 지금 실제로 도는 것은 **모듈 파이프라인**이다:
+> `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
+> `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
+> 흐름은 [[auto-layout-wizard.code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
+> 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
+>
+> 아래 S-LAYER 서술은 **역사 기록**으로 읽는다. 이 전략에 아직 이름이 없어(모듈
+> 파이프라인은 서술어다) §5.5 전략 등록부 갱신은 명명 후로 미룬다.
+
+
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) (현재 전략 S-LAYER 의 채널 단계), [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 >
