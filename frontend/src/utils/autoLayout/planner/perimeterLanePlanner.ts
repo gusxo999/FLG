@@ -164,13 +164,6 @@ function selfBlocked(
   return false;
 }
 
-/** 형제에 막힌 N/S 변 포트가 우회할 채널 depth. 부모 쪽(왼쪽 채널) 우선. */
-function divertChannel(depth: number, maxDepth: number): number | null {
-  if (depth >= 1) return depth; // 채널 depth = 열 depth-1↔depth (왼쪽)
-  if (depth < maxDepth) return depth + 1; // 루트 열이면 오른쪽 채널
-  return null; // 단일 열 — 채널 없음
-}
-
 /**
  * 한 포트가 쓸 수 있는 출구 후보를 **선호 순**으로 전부 나열한다.
  *

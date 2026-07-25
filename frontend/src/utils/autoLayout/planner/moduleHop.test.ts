@@ -267,7 +267,7 @@ describe("routeModuleHops", () => {
 
   it("seat_from 은 자식 출력 trunkStart 와 인접 (기하 유도 검증)", () => {
     const pack = packModuleTree(specs, packConfig);
-    const res = routeModuleHops(pack, hopConfig);
+    routeModuleHops(pack, hopConfig); // pack 미변형(순수) — 던지지 않는지만 본다
     const hop = pack.hops[0];
     const fv = faceVector(hop.from.face);
     const trunkStart = { x: hop.from.anchor.x - 2 * fv.x, y: hop.from.anchor.y - 2 * fv.y };

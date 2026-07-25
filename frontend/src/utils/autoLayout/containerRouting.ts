@@ -20,7 +20,6 @@ import type { Direction, GridCell } from '../../types/layout';
 import type {
   Area,
   ContainerPort,
-  PortFace,
   PortKind,
   PortPair,
   PlacedCell,

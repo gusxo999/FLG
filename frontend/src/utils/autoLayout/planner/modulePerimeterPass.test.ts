@@ -32,10 +32,6 @@ function survivingChests(pack: ReturnType<typeof packModuleTree>, stripped: Set<
   return out;
 }
 
-function onPerimeter(p: { x: number; y: number }, bbox: { x: number; y: number; w: number; h: number }): boolean {
-  return p.x <= bbox.x || p.x >= bbox.x + bbox.w - 1 || p.y <= bbox.y || p.y >= bbox.y + bbox.h - 1;
-}
-
 /** 모듈 union(마진 제외) = 전역 외곽 변 기준. */
 function moduleUnion(pack: ReturnType<typeof packModuleTree>): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

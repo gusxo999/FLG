@@ -49,7 +49,6 @@ export function setAutoLayoutGatherExternals(v: boolean): void {
   AUTO_LAYOUT_GATHER_EXTERNALS = v;
 }
 
-type Role = 'input' | 'output';
 type Pt = { x: number; y: number };
 type Bbox = { x: number; y: number; w: number; h: number };
 

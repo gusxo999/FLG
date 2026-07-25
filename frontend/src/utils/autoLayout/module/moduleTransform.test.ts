@@ -3,7 +3,7 @@ import { generateModule, type GeneratedModule, type ModuleInput } from "./cluste
 import type { IoLine } from "./clusterPortPlanner";
 import { transformModule, rotationToFace, type Orientation, type Rotation } from "./moduleTransform";
 import { EntityType } from "../../../types/layout";
-import type { Container, PlacedCell } from "../containerModel";
+import type { PlacedCell } from "../containerModel";
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });
 

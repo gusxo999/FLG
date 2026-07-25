@@ -17,6 +17,10 @@ const INSERTER: Entity = { id: 3, name: 'inserter', localised_name: 'ins', type:
 const OPTIONS: RouteOptions = {
   beltEntityName: 'transport-belt',
   inserterEntityName: 'inserter',
+  // BuildSpec 필수 필드 — 위 두 이름과 **같은 엔티티**여야 한다(세는 쪽과 놓는 쪽이 어긋나면
+  // 조용히 굶는다, buildSpec.ts 주석). 이 테스트들은 라우팅만 보므로 대표 티어 하나면 족하다.
+  belts: [{ entityName: 'transport-belt', throughput: 15 }],
+  inserters: [{ entityName: 'inserter', reach: 1, throughput: 0.83 }],
   pipeEntityName: 'pipe',
   preferUnderground: false,
 };
