@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops, type HopConfig } from "./moduleHop";
+import {
+  planChannelGeometry,
+  type DeliveryInput,
+  type ExportInput,
+} from "./channelGeometryPlanner";
 import type { IoLine } from "../module/clusterPortPlanner";
 
 // P4-4a 계측 — 유체 홉이 채널 기하 장부에서 어떤 대접을 받는지 **현재 동작을 못박는다**.
@@ -91,5 +96,98 @@ describe("P4-4a 계측 — 유체 홉과 채널 기하 장부", () => {
       res.planned,
       "유체 홉이 planned 로 집계됐다 — 계획을 쓰기 시작했다면 이 테스트를 P4-5b 기준으로 갱신할 것",
     ).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P4-4c/d — 장부가 유체를 어떻게 다르게 다루는가 (§2 인접 규칙, §4.3 우선순위)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const geoCtx = { yMin: 0, yMax: 12, maxJump: 6 };
+
+/** 계획의 세로 주행 트랙 — straight 는 트랙을 안 쓰므로 null. */
+const trackOf = (p: ReturnType<typeof planChannelGeometry>["deliveries"] extends Map<string, infer V> ? V : never) =>
+  p.kind === "staircase" || p.kind === "undergroundCrossing"
+    ? p.track
+    : p.kind === "columnSwitch"
+      ? p.startTrack
+      : null;
+
+describe("P4-4c — 파이프는 닿기만 해도 이어진다 (인접 금지)", () => {
+  // 두 경로가 세로 구간을 공유한다 → 트랙을 나눠 써야 한다. 진입 행은 3칸 떨어뜨렸다 —
+  // 실제로 다른 모듈의 포트라 붙어 있지 않다. (붙여 놓으면 가로 진입선끼리 나란히 닿아
+  // 어떤 트랙 배정으로도 두 유체가 만난다 = 계획 불가가 정답이 되어 배정을 못 본다.)
+  const a = (fluid?: string): DeliveryInput => ({ id: "a", startY: 2, endY: 9, fluid });
+  const b = (fluid?: string): DeliveryInput => ({ id: "b", startY: 5, endY: 12, fluid });
+  const noExports: ExportInput[] = [];
+
+  it("아이템 두 줄은 이웃 트랙에 붙어도 된다 (겹침만 피하면 됨)", () => {
+    const plan = planChannelGeometry([a(), b()], noExports, geoCtx);
+    const ta = trackOf(plan.deliveries.get("a")!)!;
+    const tb = trackOf(plan.deliveries.get("b")!)!;
+    expect(Math.abs(ta - tb), "아이템끼리 트랙이 벌어졌다 — 인접 규칙이 잘못 적용됐다").toBe(1);
+  });
+
+  it("같은 유체 두 줄도 붙어도 된다 (닿아도 합법 — 자연 병합)", () => {
+    const plan = planChannelGeometry([a("water"), b("water")], noExports, geoCtx);
+    const ta = trackOf(plan.deliveries.get("a")!)!;
+    const tb = trackOf(plan.deliveries.get("b")!)!;
+    expect(Math.abs(ta - tb)).toBe(1);
+  });
+
+  it("다른 유체 두 줄은 반드시 한 칸 떨어진다 (닿으면 한 통이 된다)", () => {
+    const plan = planChannelGeometry([a("water"), b("steam")], noExports, geoCtx);
+    const ta = trackOf(plan.deliveries.get("a")!);
+    const tb = trackOf(plan.deliveries.get("b")!);
+    expect(ta, "water 가 계획을 못 받았다").not.toBeNull();
+    expect(tb, "steam 이 계획을 못 받았다").not.toBeNull();
+    expect(
+      Math.abs(ta! - tb!),
+      `다른 유체가 이웃 트랙에 배정됐다 (water=${ta}, steam=${tb}) — 두 유체가 한 통이 된다`,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("아이템과 유체는 붙어도 된다 (파이프 옆 벨트는 무해)", () => {
+    const plan = planChannelGeometry([a("water"), b()], noExports, geoCtx);
+    const ta = trackOf(plan.deliveries.get("a")!)!;
+    const tb = trackOf(plan.deliveries.get("b")!)!;
+    expect(Math.abs(ta - tb)).toBe(1);
+  });
+});
+
+describe("P4-4d — 교차하면 유체가 지상, 아이템이 밑으로 (실패 비용 순)", () => {
+  // 끝점이 엇갈린 두 경로 = 기하학적으로 교차 불가피(Jordan). 지상은 한 쪽만 가능하다.
+  const up: DeliveryInput = { id: "up", startY: 2, endY: 10 };
+  const down: DeliveryInput = { id: "down", startY: 10, endY: 2 };
+
+  const exportsIn: ExportInput[] = [{ id: "x", entryY: 6, entryWall: "E", preferredExit: "N" }];
+
+  // 우선순위가 **품목 종류**로 정해지는지, 아니면 그냥 id 정렬 순서인지 가른다.
+  // 장부는 입력을 id 순으로 정렬하므로("down" < "up") 종류를 안 보면 늘 down 이 이긴다.
+  // 그래서 유체를 up(정렬상 나중)에 걸었을 때도 up 이 이겨야 진짜 종류 우선순위다.
+  it("id 정렬에서 뒤인 쪽이 유체여도 유체가 지상을 갖는다", () => {
+    const plan = planChannelGeometry([{ ...up, fluid: "water" }, down], exportsIn, geoCtx);
+    const fluidPlan = plan.deliveries.get("up")!;
+    expect(
+      fluidPlan.kind,
+      `유체가 지상을 못 잡았다 (${fluidPlan.kind}) — 우선순위가 id 순서에 밀렸다`,
+    ).not.toBe("fallback");
+    expect(fluidPlan.kind, "유체에 지하 횡단이 배정됐다 — D2 위반").not.toBe("undergroundCrossing");
+  });
+
+  it("역할을 바꿔도 결과가 따라 바뀐다 (지상을 갖는 쪽 = 유체인 쪽)", () => {
+    const plan = planChannelGeometry([up, { ...down, fluid: "water" }], exportsIn, geoCtx);
+    expect(plan.deliveries.get("down")!.kind).not.toBe("fallback");
+    expect(plan.deliveries.get("down")!.kind).not.toBe("undergroundCrossing");
+  });
+
+  it("유체는 어떤 경우에도 지하 횡단 계획을 받지 않는다 (D2)", () => {
+    // 트랙을 좁혀 지상을 빡빡하게 만든다 — 아이템이라면 지하로 내려갈 상황.
+    const plan = planChannelGeometry(
+      [{ ...up, fluid: "water" }, { ...down, id: "d2" }, { id: "d3", startY: 4, endY: 8 }],
+      [{ id: "x", entryY: 6, entryWall: "E", preferredExit: "N" }],
+      { ...geoCtx, trackCap: 3 },
+    );
+    expect(plan.deliveries.get("up")!.kind).not.toBe("undergroundCrossing");
   });
 });

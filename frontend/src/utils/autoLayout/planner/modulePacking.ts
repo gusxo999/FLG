@@ -492,7 +492,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
   //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(레인 예약)
   //    와 7(홉 생성)이 공유한다 — 세 곳이 따로 판단해 어긋나는 일이 없게.
-  const hopSeeds: { depth: number; key: string; startY: number; endY: number; eligible: boolean }[] = [];
+  const hopSeeds: {
+    depth: number;
+    key: string;
+    startY: number;
+    endY: number;
+    eligible: boolean;
+    /** 유체 이름(파이프 홉). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
+    fluid?: string;
+  }[] = [];
   const pairedChestIds = new Set<string>();
   const usedParentIn = new Map<string, Set<string>>();
   /** [pairHopPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
@@ -525,6 +533,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         endY: py,
         eligible:
           out.meta.side === "W" && inp.meta.side === "E" && byId.get(s.parentId!)!.depth === s.depth - 1,
+        // 유체 홉은 **항상** 적격이다 — moduleWizard 가 출력 유체를 W, 입력 유체를 E 면에
+        // 오도록 회전을 강제하고(wantFace) 못 맞추면 트리째 reject 하기 때문이다. 즉 위
+        // eligible 조건과 유체의 존재 조건이 같다(docs/…fluid-hop-reservation.md §1.1).
+        fluid: out.line.kind === "pipe" ? product : undefined,
       });
     });
   }
@@ -557,7 +569,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const reserve: Interval[] = [];
       for (const seed of hopSeeds) {
         if (seed.depth !== d) continue;
-        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY });
+        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid });
         else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
       }
       const exps: ExportInput[] = [];
