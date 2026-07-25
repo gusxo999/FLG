@@ -312,20 +312,6 @@ export interface CandidateNodeBase {
   children: CandidateNode[];
   /** UI 라벨 (예: "조립기-2 [기어휠] @ (5,5)", "perm=[톱니, 철판] dir=right") */
   label: string;
-  /**
-   * 이 노드 생성 시점의 영역 상태 스냅샷 — 후보 패널의 hover preview 용.
-   *
-   * **지금 이걸 채우는 코드가 없다**(2026-07-25 확인). 유일한 후보는 CandidateLeaf 이고
-   * 그건 internal/external 을 직접 가진다. 필드 자체가 살아 있는 건 hover preview 를
-   * 되살릴 때를 위한 자리표시다.
-   */
-  snapshot?: AreaSnapshot;
-}
-
-/** Area 스냅샷 — internal + external 의 얇은 복제본 (placed/containers/bbox) */
-export interface AreaSnapshot {
-  internal: Area;
-  external: Area;
 }
 
 /** A 노드 — 한 머신 배치 + 그 입력 라우팅. */

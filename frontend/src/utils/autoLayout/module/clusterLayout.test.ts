@@ -3,7 +3,6 @@ import {
   layoutCluster,
   ROW_GAP,
   columnTapCapacity,
-  pickClusterShape,
 } from './clusterLayout';
 
 describe('layoutCluster (P0 기둥)', () => {
@@ -75,36 +74,3 @@ describe('columnTapCapacity (탭 용량)', () => {
   });
 });
 
-describe('pickClusterShape (P1 기둥 + overflow)', () => {
-  const longCaps = { reaches: [1, 2] }; // 용량 4
-  const regularCaps = { reaches: [1] }; // 용량 2
-
-  it('항상 기둥을 반환', () => {
-    expect(pickClusterShape({ beltDemand: 2, pipeDemand: 0 }, longCaps).shape).toBe('column');
-    expect(pickClusterShape({ beltDemand: 9, pipeDemand: 0 }, longCaps).shape).toBe('column');
-  });
-
-  it('수요 ≤ 용량 → overflow=false (긴팔, 4 belt 까지)', () => {
-    // copper-cable(1+1), circuit(2+1), 4-재료(4+1=5 는 초과)
-    expect(pickClusterShape({ beltDemand: 2, pipeDemand: 0 }, longCaps).overflow).toBe(false);
-    expect(pickClusterShape({ beltDemand: 3, pipeDemand: 0 }, longCaps).overflow).toBe(false);
-    expect(pickClusterShape({ beltDemand: 4, pipeDemand: 0 }, longCaps).overflow).toBe(false);
-    expect(pickClusterShape({ beltDemand: 5, pipeDemand: 0 }, longCaps).overflow).toBe(true);
-  });
-
-  it('belt+pipe 합산으로 overflow 판정(회귀 동등)', () => {
-    // 유체도 belt 와 합산해 용량과 비교 — 1단계 회귀 동등(셀-정밀 판정은 후속).
-    expect(pickClusterShape({ beltDemand: 2, pipeDemand: 2 }, longCaps).overflow).toBe(false);
-    expect(pickClusterShape({ beltDemand: 3, pipeDemand: 2 }, longCaps).overflow).toBe(true);
-  });
-
-  it('일반 인서터(용량 2)면 3 I/O 부터 overflow', () => {
-    expect(pickClusterShape({ beltDemand: 2, pipeDemand: 0 }, regularCaps).overflow).toBe(false);
-    expect(pickClusterShape({ beltDemand: 3, pipeDemand: 0 }, regularCaps).overflow).toBe(true);
-  });
-
-  it('capacity 를 함께 보고', () => {
-    expect(pickClusterShape({ beltDemand: 3, pipeDemand: 0 }, longCaps).capacity).toBe(4);
-    expect(pickClusterShape({ beltDemand: 3, pipeDemand: 0 }, regularCaps).capacity).toBe(2);
-  });
-});

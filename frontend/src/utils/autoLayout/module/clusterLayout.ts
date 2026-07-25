@@ -69,18 +69,6 @@ export function layoutCluster(
 // 형태 선택 — 탭 용량 기준 (P1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * 한 클러스터가 다뤄야 하는 I/O 줄 수요. 운반체 종류로 분리한다 — 아이템은 belt(인서터
- * 탭), 유체는 pipe 스파인(인서터 없음). 둘은 면(W/E)을 공유하지만 점유 방식이 달라
- * 따로 센다. (셀-정밀 배정은 `clusterPortPlanner` 가 담당; 본 스칼라는 형태 게이트용.)
- */
-export interface PortDemand {
-  /** 아이템 I/O 줄 수 — belt 로 운반, 인서터로 탭. */
-  beltDemand: number;
-  /** 유체 I/O 줄 수 — pipe 스파인으로 운반, 인서터 없음. */
-  pipeDemand: number;
-}
-
 /** 형태 선택에 필요한 인서터 능력 = **고른 인서터들의 reach 값**(≥1). */
 export interface ShapeCaps {
   /**
@@ -90,8 +78,6 @@ export interface ShapeCaps {
    */
   reaches: number[];
 }
-
-export type ClusterShape = "column";
 
 /**
  * 기둥 클러스터의 탭 용량 = 서빙 가능한 *서로 다른 belt* 수.
@@ -105,26 +91,3 @@ export function columnTapCapacity(caps: ShapeCaps): number {
   return 2 * new Set(caps.reaches.filter((r) => r >= 1)).size;
 }
 
-export interface ShapeDecision {
-  shape: ClusterShape;
-  /** 기둥 탭 용량(서빙 가능한 belt 수). */
-  capacity: number;
-  /** I/O belt 수요가 용량을 초과 → 본래 2D 형태가 필요(현재 미구현, 기둥으로 폴백). */
-  overflow: boolean;
-}
-
-/**
- * 클러스터 형태 결정. **P1: 항상 기둥.** 단 belt 수요 > 기둥 용량이면 `overflow=true`
- * 로 표시한다(복잡/유체 레시피 → 향후 2D 알고리즘 대상). 2D 미구현이므로 동작은 기둥 유지.
- */
-export function pickClusterShape(demand: PortDemand, caps: ShapeCaps): ShapeDecision {
-  const capacity = columnTapCapacity(caps);
-  // 셀-정밀 배정(`clusterPortPlanner`)이 아직 emit 에 연결되지 않아, overflow 판정은
-  // 종전과 동일하게 총 I/O(belt+pipe) > 용량 으로 유지한다(회귀 동등). belt/pipe 가
-  // 면을 점유하는 방식 차이를 반영한 정밀 판정은 planner 연결 단계에서 대체한다.
-  return {
-    shape: "column",
-    capacity,
-    overflow: demand.beltDemand + demand.pipeDemand > capacity,
-  };
-}

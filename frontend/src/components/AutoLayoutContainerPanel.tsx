@@ -28,7 +28,6 @@ import { AUTO_LAYOUT_COORD_DUMP } from '../utils/autoLayout/debugFlags';
 import { registerAutoLayoutDebug } from '../utils/debugApi';
 import type {
   CandidateLeaf,
-  AreaSnapshot,
   CandidateNode,
   CandidateTree,
   ContainerWizardInput,
@@ -677,8 +676,8 @@ function extractCellsForNode(node: CandidateNode): { placed: PlacedCell[]; inter
   if (node.kind === 'candidate') {
     return unifyAreas(node.internal, node.external);
   }
-  const snap: AreaSnapshot | undefined = node.snapshot;
-  if (!snap) return { placed: [], internalBbox: undefined, canvasBbox: undefined };
-  return unifyAreas(snap.internal, snap.external);
+  // 후보 외 노드(루트 MachineNode)는 그릴 것이 없다. 예전엔 CandidateNode.snapshot 을
+  // 읽었으나 그 필드를 **채우는 코드가 없어** 항상 비어 있었다(2026-07-25 확인 후 삭제).
+  return { placed: [], internalBbox: undefined, canvasBbox: undefined };
 }
 
