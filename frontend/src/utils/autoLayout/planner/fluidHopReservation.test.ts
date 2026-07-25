@@ -7,13 +7,14 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import type { IoLine } from "../module/clusterPortPlanner";
+import { EntityType } from "../../../types/layout";
 
-// P4-4a 계측 — 유체 홉이 채널 기하 장부에서 어떤 대접을 받는지 **현재 동작을 못박는다**.
+// 유체 홉이 채널 기하 장부 안에서 계획되고, 그 계획대로 깔리는지.
 // 단일 출처: docs/auto-layout-wizard.fluid-hop-reservation.md
 //
-// 이 파일은 특성화 테스트(characterization test)다. 지금 단언하는 것은 "옳은 동작"이 아니라
-// **"지금 이렇게 동작한다"** 이다. P4-5 에서 라우터가 계획을 쓰기 시작하면 §"버려진다" 쪽
-// 단언이 뒤집힌다 — 그때 뒤집는 것이 이 작업이 실제로 무언가를 바꿨다는 증거다.
+// 이력: P4-4a 에서 이 파일은 **결함을 못박는** 특성화 테스트로 태어났다 — "장부가 계획을
+// 만드는데 라우터가 그걸 버린다"(planned=0). P4-5b 에서 그 단언이 뒤집혔다(planned=1).
+// 뒤집힘 자체가 이 작업이 실제로 무언가를 바꿨다는 증거다.
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -65,7 +66,7 @@ const hopConfig: HopConfig = {
 const pack = packModuleTree(fluidSpecs, packConfig);
 const fluidHop = pack.hops.find((h) => h.item === "petroleum-gas");
 
-describe("P4-4a 계측 — 유체 홉과 채널 기하 장부", () => {
+describe("유체 홉이 장부의 계획대로 깔린다", () => {
   it("유체 홉 쌍이 만들어진다 (전제)", () => {
     expect(fluidHop, "유체 HopSpec 이 없다 — 아래 계측이 무의미해진다").toBeDefined();
     expect(fluidHop!.from.chest.kind).toBe("infinity-pipe");
@@ -84,18 +85,29 @@ describe("P4-4a 계측 — 유체 홉과 채널 기하 장부", () => {
     ).toBe(true);
   });
 
-  // §1.2 — 그런데 routeModuleHops 루프의 첫 줄이 유체를 걷어낸다(moduleHop.ts:253).
-  // plannedChains 조회에 도달하지 못하므로 위 계획은 **쓰이지 않는다**.
-  //
-  // ↓ P4-5b 에서 뒤집힌다: planned 가 1 이 되고 이 단언이 실패해야 한다.
-  it("[현재 결함] 라우터가 그 계획을 쓰지 않는다 — planned 에 안 잡힌다", () => {
+  // P4-5b 이전엔 routeModuleHops 루프의 첫 줄이 유체를 걷어내(옛 moduleHop.ts:253)
+  // plannedChains 조회에 도달하지 못했다 — 계획이 있는데도 planned=0 이었다.
+  // 지금은 유체도 계획 체인을 탄다. 이 트리의 홉은 유체 하나뿐이므로 planned=1.
+  it("라우터가 그 계획을 쓴다 — 탐색 없이 planned 로 집계", () => {
     const res = routeModuleHops(pack, hopConfig);
-    expect(res.failures, "유체 홉이 아예 실패하면 계측이 다른 얘기가 된다").toBe(0);
-    // 이 트리의 홉은 유체 하나뿐이다. 계획을 썼다면 planned=1 이어야 한다.
+    expect(res.failures).toBe(0);
+    expect(res.planned, "유체 홉이 계획 체인으로 안 깔렸다").toBe(1);
+    expect(res.dijkstraFallback, "유체가 탐색으로 샜다 — D3 위반").toBe(0);
+  });
+
+  it("계획으로 깐 유체 홉도 파이프로 나온다 (벨트가 아니라)", () => {
+    const res = routeModuleHops(pack, hopConfig);
+    const route = res.routes.find((r) => r.item === "petroleum-gas")!;
+    expect(route.ok).toBe(true);
+    expect(route.cells.length).toBeGreaterThan(0);
     expect(
-      res.planned,
-      "유체 홉이 planned 로 집계됐다 — 계획을 쓰기 시작했다면 이 테스트를 P4-5b 기준으로 갱신할 것",
-    ).toBe(0);
+      route.cells.every(
+        (c) =>
+          c.cell.entityType === EntityType.Pipe ||
+          c.cell.entityType === EntityType.PipeUnderground,
+      ),
+      "계획 체인이 벨트로 방출됐다 — finishFluidChain 이 안 탔다",
+    ).toBe(true);
   });
 });
 

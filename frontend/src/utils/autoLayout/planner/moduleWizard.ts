@@ -71,6 +71,15 @@ export type RejectReason =
   | { kind: 'no-rotation'; detail: string }
   | { kind: 'unrouted-lines'; detail: string }
   | { kind: 'hop-failures'; detail: string }
+  /**
+   * 유체 홉이 채널 기하 장부에서 자리를 못 받았다 — 그래서 **깔지 않는다**.
+   *
+   * 아이템 홉과 달리 탐색 폴백이 없다(docs/…fluid-hop-reservation.md §4.6): 원칙이 "모든
+   * 배치는 처음에 계획할 수 있어야 한다"이므로, 계획 없이 탐색으로 때운 유체 경로를 남기지
+   * 않는다. 실질적으로 도달 가능한 원인은 하나 — 한 채널 안에서 **서로 다른 유체 두 줄의
+   * 끝점이 엇갈릴 때**. 둘 다 지상을 원하는데 파이프는 지하로 못 비킨다(결정 D2).
+   */
+  | { kind: 'fluid-unplannable'; detail: string }
   | { kind: 'pipe-merge-conflict'; detail: string };
 
 /**
@@ -426,7 +435,20 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
   });
-  if (hopRes.failures > 0) return reject({ kind: 'hop-failures', detail: `${hopRes.failures}건` });
+  if (hopRes.failures > 0) {
+    // 유체 실패는 따로 말한다 — 원인도 처방도 아이템과 다르다. 아이템 홉 실패는 라우팅이
+    // 어려웠다는 뜻이지만, 유체 실패는 **계획 자체가 불가능했다**는 뜻이다(§4.6).
+    const fluidFails = hopRes.routes.filter(
+      (r) => !r.ok && (r.reason === "fluid-unplannable" || r.reason === "fluid-planned-chain-blocked"),
+    );
+    if (fluidFails.length > 0) {
+      return reject({
+        kind: 'fluid-unplannable',
+        detail: `${fluidFails.map((r) => `${r.item}(${r.reason})`).join(", ")} — 한 채널에 다른 유체가 겹쳤을 가능성`,
+      });
+    }
+    return reject({ kind: 'hop-failures', detail: `${hopRes.failures}건` });
+  }
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
   //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A lanePlan 배정대로 예약된

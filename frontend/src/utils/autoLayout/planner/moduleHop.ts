@@ -247,30 +247,40 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
   for (const [k, chain] of plannedChains)
     reservedHop.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
 
-  for (const hop of pack.hops) {
-    // 유체 홉(pipe-to-pipe) — 포트가 무한파이프면 유체다. 채널 기하(벨트 크로싱 계획)는
-    // 아이템 전용이라 건너뛰고 파이프 경로로 잇는다(docs/auto-layout-wizard.fluid-hop.md).
-    if (hop.from.chest.kind === "infinity-pipe") {
-      const route = config.pipeEntityName
-        ? routeOneFluidHop(hop, base, hopBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(hop.item))
-        : { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
-      routes.push(route);
-      if (!route.ok) { failures += 1; continue; }
-      for (const c of route.cells) { cells.push(c); hopBelts.add(cellKey(c.x, c.y)); }
-      corridors.push(...route.corridors);
-      strippedChestIds.add(hop.from.chest.id);
-      strippedChestIds.add(hop.to.chest.id);
-      // 유체 포트는 인서터가 없다 — chest(무한파이프) 한 칸만 뗀다(seat=파이프는 남겨 이음).
-      for (const key of stripKeys(hop)) strippedCellKeys.add(key);
-      continue;
-    }
+  // 유체 홉을 **먼저** 깐다. 순서가 실패 비용을 따른다(docs/…fluid-hop-reservation.md §4.3):
+  // 아이템의 "예약 무시 재시도"(아래)는 남의 계획 칸을 밟는데, 그게 유체의 자리였으면
+  // 유체는 물러설 데가 없어 트리가 통째로 죽는다. 유체가 먼저 자리를 실제로 차지하면
+  // (hopBelts 에 올라가면) 그 재시도가 밟을 수 없다 — 순서 하나로 최악을 막는다.
+  const isFluidHop = (h: HopSpec) => h.from.chest.kind === "infinity-pipe";
+  const ordered = [...pack.hops].sort((a, b) => Number(isFluidHop(b)) - Number(isFluidHop(a)));
 
+  for (const hop of ordered) {
+    const isFluid = isFluidHop(hop);
     const k = hopMapKey(hop);
     const chain = plannedChains.get(k);
     let route: HopRoute;
-    if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop)) {
-      route = finishChain(hop, chain, config);
+    const mergeGuard = isFluid ? config.fluidBlocked?.get(hop.item) : undefined;
+    if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop, mergeGuard)) {
+      // 계획 체인은 품목-무관하다([buildPlannedChain]) — 갈리는 곳은 방출 하나뿐이다.
+      route = isFluid ? finishFluidChain(hop, chain, config) : finishChain(hop, chain, config);
       planned += 1;
+    } else if (isFluid && geo) {
+      // **유체엔 탐색 폴백이 없다**(결정 D3). 원칙이 "모든 배치는 처음에 계획할 수 있어야
+      // 한다"이므로, 계획 없이 탐색으로 때운 경로를 유체에 남기지 않는다 — 그건 "성공했다는데
+      // 어디로 지나가는지 아무도 모르는" 배치다. 여기 오면 홉 실패 → 트리가 거절된다.
+      //
+      // 유체는 장부에 **항상** 들어가므로(§1.1: wantFace 가 W/E 를 강제) 계획 자체가 없는
+      // 경우는 장부가 자리를 못 준 것이다 — 사실상 한 채널 안 다른 유체끼리의 교차뿐이다.
+      route = {
+        item: hop.item, ok: false, cells: [], corridors: [],
+        reason: chain ? "fluid-planned-chain-blocked" : "fluid-unplannable",
+      };
+    } else if (isFluid) {
+      // 장부 자체가 꺼진 모드(AUTO_LAYOUT_CHANNEL_GEOMETRY off) — 아이템도 전부 탐색으로
+      // 가는 "계획 없음" 모드다. 유체만 유별나게 실패시킬 이유가 없어 옛 탐색을 쓴다.
+      route = config.pipeEntityName
+        ? routeOneFluidHop(hop, base, hopBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(hop.item))
+        : { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
     } else {
       dijkstraFallback += 1;
       if (chain && AUTO_LAYOUT_COORD_DUMP)
@@ -306,7 +316,7 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     corridors.push(...route.corridors);
     strippedChestIds.add(hop.from.chest.id);
     strippedChestIds.add(hop.to.chest.id);
-    for (const k of stripKeys(hop)) strippedCellKeys.add(k);
+    for (const sk of stripKeys(hop)) strippedCellKeys.add(sk);
   }
 
   return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback };
@@ -471,22 +481,8 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
         }
       : result;
 
-  // INVARIANT: 체인은 텔레포트하지 않는다 — surface edge 는 인접 1칸, jump edge 는
-  // 축 정렬 + 거리 k 여야 한다. emitItemPath 는 edge 를 신뢰하므로 어긋난 결과를
-  // *조용히 내보내지 말고* 홉 실패로 처리해 트리가 옛 경로로 폴백하게 한다(가짜 물류 방지).
-  for (let i = 0; i + 1 < ext.cells.length; i++) {
-    const a = ext.cells[i];
-    const b = ext.cells[i + 1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const edge = ext.edges[i];
-    const okStep =
-      edge === "surface"
-        ? Math.abs(dx) + Math.abs(dy) === 1
-        : dx === edge.dx * edge.k && dy === edge.dy * edge.k;
-    if (!okStep) {
-      return { item: hop.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
-    }
+  if (!isContinuous(ext)) {
+    return { item: hop.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
   }
 
   const pair = synthPair(hop.from.chest.id, hop.to.chest.id);
@@ -502,6 +498,47 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
     },
     { x: fvTo.x, y: fvTo.y },
   );
+  return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
+}
+
+/**
+ * INVARIANT: 체인은 텔레포트하지 않는다 — surface edge 는 인접 1칸, jump edge 는 축 정렬 +
+ * 거리 k 여야 한다. emit 함수들은 edge 를 신뢰하므로, 어긋난 결과를 *조용히 내보내지 말고*
+ * 홉 실패로 처리해야 한다(가짜 물류 방지). 벨트·파이프 방출이 이 판정을 공유한다.
+ */
+function isContinuous(r: DijkstraResult): boolean {
+  for (let i = 0; i + 1 < r.cells.length; i++) {
+    const dx = r.cells[i + 1].x - r.cells[i].x;
+    const dy = r.cells[i + 1].y - r.cells[i].y;
+    const edge = r.edges[i];
+    const okStep =
+      edge === "surface"
+        ? Math.abs(dx) + Math.abs(dy) === 1
+        : dx === edge.dx * edge.k && dy === edge.dy * edge.k;
+    if (!okStep) return false;
+  }
+  return true;
+}
+
+/**
+ * 유체판 [finishChain] — 계획 체인을 **파이프**로 방출한다.
+ *
+ * 벨트판보다 짧은 이유가 유체의 성질 그대로다:
+ *  - **좌석 이음이 없다** — 파이프 포트엔 인서터가 없다. 좌석 자리의 파이프는 떼지 않고
+ *    그대로 이음에 쓰므로([stripKeys] 가 chest 한 칸만 뗀다) 체인을 늘릴 필요가 없다.
+ *  - **방향이 없다** — 흐름 방향을 넘길 인자가 없다. 인접이 곧 연결이다.
+ *
+ * 체인 자체는 [buildPlannedChain] 이 낸 것 그대로다 — 그 함수는 품목-무관이라 벨트·파이프가
+ * 같은 계획을 공유한다. 갈리는 곳은 여기 방출 한 곳뿐이다.
+ */
+function finishFluidChain(hop: HopSpec, chain: DijkstraResult, config: HopConfig): HopRoute {
+  if (!isContinuous(chain)) {
+    return { item: hop.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
+  }
+  const emitted = emitFluidPath(chain, synthPair(hop.fromId, hop.toId), {
+    pipeEntityName: config.pipeEntityName!,
+    undergroundPipeEntityName: config.undergroundPipeEntityName,
+  });
   return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
 }
 
@@ -612,10 +649,20 @@ function plannedChainClear(
   hopBelts: ReadonlySet<string>,
   reservedExport: ReadonlySet<string>,
   reservedHop: ReadonlyMap<string, ReadonlySet<string>>,
+  /**
+   * 유체 홉의 **합류 가드** — 이 유체가 닿으면 안 되는 칸(다른 유체의 hard 지도).
+   *
+   * 장부는 자기가 배정한 경로들 사이의 인접만 안다. 모듈 **안**에 이미 깔린 남의 유체
+   * 트렁크는 장부 밖의 사실이라, 계획 체인이 그 옆을 지나가는 것을 장부가 못 막는다.
+   * 옛 탐색 경로([routeOneFluidHop])는 이걸 blocked 로 받아 피했다 — 계획 경로도 같은
+   * 지도를 봐야 두 유체가 한 통이 되는 사고를 막는다.
+   */
+  fluidBlocked?: ReadonlySet<string>,
 ): boolean {
   for (let i = 1; i + 1 < chain.cells.length; i++) {
     const k = cellKey(chain.cells[i].x, chain.cells[i].y);
     if (base.has(k) || hopBelts.has(k) || reservedExport.has(k)) return false;
+    if (fluidBlocked?.has(k)) return false;
     for (const [k2, cells] of reservedHop) if (k2 !== ownKey && cells.has(k)) return false;
   }
   return true;
