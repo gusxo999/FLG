@@ -3,27 +3,15 @@ import {
   AUTO_LAYOUT_COORD_DUMP,
   setAutoLayoutCoordDump,
 } from '../utils/autoLayout/debugFlags';
-import {
-  AUTO_LAYOUT_MERGE_BOXES,
-  setAutoLayoutMergeBoxes,
-} from '../utils/autoLayout/externalMergePass';
-import {
-  AUTO_LAYOUT_GATHER_EXTERNALS,
-  setAutoLayoutGatherExternals,
-} from '../utils/autoLayout/externalGatherPass';
 import { useUiDebugStore } from '../store/uiDebugStore';
 
 /**
  * 디버그 탭 — 자동 배치 런타임 토글.
  *  - COORD DUMP : 내부 좌표·배치 데이터를 콘솔에 JSON 으로 덤프.
- *  - MERGE BOXES: 공유 무한상자 병합 패스(트렁크 벨트) on/off.
- *  - GATHER BOXES: 외부 상자 집결 패스(같은 품목 한 변으로 모음) on/off.
  * 코드 상수를 직접 수정하지 않고 런타임으로 끄고 켤 수 있다.
  */
 export default function AutoLayoutDebugTab() {
   const [dumpEnabled, setDumpEnabled] = useState(AUTO_LAYOUT_COORD_DUMP);
-  const [mergeEnabled, setMergeEnabled] = useState(AUTO_LAYOUT_MERGE_BOXES);
-  const [gatherEnabled, setGatherEnabled] = useState(AUTO_LAYOUT_GATHER_EXTERNALS);
   const showEntityDebugInfo = useUiDebugStore((s) => s.showEntityDebugInfo);
   const setShowEntityDebugInfo = useUiDebugStore((s) => s.setShowEntityDebugInfo);
 
@@ -48,53 +36,6 @@ export default function AutoLayoutDebugTab() {
           켜면 자동 배치가 실행될 때 내부 좌표·배치 데이터가 브라우저 콘솔에
           JSON 으로 출력됩니다. 배치 결과를 분석할 때만 켜고, 평소에는 로그
           노이즈를 줄이기 위해 꺼두세요.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-3">
-        <button
-          onClick={() => {
-            const next = !mergeEnabled;
-            setAutoLayoutMergeBoxes(next);
-            setMergeEnabled(next);
-          }}
-          className={`shrink-0 text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
-            mergeEnabled
-              ? 'bg-emerald-900/60 border-emerald-600 text-emerald-300 hover:bg-emerald-800/60'
-              : 'bg-gray-800/40 border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400'
-          }`}
-        >
-          MERGE BOXES {mergeEnabled ? 'ON' : 'OFF'}
-        </button>
-        <p className="text-[11px] text-gray-400 leading-relaxed">
-          켜면 같은 외부 품목을 공급받는 가까운 조립기계들을, 벨트·투입기 처리량이
-          감당하는 한도 내에서 하나의 무한상자 + 트렁크 벨트가 공급하도록 묶습니다.
-          묶기가 불가능하면 기존 1:1 배치로 자동 폴백합니다. 토글 후 자동 배치를
-          다시 실행해야 반영됩니다.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-3">
-        <button
-          onClick={() => {
-            const next = !gatherEnabled;
-            setAutoLayoutGatherExternals(next);
-            setGatherEnabled(next);
-          }}
-          className={`shrink-0 text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
-            gatherEnabled
-              ? 'bg-emerald-900/60 border-emerald-600 text-emerald-300 hover:bg-emerald-800/60'
-              : 'bg-gray-800/40 border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400'
-          }`}
-        >
-          GATHER BOXES {gatherEnabled ? 'ON' : 'OFF'}
-        </button>
-        <p className="text-[11px] text-gray-400 leading-relaxed">
-          켜면 모든 배치·라우팅이 끝난 뒤, 같은 품목·같은 역할(입력/출력)의 외부
-          무한상자들을 한 변의 인접한 자리로 모아 품목당 외부 물류 접점이 한 곳이
-          되게 합니다. 각 상자는 자기 belt를 그대로 유지합니다(흐름 합류 아님).
-          모으기가 불가능한 그룹은 기존 배치 그대로 둡니다. 토글 후 자동 배치를
-          다시 실행해야 반영됩니다.
         </p>
       </div>
 
