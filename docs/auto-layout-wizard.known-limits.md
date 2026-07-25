@@ -12,7 +12,7 @@ tags: [auto-layout, placement, routing]
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
 >
-> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 1:1 파이프로 라우팅된다(§6 참고).
+> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 모듈 파이프라인의 트렁크 파이프 + 유체 홉으로 처리된다 ([[auto-layout-wizard.fluid-hop]] · [[auto-layout-wizard.trunk-pipe]]).
 
 ---
 
@@ -25,67 +25,20 @@ tags: [auto-layout, placement, routing]
 - 입출력 포트가 많거나(재료 4종+ 등) **다중 fluid** 인 레시피(정유소 등)는 한 열에서 필요한 면을 다 확보하지 못해 트렁크 병합 실패·1:1 폴백·미관 저하가 발생.
 
 **원인:**
-- [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 5단계가 `origin.x = colX[depth]` 고정, `origin.y` 만 증가시켜 배치. 행/격자/머신+레인 타일 등 다른 형태가 없다.
+- [module/clusterLayout.ts](../frontend/src/utils/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+레인 타일 등 다른 형태가 없다.
 - [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
 1. **포트 수요 → 형태 선택기(shape selector)**: 노드별 needW/needE/needNS(면별 강제 포트 수 + fluidbox 고정면)를 산정해 컬럼 사다리에 안 들어오면 행/격자로 승급.
-2. 파급: 좌표 배치(4·5)·채널 계획(4c·4d)·트렁크 시드([trunkPath.ts](../frontend/src/utils/autoLayout/trunkPath.ts))에 모두 반영 필요 → §2(gap)를 먼저 정리한 뒤 형태 확장 권장.
+2. 파급: `modulePacking` 의 열 배치·채널 계획·트렁크 시드([module/trunkPath.ts](../frontend/src/utils/autoLayout/module/trunkPath.ts))에 모두 반영 필요.
+
+> **선행 조건이던 gap 문제는 해소됐다**(2026-07-25). 세로 간격은 이제 링크 면 계획에서
+> 유도된다(`gapRowsFromPlans` → `layoutCluster(rowGaps)`, 기본 `MODULE_ROW_GAP = 0`).
+> 형태 확장의 남은 축은 이 항목 하나다.
 
 ---
 
-## 2. 클러스터 세로 간격 `ROW_GAP` 이 포트와 무관하게 고정(3)
-
-**우선순위: P2**
-
-**증상:**
-- 기둥 내 머신 사이가 항상 3칸 비어 세로 피치가 머신 높이의 2배(3×3 기준 6칸) → 면적 낭비.
-- 옆면 트렁크/가로 채널은 세로 간격을 쓰지 않으므로 이 3칸은 대부분 빈칸으로 남는다.
-
-**원인:**
-- [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `ROW_GAP = 3` 상수(인서터+벨트+인서터 최악값에서 유래). 실제 필요한 gap = "그 머신의 입출력 포트를 모두 제공하는 최소값" 인데 이를 산정하지 않는다.
-
-**해결 방향:**
-- **포트-버짓 기반 `rowGapOf(node)`**: needW/needE/needNS 로 gap 사다리(0=W·E만 / 1=인서터 / 2=+벨트레인 / 3=양면공유) 중 최소를 선택. 병합 여부는 needNS 계산의 입력으로만 사용.
-- §1(형태)과 같은 문제의 두 축(세로 gap ↔ 형태). 컬럼 적응 gap → 형태 일반화 순서.
-
----
-
-## 3. 트렁크 병합 v1 한계 — reach-1 · all-or-nothing · 스퍼 미구현
-
-**우선순위: P2**
-
-**증상:**
-- 클러스터/외부 트렁크에서 머신 1대라도 직접 탭에 실패하면 **그룹 전체가 1:1 로 폴백**.
-- 둘러싸여 직접 탭이 불가한 머신(`untapped`)을 우회 연결하는 스퍼가 없어 그냥 1:1.
-- fluid 클러스터는 트렁크 병합 대상이 아님(아이템 전용 게이트) → 항상 1:1 파이프.
-
-**원인:**
-- [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts) / [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) v1 가 `allowLongInserter:false`(reach-1) + `untapped>0 면 통째 폴백`. [trunkEmit.ts](../frontend/src/utils/autoLayout/trunkEmit.ts) `spursNeeded` 는 채워지지만 오케스트레이션이 소비하지 않음.
-
-**해결 방향:**
-1. `untapped` 머신용 스퍼(routeItem) 배치 → 부분 병합 허용.
-2. reach-2(long inserter) 탭 활성화 검토(`allowLongInserter`).
-3. fluid 트렁크(파이프 합류) 별도 설계.
-
----
-
-## 4. collect 트렁크 코너 방향 반전 잠복 버그
-
-**우선순위: P2 (정확성)**
-
-**증상:**
-- *굽은(bent)* collect 트렁크에서 코너 셀의 벨트 흐름 방향이 어긋날 수 있다. 현재 시드 로직이 직선 spine 을 강하게 선호해 거의 발현되지 않지만, 불규칙 레이아웃에서 가능.
-
-**원인:**
-- [trunkEmit.ts](../frontend/src/utils/autoLayout/trunkEmit.ts) collect 반전이 셀별 `reverseDir(c.dir)` 를 쓰는데, 굽은 경로의 코너 셀은 이 단순 반전이 경로를 벗어난 방향을 가리킨다.
-
-**해결 방향:**
-- 시프트 기반 반전: `dir = i===0 ? reverseDir(dirOf(f)) : reverseDir(path.trunkCells[i-1].dir)` 로 한 칸 당겨 반전.
-
----
-
-## 5. 라우팅 occupancy 가 모든 셀 통과 불가 (belt/pipe mixing 미구현)
+## 2. 라우팅 occupancy 가 모든 셀 통과 불가 (belt/pipe mixing 미구현)
 
 **우선순위: P2**
 
@@ -101,26 +54,28 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 6. 머신 회전 미지원 · fluidbox 고정면 제약
+## 3. 머신 회전이 유체에만 있다 · 아이템은 direction 0 고정
 
 **우선순위: P2**
 
 **증상:**
-- 머신을 회전 배치하는 의도 표현 불가(항상 direction 0=N).
+- **유체 머신은 회전한다**(2026-07-25) — `chooseMachineDirection` 이 유체 상자를 원하는 면(출력 W·입력 E)에 오게 하는 각도를 게임데이터에서 고른다. 못 맞추면 트리째 거절.
+- 그러나 **아이템 전용 머신은 여전히 direction 0 고정**이다. 회전을 배치 품질(면 배분)의 자유도로 쓰지 않는다.
 - fluid 입출력은 prototype 의 `fluid_boxes` 가 정의한 **고정 면 셀** 에만 닿을 수 있어, 기둥 클러스터에서 다중 fluid 머신을 서빙하기 어렵다(§1 과 연동).
 
 **원인:**
-- 배치가 회전을 결정 변수로 풀지 않음(0 고정). [portInference.ts](../frontend/src/utils/autoLayout/portInference.ts) `fluidPorts` 가 회전 0 positions 만 사용.
+- 유체 회전은 [module/fluidPorts.ts](../frontend/src/utils/autoLayout/module/fluidPorts.ts) `chooseMachineDirection` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
+- 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 가 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `machineEntityType`).
 
 **해결 방향:**
-- 회전 4방향 후보 + fluidbox 회전별 positions 사용. §1 형태 선택기와 함께.
+- 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseMachineDirection`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
 
 ---
 
-## 7. 카테고리당 첫 매칭 머신만 사용
+## 4. 카테고리당 첫 매칭 머신만 사용
 
 **우선순위: P3**
 
@@ -136,24 +91,26 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 8. 인서터 처리량·모듈이 머신 수 산정에 미반영
+## 5. 인서터 처리량·모듈이 머신 수 산정에 미반영
 
 **우선순위: P3**
 
 **증상:**
-- 인서터가 bottleneck 이어도 처리량 모드의 머신 *대수* 는 머신 crafting_speed 만으로 산정 → 인서터/벨트 한계 무시.
-- 모듈(생산성/속도)은 전혀 모델링 안 됨.
+- 모듈(생산성/속도)은 전혀 모델링 안 됨(`productivityMultiplier = 1` 고정).
+
+> **인서터 병목은 반영됐다**(2026-07-25). `assignThroughputCounts` 가 인서터를 함께 받아
+> **굶주림 보상**을 건다 — 팔을 다 앉힐 자리가 없는 머신은 그만큼만 돌고(`speedFraction`),
+> 부족분만큼 머신이 더 놓인다. 남은 건 모듈 modelling 뿐이라 항목을 그쪽으로 좁힌다.
 
 **원인:**
 - [wizardUtils.ts](../frontend/src/utils/autoLayout/wizardUtils.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
-- 인서터 처리량 보정([inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts))은 *트렁크 용량 게이트*(§3)에는 흐르지만 머신 수에는 미반영.
 
 **해결 방향:**
-- 카운트 산정이 `min(machine_rate, inserter_rate)` 를 effective rate 로 사용 + 모듈 multiplier 입력.
+- 모듈 multiplier 를 `NodeMachineParams` 입력으로.
 
 ---
 
-## 9. 후보 1개만 생성 (탐색·선택 없음)
+## 6. 후보 1개만 생성 (탐색·선택 없음)
 
 **우선순위: P3**
 
@@ -169,7 +126,7 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 10. 다중 부모 공유 자식 미처리
+## 7. 다중 부모 공유 자식 미처리
 
 **우선순위: P3**
 
@@ -184,19 +141,19 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 11. 결정성 fuzz 테스트 부재
+## 8. 결정성 fuzz 테스트 부재
 
 **우선순위: P3**
 
 **증상:**
-- 전 과정이 [[용어사전#결정성 (determinism)|결정적]]이라고 주장하지만 (입력→출력) snapshot 회귀/[[용어사전#fuzz 테스트|퍼즈 테스트]]가 없다. 단위 테스트는 trunkPath·mergeGrouping·channelPlanner 등 모듈 레벨만 존재.
+- 전 과정이 [[용어사전#결정성 (determinism)|결정적]]이라고 주장하지만 (입력→출력) snapshot 회귀/[[용어사전#fuzz 테스트|퍼즈 테스트]]가 없다. 단위 테스트는 trunkPath·channelPlanner·modulePacking 등 모듈 레벨만 존재.
 
 **해결 방향:**
 - `runLayeredWizard` 전체에 대한 입력→placed 스냅샷 회귀 테스트 추가.
 
 ---
 
-## 12. Deprecated Dijkstra Guard — 옛 경로의 파이프는 합류 가드를 안 거친다
+## 9. Deprecated Dijkstra Guard — 드래그 재라우팅의 파이프는 합류 가드를 안 거친다
 
 **우선순위: P2**
 
@@ -235,5 +192,15 @@ tags: [auto-layout, placement, routing]
 | 우선순위 | 항목 |
 |----------|------|
 | **P1** | §1 클러스터 형태 기둥 고정 |
-| **P2** | §2 ROW_GAP 고정 · §3 트렁크 v1 한계 · §4 collect 코너 버그 · §5 belt/pipe mixing · §6 회전/fluid면 · §12 Deprecated Dijkstra Guard |
-| **P3** | §7 첫매칭 머신 · §8 인서터/모듈 미반영 · §9 단일 후보 · §10 공유 자식 · §11 결정성 테스트 |
+| **P2** | §2 belt/pipe mixing · §3 아이템 머신 회전 미지원 · §9 Deprecated Dijkstra Guard(드래그) |
+| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 |
+
+> **해소되어 삭제된 항목 (2026-07-25 감사):**
+> - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).
+> - ~~트렁크 병합 v1 한계~~ — `clusterTrunkMerge`·`externalMergePass` 자체가 삭제됐다.
+>   모듈 경로는 [[auto-layout-wizard.machine-link]] 링크 모델로 공급을 나눈다.
+> - ~~collect 트렁크 코너 방향 반전 버그~~ — `trunkEmit` 이 처방대로 시프트 기반 반전을
+>   구현했다(코너에서 이전 셀 방향을 다시 계산).
+>
+> 부분 해소되어 **범위를 좁힌** 항목: §3(유체는 회전한다) · §5(인서터 병목은 반영됐다) ·
+> §9(옛 경로가 사라져 드래그 재라우팅만 남았다).
