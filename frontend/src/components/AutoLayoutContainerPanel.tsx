@@ -3,7 +3,7 @@
  *
  * 부모 모달 ([AutoLayoutModal.tsx]) 의 review 단계에 하단 박스로 노출되는
  * *대체* 진입점. 사용자가 토글로 새 모델을 켜면 본 패널이 활성화되어
- * `runLayeredWizard`(S-LAYER) 를 호출하고 결과 후보 트리를 표시한다.
+ * `runLayeredWizard` 를 호출하고 결과 후보 트리를 표시한다.
  *
  * **후보 적용 시 동작:**
  *  - 그리드에 셀이 적용되고 비-InfinityChest/Pipe 셀의 bbox 가 layoutStore 의
@@ -150,7 +150,8 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     armSlowTimer();
 
     try {
-      // 배치 전략 S-LAYER (계층화 DAG + 채널 라우팅) — 유일 전략.
+      // 배치 전략은 하나뿐이다 — 모듈 파이프라인(트리 전개 → generateModule → 채널 기하 예약).
+      // 옛 S-LAYER 는 삭제됐다(2026-07-25).
       const r = await runLayeredWizard(input, {
         signal: ctrl.signal,
         onProgress: (snap) => setProgress(snap),

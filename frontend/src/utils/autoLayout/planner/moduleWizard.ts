@@ -94,9 +94,15 @@ export type ModulePipelineResult =
   | { ok: true; leaf: CandidateLeaf }
   | { ok: false; reason: RejectReason };
 
-/** 사람이 읽을 한 줄 — 실패 후보 라벨·토스트에 그대로 쓴다. */
+/**
+ * 사람이 읽을 한 줄 — 실패 후보 라벨·토스트에 그대로 쓴다.
+ *
+ * "자동배치 실패" 같은 머리말은 **붙이지 않는다** — 이 문자열을 받는 쪽
+ * (`layeredWizard.failureResult`)이 이미 그 머리말을 단다. 두 군데서 달면 화면에
+ * "자동배치 실패: 자동배치 실패 [multi-fluid] …" 로 겹친다(2026-07-25 브라우저 실측).
+ */
 export function describeReject(reason: RejectReason): string {
-  return `자동배치 실패 [${reason.kind}] ${reason.detail}`;
+  return `[${reason.kind}] ${reason.detail}`;
 }
 
 /**

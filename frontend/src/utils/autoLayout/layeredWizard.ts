@@ -236,10 +236,10 @@ function failureResult(detail: string): ContainerWizardResult {
         kind: "failure",
         reason: "no-machine-match",
         children: [],
-        label: `S-LAYER 실패: ${detail}`,
+        label: `자동배치 실패: ${detail}`,
       },
     ],
-    label: "S-LAYER (실패)",
+    label: "자동배치 (실패)",
   };
   return {
     ok: false,
