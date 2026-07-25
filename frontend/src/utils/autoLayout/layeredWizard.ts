@@ -86,7 +86,7 @@ import {
 } from "./planner/channelPlanner";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_MODULE_PIPELINE } from "./debugFlags";
 import { inserterReach } from "./inserterThroughput";
-import { tryRunModulePipeline } from "./planner/moduleWizard";
+import { tryRunModulePipeline, type RejectReason } from "./planner/moduleWizard";
 import { makeBuildSpec } from "./buildSpec";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,7 +227,7 @@ export const runLayeredWizard: RunContainerWizard = async (
 
   // 2a. 모듈 파이프라인(조각 5, 하이브리드) — 플래그 ON + 트리 전부 simple-item 일 때만
   //     generateModule 자족 경로로 후보를 만든다(루트·자식 동일 생성 → child==root).
-  //     적격 아니면(유체·미탭·홉 실패) null → 아래 옛 경로로 폴백(회귀 0).
+  //     적격 아니면(유체·미탭·홉 실패) null → fallbackToLegacyPath 로 폴백(회귀 0).
   if (AUTO_LAYOUT_MODULE_PIPELINE) {
     const moduleLeaf = tryRunModulePipeline({ input, metas, parentOf, order, makeId: nextId });
     if (moduleLeaf) {
@@ -251,9 +251,10 @@ export const runLayeredWizard: RunContainerWizard = async (
       };
       return { ok: true, tree: moduleTree, partial: moduleTree.aborted };
     }
+    // 모듈 경로 실패 → fallback 으로 진행. (유체·미탭·홉 실패 등)
   }
 
-  // 2b. 클러스터 형태 — 노드별 N대 머신의 내부 배열(상대좌표 + bbox)을 한 번 계산해
+  // 2b. 클러스터 형태 — S-LAYER 옛 경로 — 노드별 N대 머신의 내부 배열(상대좌표 + bbox)을 한 번 계산해
   //     캐시한다. 이후 레이아웃 단계(열 폭·노드 높이·채널 구간·배치)는 이 결과만
   //     형태-무관하게 소비한다 (불투명 서브블록, clusterLayout.ts). P1 = 기둥.
   //
