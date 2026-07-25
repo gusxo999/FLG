@@ -57,33 +57,6 @@ import {
 import { commitContainer } from "./machinePlacer";
 import { commitRouting } from "./containerRouting";
 import { placeExternalContainer } from "./externalPlacer";
-import { wrapExternalsAroundPerimeter, cloneArea } from "./areaUnification";
-import { routeWithFallback, buildRoutingOptions } from "./routeFallback";
-import {
-  wrapExternalsWithMerge,
-  DEFAULT_MERGE_CONFIG,
-  AUTO_LAYOUT_MERGE_BOXES,
-} from "./externalMergePass";
-import {
-  gatherExternalsToPoints,
-  DEFAULT_GATHER_CONFIG,
-  AUTO_LAYOUT_GATHER_EXTERNALS,
-} from "./externalGatherPass";
-import { tryMergeClusterOutput, tryMergeClusterOutputBus } from "./clusterTrunkMerge";
-import { beltThroughput } from "./beltThroughput";
-import {
-  layoutCluster,
-  pickClusterShape,
-  columnTapCapacity,
-  ROW_GAP,
-  type ClusterLayout,
-  type ShapeCaps,
-} from "./module/clusterLayout";
-import {
-  assignTracksLeftEdge,
-  channelWidthFromTracks,
-  type Interval,
-} from "./planner/channelPlanner";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_MODULE_PIPELINE } from "./debugFlags";
 import { inserterReach } from "./inserterThroughput";
 import { tryRunModulePipeline, type RejectReason } from "./planner/moduleWizard";
