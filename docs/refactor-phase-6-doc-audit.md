@@ -12,7 +12,7 @@ tags: [auto-layout, docs, refactor]
 
 | 문서 | 판정 | 이유 |
 |---|---|---|
-| [.visualization-trace](auto-layout-wizard.visualization-trace.md) | **업데이트(긴급)** | 문서가 나열한 단계 10여 개가 전부 사라짐. 실제 emit 은 2개뿐이고 그중 기록되는 건 1개 |
+| ~~.visualization-trace~~ | **삭제됨** | 감사는 "업데이트(긴급)" 으로 봤으나, 사용자가 시각화를 **실험용 기능**으로 확인해 기능과 문서를 함께 제거(2026-07-25) |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | **업데이트** | 죽은 줄번호 인용 + 존재하지 않는 파일 인용. Phase 4 가 추가한 새 순서 결정점 2개가 빠져 있음 |
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | **업데이트(상태만)** | §10 확정 설계는 **구현됐다**. `[진행]` 딱지가 틀렸고, 일부는 machine-link 가 대체 |
 | [.cluster-redesign](auto-layout-wizard.cluster-redesign.md) | **유지 + 노트** | 미구현 설계로 유효. 다만 근거로 삼은 `pickClusterShape` 가 프로덕션에서 죽었음을 명시해야 |
@@ -99,6 +99,6 @@ Phase 3 이 S-LAYER 본체를 지우며 그 안에 심겨 있던 체크포인트
 | P6-3 | `s-layer-channel-reservation.md` 상단에 "본체 삭제됨, 철학은 channel-geometry 가 계승" 노트 | Phase 3 |
 | P6-4 | 본 감사의 판정 실행(업데이트 3건 + 노트 2건) | P6-0 |
 | P6-5 | `known-limits.md` — "옛 경로로 폴백" → "fallback 실패" | Phase 3 |
-| **P6-6** | **시각화 체크포인트 재이식** — 문서가 아니라 **코드** 작업 | 본 감사 |
+| ~~P6-6~~ | ~~시각화 체크포인트 재이식~~ — **불필요**. 기능을 재이식하는 대신 제거했다(실험용이었음) | — |
 
 **삭제 대상 문서는 없다.** 7개 모두 유지 또는 갱신이다.

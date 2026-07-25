@@ -46,7 +46,6 @@ tags: [moc]
 | [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) | ↳ count=1 raw 입력의 노출 N/S 면 슬롯 (E→N/S→W, W-spill 갇힘 원인 치료) | `#placement` `#routing` |
 | [.module-way-outs](auto-layout-wizard.module-way-outs.md) | ↳ **moduleWayOuts** — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다. 예약이 막힌 방향을 안 잡게 해 탐색 폴백 제거 + 폭 낭비 제거 | `#placement` `#routing` |
 | [.control-behavior-scope](auto-layout-wizard.control-behavior-scope.md) | ↳ 추적하는 ControlBehavior 필드 범위 | `#blueprint` |
-| [.visualization-trace](auto-layout-wizard.visualization-trace.md) | ↳ 후보 생성 시각화 트레이스 체크포인트 (`emit` 마커 규칙) | `#visualization` |
 | [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | ↳ **계측기** — 같은 트리를 같은 자로 재는 도구 + 1:1 기준선 수치. 갈아타기 판정은 면적 아닌 "실패 0 + 채널 폭" | `#auto-layout` |
 | [.code-folders](auto-layout-wizard.code-folders.md) | ↳ 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
 
@@ -61,7 +60,6 @@ Factorio API/데이터의 비직관적 동작과 그 해석.
 | [map-position-parsing](map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태 문제와 3중 방어 정규화 | `#blueprint` |
 | [direction-encoding](direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향 인코딩으로 통일 (1.x ×2 자동 업그레이드) | `#blueprint` |
 | [tech-tree-resolution](tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 자동 산출 | `#auto-layout` |
-| [belt-flow-inspection](belt-flow-inspection.md) | 벨트 셀 클릭 흐름량 검사 — 그리드 정적 분석, 인서터 지점별 증감 | `#visualization` `#factorio-data` |
 
 ### 📦 Blueprint import/export `#blueprint`
 
@@ -117,7 +115,6 @@ auto-layout-wizard.control-behavior-scope.md   ← ↳ 자식: 추적 범위
 | `#blueprint` | 블루프린트 import/export/메타데이터 |
 | `#factorio-data` | Factorio API·데이터 시맨틱스 |
 | `#fluid` | 유체 관련 |
-| `#visualization` | 후보 생성 시각화 |
 | `#deferred` | 보류·폐기된 결정 |
 | `#glossary` | 용어 사전 |
 | `#moc` | 이 진입점 문서 · 용어 사전 |

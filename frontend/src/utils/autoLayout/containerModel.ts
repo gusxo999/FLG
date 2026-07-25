@@ -313,17 +313,16 @@ export interface CandidateNodeBase {
   /** UI 라벨 (예: "조립기-2 [기어휠] @ (5,5)", "perm=[톱니, 철판] dir=right") */
   label: string;
   /**
-   * 이 노드 생성 시점의 영역 상태 스냅샷.
-   * UI 의 hover preview 에서 *그 시점까지* 배치된 셀들을 그리는 데 사용된다.
-   * - MachineNode: 머신 + 부모-자식 라우팅까지 commit 된 직후
-   * - BranchNode: (perm × dir) 시도 직전 (= 부모 MachineNode 상태)
-   * - FailureLeaf: 실패 발생 시점의 부분 상태 (있을 수도, 없을 수도)
-   * - CandidateLeaf: 본인의 internal/external 필드와 별도로 두지 않음 (중복 방지)
+   * 이 노드 생성 시점의 영역 상태 스냅샷 — 후보 패널의 hover preview 용.
+   *
+   * **지금 이걸 채우는 코드가 없다**(2026-07-25 확인). 유일한 후보는 CandidateLeaf 이고
+   * 그건 internal/external 을 직접 가진다. 필드 자체가 살아 있는 건 hover preview 를
+   * 되살릴 때를 위한 자리표시다.
    */
   snapshot?: AreaSnapshot;
 }
 
-/** Area 스냅샷 — internal + external 의 얕은 복제본 (placed/containers/bbox) */
+/** Area 스냅샷 — internal + external 의 얇은 복제본 (placed/containers/bbox) */
 export interface AreaSnapshot {
   internal: Area;
   external: Area;
@@ -393,57 +392,6 @@ export interface CandidateTree {
     failuresGenerated: number;
     deepestDepth: number;
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §7.5 시각화(Visualization) — 후보 1개의 생성 과정을 함수 단계로 기록
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 한 phase 단계의 기록. layeredWizard 의 `emit(라벨, areas, depth)` 가 areas 를
- * 넘긴 시점마다 1개 생성된다. `snapshot` 은 그 phase 시점의 영역 상태.
- * 마지막에 별도의 '완료' 단계가 최종 상태를 담아 추가된다.
- */
-export interface TraceStep {
-  /** 0부터의 실행 순서 인덱스 */
-  order: number;
-  /** 실행된 phase / 라벨 (emit 첫 인자 그대로) */
-  functionName: string;
-  /**
-   * 함수 호출 트리에서의 중첩 깊이. depth 0 = phase 그룹 헤더,
-   * depth 1 = 그 phase 의 루프 단위 자식 단계. 사이드바 트리 구성(buildFunctionTree)에 사용.
-   */
-  callDepth: number;
-  /** 이 단계 시점의 영역 스냅샷 (raw layout 좌표 — 정규화하지 않음) */
-  snapshot: AreaSnapshot;
-}
-
-/**
- * 한 라우팅의 연결 정보 — 시각화가 producer↔consumer 컨테이너 중심을 잇는
- * 선을 그리는 데 사용. 양 끝 컨테이너가 해당 단계 스냅샷에 둘 다 존재할 때만
- * 그 단계에서 선이 그려진다(점진적 등장).
- */
-export interface TraceRouting {
-  /** producer(자식/생산) 컨테이너 id */
-  fromId: string;
-  /** consumer(부모/소비) 컨테이너 id */
-  toId: string;
-  /** fluid 라우팅이면 true (파이프), 아니면 item(벨트) */
-  fluid: boolean;
-}
-
-/** 후보 1개 생성 과정의 전체 트레이스 — 시각화 모달의 입력. */
-export interface CandidateTraceResult {
-  steps: TraceStep[];
-  /** 최종 후보의 전체 라우팅 연결 목록 (단계별 선 그리기에 사용) */
-  routings: TraceRouting[];
-  /**
-   * 모든 단계에 걸친 placed 셀의 합집합 bbox (raw layout 좌표).
-   * 시각화 그리드의 카메라를 이 범위에 고정해 단계 진행 시 화면이 튀지 않게 한다.
-   */
-  bbox: { x: number; y: number; w: number; h: number } | undefined;
-  /** 재현 결과가 실패 leaf 로 끝났는지 여부 */
-  failed: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

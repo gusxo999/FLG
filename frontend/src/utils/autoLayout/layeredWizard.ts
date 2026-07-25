@@ -17,16 +17,10 @@
  * (모듈 파이프라인이 채널 예약을 상위 호환으로 계승 — docs/…channel-geometry-reservation.md),
  * 지금 이 파일에 레이어도 tidy-tree 도 없다. 이름만 남아 있다. 개명은 호출부 4곳이
  * 걸려 별도 작업으로 둔다.
- *
- * 시각화: `traceLayeredPath` 가 본 패스를 레코더 ON 으로 재실행해 phase 별 스냅샷을
- * 수집한다(모달 재생용).
  */
 
 import { useGameDataStore } from "../../store/gameDataStore";
 import type {
-  Area,
-  AreaSnapshot,
-  CandidateTraceResult,
   CandidateTree,
   Container,
   ContainerWizardInput,
@@ -34,8 +28,6 @@ import type {
   MachineNode,
   ProgressReporter,
   RunContainerWizard,
-  TraceRouting,
-  TraceStep,
 } from "./containerModel";
 import type { RecipeTreeNode } from "./types";
 import {
@@ -44,7 +36,6 @@ import {
   expandRecipeTree,
 } from "./recipeTree";
 import { makeMachinePicker, makeMachineParamsLookup } from "./wizardUtils";
-import { cloneArea } from "./areaUnification";
 import { tryRunModulePipeline, describeReject } from "./planner/moduleWizard";
 import { makeBuildSpec } from "./buildSpec";
 
@@ -166,7 +157,7 @@ export const runLayeredWizard: RunContainerWizard = async (
   if (!res.ok) return failureResult(describeReject(res.reason));
 
   const leaf = res.leaf;
-  await emit("완료", { internal: leaf.internal, external: leaf.external });
+  await emit("완료");
   const rootRep =
     leaf.internal.containers.find(
       (c) => c.kind === "machine" && c.recipeName === tree.recipeName,
@@ -192,19 +183,17 @@ export const runLayeredWizard: RunContainerWizard = async (
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * onProgress 콜백을 phase 이름으로 호출하고, 시각화 레코더가 활성이면 그 시점의
- * 영역 스냅샷을 한 단계로 기록한다. `areas` 가 주어진 phase 만 단계가 된다
- * (영역이 아직 없는 초기 phase 는 진행 보고만) — S-EXH `reportFn` 패턴 미러.
+ * onProgress 콜백을 phase 이름으로 호출한다 — 진행 표시와 협조적 양보 둘뿐이다.
  */
 function makeEmitter(
   cb: ProgressReporter | undefined,
   opts?: { yieldEveryMs: number },
-): (name: string, areas?: { internal: Area; external: Area }, depth?: number) => Promise<void> {
+): (name: string, depth?: number) => Promise<void> {
   // 누적 단계 수 — 진행 UI 가 "멈춤"이 아니라 실제 진행 중임을 보이도록 단조 증가.
   let attempts = 0;
   // 마지막으로 이벤트 루프에 양보한 시각(ms). 양보 주기 throttle 기준.
   let lastYield = typeof performance !== "undefined" ? performance.now() : Date.now();
-  return async (name, areas, depth = 0) => {
+  return async (name, depth = 0) => {
     attempts += 1;
     cb?.({
       depth,
@@ -215,16 +204,6 @@ function makeEmitter(
       currentFunction: name,
       attempts,
     });
-    if (layeredRecorder && areas) {
-      layeredRecorder.steps.push({
-        order: layeredRecorder.steps.length,
-        functionName: name,
-        // depth 0 = phase 그룹 헤더, depth 1 = 그 phase 의 루프 단위 자식 단계.
-        // 호출 트리 사이드바가 callDepth 시퀀스로 중첩을 만든다(buildFunctionTree).
-        callDepth: depth,
-        snapshot: captureSnapshot(areas.internal, areas.external),
-      });
-    }
     // 협조적 양보 — yieldEveryMs 가 지정된 실제 실행에서만, 마지막 양보 후 충분히
     // 시간이 흘렀을 때 매크로태스크 1회를 끼워 넣어 브라우저가 리페인트하고 React
     // 상태(진행/모달)를 반영하며 abort 신호를 받을 수 있게 한다.
@@ -236,95 +215,6 @@ function makeEmitter(
       }
     }
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 시각화 트레이스 — 결정적 단일 패스(S-LAYER)의 생성 과정을 phase 단계로 재현.
-// S-EXH 의 `traceCandidatePath`(perm×dir 재실행) 대체. 여기선 perm/dir 가 없어
-// `runLayeredWizard` 를 레코더 ON 으로 1회 실행하면 곧 그 후보의 생성 과정이다.
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface LayeredRecorder {
-  steps: TraceStep[];
-}
-
-let layeredRecorder: LayeredRecorder | null = null;
-
-/** 영역 스냅샷 — internal/external 의 복제본 (raw layout 좌표). */
-function captureSnapshot(internal: Area, external: Area): AreaSnapshot {
-  return { internal: cloneArea(internal), external: cloneArea(external) };
-}
-
-/** 모든 단계의 placed 셀(internal+external) 합집합 bbox — 카메라 고정용. */
-function unionStepsBbox(
-  steps: TraceStep[],
-): { x: number; y: number; w: number; h: number } | undefined {
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  for (const s of steps) {
-    for (const area of [s.snapshot.internal, s.snapshot.external]) {
-      for (const p of area.placed) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x + 1 > maxX) maxX = p.x + 1;
-        if (p.y + 1 > maxY) maxY = p.y + 1;
-      }
-    }
-  }
-  if (!isFinite(minX)) return undefined;
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-
-/**
- * 트레이스 직렬화 락 — `layeredRecorder` 가 모듈 전역이라 동시 실행 시 서로를
- * 덮어쓴다(React StrictMode 이중 effect 등). 이전 트레이스가 끝날 때까지 기다려
- * 한 번에 하나만 실행한다.
- */
-let layeredTraceLock: Promise<void> = Promise.resolve();
-
-/**
- * S-LAYER 한 패스의 생성 과정을 단계로 재현. `runLayeredWizard` 를 레코더 ON 으로
- * 1회 실행해 phase 별 영역 스냅샷을 수집하고, 최종 후보의 라우팅 연결 목록과 카메라
- * bbox 를 함께 반환한다. 시각화 모달이 이 단계들을 0.5초 간격으로 재생한다.
- */
-export async function traceLayeredPath(
-  input: ContainerWizardInput,
-): Promise<CandidateTraceResult> {
-  const prevLock = layeredTraceLock;
-  let release!: () => void;
-  layeredTraceLock = new Promise<void>((r) => (release = r));
-  await prevLock;
-
-  const rec: LayeredRecorder = { steps: [] };
-  try {
-    layeredRecorder = rec;
-    let result: ContainerWizardResult;
-    try {
-      result = await runLayeredWizard(input);
-    } finally {
-      if (layeredRecorder === rec) layeredRecorder = null;
-    }
-
-    const leaf = result.tree.candidates[0];
-    const routings: TraceRouting[] = leaf
-      ? leaf.routings.map((r) => ({
-          fromId: r.from.containerId,
-          toId: r.to.containerId,
-          fluid: r.from.kind !== "item",
-        }))
-      : [];
-
-    return {
-      steps: rec.steps,
-      routings,
-      bbox: unionStepsBbox(rec.steps),
-      failed: !result.ok,
-    };
-  } finally {
-    release();
-  }
 }
 
 function failureResult(detail: string): ContainerWizardResult {

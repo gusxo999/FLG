@@ -27,8 +27,8 @@ import {
 import { AUTO_LAYOUT_COORD_DUMP } from '../utils/autoLayout/debugFlags';
 import { registerAutoLayoutDebug } from '../utils/debugApi';
 import type {
-  AreaSnapshot,
   CandidateLeaf,
+  AreaSnapshot,
   CandidateNode,
   CandidateTree,
   ContainerWizardInput,
@@ -362,23 +362,6 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       liveArea: { internal: leaf.internal, external: leaf.external, routings: leaf.routings },
     });
     useLayoutStore.getState().setRoutingEditMode(false);
-    // 시각화 진입 소스 저장 — 이 후보의 생성 과정을 traceLayeredPath 로 재현.
-    useLayoutStore.getState().setVisualizationSource({
-      input: {
-        targetRecipe: props.targetRecipe,
-        countMode:
-          props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
-        externalIngredients: props.externalIngredients,
-        recipeOverrides: props.recipeOverrides,
-        selectedMachines: Array.from(props.selectedMachines),
-        selectedInserters: Array.from(props.selectedInserters),
-        selectedBelts: Array.from(props.selectedBelts),
-        selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
-        selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
-        inserterOverrides,
-        externalPortsDefault: 'top-left',
-      },
-    });
     resetViewport();
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');
     // 위저드 설정 초기화하지 않음 — 사용자가 계속 설정을 유지할 수 있도록
