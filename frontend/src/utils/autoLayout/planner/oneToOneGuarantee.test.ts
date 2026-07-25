@@ -94,7 +94,8 @@ function adjacentToMachine(m: Container): { x: number; y: number; out: { x: numb
   return out;
 }
 
-const CARRIER = new Set([EntityType.Belt, EntityType.UndergroundBelt, EntityType.InfinityChest]);
+// Set<EntityType> 로 넓혀 둔다 — 리터럴 3종 union 으로 좁혀지면 .has(EntityType) 이 막힌다.
+const CARRIER = new Set<EntityType>([EntityType.Belt, EntityType.UndergroundBelt, EntityType.InfinityChest]);
 
 describe("공급 보장 — 탭이든 다이렉트든 성립해야 한다", () => {
   for (const [c0, c1, c2] of COUNTS) {

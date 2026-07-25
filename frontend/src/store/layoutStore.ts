@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { subscribeWithSelector, persist } from 'zustand/middleware';
+import { subscribeWithSelector, persist, createJSONStorage } from 'zustand/middleware';
 import type {
   LayoutGrid,
   GridCell,
@@ -223,6 +223,18 @@ interface LayoutState {
  * localStorage 용량 절약을 위해 비어있는 셀(entityId===null)은 저장하지 않는
  * sparse 압축 스토리지. 읽을 때 빈 셀을 다시 채워서 반환한다.
  */
+/** localStorage 에 실제로 저장되는 조각 — [partialize] 가 고르는 필드와 같아야 한다. */
+type PersistedLayout = Pick<
+  LayoutState,
+  | 'grid'
+  | 'viewport'
+  | 'gridOriginX'
+  | 'gridOriginY'
+  | 'externalAreaBbox'
+  | 'autoLayoutCanvasBbox'
+  | 'routingEditSession'
+>;
+
 const compressedGridStorage = {
   getItem(name: string): string | null {
     const raw = localStorage.getItem(name);
@@ -357,7 +369,7 @@ export const useLayoutStore = create<LayoutState>()(
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
           const cell = getCell(workGrid, ax + dx, ay + dy);
-          if (cell?.entityId !== null) {
+          if (cell && cell.entityId !== null) {
             if (canOverwrite(selectedEntityType, cell.entityType)) {
               overwriteIds.add(cell.entityId!);
               continue;
@@ -429,7 +441,7 @@ export const useLayoutStore = create<LayoutState>()(
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
           const cell = getCell(workGrid, ax + dx, ay + dy);
-          if (cell?.entityId !== null) {
+          if (cell && cell.entityId !== null) {
             if (canOverwrite(selectedEntityType, cell.entityType)) {
               overwriteIds.add(cell.entityId!);
               continue;
@@ -1257,8 +1269,12 @@ export const useLayoutStore = create<LayoutState>()(
   }),
   {
     name: 'factorio-layout-store',
-    storage: compressedGridStorage,
-    partialize: (state) => ({
+    // **문자열** 기반 어댑터다(zustand v3 모양). v5 의 persist 는 객체(PersistStorage)를
+    // 기대하므로 createJSONStorage 로 감싸야 한다. 안 감싸면 setItem 이 객체를 받아
+    // JSON.parse 에서 터지고 그 예외를 아래 빈 catch 가 삼켜 **아무것도 저장되지 않는다**
+    // (2026-07-25 발견 — 타입 에러가 그 사실을 가리키고 있었다).
+    storage: createJSONStorage<PersistedLayout>(() => compressedGridStorage),
+    partialize: (state): PersistedLayout => ({
       grid: state.grid,
       viewport: state.viewport,
       gridOriginX: state.gridOriginX,
