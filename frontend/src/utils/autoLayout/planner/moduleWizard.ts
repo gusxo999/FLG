@@ -62,6 +62,17 @@ export interface ModulePipelineArgs {
   makeId: (prefix: string) => string;
 }
 
+/** 신 경로 reject 사유 분류. */
+export type RejectReason =
+  | { kind: 'multi-fluid'; detail: string }
+  | { kind: 'non-square'; detail: string }
+  | { kind: 'stale-gamedata'; detail: string }
+  | { kind: 'no-pipe-entity'; detail: string }
+  | { kind: 'no-rotation'; detail: string }
+  | { kind: 'unrouted-lines'; detail: string }
+  | { kind: 'hop-failures'; detail: string }
+  | { kind: 'pipe-merge-conflict'; detail: string };
+
 /**
  * 모듈 경로로 후보 leaf 생성. 적격(전부 item·미탭0·홉성공) 아니면 null.
  *
@@ -104,8 +115,8 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
    * 나온다. 새 기능이 안 켜진 건지 안 만든 건지 구분이 안 되고, 실측 로그로도 알 수 없다
    * (2026-07-13: 유체 트리가 폴백했는데 사유를 몰라 추적 불가였다).
    */
-  const reject = (why: string): null => {
-    console.info(`[autoLayout] 모듈 경로 포기 → 옛 경로 폴백: ${why}`);
+  const reject = (reason: RejectReason): null => {
+    console.info(`[autoLayout] 모듈 경로 포기 → 옛 경로 폴백 [${reason.kind}]: ${reason.detail}`);
     return null;
   };
 
@@ -127,7 +138,7 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     const fluidOut = recipe.products.filter((p) => p.type === "fluid");
     if (fluidIn.length + fluidOut.length === 0) continue; // 아이템 전용 — 회전 없음.
     if (fluidIn.length + fluidOut.length > 1) {
-      return reject(`다-유체 미지원 (${at}: 유체 입력 ${fluidIn.length} 출력 ${fluidOut.length})`);
+      return reject({ kind: 'multi-fluid', detail: `${at}: 유체 입력 ${fluidIn.length} 출력 ${fluidOut.length}` });
     }
 
     const isOutput = fluidOut.length === 1;
@@ -137,11 +148,11 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     // 자식-공급 유체 입력은 이제 **홉이 잇는다**(옛 거절 제거). 루트 유체 출력은 반출로 나간다.
     const wantFace = isOutput ? "W" : "E";
     // 회전은 footprint 를 안 바꾼다는 전제 위에 있다 → 정사각형 머신만(§3).
-    if (m.w !== m.h) return reject(`비정사각형 머신은 회전 불가 (${m.entityName} ${m.w}×${m.h})`);
-    if (!options.pipeEntityName) return reject("파이프 prototype 없음");
+    if (m.w !== m.h) return reject({ kind: 'non-square', detail: `${m.entityName} ${m.w}×${m.h}` });
+    if (!options.pipeEntityName) return reject({ kind: 'no-pipe-entity', detail: "빌드 스펙에서 파이프를 선택하지 않음" });
 
     const entity = entityMap.get(m.entityName);
-    if (!entity) return reject(`엔티티 게임데이터 없음: ${m.entityName}`);
+    if (!entity) return reject({ kind: 'stale-gamedata', detail: `엔티티 게임데이터 없음: ${m.entityName}` });
     // 유체 상자가 `wantFace` 를 보게 하는 회전을 데이터에서 고른다(§3).
     const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, wantFace, role);
     if (!chosen) {
@@ -153,15 +164,15 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
         fb.connections.some((c) => c.direction !== undefined),
       );
       if (!hasDirection) {
-        return reject(
-          `게임데이터가 낡았다 — ${m.entityName} 의 유체 연결에 direction 이 없다.` +
-            ` scripts/export-gamedata.lua 로 다시 뽑아야 유체 면을 알 수 있다`,
-        );
+        return reject({
+          kind: 'stale-gamedata',
+          detail: `${m.entityName} 의 유체 연결에 direction 이 없다 (구 export). scripts/export-gamedata.lua 로 다시 뽑아야 함`,
+        });
       }
-      return reject(
-        `${m.entityName} 을 어느 각도로 돌려도 ${fluid.name} ${role} 유체 상자가 ${wantFace} 면에 안 온다` +
-          ` (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
-      );
+      return reject({
+        kind: 'no-rotation',
+        detail: `${m.entityName}: 어느 각도로도 ${fluid.name} ${role} 유체 상자가 ${wantFace} 면에 안 옴 (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
+      });
     }
 
     fluidTrunkOf.set(node, {
@@ -326,7 +337,10 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   for (const pl of pack.placements) {
     if (pl.module.unroutedLines.length > 0) {
       const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
-      return reject(`${pl.id} 의 줄을 못 놓음 [${names}] — ${pl.module.supply?.reason ?? "사유 없음"}`);
+      return reject({
+        kind: 'unrouted-lines',
+        detail: `${pl.id}: [${names}] — ${pl.module.supply?.reason ?? "사유 없음"}`,
+      });
     }
   }
 
@@ -391,10 +405,10 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
       );
       const hit = pipeFlowConflict(ownPipes, pipeFlowByFluid.get(fluid)!);
       if (hit)
-        return reject(
-          `[파이프 합류 가드] ${pl.id} 의 트렁크 파이프(${fluid})가 (${hit.cell.x},${hit.cell.y}) 에서` +
-            ` 이으면 안 될 것과 이어진다 (${hit.rule} 규칙)`,
-        );
+        return reject({
+          kind: 'pipe-merge-conflict',
+          detail: `${pl.id}: 트렁크 파이프(${fluid})가 (${hit.cell.x},${hit.cell.y}) 에서 ${hit.rule} 규칙 위반`,
+        });
     }
   }
 
@@ -412,7 +426,7 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
   });
-  if (hopRes.failures > 0) return reject(`모듈 사이 납품 경로 실패 ${hopRes.failures}건`);
+  if (hopRes.failures > 0) return reject({ kind: 'hop-failures', detail: `${hopRes.failures}건` });
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
   //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A lanePlan 배정대로 예약된
