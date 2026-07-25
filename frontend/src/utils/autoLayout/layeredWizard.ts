@@ -1,43 +1,38 @@
 /**
- * 전략 S-LAYER — 계층화 DAG 레이아웃 + 채널 라우팅 (Sugiyama 프레임워크).
+ * 자동 배치 **진입점** — 레시피 하나를 받아 후보 트리 하나를 낸다.
  *
- * 단일 출처: docs/auto-layout-wizard.s-layer-channel-reservation.md.
+ * `AutoLayoutContainerPanel` 이 `runLayeredWizard` 를 직접 호출한다.
  *
- * 자동 배치의 **유일 전략**. `AutoLayoutContainerPanel` 이 `runLayeredWizard` 를
- * 직접 호출한다. (이전엔 완전탐색 S-EXH 와 토글 병행했으나 S-EXH 는 제거됨 —
- * 트렁크 병합·시각화는 본 모듈로 포팅 완료.)
+ * **이 파일이 하는 일은 셋뿐이다:**
+ *   1. 레시피 트리를 펼치고 머신 수를 정한다 (`recipeTree`).
+ *   2. 노드마다 머신을 고르고 메타(footprint·대수·깊이)를 모은다.
+ *   3. 배치를 [tryRunModulePipeline] 에 맡기고, 그 결과를 후보 트리로 감싼다.
  *
- * **핵심 아이디어:**
- *   - 레시피 깊이를 **레이어(열)** 로, 레이어 사이에 빈 **채널**을 두고 머신을
- *     tidy-tree 로 배치한다. 채널이 항상 비어 있어 라우팅이 구조적으로 보장되며,
- *     결정적 단일 후보를 O(V+E) 로 생성한다.
+ * **배치 알고리즘은 여기 없다.** `planner/moduleWizard.ts` 가 소유한다 —
+ * 단일 출처: docs/auto-layout-wizard.placement-search.md.
  *
- * **현재 범위 / follow-up:**
- *   - 채널 라우팅은 검증된 BFS 라우터(`routeWithFallback`)를 그대로 사용한다.
- *     채널 폭은 `channelPlanner` 의 left-edge 트랙 배정으로 동적 산정.
- *   - 트렁크 병합(MERGE): 병합 플래그 ON 이면 자식 클러스터 출력은
- *     `tryMergeClusterOutput`(단일 collect 트렁크), 외부 입출력은
- *     `wrapExternalsWithMerge` 로 묶는다. OFF 면 1:1 perimeter wrap.
- *   - 시각화: `traceLayeredPath` 가 본 패스를 레코더 ON 으로 재실행해 phase 별
- *     스냅샷을 수집한다 (모달 재생용).
- *   - 레이어 내 정렬은 tidy-tree 로 충분 — barycenter 교차 최소화는 follow-up.
+ * ## 이름이 역사를 담고 있다 (2026-07-25)
+ * `layeredWizard`·`runLayeredWizard` 의 "layered" 는 옛 전략 **S-LAYER**(계층화 DAG +
+ * tidy-tree 배치 + 채널 BFS 라우팅)에서 왔다. 그 알고리즘은 Phase 3 에서 삭제됐고
+ * (모듈 파이프라인이 채널 예약을 상위 호환으로 계승 — docs/…channel-geometry-reservation.md),
+ * 지금 이 파일에 레이어도 tidy-tree 도 없다. 이름만 남아 있다. 개명은 호출부 4곳이
+ * 걸려 별도 작업으로 둔다.
+ *
+ * 시각화: `traceLayeredPath` 가 본 패스를 레코더 ON 으로 재실행해 phase 별 스냅샷을
+ * 수집한다(모달 재생용).
  */
 
-import { useGameDataStore, type Entity } from "../../store/gameDataStore";
+import { useGameDataStore } from "../../store/gameDataStore";
 import type {
   Area,
   AreaSnapshot,
-  CandidateLeaf,
   CandidateTraceResult,
   CandidateTree,
   Container,
   ContainerWizardInput,
   ContainerWizardResult,
   MachineNode,
-  PendingConnection,
-  PortKind,
   ProgressReporter,
-  Routing,
   RunContainerWizard,
   TraceRouting,
   TraceStep,
@@ -47,38 +42,14 @@ import {
   assignMinimumCounts,
   assignThroughputCounts,
   expandRecipeTree,
-  perMachineItemsPerSec,
 } from "./recipeTree";
-import {
-  makeEmptyArea,
-  makeMachinePicker,
-  makeMachineParamsLookup,
-} from "./wizardUtils";
-import { commitContainer } from "./machinePlacer";
-import { commitRouting } from "./containerRouting";
-import { placeExternalContainer } from "./externalPlacer";
-import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_MODULE_PIPELINE } from "./debugFlags";
-import { inserterReach } from "./inserterThroughput";
-import { tryRunModulePipeline, type RejectReason } from "./planner/moduleWizard";
+import { makeMachinePicker, makeMachineParamsLookup } from "./wizardUtils";
+import { cloneArea } from "./areaUnification";
+import { tryRunModulePipeline, describeReject } from "./planner/moduleWizard";
 import { makeBuildSpec } from "./buildSpec";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 레이아웃 상수 — 문서 §4 (채널 폭) / §5 (트랙)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 채널 폭의 **하한** (아이템 체인 투입기+벨트+투입기 최소 3). 실제 폭은
- * left-edge 트랙 수로 채널마다 동적으로 정한다 (`channelPlanner`, 문서 §4·§5).
- */
-const CHANNEL_MIN = 3;
-
-// 클러스터 내부 세로 간격(ROW_GAP)은 clusterLayout.ts 가 소유한다(형태 결정의 일부).
-
-/** 서로 다른 부모의 부분트리(형제 블록) 사이 세로 여백. */
-const SUBTREE_GAP = 3;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// id 카운터 — 모듈 스코프 (S-EXH 와 별개)
+// id 카운터 — 모듈 스코프
 // ─────────────────────────────────────────────────────────────────────────────
 
 let layeredIdCounter = 0;
@@ -119,18 +90,8 @@ export const runLayeredWizard: RunContainerWizard = async (
   // 방지) 진행 표시·중단·"오래 걸림" 모달이 동작하도록. 트레이스(hooks 없음)는 양보 없이
   // 동기 재현(레코더 단계 순서 보존).
   const emit = makeEmitter(hooks?.onProgress, hooks ? { yieldEveryMs: 40 } : undefined);
-  const _wizT0 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-  // '간단한 레시피' = I/O 에 유체가 없는 아이템 전용 레시피. 이런 클러스터는 W/E 옆면만
-  // 쓰므로 머신을 밀착(rowGap=0)시킨다 — N/S gap 으로 트렁크가 파고들 공간을 없애 기둥
-  // 사이 침투를 막는다. 멀티싱크 버스 적격 게이트도 이 판정을 공유한다.
-  const isSimpleRecipe = (recipeName: string): boolean => {
-    const r = recipeMap.get(recipeName);
-    if (!r) return false;
-    return ![...r.ingredients, ...r.products].some((p) => p.type === "fluid");
-  };
-
-  // 1. 레시피 트리 + 머신 수 산정 (S-EXH 와 동일 모듈 재사용).
+  // 1. 레시피 트리 + 머신 수 산정.
   await emit("expandRecipeTree");
   // recipeOverrides 를 반드시 함께 넘긴다 — 빠뜨리면 실행이 사용자의 **대체 제작법 선택을
   // 무시**하고 첫 매칭으로 트리를 짓는다(= 화면에 보이는 트리와 실제 배치되는 트리가 달라진다).
@@ -198,44 +159,33 @@ export const runLayeredWizard: RunContainerWizard = async (
     return failureResult(failure ?? "루트 머신 배치 불가");
   }
 
-  // 2a. 모듈 파이프라인(조각 5, 하이브리드) — 플래그 ON + 트리 전부 simple-item 일 때만
-  //     generateModule 자족 경로로 후보를 만든다(루트·자식 동일 생성 → child==root).
-  //     적격 아니면(유체·미탭·홉 실패) null → fallbackToLegacyPath 로 폴백(회귀 0).
-  if (AUTO_LAYOUT_MODULE_PIPELINE) {
-    const moduleLeaf = tryRunModulePipeline({ input, metas, parentOf, order, makeId: nextId });
-    if (moduleLeaf) {
-      await emit("완료(module)", { internal: moduleLeaf.internal, external: moduleLeaf.external });
-      const rootRep =
-        moduleLeaf.internal.containers.find(
-          (c) => c.kind === "machine" && c.recipeName === tree.recipeName,
-        ) ?? moduleLeaf.internal.containers[0];
-      const moduleTree: CandidateTree = {
-        root: {
-          id: nextId("root"),
-          kind: "machine",
-          machine: rootRep,
-          routings: [],
-          children: [moduleLeaf],
-          label: `S-LAYER(module) root [${tree.recipeName}]`,
-        },
-        candidates: [moduleLeaf],
-        aborted: hooks?.signal?.aborted ?? false,
-        stats: { candidatesGenerated: 1, failuresGenerated: 0, deepestDepth: maxDepth },
-      };
-      return { ok: true, tree: moduleTree, partial: moduleTree.aborted };
-    }
-    // 모듈 경로 실패 → fallback 스텁 반환. (유체·미탭·홉 실패 등)
-    return fallbackToLegacyPath();
-  }
-};
+  // 3. 배치 — 모듈 파이프라인이 후보를 만든다(generateModule 자족 경로: 루트·자식을 같은
+  //    방식으로 생성해 "자식 == 루트" 를 실현). 실패하면 **사유 그대로** 실패를 반환한다.
+  //    폴백할 다른 경로는 없다 — 옛 S-LAYER 는 삭제됐다(2026-07-25, Phase 3).
+  const res = tryRunModulePipeline({ input, metas, parentOf, order, makeId: nextId });
+  if (!res.ok) return failureResult(describeReject(res.reason));
 
-/**
- * P3-2 fallback 스텁 — 모듈 경로 실패 시 호출.
- * 옛 S-LAYER 경로는 삭제됨. 실패 신호 반환.
- */
-function fallbackToLegacyPath(): ContainerWizardResult {
-  return failureResult("자동배치 실패(fallback) — 모듈 경로가 처리할 수 없는 케이스 (유체/회전/비정사각형 등)");
-}
+  const leaf = res.leaf;
+  await emit("완료", { internal: leaf.internal, external: leaf.external });
+  const rootRep =
+    leaf.internal.containers.find(
+      (c) => c.kind === "machine" && c.recipeName === tree.recipeName,
+    ) ?? leaf.internal.containers[0];
+  const candidateTree: CandidateTree = {
+    root: {
+      id: nextId("root"),
+      kind: "machine",
+      machine: rootRep,
+      routings: [],
+      children: [leaf],
+      label: `root [${tree.recipeName}]`,
+    },
+    candidates: [leaf],
+    aborted: hooks?.signal?.aborted ?? false,
+    stats: { candidatesGenerated: 1, failuresGenerated: 0, deepestDepth: maxDepth },
+  };
+  return { ok: true, tree: candidateTree, partial: candidateTree.aborted };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

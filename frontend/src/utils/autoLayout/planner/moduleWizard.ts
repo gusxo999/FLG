@@ -83,6 +83,23 @@ export type RejectReason =
   | { kind: 'pipe-merge-conflict'; detail: string };
 
 /**
+ * 모듈 경로의 결과 — 성공한 후보이거나, **왜 못 만들었는지**다.
+ *
+ * 옛 경로가 있던 시절엔 실패가 `null` 이어도 됐다 — 호출자가 옛 경로로 폴백했고 화면엔
+ * 무언가 나왔으니까. 옛 경로가 사라진 지금은 **이 사유가 사용자가 받는 설명의 전부**다.
+ * 그래서 `null` 로 삼키지 않고 사유를 들려 보낸다(그전엔 호출자가 "유체/회전/비정사각형 등"
+ * 이라고 **찍어서** 보여 줬다 — 실제 원인과 무관할 수 있는 문장이었다).
+ */
+export type ModulePipelineResult =
+  | { ok: true; leaf: CandidateLeaf }
+  | { ok: false; reason: RejectReason };
+
+/** 사람이 읽을 한 줄 — 실패 후보 라벨·토스트에 그대로 쓴다. */
+export function describeReject(reason: RejectReason): string {
+  return `자동배치 실패 [${reason.kind}] ${reason.detail}`;
+}
+
+/**
  * 모듈 경로로 후보 leaf 생성. 적격(전부 item·미탭0·홉성공) 아니면 null.
  *
  * **진단 로그를 후보에 담는다.** 위저드가 계산 중 찍는 로그(`[팔·벨트 상한]`·
@@ -92,7 +109,7 @@ export type RejectReason =
  * 후보가 안 나오면(null) 담을 데가 없으니 캡처한 로그를 그 자리에서 뱉는다.
  * `AUTO_LAYOUT_COORD_DUMP` 가 꺼져 있으면 캡처하지 않는다(오버헤드 0).
  */
-export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
+export function tryRunModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   if (!AUTO_LAYOUT_COORD_DUMP) return runModulePipeline(args);
 
   const captured: string[] = [];
@@ -100,18 +117,18 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): CandidateLeaf | 
   const orig = { log: console.log, warn: console.warn, info: console.info };
   const cap = (tag: string) => (...a: unknown[]): void => { captured.push(tag + a.map(fmt).join(" ")); };
   console.log = cap(""); console.warn = cap("[warn] "); console.info = cap("[info] ");
-  let leaf: CandidateLeaf | null;
+  let res: ModulePipelineResult;
   try {
-    leaf = runModulePipeline(args);
+    res = runModulePipeline(args);
   } finally {
     console.log = orig.log; console.warn = orig.warn; console.info = orig.info;
   }
-  if (leaf) leaf.moduleDiagnostics = captured;
+  if (res.ok) res.leaf.moduleDiagnostics = captured;
   else captured.forEach((l) => orig.info(l)); // 후보 없음 → 클릭도 없으니 지금 뱉는다
-  return leaf;
+  return res;
 }
 
-function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
+function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   const { input, metas, parentOf, order, makeId } = args;
   const { recipeMap, entityMap } = useGameDataStore.getState();
 
@@ -120,13 +137,14 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   /**
    * 모듈 경로 포기 — **왜** 포기했는지 반드시 남긴다.
    *
-   * 조용히 `null` 을 내면 호출자가 옛 경로로 폴백하고, 화면에는 "그냥 옛날 레이아웃"이
-   * 나온다. 새 기능이 안 켜진 건지 안 만든 건지 구분이 안 되고, 실측 로그로도 알 수 없다
-   * (2026-07-13: 유체 트리가 폴백했는데 사유를 몰라 추적 불가였다).
+   * 옛 경로가 있던 시절엔 조용히 `null` 을 내면 화면에 "그냥 옛날 레이아웃"이 나와, 새
+   * 기능이 안 켜진 건지 안 만든 건지 구분이 안 됐다(2026-07-13: 유체 트리가 폴백했는데
+   * 사유를 몰라 추적 불가). 옛 경로가 사라진 지금은 더 단순하다 — **이 사유가 실패의 전부**다.
+   * 로그로 남기고, 호출자에게도 들려 보낸다.
    */
-  const reject = (reason: RejectReason): null => {
-    console.info(`[autoLayout] 모듈 경로 포기 → 옛 경로 폴백 [${reason.kind}]: ${reason.detail}`);
-    return null;
+  const reject = (reason: RejectReason): ModulePipelineResult => {
+    console.info(`[autoLayout] 모듈 경로 포기 [${reason.kind}]: ${reason.detail}`);
+    return { ok: false, reason };
   };
 
   // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md)
@@ -137,7 +155,7 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
   const fluidOf = new Map<RecipeTreeNode, string>();
   for (const node of order) {
     const recipe = recipeMap.get(node.recipeName!);
-    if (!recipe) return reject(`레시피 없음: ${node.recipeName}`);
+    if (!recipe) return reject({ kind: 'stale-gamedata', detail: `레시피 없음: ${node.recipeName}` });
     const m = metas.get(node)!;
     const at = `${node.recipeName}`;
 
@@ -571,14 +589,17 @@ function runModulePipeline(args: ModulePipelineArgs): CandidateLeaf | null {
 
   const bbox = internal.bbox;
   return {
-    id: makeId("c"),
-    kind: "candidate",
-    internal,
-    external,
-    routings,
-    squarenessPenalty: bbox ? Math.abs(bbox.w - bbox.h) : 0,
-    children: [],
-    label: `S-LAYER(module) · ${order.length} 노드 · ${pack.hops.length} 홉 · raw ${pack.rawPorts.length}`,
+    ok: true,
+    leaf: {
+      id: makeId("c"),
+      kind: "candidate",
+      internal,
+      external,
+      routings,
+      squarenessPenalty: bbox ? Math.abs(bbox.w - bbox.h) : 0,
+      children: [],
+      label: `모듈 · ${order.length} 노드 · ${pack.hops.length} 홉 · raw ${pack.rawPorts.length}`,
+    },
   };
 }
 

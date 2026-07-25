@@ -22,23 +22,9 @@ export function setAutoLayoutCoordDump(v: boolean): void {
   AUTO_LAYOUT_COORD_DUMP = v;
 }
 
-/**
- * AUTO_LAYOUT_MODULE_PIPELINE — 조각 5 하이브리드 배선 스위치.
- *
- * true 면 `runLayeredWizard` 가 **트리 전체가 simple-item(유체 0·미탭 0·홉 성공)** 일 때
- * generateModule+packModuleTree+routeModuleHops 자족 모듈 경로를 타고, 아니면 옛 경로로
- * 폴백한다. false(기본)면 항상 옛 경로 — 회귀 0.
- *
- * 목적: 자식 클러스터를 부모-무시 모듈로 생성해 "자식 == 루트" 를 라이브에서 실현.
- * planner(clusterPortPlanner) 배선으로 포트가 W/E 두 면에 결정적 배정되어 1:1 붕괴를
- * 일으키던 옛 경로(clusterTrunkMerge·externalMergePass)를 대체한다. fluid·미탭·홉 실패
- * 트리는 여전히 자동 폴백(회귀 0). setAutoLayoutModulePipeline(false) 로 끌 수 있다.
- */
-export let AUTO_LAYOUT_MODULE_PIPELINE = true;
-
-export function setAutoLayoutModulePipeline(v: boolean): void {
-  AUTO_LAYOUT_MODULE_PIPELINE = v;
-}
+// AUTO_LAYOUT_MODULE_PIPELINE — 삭제됨(2026-07-25, Phase 5). 모듈 경로가 유일한 경로가
+// 되어 스위치의 반대편(옛 S-LAYER)이 없어졌다. setter 는 아무도 부르지 않아 사실상 죽은
+// 상수 `true` 였고, 끄면 runLayeredWizard 가 아무것도 반환하지 않는 상태였다.
 
 /**
  * AUTO_LAYOUT_PERIMETER_PASS — 모듈 경로 후처리(modulePerimeterPass) 스위치.
