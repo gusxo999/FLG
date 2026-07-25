@@ -251,7 +251,8 @@ export const runLayeredWizard: RunContainerWizard = async (
       };
       return { ok: true, tree: moduleTree, partial: moduleTree.aborted };
     }
-    // 모듈 경로 실패 → fallback 으로 진행. (유체·미탭·홉 실패 등)
+    // 모듈 경로 실패 → fallback 스텁 반환. (유체·미탭·홉 실패 등)
+    return fallbackToLegacyPath();
   }
 
   // 2b. 클러스터 형태 — S-LAYER 옛 경로 — 노드별 N대 머신의 내부 배열(상대좌표 + bbox)을 한 번 계산해
@@ -664,6 +665,14 @@ export const runLayeredWizard: RunContainerWizard = async (
 
   return { ok: true, tree: candidateTree, partial: candidateTree.aborted };
 };
+
+/**
+ * P3-2 fallback 스텁 — 모듈 경로 실패 시 호출.
+ * 옛 S-LAYER 경로는 삭제됨. 실패 신호 반환.
+ */
+function fallbackToLegacyPath(): ContainerWizardResult {
+  return failureResult("자동배치 실패(fallback) — 모듈 경로가 처리할 수 없는 케이스 (유체/회전/비정사각형 등)");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
