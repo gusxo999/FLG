@@ -15,7 +15,6 @@ tags: [auto-layout, docs, refactor]
 | ~~.visualization-trace~~ | **삭제됨** | 감사는 "업데이트(긴급)" 으로 봤으나, 사용자가 시각화를 **실험용 기능**으로 확인해 기능과 문서를 함께 제거(2026-07-25) |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | **업데이트** | 죽은 줄번호 인용 + 존재하지 않는 파일 인용. Phase 4 가 추가한 새 순서 결정점 2개가 빠져 있음 |
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | **업데이트(상태만)** | §10 확정 설계는 **구현됐다**. `[진행]` 딱지가 틀렸고, 일부는 machine-link 가 대체 |
-| [.cluster-redesign](auto-layout-wizard.cluster-redesign.md) | **유지 + 노트** | 미구현 설계로 유효. 다만 근거로 삼은 `pickClusterShape` 가 프로덕션에서 죽었음을 명시해야 |
 | [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | **유지 + 노트** | 도구는 살아 있으나 **부를 통로가 없다**(자기 테스트만 호출). 그 사실을 적어야 |
 | [.module-way-outs](auto-layout-wizard.module-way-outs.md) | **유지** | `moduleWayOuts` 가 8개 파일에서 활발히 쓰임. 문서와 코드 일치 |
 | [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | **유지(이력)** | 이미 스스로 "긴급성 하락"을 명시. 결함 분석은 channel-geometry 의 전사(前史)로 가치 있음 |
