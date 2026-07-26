@@ -227,7 +227,7 @@ L0 이 L2 의 산출물을 직접 소비하는 경우:
 → 더미 트랙도 §4.2 의 트랙 수에 포함되어 채널 폭을 키운다.
 
 > 현재 `expandRecipeTree` 는 품목을 중복 전개하는 **트리**라 긴 간선이 거의 없다.
-> 공유 부분트리를 DAG 로 합치는 최적화([[project-placement-strategy-layer]] S-MEMO 방향)를
+> 공유 부분트리를 DAG 로 합치는 최적화(S-MEMO 방향)를
 > 도입하면 이 메커니즘이 그대로 받쳐준다.
 
 ---
@@ -237,9 +237,7 @@ L0 이 L2 의 산출물을 직접 소비하는 경우:
 `assignThroughputCounts` 로 노드가 N대가 되면, 레이어 안에서 **세로로 N칸을 차지하는
 한 슬롯**이 된다. 채널 쪽에서 보면:
 
-- N대의 산출물이 한 소비자로 합쳐지는 경우 → **트렁크(합류) 트랙**으로 병합. **구현됨:**
-  [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts) 가 클러스터→부모 소비자 트렁크,
-  [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) 가 외부 상자↔머신 트렁크를 담당.
+- N대의 산출물이 한 소비자로 합쳐지는 경우 → **트렁크(합류) 트랙**으로 병합.
 - 소비자도 M대면 → 채널이 N→M 분배(distribution) 영역이 된다. 폭이 더 필요할 수 있다.
 
 ```
@@ -310,14 +308,13 @@ function assignColumns(layers, channels):
 
 ---
 
-## 10. 현재 코드 매핑
+## 10. 코드 매핑 (역사 기록)
 
 | S-LAYER 요소 | 현재 코드 |
 |---|---|
-| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../frontend/src/utils/autoLayout/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) |
+| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../frontend/src/utils/autoLayout/planner/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) |
 | 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts)) → `routePorts`/`commitRouting` ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts)) |
 | 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
-| 트렁크 합류 | [clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts) (내부) + [externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) (외부) |
 | 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts)) |
 
 ---
@@ -330,10 +327,4 @@ function assignColumns(layers, channels):
 - **완화책:** left-edge 트랙 공유 + 짧은 연결의 트랙 재사용으로 채널 폭을 최소화하면
   면적 손해를 줄일 수 있다.
 
----
 
-## 12. 다음 문서
-
-- `s-layer-layer-assignment.md` — longest-path 레이어 배정 + 더미 노드 삽입
-- `s-layer-ordering.md` — barycenter 레이어 내 정렬 (현재는 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 tidy-tree `layout` 으로 처리)
-- `s-layer-coordinate.md` — 레이어/채널 → `Container.origin` / `Area.placed` 확정

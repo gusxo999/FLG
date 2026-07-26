@@ -15,8 +15,6 @@ tags: [auto-layout, placement, routing]
 > 흐름은 [[auto-layout-wizard.code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
 > 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
 >
-> 아래 S-LAYER 서술은 **역사 기록**으로 읽는다. 이 전략에 아직 이름이 없어(모듈
-> 파이프라인은 서술어다) §5.5 전략 등록부 갱신은 명명 후로 미룬다.
 
 
 이 문서는 **자동완성 위저드 기능의 부모 문서**다. 위저드는 여러 하위 기능(트리 펼침, 머신 수 산정,
@@ -27,8 +25,8 @@ tags: [auto-layout, placement, routing]
 
 | 문서 | 주제 |
 |------|------|
-| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5). **현재 구현 전략 = S-LAYER**(§7) |
-| [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 |
+| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5) |
+| [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 — 본체는 코드에서 삭제됨 |
 | [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
@@ -102,8 +100,6 @@ tags: [auto-layout, placement, routing]
 [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
 
-> **현재 구현 전략 = [[용어사전#S-LAYER|S-LAYER]]** ([layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) `runLayeredWizard`). 레시피 트리를 [[용어사전#레이어 (layer)|레이어]](열)로 깔고 레이어 사이에 라우팅 [[용어사전#채널 (channel)|채널]]을 예약해, [[용어사전#백트래킹|백트래킹]] 없이 결정적으로 후보 1개를 만든다. 흐름은 placement-search [§7](auto-layout-wizard.placement-search.md), 채널 예약은 [s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md). (과거 기준 전략 S-EXH=완전탐색은 롤백되어 코드에 없다. S-DP/S-MEMO 는 미구현 후보.)
-
 ### 입력 — `WizardInput`
 
 ```
@@ -131,7 +127,7 @@ tags: [auto-layout, placement, routing]
 - ✅ 레시피 트리 펼치기 (`expandRecipeTree`)
 - ✅ 최소 / 처리량 모드 머신 수 계산
 - ✅ 인서터 처리량 사용자 override (`inserterThroughput`)
-- ✅ 배치·라우팅 — 전략 **S-LAYER** (`runLayeredWizard`): 레이어 배치 + 채널 라우팅 + 트렁크 병합(공유 무한상자) + 외부 perimeter 래핑
+- ✅ 배치·라우팅 — 모듈 파이프라인 (`tryRunModulePipeline`): 모듈 생성 + 채널 기하 예약 + 홉 라우팅 + 외부 perimeter 반출
 - ✅ fluid 라우팅 (파이프/지하파이프, 1:1)
 
 ### 구현 위치
@@ -140,5 +136,5 @@ tags: [auto-layout, placement, routing]
 - [frontend/src/utils/autoLayout/recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
 - [frontend/src/utils/autoLayout/techGroup.ts](../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
 - [frontend/src/utils/autoLayout/inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [frontend/src/utils/autoLayout/layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) — **전략 S-LAYER 오케스트레이터** (`runLayeredWizard`)
+- [frontend/src/utils/autoLayout/layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
 - [frontend/src/components/AutoLayoutModal.tsx](../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI

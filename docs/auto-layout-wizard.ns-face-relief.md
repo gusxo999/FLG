@@ -16,7 +16,7 @@ count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 레인이 넘칠 때 W-sp
 
 ## 1. 문제/배경
 
-모듈 파이프라인의 슬롯 배정([clusterPortPlanner](../frontend/src/utils/autoLayout/clusterPortPlanner.ts))은
+모듈 파이프라인의 슬롯 배정([clusterPortPlanner](../frontend/src/utils/autoLayout/module/clusterPortPlanner.ts))은
 기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 레인은 기둥 축을 따라 달려야 N대
 전부를 서빙하므로 N/S(축의 끝면)는 스케일이 안 되기 때문이다. 그러나 count=1이면
 이 논리가 퇴화한다 — 4면이 전부 동등한데 관례상 2면을 버리고, 입력 3개 레시피에서
@@ -48,18 +48,17 @@ kr-glass 입력이 W depth3/긴팔로 spill → 상자가 W면 anchor 에 생성
 
 같은 트리 실측(min count, 3모듈 전부 count=1): kr-glass 슬롯 W3/긴팔 → **N2/일반**,
 ⑥A 배정 channel(실패) → **self-N**, 상자 최종 위치 = 전역 N perimeter 행(직진 1칸,
-jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20. 골든 스냅샷:
-[modulePipeline.golden.test.ts](../frontend/src/utils/autoLayout/modulePipeline.golden.test.ts).
+jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 
 ## 4. 구현 위치
 
-- [clusterPortPlanner.ts](../frontend/src/utils/autoLayout/clusterPortPlanner.ts) —
+- [clusterPortPlanner.ts](../frontend/src/utils/autoLayout/module/clusterPortPlanner.ts) —
   `PlannedSide`(W/E/N/S), `IoLine.external`, `PortPlannerInput.nsFaces`, 입력 풀 소비
   순서(E→N/S→W), depth 재배정 루프 N/S 포함.
-- [clusterModule.ts](../frontend/src/utils/autoLayout/clusterModule.ts) —
+- [clusterModule.ts](../frontend/src/utils/autoLayout/module/clusterModule.ts) —
   `ModuleInput.nsExposure` → planner `nsFaces` 전달. 트렁크는 기존 faceConstraints
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
-- [modulePacking.ts](../frontend/src/utils/autoLayout/modulePacking.ts) —
+- [modulePacking.ts](../frontend/src/utils/autoLayout/planner/modulePacking.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정),
   `planLanes` 의 변 판정을 `meta.side` 로 교체.
 - [containerModel.ts](../frontend/src/utils/autoLayout/containerModel.ts) —
@@ -72,7 +71,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20. 골든 스냅�
   입/출구로 materialize 되고 corridor 가 홉 간 누적·Area 에 기록된다. 정책: `'length'`
   비용(지상 우선, 점프=충돌 회피 전용) + 양 끝 셀 점프 방향 강제(`requiredStartJump`=
   트렁크 유입 +fv / `requiredEndJump`=유출 −fv — 누수·half-lane 방지). 탐색 자체는
-  entrance/exit-straight 를 원래 보장. [moduleHop.ts](../frontend/src/utils/autoLayout/moduleHop.ts).
+  entrance/exit-straight 를 원래 보장. [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts).
   **브라우저 실측(2026-07-08, advanced-circuit):** min(3대) — kr-glass N perimeter self 직진
   유지, skip 1(copper-cable channel), 회귀 없음. 처리량 20/초(64대) — 후보 성공(penalty=82,
   실패 0), 상자 7 중 5 재배치 / skip 2 는 전부 `N/S-side channel divert unsupported`

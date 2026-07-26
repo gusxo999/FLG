@@ -41,7 +41,6 @@ tags: [auto-layout, placement, routing]
 | P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73)                                                                                       |
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
 | P7  | **트렁크 seed 점수**             | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소                | **Q** | [module/trunkPath.ts](../frontend/src/utils/autoLayout/module/trunkPath.ts)                                                                                             |
-| P8  | **머지 그룹핑 게이트**              | 용량(총수요 ≤ beltCap, 머신별 ≤ tapCap, 크기 ≤ maxTaps)       | **C** | [placement-search §7.2](auto-layout-wizard.placement-search.md)                                                                                                    |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](auto-layout-wizard.fluid-hop-reservation.md) |
 | P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](auto-layout-wizard.fluid-hop-reservation.md) |
@@ -78,7 +77,7 @@ P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 홉이 
 
 ### 3.2 검증되지 않은 부분 (주의)
 
-"fluid가 **항상** 1순위 제약"은 **거짓일 수 있다.** 기둥 안쪽에 끼어 N/S 면을 이웃에 뺏기고 W·E 2면만 남은 item 머신([placement-search §7.1](auto-layout-wizard.placement-search.md))이, 가장자리에 1포트지만 그 면이 뻥 뚫린 fluid 머신보다 가용 셀이 더 적을 수 있다. 정확히는 fluid는 *MRV를 낮추는 한 요인*이지 자동 최상위가 아니다.
+"fluid가 **항상** 1순위 제약"은 **거짓일 수 있다.** 기둥 안쪽에 끼어 N/S 면을 이웃에 뺏기고 W·E 2면만 남은 item 머신이, 가장자리에 1포트지만 그 면이 뻥 뚫린 fluid 머신보다 가용 셀이 더 적을 수 있다. 정확히는 fluid는 *MRV를 낮추는 한 요인*이지 자동 최상위가 아니다.
 
 ### 3.3 권장 프록시 (1차 — 사전식 비교)
 

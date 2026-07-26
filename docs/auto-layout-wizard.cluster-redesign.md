@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard](auto-layout-wizard.md)
 > **관련 문서:** [.machine-link](auto-layout-wizard.machine-link.md) · [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) · [.known-limits](auto-layout-wizard.known-limits.md)
 > **용어:** [[용어사전#ColumnCluster|ColumnCluster]] · [[용어사전#GridCluster|GridCluster]] · [[용어사전#ParallelBelt|ParallelBelt]] · [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]]
-> **상태:** 설계 (2026-07-22). 구현 미착수.
+> **상태:** 설계 (2026-07-22).
 >
 > **노트(2026-07-25):** 이 문서가 근거로 삼던 `pickClusterShape`(기둥 탭 용량 초과 →
 > 2D 필요 판정)는 **삭제됐다.** 유일한 호출처가 Phase 3 에서 지운 옛 S-LAYER
@@ -132,8 +132,6 @@ N/S 면에서 나간 벨트도 **모듈 안에서** 서쪽 변까지 데려가 �
 
 | 자리 | 지금 | 재설계 후 |
 |---|---|---|
-| `groupLinkBelts` | 목적지 간 병합 | v1 에서 끔 — 링크 하나 = 벨트 하나 |
-| `spanLedger`·`spanMi`·`armsByMachine` 다열 분기 | 관통 벨트의 깊이 다툼 | **삭제**(관통 벨트가 없다) |
 | `tryLinkFace` | 면당 그룹 하나, 깊이 = 팔 길이 후보 | 좌석 구간이 안 겹치면 같은 d2, 반출 계단이 통로 폭을 낸다 |
 | `gapRowsFromPlans` | 계획마다 `laneDepth` 를 더함 | 반출 계단 수에서 유도 |
 | `emitOutputLinks`/`emitInputLinks` | 벨트를 팔이 집는 자리에만 놓음 | 수집(d2) + 반출(자기 줄) 두 단 |
@@ -235,7 +233,7 @@ kr-glass 트리, 새 경로가 끝까지 감(`모듈 경로 포기` 없음):
 
 즉 **계획을 못 세운 홉 하나가 멀쩡한 계획 둘을 끌고 내려갔다.** 그러니 남은 (나)를 따로 고칠 것이 아니라, (가)를 줄이는 것이 곧 (나)를 줄이는 일이다.
 
-**"예약 무시 재시도"는 버그가 아니라 의도된 거래다.** 여기서 물러나면 홉 실패가 되고, 홉이 하나라도 실패하면 **트리 전체가 옛 경로로** 떨어진다 — 폴백 몇 건보다 훨씬 크게 잃는다. 다만 지금은 **전부 아니면 전무**다: 예약을 통째로 무시하므로 필요 이상으로 밟는다.
+**"예약 무시 재시도"는 버그가 아니라 의도된 거래다.** 여기서 물러나면 홉 실패가 되고, 홉이 하나라도 실패하면 **배치 전체가 실패**한다 — 폴백 몇 건보다 훨씬 크게 잃는다. 다만 지금은 **전부 아니면 전무**다: 예약을 통째로 무시하므로 필요 이상으로 밟는다.
 
 > **줄이는 방법(미착수, 별개 작업):** 예약된 칸을 **막힘이 아니라 비싼 칸**으로 주면 라우터가
 > 알아서 **최소한만** 밟는다. 라우터 비용 모델을 건드리는 일이라 범위가 따로다.
@@ -367,4 +365,3 @@ kr-glass 트리, 새 경로가 끝까지 감(`모듈 경로 포기` 없음):
 - **2D 배열(진짜 [[용어사전#GridCluster|GridCluster]])** — 밀집 배치. 위 상한 해소와 **독립**이므로 별도 단계.
 - **병합을 되살릴 조건** — 채널 폭이 실제로 문제가 될 때. 실측 뒤에 정한다.
 - **벨트 티어 선택** — 새 방출은 아직 기본 벨트 고정.
-- **유체** — 옛 경로가 그대로 처리한다(단위 체계가 달라 링크로 못 옮긴다).

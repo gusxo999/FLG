@@ -132,19 +132,6 @@ belt 한 줄을 까는 건 순수 낭비다(§4 의 비-단조성이 실제로 �
 > **갈아타기 판정 기준: `fail 0/0` 이 되는가 + `channelWidths` 가 머신 수에 안 따라 커지는가.**
 > 면적은 부수적으로만 본다.
 
-## 5. 쓰는 법
-
-```powershell
-cd frontend
-$env:VITEST_PRINT_METRICS="1"
-npx vitest run src/utils/autoLayout/planner/pipelineMetrics.test.ts
-```
-
-- 측정 함수: [`pipelineMetrics.ts`](../frontend/src/utils/autoLayout/planner/pipelineMetrics.ts)
-  의 `measurePipeline(specs, config, hopConfig)` — 테스트 밖(디버그 탭 등)에서도 쓸 수 있게 분리.
-- 표 출력: `formatMetrics(tag, m)` — 한 줄 = 한 판. 눈으로 diff 하려고 열 순서를 고정했다.
-- 기준선 테스트: [`pipelineMetrics.test.ts`](../frontend/src/utils/autoLayout/planner/pipelineMetrics.test.ts)
-
 ## 6. 아직 안 재는 것
 
 - **처리량 충족도** — 벨트/인서터 용량 대비 실제 수요. 용량 게이트가 들어오면 추가 후보.

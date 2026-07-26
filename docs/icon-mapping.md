@@ -37,7 +37,7 @@ tags: [factorio-data, deferred]
 - `icons = { layer1, layer2 }` 합성 — 단일 PNG로 표현 불가
 - `data-updates.lua` 단계에서 덮어쓰기
 
-사용자가 "어느 모드가 안 되는지" 추적할 방법 없음 → 디버깅 비용 > 효용. 코드는 메모리 [icon_extraction_lua_parsing.md](../../../.claude/projects/f--CodeStep-factorio-LayoutGenerator/memory/icon_extraction_lua_parsing.md) 에 보존.
+사용자가 "어느 모드가 안 되는지" 추적할 방법 없음 → 디버깅 비용 > 효용. 코드는 메모리 `icon_extraction_lua_parsing.md` 에 보존.
 
 ---
 

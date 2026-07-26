@@ -28,13 +28,12 @@ tags: [moc]
 
 > **현행(2026-07-26):** 실행 경로는 **모듈 파이프라인 단일 경로**다. 옛 S-LAYER 본체는
 > 코드에서 삭제됐고(리팩토링 Phase 3), 배치에 실패하면 폴백 없이 `RejectReason` 이
-> 그대로 UI 실패 라벨로 나온다. 이 전략에 아직 고유 이름이 없어(=모듈 파이프라인은 서술어)
-> 일부 문서의 "현재 전략 = S-LAYER" 서술은 상단 정정 배너와 함께 역사 기록으로 남아 있다.
+> 그대로 UI 실패 라벨로 나온다. 이 전략에는 아직 고유 이름이 없다(=모듈 파이프라인은 서술어).
 
 | 문서 | 주제 | 태그 |
 |------|------|------|
 | [auto-layout-wizard](auto-layout-wizard.md) | **[부모]** 위저드 인터페이스 (5단계 UI + 입출력 사양) | `#auto-layout` |
-| [.placement-search](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어. ⚠️ 본문의 "현재 전략 = S-LAYER" 는 **역사 기록**(Phase 3 삭제). §5.5 전략 등록부는 전략 명명 후 갱신 예정 | `#placement` `#routing` |
+| [.placement-search](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어. Part II 의 S-LAYER 흐름은 삭제됨(Phase 3) — 남은 전략은 전부 미구현 후보다 | `#placement` `#routing` |
 | [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** S-LAYER 의 레이어 간 라우팅 채널 예약 — **본체는 코드에서 삭제됨**(Phase 3). 남긴 이유 = "왜 채널을 비워 두는가" 논거. 예약 철학은 `.channel-geometry-reservation` 이 상위 호환으로 계승 | `#placement` `#routing` |
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
 | [.machine-link](auto-layout-wizard.machine-link.md) | ↳ **[설계]** 자식→부모 연결 통일 — 논리(MachineLink, 전략무관) vs 기하(통로 예약) 두 층. Hop=Link 통일, seq 소멸, 포트=링크 끝점, gap=부산물. **벨트 병합은 그릇이 시키는 게 아니라 우리가 사는 것**(대가=머신 인접) | `#placement` `#routing` |
@@ -44,7 +43,6 @@ tags: [moc]
 | [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). 2026-07-16 실측 성공 후 **링크 모델 도입으로 조용히 죽었다가 2026-07-26 복구**(자식→부모 링크의 유체 가드 누락 + `productOf` 다산출 오짝짓기). v1=모듈당 유체 1줄, 다-유체는 fallback 실패 | `#placement` `#fluid` |
 | [.fluid-underground-crossing](auto-layout-wizard.fluid-underground-crossing.md) | ↳ **[계획]** 유체 지하 횡단을 장부 안으로 — 페어링 규칙(`isJumpAllowed`)은 라우터에 이미 있고 장부 행은 이미 절대 좌표. 모듈 내부 지하파이프 corridor 미기록 결함 포함 | `#placement` `#fluid` `#routing` |
 | [.fluid-hop-reservation](auto-layout-wizard.fluid-hop-reservation.md) | ↳ **[구현됨]** 유체 홉을 채널 기하 예약 안으로 (리팩토링 Phase 4-B) — 장부가 잡아 둔 유체 트랙을 라우터가 버리던 것을 수리. 인접(합류) 규칙 + 유체 지상 우선권 + 탐색 폴백 제거 | `#placement` `#fluid` `#routing` |
-| [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | ↳ **[계획]** 1:1 의 채널 예약 결함(지상 배정 all-or-nothing)과 수리 계획 + 지하 실패 시각화 — 트렁크 복귀로 긴급성 하락 | `#placement` `#routing` |
 | [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
 | [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | ↳ 배치·라우팅 순서 결정점 등록부 (부모=placement-search) | `#placement` `#routing` |

@@ -291,7 +291,6 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 - 옛 트렁크에서 버리는 것 = **seed 그리디 성장**([`trunkPath.ts`](../frontend/src/utils/autoLayout/module/trunkPath.ts))과
   **사후 병합**(`clusterTrunkMerge`/`externalMergePass`). 되살리는 것 = planner 의 레인 배정.
 - 홉 페어링: k↔m zip → 품목당 1↔1 로 자연 축소. `hopKey` 의 `seq` 는 용량 분할(§10.4-⑵) 대비로 유지.
-- **옛 경로는 삭제하지 않는다** — 유체가 아직 그 폴백을 쓴다. 새 경로에서 무시만.
 - raw 입력은 트렁크 끝 무한상자 1개 → 반출 수요도 O(머신×품목)→O(품목)으로 준다.
 
 ### 10.4 v1 범위 — 세 갈림길의 사용자 결정 (2026-07-12)

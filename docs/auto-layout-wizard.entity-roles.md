@@ -22,7 +22,7 @@ placer 입력으로도 받지 않는다.
 | **A. [[용어사전#변환기|변환기]]** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin + `tile_width×tile_height` footprint (가변) | `machine` (통과 불가) | 회전 0 고정 ([known-limits §6](auto-layout-wizard.known-limits.md)); [[용어사전#EntityType|EntityType]] 단순화(전부 Assembler) |
 | **B. [[용어사전#핸드오프|핸드오프]]** | `inserter` 와 변형, `loader` | 머신 면 셀(seat)에 인서터 1셀, direction=픽업 방향 | `inserter` (통과 불가) | 머신 수 산정에 [[용어사전#처리량 (throughput)|throughput]] 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
 | **C. [[용어사전#고체 운반|고체 운반]]** | `transport-belt`, `underground-belt`, `splitter` | router([[용어사전#Dijkstra|Dijkstra]])가 깐 belt + 지하벨트 점프 경로 | 모든 belt 셀 통과 불가([[용어사전#mixing|mixing]] 미구현) | belt/pipe mixing ([§5](auto-layout-wizard.known-limits.md)), splitter 자동 분기 미사용 |
-| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 `fluid_boxes` 연결 칸(면은 `PipeConnection.direction`) + [트렁크 파이프](auto-layout-wizard.trunk-pipe.md) 기둥 / 옛 경로는 Dijkstra | 모든 pipe 셀 통과 불가 + [합류 가드](pipe-semantics.md#5-잘못-이어지면-조용하다--그래서-가드가-필요하다) 금지 칸 | 유체 **출력**(홉·반출) 미지원 → 옛 경로 폴백, 옛 경로는 가드 무방비([§12](auto-layout-wizard.known-limits.md)), pump 자동배치 미사용 |
+| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 `fluid_boxes` 연결 칸(면은 `PipeConnection.direction`) + [트렁크 파이프](auto-layout-wizard.trunk-pipe.md) 기둥 / 옛 경로는 Dijkstra | 모든 pipe 셀 통과 불가 + [합류 가드](pipe-semantics.md#5-잘못-이어지면-조용하다--그래서-가드가-필요하다) 금지 칸 | pump 자동배치 미사용 |
 
 ---
 
@@ -74,11 +74,9 @@ placer 입력으로도 받지 않는다.
 
 이 불변식은 [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) 의 [[용어사전#collectBeltFlow|`collectBeltFlow`]]
 (이미 배치된 벨트의 타일 + 지표 출력 칸 수집) + `dijkstraWithJumps` 의 lazy-constraint 가드
-(`beltFlowConflictCell` — 합류하는 셀을 `blocked` 에 넣고 재탐색)로 강제된다. 트렁크 패스
-([externalMergePass.ts](../frontend/src/utils/autoLayout/externalMergePass.ts) ·
-[clusterTrunkMerge.ts](../frontend/src/utils/autoLayout/clusterTrunkMerge.ts))도 외부 벨트의 출력 칸을
-occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패스가 먼저 깔리든 **나중에 깔리는 쪽**이
-이미 배치된 벨트를 보고 우회하므로 순서와 무관하게 성립한다.
+(`beltFlowConflictCell` — 합류하는 셀을 `blocked` 에 넣고 재탐색)로 강제된다. 트렁크 방출도
+외부 벨트의 출력 칸을 occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패스가 먼저
+깔리든 **나중에 깔리는 쪽**이 이미 배치된 벨트를 보고 우회하므로 순서와 무관하게 성립한다.
 
 > **참고(파이프):** D 의 파이프는 방향과 무관하게 4면 인접이면 자동 연결되므로 이 흐름-인접 모델이
 > 아니라 **인접 자체**가 합류다. 그 무방향 버전의 가드가 [`collectPipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts)
@@ -100,10 +98,6 @@ occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패
 - **[[용어사전#pump (펌프)|pump]]** (1×2): **자동 배치 미사용**.
 - **합류 가드**: [`collectPipeFlow` / `PipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts) — 다른 유체
   파이프의 사방 + 머신 유체 상자의 연결 칸. 새 모듈 경로(트렁크·반출)에만 걸려 있다.
-
-**남은 한계:** 유체 **입력**은 [트렁크 파이프](auto-layout-wizard.trunk-pipe.md)로 합쳐지지만(2026-07-13),
-유체 **출력**(자식→부모 유체 홉 / 유체 반출)은 아직 모듈 경로가 거절하고 옛 경로로 폴백한다.
-옛 경로의 파이프는 합류 가드가 없다 → [known-limits §12 Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md).
 
 ### 본 역할이 자동으로 흡수하지 *않는* 인접 항목
 

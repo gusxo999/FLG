@@ -17,7 +17,6 @@ tags: [auto-layout, docs, refactor]
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | **업데이트(상태만)** | §10 확정 설계는 **구현됐다**. `[진행]` 딱지가 틀렸고, 일부는 machine-link 가 대체 |
 | [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | **유지 + 노트** | 도구는 살아 있으나 **부를 통로가 없다**(자기 테스트만 호출). 그 사실을 적어야 |
 | [.module-way-outs](auto-layout-wizard.module-way-outs.md) | **유지** | `moduleWayOuts` 가 8개 파일에서 활발히 쓰임. 문서와 코드 일치 |
-| [.one-to-one-channel-plan](auto-layout-wizard.one-to-one-channel-plan.md) | **유지(이력)** | 이미 스스로 "긴급성 하락"을 명시. 결함 분석은 channel-geometry 의 전사(前史)로 가치 있음 |
 
 ---
 
@@ -100,28 +99,10 @@ Phase 3 이 S-LAYER 본체를 지우며 그 안에 심겨 있던 체크포인트
 | P6-5 | `known-limits.md` | ✅ §12 해소 처리(단, 드래그 재라우팅은 여전히 무방비 — 범위만 줄음) |
 | ~~P6-6~~ | ~~시각화 체크포인트 재이식~~ | — 기능을 제거했다(실험용이었음) |
 
-## 남은 결정 두 개
-
-### ① 모듈 파이프라인의 **전략 이름**
+## 남은 결정 — 모듈 파이프라인의 **전략 이름**
 
 `placement-search.md` §5.5 는 전략을 이름으로 등록한다(S-EXH·S-LAYER·S-DP·S-MEMO).
 지금 도는 것에는 이름이 없다 — "모듈 파이프라인"은 구현 서술어지 전략명이 아니다.
 이름이 정해져야 §5.5 등록부와 §7 흐름을 제대로 고칠 수 있다.
 (이 저장소 관례상 명명은 사용자 몴 — `trunk-redesign` 머릿말 참조.)
 
-### ② 죽은 옛 경로 무리 삭제 여부
-
-P6-1 실측으로 드러난 묶음. **사용자에게 보이는 UI 토글이 포함**돼 확인이 필요하다
-(README "폐기 결정 정책" 2항).
-
-| 항목 | 근거 |
-|---|---|
-| `clusterTrunkMerge.ts` (+테스트) | 임포트하는 프로덕션 코드 0개 |
-| `externalMergePass.wrapExternalsWithMerge` | 호출자 테스트뿐 |
-| `externalGatherPass.gatherExternalsToPoints` | 호출자 테스트뿐 |
-| `areaUnification.wrapExternalsAroundPerimeter` | 호출자 테스트뿐 |
-| `mergeGrouping.ts` | `externalMergePass` 만 쓴다 → 전이적 사망 |
-| `ContainerWizardInput.mergeSupplyBoxes` | 읽는 코드 없음 |
-| **디버 탭의 MERGE BOXES / GATHER BOXES 토글** | **아무 일도 안 한다** — 가리키던 패스가 사라졌다 |
-
-지우면 디버 탭에서 버튼 두 개가 없어진다. 남기면 거짓말하는 토글이 그대로 있다.

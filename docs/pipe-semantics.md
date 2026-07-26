@@ -143,7 +143,7 @@ tags: [factorio-data, routing, auto-layout]
 
 | 자리 | 어떻게 | 합류 가드 |
 |---|---|---|
-| **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 트리 전체 옛 경로 폴백 |
+| **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 배치 실패(폴백 없음) |
 | **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
 | **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 상자만 skip(로컬 ring 잔류) |
 | **옛 경로** (`containerRouting.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md#12-deprecated-dijkstra-guard--옛-경로의-파이프는-합류-가드를-안-거친다) |
@@ -156,8 +156,6 @@ tags: [factorio-data, routing, auto-layout]
 
 ## 아직 안 만든 것
 
-- **유체 홉**(자식 모듈 → 부모 모듈) — 지금은 모듈 경로가 유체 출력을 아예 거절하고 옛 경로로 폴백한다.
-- **유체 출력 반출**(머신 → 무한파이프) — 위와 한 묶음.
 - **지하 파이프 일반 라우팅** — 새 경로의 지하파이프는 지금 [pipeJumpToClusterPipe](용어사전.md#pipejumptoclusterpipe) **한 가지 모양**뿐이다. 임의 경로에서 장애물을 지하로 넘는 일반 라우팅은 나중에(잊지 말 것).
 - **모듈 간 유체 공급 공유**(`joinableTile`) — "같은 유체면 이미 깔린 관을 타고 간다".
 - **펌프**(`pump`) — 자동 배치 미사용. 방향이 있는 유일한 유체 엔티티라 별도 취급이 필요하다.

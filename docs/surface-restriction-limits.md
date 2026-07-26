@@ -16,7 +16,7 @@ tags: [factorio-data, auto-layout, deferred]
 
 처음에는 엔티티 prototype 에서 표면 제약을 추출해 자동 분류하는 방향을 검토했다. 두 케이스를 직접 비교한 결과 **메커니즘이 모드마다 완전히 다르다**:
 
-### 실측 데이터 ([scripts/debug-export-two-machines.lua](../scripts/debug-export-two-machines.lua) 결과)
+### 실측 데이터 (일회성 디버그 export 스크립트 결과 — 스크립트는 남아 있지 않다)
 
 | 필드 | `assembling-machine-3` (vanilla) | `se-space-manufactory` (SE 모드) |
 |------|------|------|

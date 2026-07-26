@@ -9,7 +9,7 @@ tags: [auto-layout, placement, routing]
 
 **한 줄 요약:** `frontend/src/utils/autoLayout/` 아래 코드를 관심사별로 세 폴더로 나눴다 —
 `module/`(한 모듈 안쪽만 아는 코드), `planner/`(모듈 사이를 조율하는 코드),
-`util/`(둘 다 쓰는 잔손 함수). 폴더가 없는 파일은 옛 경로다.
+`util/`(둘 다 쓰는 잔손 함수).
 
 ## 문제 — 왜 나눴나
 
@@ -73,32 +73,16 @@ tags: [auto-layout, placement, routing]
 > 새 함수를 `util/` 에 넣기 전 확인: 이 함수가 "어디에 무엇을 놓을지" 를 *고르는가*, 아니면
 > 이미 고른 자리를 *채우거나 세기만* 하는가? 고른다면 `util/` 이 아니다.
 
-## 폴더 밖에 남은 것 — 공용 기반 + 죽은 무리 (2026-07-25 갱신)
+## 폴더 밖에 남은 것 — 공용 기반
 
 예전엔 "폴더 밖 = 옛 경로" 였다. **지금은 아니다** — 옛 S-LAYER 본체가 Phase 3 에서
-삭제되면서, 폴더 밖 파일 대부분은 **새 경로도 쓰는 공용 기반**으로 남았고, 진짜
-옛 경로는 몇 개만 죽은 채 남았다.
+삭제되면서, 폴더 밖 파일은 **새 경로도 쓰는 공용 기반**으로 남았다.
 
 **공용 기반 — 살아 있다:**
 `containerModel`(타입 — 32곳이 임포트), `debugFlags`, `buildSpec`, `recipeTree`,
 `wizardUtils`, `types`, `beltThroughput`, `inserterThroughput`, `containerRouting`(dijkstra —
 `planner/moduleHop` 이 쓴다), `areaUnification`(사용자 드래그 재라우팅), `routeFallback`,
 `machinePlacer`, `externalPlacer`, `portInference`, `moduleInspect`, `techGroup`, `layeredWizard`(진입점).
-
-**죽은 무리 — 프로덕션 호출자 0개 (2026-07-25 실측):**
-
-| 파일/심볼 | 상태 |
-|---|---|
-| `clusterTrunkMerge.ts` | 임포트하는 프로덕션 코드 **0개**. 자기 테스트만 남음 |
-| `externalMergePass.wrapExternalsWithMerge` | 호출자 테스트뿐. 파일에서 **플래그만** 살아 있다(디버 탭) |
-| `externalGatherPass.gatherExternalsToPoints` | 같음 |
-| `areaUnification.wrapExternalsAroundPerimeter` | 호출자 테스트뿐(파일 자체는 드래그로 살아 있다) |
-| `mergeGrouping.ts` | `externalMergePass` 만 쓰므로 전이적으로 죽음 |
-| `ContainerWizardInput.mergeSupplyBoxes` | 타입에만 있고 **읽는 코드가 없다** |
-
-> ⚠️ 딜레마: 디버 탭(`AutoLayoutDebugTab`)의 **MERGE BOXES / GATHER BOXES 토글은 이제
-> 아무 일도 안 한다.** 그 플래그를 읽던 유일한 곳이 삭제된 옛 경로였기 때문이다.
-> 무리를 지울지 말지는 사용자 확인 대기(README "폐기 결정 정책" 2항).
 
 ## 검증
 
@@ -115,7 +99,7 @@ tags: [auto-layout, placement, routing]
 (`mod.cells` filter+push, `port.cells`·`port.anchor`·`chest.origin` 뮤테이션). 이제
 `moduleHop` 과 같은 규약으로 바꿨다 — **모듈 그래프를 건드리지 않고 설명을 반환**한다:
 
-- `relocateChestsToPerimeter` 는 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
+- 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·
   `relocations`(상자별 새 origin·belts).
 - 적용은 호출자 [moduleWizard](../frontend/src/utils/autoLayout/planner/moduleWizard.ts)
