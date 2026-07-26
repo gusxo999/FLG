@@ -209,7 +209,6 @@ export type RoutingKind = 'item' | 'fluid';
  *  - 면(side) = 토폴로지: planClusterPorts (B) 정책 — 출력→W(부모 쪽) 먼저 확정.
  *  - depth(레인) = 운반량: 수요(amount)↓ ↔ 슬롯 throughput↓ zip 매칭.
  *  - 끝(end) = 합성 정렬: packModuleTree 가 부모↔자식 포트 |Δy| 최소로 지정.
- * 최종 셀 = computeTrunkPath seed 경쟁(사전식 점수, trunkScore 참조).
  */
 export interface ModulePortMeta {
   /** 운반 품목. */
@@ -224,18 +223,6 @@ export interface ModulePortMeta {
   amount?: number;
   /** DOF-B 끝 선호 — 합성 단계가 부모↔자식 포트를 마주 보게 지정. min=위, max=아래. */
   endPreference?: 'min' | 'max';
-  /**
-   * 트렁크 seed 경쟁 우승 점수(사전식, 작을수록 좋음):
-   * [미탭 머신 수, 횡축 span(직선성), 끝 선호 페널티, 트렁크 길이].
-   * seedsEvaluated = 성장에 성공해 점수 비교까지 간 seed 수.
-   */
-  trunkScore?: {
-    untapped: number;
-    crossSpan: number;
-    endPenalty: number;
-    trunkLen: number;
-    seedsEvaluated: number;
-  };
 }
 
 export interface Routing {

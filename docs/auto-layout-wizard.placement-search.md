@@ -121,7 +121,7 @@ tags: [auto-layout, placement, routing]
 | **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `commitContainer` |
 | **외부 컨테이너** | 무한상자/파이프 지연 등록 + perimeter 배치 | [externalPlacer.ts](../frontend/src/utils/autoLayout/externalPlacer.ts), [areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) |
 | **라우팅** | port 페어 → 운반체 체인 (item/fluid, Dijkstra, 지하) | [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `routePorts` + [routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts) `routeWithFallback` |
-| **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `clusterModule.emitTapInserting` (`trunkPath.ts`·`trunkEmit.ts` 는 프로덕션 호출자 0 — 자기 테스트만) |
+| **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `clusterModule.emitTapInserting` |
 | **채널 계획** | 모듈 사이 라우팅 채널 폭/트랙 산정 | `channelPlanner.ts` |
 | **오케스트레이터** | 위 모듈을 엮어 후보 생성 | `moduleWizard.ts` `tryRunModulePipeline` |
 

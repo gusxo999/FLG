@@ -42,9 +42,10 @@ tags: [auto-layout, placement, routing]
 - [`clusterModule.ts`](../frontend/src/utils/autoLayout/module/clusterModule.ts) —
   "누적 occupancy … 앞선 line 이 깐 트렁크/인서터/상자 셀만 모은다(**다음 line 이 피해 가도록**)".
 
-> **2026-07-26 확인:** 씨앗 그리디 본체(`trunkPath.computeTrunkPath` · `trunkEmit.emitTrunk`)는
-> **프로덕션 호출자가 0개**다(자기 테스트만 남음). 살아 있는 선착순은 위 `emitTapInserting`
-> 의 누적 occupancy 쪽뿐이다.
+> **2026-07-26:** 씨앗 그리디 본체(`trunkPath` · `trunkEmit`)는 **삭제됐다** — 프로덕션
+> 호출자가 0개였다. 살아 있는 선착순은 위 `emitTapInserting` 의 누적 occupancy 쪽뿐이다.
+> 즉 §1 이 진단한 "가둠" 사고의 절반(씨앗 성장)은 사라졌고, 나머지 절반(줄을 순서대로
+> 깔며 뒤가 앞을 피함)은 그대로 남아 있다.
 
 즉 품목 줄을 **하나씩 순서대로** 깔고, 뒤에 오는 줄이 앞선 줄을 피해 간다. **선착순이다.**
 
@@ -289,7 +290,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 > 자체다. 간단하다고 판명나면 레인 자리는 정의상 이미 있다. `planClusterPorts` 의
 > `ok`/`complex` 가 그 분류를 이미 하고 있었으므로 새 검사를 만들지 않고 재사용했다.
 
-- 옛 트렁크에서 버리는 것 = **seed 그리디 성장**([`trunkPath.ts`](../frontend/src/utils/autoLayout/module/trunkPath.ts))과
+- 옛 트렁크에서 버리는 것 = **seed 그리디 성장**(`trunkPath.ts` — 2026-07-26 삭제됨)과
   **사후 병합**(`clusterTrunkMerge`/`externalMergePass`). 되살리는 것 = planner 의 레인 배정.
 - 홉 페어링: k↔m zip → 품목당 1↔1 로 자연 축소. `hopKey` 의 `seq` 는 용량 분할(§10.4-⑵) 대비로 유지.
 - raw 입력은 트렁크 끝 무한상자 1개 → 반출 수요도 O(머신×품목)→O(품목)으로 준다.

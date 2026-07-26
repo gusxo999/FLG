@@ -14,7 +14,7 @@
  * 끊긴 무한버퍼 두 개가 되어 물류가 가짜가 된다.
  *
  * ## 포트 기하 (계약 추가 없이 anchor+face 에서 유도)
- * emitTrunk 규약상 한 포트는 `chest -- seat(인서터) -- trunkStart(belt)` 가 일직선(2칸)이고
+ * 방출기 공통 규약상 한 포트는 `chest -- seat(인서터) -- trunkStart(belt)` 가 일직선(2칸)이고
  * `face` 는 바깥 방향(클러스터→ring)이다. 따라서:
  *   - chest    = `anchor`
  *   - seat     = `anchor − faceVec(face)`   (인서터 — belt→belt 피더일 때만 제거 대상)
@@ -139,7 +139,7 @@ function portGeometry(port: ModulePort): {
  *    **유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔아도 픽업 셀은 그대로라
  *    인서터는 **남겨야** 한다. 모듈 안에 벨트가 없으므로 `port.cells` 가 비어 있다.
  *  - **링크/트렁크 벨트** — `[상자][인서터][벨트]`([emitOutputLinks]·[emitInputLinks]·
- *    [trunkEmit.emitTrunk] 공통 규약). 상자가 홉 belt 로 바뀌면 이 인서터는 **belt→belt**
+ *    [emitTapInserting] 공통 규약). 상자가 홉 belt 로 바뀌면 이 인서터는 **belt→belt**
  *    가 되어, 하는 일은 없이 처리량만 인서터 속도로 깎는다. 떼고 그 자리도 belt 로 메워
  *    홉 벨트가 트렁크로 **곧장 흐르게** 해야 한다.
  *

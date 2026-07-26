@@ -146,7 +146,7 @@ tags: [factorio-data, routing, auto-layout]
 | **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 배치 실패(폴백 없음) |
 | **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
 | **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 상자만 skip(로컬 ring 잔류) |
-| **옛 경로** (`containerRouting.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md#12-deprecated-dijkstra-guard--옛-경로의-파이프는-합류-가드를-안-거친다) |
+| **옛 경로** (`containerRouting.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
 
 스파인 폴백이 면 하나를 통째로 먹는 대가는 **케이스 B** 로 계산돼 있다: 그 면엔 일반 인서터가
 앉을 자리가 없어서 긴팔 인서터가 depth 2 에 앉아 depth 4 에서 집는다 → 그 면의 아이템 레인이

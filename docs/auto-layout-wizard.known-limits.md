@@ -30,7 +30,7 @@ tags: [auto-layout, placement, routing]
 
 **해결 방향:**
 1. **포트 수요 → 형태 선택기(shape selector)**: 노드별 needW/needE/needNS(면별 강제 포트 수 + fluidbox 고정면)를 산정해 컬럼 사다리에 안 들어오면 행/격자로 승급.
-2. 파급: `modulePacking` 의 열 배치·채널 계획·트렁크 시드([module/trunkPath.ts](../frontend/src/utils/autoLayout/module/trunkPath.ts))에 모두 반영 필요.
+2. 파급: `modulePacking` 의 열 배치·채널 계획에 모두 반영 필요.
 
 > **선행 조건이던 gap 문제는 해소됐다**(2026-07-25). 세로 간격은 이제 링크 면 계획에서
 > 유도된다(`gapRowsFromPlans` → `layoutCluster(rowGaps)`, 기본 `MODULE_ROW_GAP = 0`).
@@ -158,7 +158,7 @@ tags: [auto-layout, placement, routing]
 **우선순위: P3**
 
 **증상:**
-- 전 과정이 [[용어사전#결정성 (determinism)|결정적]]이라고 주장하지만 (입력→출력) snapshot 회귀/[[용어사전#fuzz 테스트|퍼즈 테스트]]가 없다. 단위 테스트는 trunkPath·channelPlanner·modulePacking 등 모듈 레벨만 존재.
+- 전 과정이 [[용어사전#결정성 (determinism)|결정적]]이라고 주장하지만 (입력→출력) snapshot 회귀/[[용어사전#fuzz 테스트|퍼즈 테스트]]가 없다. 단위 테스트는 channelPlanner·modulePacking 등 모듈 레벨만 존재.
 
 **해결 방향:**
 - `runLayeredWizard` 전체에 대한 입력→placed 스냅샷 회귀 테스트 추가.
@@ -211,8 +211,8 @@ tags: [auto-layout, placement, routing]
 > - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).
 > - ~~트렁크 병합 v1 한계~~ — `clusterTrunkMerge`·`externalMergePass` 자체가 삭제됐다.
 >   모듈 경로는 [[auto-layout-wizard.machine-link]] 링크 모델로 공급을 나눈다.
-> - ~~collect 트렁크 코너 방향 반전 버그~~ — `trunkEmit` 이 처방대로 시프트 기반 반전을
->   구현했다(코너에서 이전 셀 방향을 다시 계산).
+> - ~~collect 트렁크 코너 방향 반전 버그~~ — 처방대로 고쳐졌고, 그 뒤 씨앗 그리디
+>   트렁크(`trunkEmit`) 자체가 삭제됐다(2026-07-26).
 >
 > 부분 해소되어 **범위를 좁힌** 항목: §3(유체는 회전한다) · §5(인서터 병목은 반영됐다) ·
 > §9(옛 경로가 사라져 드래그 재라우팅만 남았다).

@@ -40,7 +40,6 @@ tags: [auto-layout, placement, routing]
 | P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/routeFallback.ts#L143)                                                                                     |
 | P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73)                                                                                       |
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
-| P7  | ~~**트렁크 seed 점수**~~          | 사전식 `[untapped, 횡축 span, 트렁크 길이]` 최소 — **죽은 결정점**(2026-07-26 확인): `trunkPath`/`trunkEmit` 은 프로덕션 호출자 0 | **Q** | `module/trunkPath.ts` (자기 테스트만)                                                                                             |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](auto-layout-wizard.fluid-hop-reservation.md) |
 | P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](auto-layout-wizard.fluid-hop-reservation.md) |
@@ -114,6 +113,6 @@ P2는 `machine.origin`(좌상단 코너) 기준 거리라, 멀티타일 머신(3
 |---|---|---|
 | 1 | **P1 — 제약 큰 것 먼저** | 효과 최대. 링 성장↓ → bbox↓ → O1 squareness 개선. 그리디 로직 불변, 진입 전 정렬만 추가(저위험). |
 | 2 | **P2 — 코너 편향 제거** | 저위험 핀포인트. `machine.origin` → 관련 면 최근접 port 셀. |
-| 3 | **P4 / P7 — 비용 노출** | 라우팅 tie-break에 belt 길이·꺾임 반영. 라우팅 비용 API 노출 필요(무거움, 후순위). |
+| 3 | **P4 — 비용 노출** | 라우팅 tie-break에 belt 길이·꺾임 반영. 라우팅 비용 API 노출 필요(무거움, 후순위). |
 
 > 셋 다 정확성(best-effort 보장)은 그대로 두고 **패킹·라우팅 품질만** 개선한다. 전역 최적(이분 매칭 등)은 아니지만, fail-first 순서만으로 "쉬운 게 어려운 걸 굶기는" 최악 케이스 대부분이 사라진다.

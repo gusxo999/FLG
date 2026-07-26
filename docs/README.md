@@ -26,9 +26,12 @@ tags: [moc]
 
 레시피 → 머신/투입기/벨트 자동 배치 위저드와 그 알고리즘. **부모: [auto-layout-wizard](auto-layout-wizard.md)**
 
-> **현행(2026-07-26):** 실행 경로는 **모듈 파이프라인 단일 경로**다. 옛 S-LAYER 본체는
-> 코드에서 삭제됐고(리팩토링 Phase 3), 배치에 실패하면 폴백 없이 `RejectReason` 이
-> 그대로 UI 실패 라벨로 나온다. 이 전략에는 아직 고유 이름이 없다(=모듈 파이프라인은 서술어).
+> **현행(2026-07-26):** 실행 경로는 **모듈 파이프라인 단일 경로**다 —
+> `layeredWizard.runLayeredWizard`(트리 전개·머신 선정) → `moduleWizard.tryRunModulePipeline`(배치 전부).
+> 폴백할 옛 경로가 없어, 실패하면 `RejectReason` 이 그대로 UI 실패 라벨로 나온다.
+> 이 전략에는 아직 고유 이름이 없다(=모듈 파이프라인은 서술어).
+>
+> 아래 표에서 **[역사]** 는 코드에 없는 것을 설명하는 문서다 — 왜 그렇게 안 하는지의 논거로만 읽는다.
 
 | 문서 | 주제 | 태그 |
 |------|------|------|
@@ -37,19 +40,19 @@ tags: [moc]
 | [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** S-LAYER 의 레이어 간 라우팅 채널 예약 — **본체는 코드에서 삭제됨**(Phase 3). 남긴 이유 = "왜 채널을 비워 두는가" 논거. 예약 철학은 `.channel-geometry-reservation` 이 상위 호환으로 계승 | `#placement` `#routing` |
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
 | [.machine-link](auto-layout-wizard.machine-link.md) | ↳ **[설계]** 자식→부모 연결 통일 — 논리(MachineLink, 전략무관) vs 기하(통로 예약) 두 층. Hop=Link 통일, seq 소멸, 포트=링크 끝점, gap=부산물. **벨트 병합은 그릇이 시키는 게 아니라 우리가 사는 것**(대가=머신 인접) | `#placement` `#routing` |
-| [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
+| [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 이 `insertingPlanner`+`emitTapInserting` 으로 돌고, 소스 주석 4곳이 §10·§7 을 인용한다. 논박 대상이던 씨앗 그리디(`trunkPath`/`trunkEmit`)는 2026-07-26 삭제됨 | `#placement` `#routing` |
 | [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인). 방출 = `emitTrunkPipe` | `#placement` `#fluid` |
 | [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). 2026-07-16 실측 성공 후 **링크 모델 도입으로 조용히 죽었다가 2026-07-26 복구**(자식→부모 링크의 유체 가드 누락 + `productOf` 다산출 오짝짓기). v1=모듈당 유체 1줄, 다-유체는 fallback 실패 | `#placement` `#fluid` |
 | [.fluid-underground-crossing](auto-layout-wizard.fluid-underground-crossing.md) | ↳ **[계획]** 유체 지하 횡단을 장부 안으로 — 페어링 규칙(`isJumpAllowed`)은 라우터에 이미 있고 장부 행은 이미 절대 좌표. 모듈 내부 지하파이프 corridor 미기록 결함 포함 | `#placement` `#fluid` `#routing` |
 | [.fluid-hop-reservation](auto-layout-wizard.fluid-hop-reservation.md) | ↳ **[구현됨]** 유체 홉을 채널 기하 예약 안으로 (리팩토링 Phase 4-B) — 장부가 잡아 둔 유체 트랙을 라우터가 버리던 것을 수리. 인접(합류) 규칙 + 유체 지상 우선권 + 탐색 폴백 제거 | `#placement` `#fluid` `#routing` |
-| [entity-roles](entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) — 이름에 점이 없다(자식 아님, 위저드 밖에서도 참조) | `#routing` |
-| [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |
+| [entity-roles](entity-roles.md) | **[최상위]** 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) — 라우팅·유체·블루프린트가 다 같이 봐서 접두어를 뗐다 | `#routing` |
+| [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 9건 + 우선순위(P1~P3) | `#placement` `#routing` |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | ↳ 배치·라우팅 순서 결정점 등록부 (부모=placement-search) | `#placement` `#routing` |
 | [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) | ↳ count=1 raw 입력의 노출 N/S 면 슬롯 (E→N/S→W, W-spill 갇힘 원인 치료) | `#placement` `#routing` |
 | [.module-way-outs](auto-layout-wizard.module-way-outs.md) | ↳ **moduleWayOuts** — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다. 예약이 막힌 방향을 안 잡게 해 탐색 폴백 제거 + 폭 낭비 제거 | `#placement` `#routing` |
 | [.control-behavior-scope](auto-layout-wizard.control-behavior-scope.md) | ↳ 추적하는 ControlBehavior 필드 범위 | `#blueprint` |
 | [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | ↳ **[이력]** 계측기 — 도구는 삭제됨(부를 통로가 없었다). 남긴 건 1:1 기준선 **실측 수치** | `#auto-layout` |
-| [code-folders](code-folders.md) | 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
+| [code-folders](code-folders.md) | **[최상위]** 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`
 
@@ -97,13 +100,17 @@ Factorio API/데이터의 비직관적 동작과 그 해석.
 
 ```
 auto-layout-wizard.md                          ← 부모 (기능 자체)
-auto-layout-wizard.algorithm.md                ← ↳ 자식: 알고리즘 작동 방식
+auto-layout-wizard.placement-search.md         ← ↳ 자식: 컨테이너 모델·전략 레이어
 auto-layout-wizard.known-limits.md             ← ↳ 자식: 알려진 한계
 auto-layout-wizard.control-behavior-scope.md   ← ↳ 자식: 추적 범위
 ```
 
 **Why:** 정렬된 파일 목록에서 부모 바로 아래에 자식들이 모여 부모-자식 관계가 한눈에 보인다. 테스트 파일
 `foo.test.ts` 와 같은 패턴.
+
+**접두어를 떼는 때:** 그 문서를 부모 밖에서도 참조하게 되면 자식이 아니다. 접두어를 떼고 최상위로 올린다
+(`entity-roles.md` · `code-folders.md` 가 그렇게 나왔다 — 라우팅·유체·블루프린트가 다 같이 본다).
+파일명이 "누가 읽는가"를 말하게 두고, 부모와의 관계는 문서 서두 박스가 말한다.
 
 **자식 문서의 서두**에는 부모 문서와 같은 묶음의 다른 문서들을 안내하는 박스를 넣어, 어느 묶음에 속한 문서인지
 즉시 알 수 있게 한다:

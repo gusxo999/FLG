@@ -16,7 +16,7 @@ tags: [auto-layout, placement, routing]
 `autoLayout/` 폴더 하나에 40여 개 파일이 평평하게 쌓여 있었다. 어떤 파일이 "한 모듈 안쪽"
 일이고 어떤 파일이 "여러 모듈 사이" 일인지 폴더 구조로는 전혀 보이지 않았다. 게다가 한 모듈을
 만드는 핵심 파일(`clusterModule`)이 함수 하나 때문에 1218줄짜리 옛 파일(`areaUnification`)을
-통째로 불러오고, 트렁크 벨트 파일(`trunkPath`/`trunkEmit`)이 1299줄짜리 옛 파일
+통째로 불러오고, 트렁크 벨트 파일(당시의 `trunkPath`/`trunkEmit`)이 1299줄짜리 옛 파일
 (`containerRouting`)에 매달려 있었다. 잔손 함수 몇 개가 큰 파일에 갇혀 있던 탓이다.
 
 ## 세 폴더
@@ -28,8 +28,7 @@ tags: [auto-layout, placement, routing]
 
 `clusterLayout`(N대를 기둥/줄 중 어떤 모양으로 세울지), `clusterPortPlanner`(입출력 줄을
 어느 변·몇 칸 바깥·어떤 인서터에 붙일지), `clusterModule`(머신+트렁크+상자를 실제로 놓아
-덩어리 완성), `trunkPath`(트렁크 벨트가 지나갈 칸 계산), `trunkEmit`(그 칸을 실제 벨트·
-인서터로), `moduleTransform`(모듈 통째 회전 — 현재 항상 회전 없음으로 고정).
+덩어리 완성), `moduleTransform`(모듈 통째 회전 — 현재 항상 회전 없음으로 고정).
 
 ### `planner/` — 모듈 사이를 조율하는 코드
 

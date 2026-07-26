@@ -127,20 +127,6 @@ function PortCard({ port }: { port: ModulePortCell }) {
             k="끝 선호"
             v={m.endPreference ? (m.endPreference === 'min' ? 'min (위)' : 'max (아래)') : '없음'}
           />
-          {m.trunkScore && (
-            <div className="pt-0.5">
-              <div className="text-gray-500 mb-0.5">트렁크 seed 점수 (사전식, ↓ 우선)</div>
-              <div className="grid grid-cols-4 gap-1 text-center">
-                <ScoreCell label="미탭" value={m.trunkScore.untapped} good={m.trunkScore.untapped === 0} />
-                <ScoreCell label="span" value={m.trunkScore.crossSpan} good={m.trunkScore.crossSpan === 0} />
-                <ScoreCell label="끝pen" value={m.trunkScore.endPenalty} />
-                <ScoreCell label="길이" value={m.trunkScore.trunkLen} />
-              </div>
-              <div className="text-gray-600 text-[10px] mt-0.5">
-                평가 seed {m.trunkScore.seedsEvaluated}개 중 우승
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -152,15 +138,6 @@ function MiniRow({ k, v, title }: { k: string; v: string; title?: string }) {
     <div className="flex items-baseline gap-2">
       <span className="text-gray-500 w-14 shrink-0">{k}</span>
       <span className="font-mono text-[11px] text-gray-300 truncate" title={title ?? v}>{v}</span>
-    </div>
-  );
-}
-
-function ScoreCell({ label, value, good }: { label: string; value: number; good?: boolean }) {
-  return (
-    <div className="rounded bg-gray-900 border border-gray-800 px-1 py-0.5">
-      <div className="text-gray-500 text-[10px]">{label}</div>
-      <div className={`font-mono text-[11px] ${good ? 'text-green-400' : 'text-gray-200'}`}>{value}</div>
     </div>
   );
 }
