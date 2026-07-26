@@ -303,7 +303,7 @@ export function edgeMachineLinks(
  * 벨트로 묶었다. 그 병합이 부모 머신의 **인접**을 요구했고(벨트 하나가 여럿을 관통해야
  * 하므로), 인접이 클러스터를 세로 한 줄로 못박아 한 면의 벨트 줄 수를 팔 길이에 묶었다 —
  * 채널 트랙 하나 값으로는 너무 비쌌다. 되살릴 때는 채널 층에서 합친다(같은 품목 벨트끼리는
- * 합류해도 오염이 없다). 근거: docs/auto-layout-wizard.cluster-redesign.md
+ * 합류해도 오염이 없다).
  *
  * 이 함수는 간선당 [packModuleTree] 안에서 **한 번만** 불린다(사전 캐시) — 자식(출력 emit)과
  * 부모(입력 emit)는 그 결과 [MachineLinkGroup] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.

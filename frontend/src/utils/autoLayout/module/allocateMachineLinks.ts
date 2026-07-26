@@ -63,7 +63,7 @@ export interface MachineLink {
  * **v1 은 링크 하나가 곧 그룹 하나다**(2026-07-22). 여러 목적지를 한 벨트에 묶으면 그 벨트가
  * 부모 머신 여럿을 **관통**해야 하고, 그러려면 그 머신들이 **붙어 있어야** 한다
  * ([[용어사전#ColumnCluster]]). 채널 트랙 하나를 아끼려고 클러스터 형태 전체를 저당 잡히는
- * 거래라 v1 에서는 안 한다. 단일 출처: docs/auto-layout-wizard.cluster-redesign.md
+ * 거래라 v1 에서는 안 한다.
  *
  * `from`/`to` 가 Map 인 이유: 병합을 되살리거나(여러 목적지) 외부 줄을 담을 때(전 머신)
  * 자료 구조를 다시 안 바꾸려는 것이다. 내부 링크 v1 에서는 양쪽 다 항목 하나씩이다.
@@ -152,7 +152,6 @@ const EPS = 1e-9;
  *
  * **상한이지 명령이 아니다.** "이 이상 실으면 벨트가 넘친다"까지만 말한다 — "여유가 있으면
  * 합쳐라"는 여기서 안 나온다(그건 대가가 따로 있는 정책이다).
- * docs/auto-layout-wizard.cluster-redesign.md
  */
 export function maxInsertersPerBelt(beltThroughput: number, inserterThroughput: number): number {
   return Math.max(1, Math.floor(beltThroughput / inserterThroughput + EPS));

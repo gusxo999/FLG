@@ -4,9 +4,9 @@ import type { MachineLinkGroup } from "./allocateMachineLinks";
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.
 //
-// v1 은 **링크 하나 = 벨트 하나**라 벨트가 남의 머신 행을 관통하는 일이 없다
-// (docs/auto-layout-wizard.cluster-redesign.md). 관통이 없으니 그룹끼리 depth 를 다툴 일도
-// 없어, 행 구간만 안 겹치면 **같은 depth 를 그냥 나눠 쓴다**.
+// v1 은 **링크 하나 = 벨트 하나**라 벨트가 남의 머신 행을 관통하는 일이 없다.
+// 관통이 없으니 그룹끼리 depth 를 다툴 일도 없어, 행 구간만 안 겹치면
+// **같은 depth 를 그냥 나눠 쓴다**.
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 /** 머신 여럿에 걸친 그룹 — v1 의 [edgeLinkGroups] 는 이런 걸 내지 않는다(안전망 확인용). */

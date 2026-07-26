@@ -759,7 +759,7 @@ interface LinkFacePlan {
    */
   laneDepth: number;
   /**
-   * **반출 깊이 — gap 전용**(docs/auto-layout-wizard.cluster-redesign.md 의 "반출" 단).
+   * **반출 깊이 — gap 전용.**
    *
    * W/E 면에서는 빠져나가는 방향이 면과 **수직**이라, 벨트가 자기 좌석 구간만 덮고 끝에서
    * 꺾으면 그만이다(그래서 여러 그룹이 같은 깊이를 나눠 쓴다). gap 은 다르다 — 나가는 쪽

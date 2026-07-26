@@ -7,7 +7,7 @@ import { faceVector } from "../util/helper";
 import { EntityType } from "../../../types/layout";
 
 // 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 홉으로 이어지는지.
-// v1 은 **링크 하나 = 벨트 하나**다(2026-07-22, docs/auto-layout-wizard.cluster-redesign.md).
+// v1 은 **링크 하나 = 벨트 하나**다(2026-07-22).
 // 링크가 작아 그릇에 여유가 남아도 목적지가 다르면 안 묶는다 — 묶으면 그 벨트가 부모 머신
 // 여럿을 관통해야 하고, 그러려면 그 머신들이 붙어 있어야 하기 때문(= ColumnCluster 강제).
 

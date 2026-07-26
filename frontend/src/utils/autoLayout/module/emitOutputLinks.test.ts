@@ -27,7 +27,7 @@ function beltLeaks(mod: GeneratedModule): string[] {
 
 // 출력 fan-out 방출 검증 — 링크 그룹(=벨트) 단위로 "머신당·목적지별" belt 가 갈라 나온다.
 // count≥2, W/E 에 앉는 중간 출력 케이스. **v1 은 링크 하나가 곧 벨트 하나**라
-// (docs/auto-layout-wizard.cluster-redesign.md) 여기서도 링크를 그대로 그룹으로 편다.
+// 여기서도 링크를 그대로 그룹으로 편다.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 

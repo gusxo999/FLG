@@ -39,11 +39,12 @@ tags: [auto-layout, placement, routing]
 이 원칙은 **모듈 *사이*(채널)** 에는 적용돼 있다. 그런데 **모듈 *안쪽*** 에는 한 번도 적용된
 적이 없다. 코드가 스스로 그렇게 말한다:
 
-- [`trunkPath.ts`](../frontend/src/utils/autoLayout/module/trunkPath.ts) 머리말 —
-  "트렁크 벨트 셀 경로 계산 — **그리디 성장**", "각 연결의 탭셀·포트·서브 경로는
-  **굽힘 페널티 cost** 로 고른다".
 - [`clusterModule.ts`](../frontend/src/utils/autoLayout/module/clusterModule.ts) —
   "누적 occupancy … 앞선 line 이 깐 트렁크/인서터/상자 셀만 모은다(**다음 line 이 피해 가도록**)".
+
+> **2026-07-26 확인:** 씨앗 그리디 본체(`trunkPath.computeTrunkPath` · `trunkEmit.emitTrunk`)는
+> **프로덕션 호출자가 0개**다(자기 테스트만 남음). 살아 있는 선착순은 위 `emitTapInserting`
+> 의 누적 occupancy 쪽뿐이다.
 
 즉 품목 줄을 **하나씩 순서대로** 깔고, 뒤에 오는 줄이 앞선 줄을 피해 간다. **선착순이다.**
 
@@ -234,8 +235,8 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
     별도 이름을 붙이지 않는다 — [간단한 레시피](용어사전.md#간단한-레시피) 판별이 곧 그 검사다
     (§10.3 참고, 사용자가 직접 지적: "레인 갯수 검사는 존재해서는 안 된다"). 벨트·인서터
     처리량 검사 = **[determineBeltCount](용어사전.md#determinebeltcount)**.
-    (옛 [머지 그룹핑 게이트](용어사전.md#머지-그룹핑-게이트)는 **다른 코드 경로**
-    (`mergeGrouping.ts`, 외부상자 트렁크용)이지 재사용하지 않는다 — 혼동 정정.)
+    (옛 [머지 그룹핑 게이트](용어사전.md#머지-그룹핑-게이트)는 **다른 코드 경로**였고
+    재사용하지 않았다 — 혼동 정정. 그 경로는 이후 코드에서 삭제됐다.)
 - **병합 순서** — 같은 복도 안에서 어떤 것부터 합칠지. 단조적이라 그리디로 안전하지만,
   그리디 ≠ 최적. 나중 문제.
 - **비교 계측기** — → §10.5 로 승격(구현 첫 단계로 확정).
