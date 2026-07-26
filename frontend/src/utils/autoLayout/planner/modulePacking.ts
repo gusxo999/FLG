@@ -315,6 +315,18 @@ export function edgeLinkGroups(
   item: string,
   config: PackConfig,
 ): MachineLinkGroup[] | undefined {
+  // 유체는 팔로 나르지 않는다 — [externalLineGroups] 가 외부 줄에 두는 것과 **같은 가드**다.
+  // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
+  // (물을 인서터로 옮길 수 없다), `linkedKeys` 에 실려 아이템 방출기
+  // (emitOutputLinks/emitInputLinks)로 흘러가 트렁크 파이프 경로를 통째로 건너뛴다.
+  // 그러면 유체 포트가 안 생기고 → 홉도 안 생긴다(2026-07-26 브라우저 실측에서 발견).
+  //
+  // 링크를 안 만든다고 부모-자식 유체 연결이 끊기는 게 아니다 — [emitTrunkPipe] 가 같은
+  // 줄로 포트를 내고, [pairHopPorts] 가 이름으로 짝지어 **유체 홉**이 된다. 그게 설계다
+  // (docs/auto-layout-wizard.fluid-hop-reservation.md).
+  if (child.lines.find((l) => l.role === "output" && l.name === item)?.kind !== "belt") {
+    return undefined;
+  }
   const links = edgeMachineLinks(child, parent, item, config);
   if (!links || links.length === 0) return undefined;
   // 내부 링크는 양쪽 다 머신 하나씩 — 자식이 내놓고 부모가 받는다([MachineLinkGroup]).
@@ -334,9 +346,33 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     if (!s.parentId) continue;
     (childIdsByParent.get(s.parentId) ?? childIdsByParent.set(s.parentId, []).get(s.parentId)!).push(s.id);
   }
-  /** 노드가 부모에 내보내는 품목(= 출력 라인 이름). */
-  const productOf = (s: NodeSpec): string | undefined =>
-    s.lines.find((l) => l.role === "output")?.name;
+  /**
+   * 노드가 **부모에게 실제로 넘기는** 품목.
+   *
+   * 예전엔 첫 출력 라인을 그냥 집었다. 산출물이 하나뿐인 레시피에선 맞지만 **다산출
+   * 레시피에선 엉뚱한 걸 집는다** — `empty-sulfuric-acid-barrel` 은 `barrel + sulfuric-acid`
+   * 를 내는데 배열 순서상 `barrel` 이 잡혀, 부모(battery)에게서 "barrel 입력"을 찾다
+   * 실패했다. 그러면 [pairHopPorts] 가 짝을 못 만들어 **홉이 0개**가 되고, 자식의 산
+   * 출력과 부모의 산 입력이 **각각 외부 포트로** 떨어진다. 실측에서는 그 둘이 나란히
+   * 붙어 한 관망이 됐다 — 한쪽은 "항상 가득"(at-least 1), 다른 쪽은 "항상 비움"(at-most 0)
+   * 인 무한파이프 두 개가 같은 네트워크에(2026-07-26 브라우저 실측).
+   *
+   * 그래서 **부모가 먹는 것**으로 고른다. 나머지 산출물은 부산물이라 외부로 나간다.
+   */
+  const productOf = (s: NodeSpec): string | undefined => {
+    const outs = s.lines.filter((l) => l.role === "output");
+    if (outs.length === 0) return undefined;
+    const parent = s.parentId ? byId.get(s.parentId) : undefined;
+    if (parent) {
+      const wanted = new Set(
+        parent.lines.filter((l) => l.role === "input").map((l) => l.name),
+      );
+      const match = outs.find((o) => wanted.has(o.name));
+      if (match) return match.name;
+    }
+    // 부모가 없거나(루트) 겹치는 게 없으면 옛 동작 — 없는 답을 지어내지 않는다.
+    return outs[0].name;
+  };
   /** 부모 입력 중 자식-공급인 품목 집합. */
   const childFedItems = (s: NodeSpec): Set<string> => {
     const set = new Set<string>();
