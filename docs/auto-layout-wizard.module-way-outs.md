@@ -136,8 +136,6 @@ advanced-circuit 동형 트리, count 1~8 실측:
 
 ## 7. 함정 (다음 사람에게)
 
-- `shiftModule`(modulePacking)은 `ModulePort` 를 **명시 필드로 재구성**한다. 포트에 필드를
-  추가하면 **여기도 반드시 추가**해야 한다 — 안 그러면 런타임에 `undefined` 로 조용히 사라진다.
-- `moduleTransform.ts` 의 `xfPort`/`shiftPort` 도 같은 문제를 갖고 있으나 **죽은 코드**이고
-  (프로덕션 미사용) **tsc 가 아예 포함조차 안 한다**(테스트에서만 도달 — 이 저장소는 tsc 가
-  테스트 파일을 검사하지 않는다). 되살릴 땐 필드 누락부터 고쳐야 한다.
+- `moduleTransform.ts` 의 `xfPort`/`shiftPort` 는 `ModulePort` 를 **명시 필드로 재구성**해
+  좌표와 무관한 필드를 조용히 떨어뜨린다. `transformModule` 은 현재 프로덕션 호출자가 없어
+  (패킹은 항상 `IDENTITY` 방위) 드러나지 않을 뿐이다. 되살릴 땐 필드 누락부터 고쳐야 한다.

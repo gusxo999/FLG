@@ -9,13 +9,13 @@
 
 - **자동 레이아웃(auto-layout) 코드**(`frontend/src/utils/autoLayout/**`, `AutoLayoutModal.tsx`, 배치·라우팅·트렁크·채널)를
   수정·설계하기 전에 관련 문서를 먼저 읽는다:
-  - 코드 지도(`module/` · `planner/` · `util/` 세 폴더의 경계): [docs/auto-layout-wizard.code-folders.md](docs/auto-layout-wizard.code-folders.md)
+  - 코드 지도(`module/` · `planner/` · `util/` 세 폴더의 경계): [docs/code-folders.md](docs/code-folders.md)
   - 컨테이너 모델·정합성 조건(전략 무관 불변 기반): [docs/auto-layout-wizard.placement-search.md](docs/auto-layout-wizard.placement-search.md) Part I
   - 자식→부모 연결 = 링크 모델: [docs/auto-layout-wizard.machine-link.md](docs/auto-layout-wizard.machine-link.md)
   - 채널 예약(기하 장부): [docs/auto-layout-wizard.channel-geometry-reservation.md](docs/auto-layout-wizard.channel-geometry-reservation.md)
   - 위저드 UI/입출력: [docs/auto-layout-wizard.md](docs/auto-layout-wizard.md)
   - 알려진 한계·우선순위: [docs/auto-layout-wizard.known-limits.md](docs/auto-layout-wizard.known-limits.md)
-  - 엔티티 4역할: [docs/auto-layout-wizard.entity-roles.md](docs/auto-layout-wizard.entity-roles.md)
+  - 엔티티 4역할: [docs/entity-roles.md](docs/entity-roles.md)
 - **Blueprint import/export, Factorio 데이터 시맨틱스**(방향 인코딩, MapPosition, 유체 상자, 메타데이터)를
   다룰 때는 [docs/README.md](docs/README.md) 의 "Factorio 데이터" / "Blueprint" 그룹에서 해당 문서를 찾아 읽는다.
 - 문서와 코드가 어긋나면 **코드가 현재 사실**이다(문서는 시점 기록). 어긋남을 발견하면 문서를 갱신한다.

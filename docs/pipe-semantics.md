@@ -4,7 +4,7 @@ tags: [factorio-data, routing, auto-layout]
 
 # 파이프의 작동 방식 — 벨트와 무엇이 같고 무엇이 다른가
 
-> **짝 문서:** [auto-layout-wizard.entity-roles §C 고체 운반(벨트)](auto-layout-wizard.entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식
+> **짝 문서:** [entity-roles §C 고체 운반(벨트)](entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식
 > **관련 문서:** [fluid-box-semantics](fluid-box-semantics.md) (유체 상자의 면·이름) · [auto-layout-wizard.trunk-pipe](auto-layout-wizard.trunk-pipe.md) (트렁크 파이프) · [용어사전](용어사전.md)
 
 파이프는 "벨트의 액체 버전" 이 **아니다.** 겉보기엔 둘 다 "물건을 A 에서 B 로 나르는 1×1 칸" 이지만,

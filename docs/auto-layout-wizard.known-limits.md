@@ -5,7 +5,7 @@ tags: [auto-layout, placement, routing]
 # 자동완성 위저드 — 알려진 약점 및 한계
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](auto-layout-wizard.entity-roles.md)
+> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
 
 본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../frontend/src/utils/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 

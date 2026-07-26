@@ -12,12 +12,12 @@ tags: [auto-layout, placement, routing]
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
 > `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
-> 흐름은 [[auto-layout-wizard.code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
+> 흐름은 [[code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
 > 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
 
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
+> **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 >
 > **상태:** 본 문서는 두 부분으로 나뉜다.
 > - **Part I — 컨테이너 모델 (§2–§6):** 어떤 배치 전략에서도 변하지 않는 *불변 기반*. 코드와 일치한다.

@@ -37,20 +37,19 @@ tags: [moc]
 | [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** S-LAYER 의 레이어 간 라우팅 채널 예약 — **본체는 코드에서 삭제됨**(Phase 3). 남긴 이유 = "왜 채널을 비워 두는가" 논거. 예약 철학은 `.channel-geometry-reservation` 이 상위 호환으로 계승 | `#placement` `#routing` |
 | [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
 | [.machine-link](auto-layout-wizard.machine-link.md) | ↳ **[설계]** 자식→부모 연결 통일 — 논리(MachineLink, 전략무관) vs 기하(통로 예약) 두 층. Hop=Link 통일, seq 소멸, 포트=링크 끝점, gap=부산물. **벨트 병합은 그릇이 시키는 게 아니라 우리가 사는 것**(대가=머신 인접) | `#placement` `#routing` |
-| [.cluster-redesign](auto-layout-wizard.cluster-redesign.md) | ↳ **[설계]** 클러스터 형태는 고르는 게 아니라 유도된다 — ColumnCluster=병합의 대가, "면당 벨트 2줄" 상한의 정체는 **팔이 모든 벨트를 직접 집는다는 가정**(벨트가 벨트를 먹이면 사라짐). v1=병합 없음 | `#placement` `#routing` |
 | [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 = 2026-07-12 확정 설계 | `#placement` `#routing` |
 | [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인). 방출 = `emitTrunkPipe` | `#placement` `#fluid` |
 | [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). 2026-07-16 실측 성공 후 **링크 모델 도입으로 조용히 죽었다가 2026-07-26 복구**(자식→부모 링크의 유체 가드 누락 + `productOf` 다산출 오짝짓기). v1=모듈당 유체 1줄, 다-유체는 fallback 실패 | `#placement` `#fluid` |
 | [.fluid-underground-crossing](auto-layout-wizard.fluid-underground-crossing.md) | ↳ **[계획]** 유체 지하 횡단을 장부 안으로 — 페어링 규칙(`isJumpAllowed`)은 라우터에 이미 있고 장부 행은 이미 절대 좌표. 모듈 내부 지하파이프 corridor 미기록 결함 포함 | `#placement` `#fluid` `#routing` |
 | [.fluid-hop-reservation](auto-layout-wizard.fluid-hop-reservation.md) | ↳ **[구현됨]** 유체 홉을 채널 기하 예약 안으로 (리팩토링 Phase 4-B) — 장부가 잡아 둔 유체 트랙을 라우터가 버리던 것을 수리. 인접(합류) 규칙 + 유체 지상 우선권 + 탐색 폴백 제거 | `#placement` `#fluid` `#routing` |
-| [.entity-roles](auto-layout-wizard.entity-roles.md) | ↳ 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) | `#routing` |
+| [entity-roles](entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) — 이름에 점이 없다(자식 아님, 위저드 밖에서도 참조) | `#routing` |
 | [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 + 우선순위(P0~P3) | `#placement` `#routing` |
 | [.priority-ordering](auto-layout-wizard.priority-ordering.md) | ↳ 배치·라우팅 순서 결정점 등록부 (부모=placement-search) | `#placement` `#routing` |
 | [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) | ↳ count=1 raw 입력의 노출 N/S 면 슬롯 (E→N/S→W, W-spill 갇힘 원인 치료) | `#placement` `#routing` |
 | [.module-way-outs](auto-layout-wizard.module-way-outs.md) | ↳ **moduleWayOuts** — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다. 예약이 막힌 방향을 안 잡게 해 탐색 폴백 제거 + 폭 낭비 제거 | `#placement` `#routing` |
 | [.control-behavior-scope](auto-layout-wizard.control-behavior-scope.md) | ↳ 추적하는 ControlBehavior 필드 범위 | `#blueprint` |
 | [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | ↳ **[이력]** 계측기 — 도구는 삭제됨(부를 통로가 없었다). 남긴 건 1:1 기준선 **실측 수치** | `#auto-layout` |
-| [.code-folders](auto-layout-wizard.code-folders.md) | ↳ 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
+| [code-folders](code-folders.md) | 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`
 
@@ -79,18 +78,6 @@ Factorio API/데이터의 비직관적 동작과 그 해석.
 | 문서 | 주제 | 태그 |
 |------|------|------|
 | [belt-flow-inspection](belt-flow-inspection.md) | 벨트 셀 클릭 → 그 지점의 운반 품목·items/sec. 라우팅 세션이 아니라 **그리드 자체를 정적 분석** — 수동 배치·수정한 벨트도 동작 | `#visualization` `#factorio-data` |
-
-### 🔧 리팩토링 이력 — 옛 경로 제거 `#refactor`
-
-계획서 *"옛 경로를 스텁 뒤로 · 신 파이프라인 표면 정리"*(Phase 0~6, 2026-07-25 ~ 26) 의 산출물.
-커밋 25개, `frontend/src` 순 **−3,386줄**. 진행 중 캡처한 실측·조사 기록이라 **시점 문서**다.
-
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [refactor-baseline-2026-07-25](refactor-baseline-2026-07-25.md) | Phase 0 기준선 — 착수 시점(c9e14bd)의 타입·테스트·대표 레시피 후보 로그 스냅샷 | `#refactor` |
-| [refactor-reject-reasons-analysis](refactor-reject-reasons-analysis.md) | 신 경로 `reject(...)` 사유 전수 추적 — `RejectReason` 타입과 "무엇이 스코프 밖인가"의 근거 | `#refactor` |
-| [refactor-phase-3-analysis](refactor-phase-3-analysis.md) | Phase 3 — `containerRouting.routeFluid` 호출 체인 조사와 옛 경로 삭제 안전 계획 | `#refactor` |
-| [refactor-phase-6-doc-audit](refactor-phase-6-doc-audit.md) | Phase 6-0 — "조사 후 결정" 으로 미뤄 둔 문서 7개 감사 (업데이트/삭제/유지 분류) | `#refactor` `#docs` |
 
 ### 🚧 보류 · 폐기 결정 `#deferred`
 
@@ -142,10 +129,9 @@ auto-layout-wizard.control-behavior-scope.md   ← ↳ 자식: 추적 범위
 | `#glossary` | 용어 사전 |
 | `#moc` | 이 진입점 문서 · 용어 사전 |
 | `#module` `#hop` | auto-layout 하위 보조 태그 — 모듈 안쪽 · 홉 세부 |
-| `#plan` `#planning` | 미구현 설계 계획서 (⚠️ 두 이름이 혼용 중 — 하나로 통일 필요) |
+| `#planning` | 미구현 설계 계획서 |
 | `#tooling` | 계측기·개발 도구 |
 | `#visualization` | 배치 결과 검사·진단 표시 |
-| `#refactor` `#docs` | 리팩토링 이력 · 문서 감사 |
 
 ## 폐기 결정 정책
 

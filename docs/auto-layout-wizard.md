@@ -12,7 +12,7 @@ tags: [auto-layout, placement, routing]
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
 > `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
-> 흐름은 [[auto-layout-wizard.code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
+> 흐름은 [[code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
 > 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
 >
 
@@ -27,7 +27,7 @@ tags: [auto-layout, placement, routing]
 |------|------|
 | [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5) |
 | [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 — 본체는 코드에서 삭제됨 |
-| [auto-layout-wizard.entity-roles.md](auto-layout-wizard.entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
+| [entity-roles.md](entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
 | [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
 

@@ -4,8 +4,8 @@ tags: [auto-layout, routing]
 
 # 자동완성 위저드 — 엔티티 역할 4분류
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.known-limits](auto-layout-wizard.known-limits.md)
+> **독립 문서** — 위저드 밖(라우팅·블루프린트·유체)에서도 참조하므로 `auto-layout-wizard.` 접두어를 떼었다.
+> **주 소비처:** [auto-layout-wizard.md](auto-layout-wizard.md) · [.placement-search](auto-layout-wizard.placement-search.md) · [.known-limits](auto-layout-wizard.known-limits.md) · [pipe-semantics](pipe-semantics.md)
 
 자동완성 [[용어사전#위저드 (wizard)|위저드]]가 그리드에 깔아내는 엔티티는 작동 방식 측면에서 **[[용어사전#엔티티 4역할|4가지 역할]]**로 나뉜다.
 이 4가지는 placer / router 가 채워야 할 자리를 결정하는 골격이며,

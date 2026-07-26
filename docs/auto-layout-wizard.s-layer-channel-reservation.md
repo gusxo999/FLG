@@ -16,7 +16,7 @@ tags: [auto-layout, placement, routing]
 
 
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md) — 배치/전략(§5.5 전략 등록부), [.entity-roles](auto-layout-wizard.entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
+> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md) — 배치/전략(§5.5 전략 등록부), [.entity-roles](entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
 
 > 전략 `[[용어사전#S-LAYER|S-LAYER]]` (계층화 [[용어사전#DAG|DAG]] 레이아웃 + 채널 라우팅, [[용어사전#Sugiyama 프레임워크|Sugiyama 프레임워크]]) 의
 > **③ 채널 예약** 단계만 깊게 다룬다. 다른 단계(레이어 배정 / 레이어 내 정렬 /

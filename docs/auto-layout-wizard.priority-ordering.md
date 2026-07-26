@@ -5,7 +5,7 @@ tags: [auto-layout, placement, routing]
 # 우선순위 정리 — 배치·라우팅의 모든 순서 결정점
 
 > **부모 문서:** [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)
-> **관련 문서:** [.known-limits](auto-layout-wizard.known-limits.md), [.entity-roles](auto-layout-wizard.entity-roles.md)
+> **관련 문서:** [.known-limits](auto-layout-wizard.known-limits.md), [.entity-roles](entity-roles.md)
 > **목적:** 자동 레이아웃 파이프라인 곳곳에 흩어진 "무엇을 먼저 하나" 결정을 한곳에 모아, 각각이 **정합성 보장(불변)** 인지 **품질 최적화(교체 가능)** 인지 분류한다.
 
 ---
