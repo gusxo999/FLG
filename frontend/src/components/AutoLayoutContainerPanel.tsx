@@ -18,12 +18,12 @@ import { useLayoutStore } from '../store/layoutStore';
 import { useToastStore } from '../store/toastStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useWizardStore } from '../store/wizardStore';
-import { runLayeredWizard } from '../utils/autoLayout/layeredWizard';
+import { runLayeredWizard } from '../autoLayout/layeredWizard';
 import {
   unifyAreas,
-} from '../utils/autoLayout/areaUnification';
-import { AUTO_LAYOUT_COORD_DUMP } from '../utils/autoLayout/debugFlags';
-import { registerAutoLayoutDebug } from '../utils/debugApi';
+} from '../autoLayout/areaUnification';
+import { AUTO_LAYOUT_COORD_DUMP } from '../autoLayout/debugFlags';
+import { registerAutoLayoutDebug } from '../debug/debugApi';
 import type {
   CandidateLeaf,
   CandidateNode,
@@ -31,7 +31,7 @@ import type {
   ContainerWizardInput,
   ContainerWizardResult,
   PlacedCell,
-} from '../utils/autoLayout/containerModel';
+} from '../autoLayout/containerModel';
 
 interface AutoLayoutContainerPanelProps {
   targetRecipe: string;
@@ -295,7 +295,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     applyPlacedCells(cells);
     applyLayoutBboxes(internalBbox, canvasBbox);
     // 수동 편집(드래그 재라우팅) 비활성 — 세션을 만들지 않는다.
-    // 코드는 utils/autoLayout/manualEdit/ 에 격리돼 있고 호출자가 0 이다.
+    // 코드는 autoLayout/manualEdit/ 에 격리돼 있고 호출자가 0 이다.
     // 세션이 항상 null 이라 드래그는 "이동만" 되고 벨트가 따라오지 않는다.
     // 재구현 계획: manualEdit/README.md
     useLayoutStore.getState().setRoutingEditMode(false);

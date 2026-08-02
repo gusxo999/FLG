@@ -1,15 +1,15 @@
 import { useRef, useCallback, useState } from 'react';
-import { exportBlueprint, importBlueprint } from '../utils/blueprintCodec';
+import { exportBlueprint, importBlueprint } from '../blueprint/blueprintCodec';
 import { useLayoutStore } from '../store/layoutStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useToastStore } from '../store/toastStore';
-import { parseGameData } from '../utils/parseGameData';
+import { parseGameData } from '../factorio/parseGameData';
 import { useI18nStore, useT } from '../i18n';
 import type { BlueprintEntity } from '../types/blueprint';
 import { EntityType } from '../types/layout';
 import type { GridCell, Direction } from '../types/layout';
-import { modulesToInsertPlans, insertPlansToModules } from '../utils/blueprintItemsCodec';
-import { entityTypeFromFactorioType } from '../utils/entityCategory';
+import { modulesToInsertPlans, insertPlansToModules } from '../blueprint/blueprintItemsCodec';
+import { entityTypeFromFactorioType } from '../factorio/entityCategory';
 // 빌드타임에 lua export 스크립트를 문자열로 번들 (단일 source-of-truth)
 import luaExportScript from '../../../scripts/export-gamedata.min.lua?raw';
 

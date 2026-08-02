@@ -10,8 +10,8 @@ import {
   CATEGORY_TO_TYPES,
   entityTypeFromFactorioType,
   type SidebarCategory,
-} from '../utils/entityCategory';
-import { allowedSurfaces } from '../utils/surfaceConditions';
+} from '../factorio/entityCategory';
+import { allowedSurfaces } from '../factorio/surfaceConditions';
 
 type TabKey = SidebarCategory;
 

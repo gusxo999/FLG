@@ -9,16 +9,16 @@ import {
   collectInternalRecipes,
   assignMinimumCounts,
   assignThroughputCounts,
-} from '../utils/autoLayout/recipeTree';
-import { makeMachineParamsLookup } from '../utils/autoLayout/wizardUtils';
-import { expandSelectionByPrereq } from '../utils/autoLayout/techGroup';
-import type { RecipeTreeNode } from '../utils/autoLayout/types';
+} from '../autoLayout/recipeTree';
+import { makeMachineParamsLookup } from '../autoLayout/wizardUtils';
+import { expandSelectionByPrereq } from '../autoLayout/techGroup';
+import type { RecipeTreeNode } from '../autoLayout/types';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
 import AutoLayoutDebugTab from './AutoLayoutDebugTab';
 import {
   inserterThroughput,
   defaultInserterThroughput,
-} from '../utils/autoLayout/inserterThroughput';
+} from '../autoLayout/inserterThroughput';
 import {
   useWizardStore,
   WIZARD_STEPS,

@@ -130,7 +130,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 (위아래 면이면 x, 좌우 면이면 y) 좌표가 안쪽 칸이든 바깥 연결점이든 답이 같다 — 모호한 건 수직
 성분뿐인데 그건 안 본다.
 
-읽는 규칙은 [`resolveFluidConnection`](../../../frontend/src/utils/autoLayout/module/fluidPorts.ts) **한
+읽는 규칙은 [`resolveFluidConnection`](../../../frontend/src/autoLayout/module/fluidPorts.ts) **한
 곳**에 있다. 자동 레이아웃(`fluidPorts`)과 라우팅(`portInference`)이 같은 함수를 쓴다 — 규칙이 두
 벌 있으면 한쪽만 고쳐지고 다른 쪽이 조용히 틀린다.
 
@@ -189,11 +189,11 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 | 파일 | 지금 | 바뀔 것 |
 |---|---|---|
 | `containerModel.Container` | 방향 필드 없음 | `direction?` 추가 |
-| [`machinePlacer.commitContainer`](../../../frontend/src/utils/autoLayout/execution/machinePlacer.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
-| [`moduleWizard`](../../../frontend/src/utils/autoLayout/planner/moduleWizard.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
-| [`clusterPortPlanner`](../../../frontend/src/utils/autoLayout/planner/module/clusterPortPlanner.ts) | pipe 보면 즉시 `complex` | 파이프 슬롯(면 = 유체 상자가 정함, depth 1, 인서터 없음) + 케이스 B |
-| [`clusterModule`](../../../frontend/src/utils/autoLayout/module/clusterModule.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
-| [`modulePerimeterPass`](../../../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
+| [`machinePlacer.commitContainer`](../../../frontend/src/autoLayout/execution/machinePlacer.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
+| [`moduleWizard`](../../../frontend/src/autoLayout/planner/moduleWizard.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
+| [`clusterPortPlanner`](../../../frontend/src/autoLayout/planner/module/clusterPortPlanner.ts) | pipe 보면 즉시 `complex` | 파이프 슬롯(면 = 유체 상자가 정함, depth 1, 인서터 없음) + 케이스 B |
+| [`clusterModule`](../../../frontend/src/autoLayout/module/clusterModule.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
+| [`modulePerimeterPass`](../../../frontend/src/autoLayout/execution/modulePerimeterPass.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
 | `moduleHop` | — | **안 건드린다**(§5) |
 
 ## 8. 아직 안 하는 것

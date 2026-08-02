@@ -59,8 +59,8 @@ tags: [visualization, factorio-data]
 
 | 파일 | 역할 |
 |------|------|
-| [frontend/src/utils/beltFlow.ts](../frontend/src/utils/beltFlow.ts) | `computeBeltFlowAt(grid, x, y, ctx)` — 순수 함수 분석 코어 |
-| [frontend/src/utils/beltFlow.test.ts](../frontend/src/utils/beltFlow.test.ts) | 구간별 증감·머신율 캡·지하 점프·용량 클램프·side-load 합류 |
+| [frontend/src/analysis/beltFlow.ts](../frontend/src/analysis/beltFlow.ts) | `computeBeltFlowAt(grid, x, y, ctx)` — 순수 함수 분석 코어 |
+| [frontend/src/analysis/beltFlow.test.ts](../frontend/src/analysis/beltFlow.test.ts) | 구간별 증감·머신율 캡·지하 점프·용량 클램프·side-load 합류 |
 | [frontend/src/store/inspectStore.ts](../frontend/src/store/inspectStore.ts) | `cell` 좌표 추가(캔버스 클릭 시에만 set) |
 | [frontend/src/pixi/pixi-manager.ts](../frontend/src/pixi/pixi-manager.ts) | 빈손/배치/라우팅수정 모드에서 벨트류 클릭 → inspect |
 | [frontend/src/components/EntityDetails.tsx](../frontend/src/components/EntityDetails.tsx) | `BeltFlowSection` — 정보 모달 내 흐름 섹션 |

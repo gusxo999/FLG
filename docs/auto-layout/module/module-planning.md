@@ -77,7 +77,7 @@ gap 으로 넘어간 링크는 gap 안에 **가로 벨트**를 놓는다. 그래
 
 ## 3. 좌표의 경계 — 계획은 순번까지 낸다
 
-[`ModulePortPlan`](../../../frontend/src/utils/autoLayout/planner/module/planModulePorts.ts) 에는
+[`ModulePortPlan`](../../../frontend/src/autoLayout/planner/module/planModulePorts.ts) 에는
 **좌표가 하나도 없다.** 링크가 쓸 자리도 *"면에서 몇 번째 칸"* 까지 계획이 끝낸다
 (`LinkFacePlan.slotIndex` — 채우는 **방향**까지 거기서 정해진다).
 

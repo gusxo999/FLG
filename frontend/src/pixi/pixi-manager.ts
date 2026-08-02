@@ -17,7 +17,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useInspectStore } from '../store/inspectStore';
 import { EntityType, getCell } from '../types/layout';
-import { getEntitySizeRotated } from '../utils/entitySize';
+import { getEntitySizeRotated } from '../factorio/entitySize';
 import { isOverwriteAllowed, centerAnchorOrigin } from './pixi-draw-utils';
 import {
   BG_COLOR,
@@ -41,8 +41,8 @@ import {
   setHoveredModuleKey,
 } from './pixi-renderer';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
-import { moduleAtCell } from '../utils/autoLayout/moduleInspect';
-import { isBeltLike } from '../utils/beltFlow';
+import { moduleAtCell } from '../autoLayout/moduleInspect';
+import { isBeltLike } from '../analysis/beltFlow';
 
 // ---------------------------------------------------------------------------
 // 이벤트 핸들러

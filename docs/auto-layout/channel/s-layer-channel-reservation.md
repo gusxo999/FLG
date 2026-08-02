@@ -34,7 +34,7 @@ tags: [auto-layout, placement, routing]
 > [[용어사전#채널 (channel)|채널]]은 항상 비어 있으므로 **라우팅이 실패할 수 없다** (정의상).
 
 이것이 (롤백된) 완전탐색 전략 S-EXH 의 `FailureLeaf` 백트래킹·`n!` 형제순서 폭발을 없애는 핵심
-메커니즘이며, 현재 전략 S-LAYER ([layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts)) 로 구현돼 있다.
+메커니즘이며, 현재 전략 S-LAYER ([layeredWizard.ts](../../../frontend/src/autoLayout/layeredWizard.ts)) 로 구현돼 있다.
 
 ---
 
@@ -130,7 +130,7 @@ automation-science-pack         (L0, 제품)
 ## 4. 채널 폭(W) 계산 — 가장 중요한 디테일
 
 채널 폭은 임의 상수가 아니라 **그 경계를 가로지르는 동시 연결 수**로 계산한다.
-현재 코드의 `CHANNEL_MIN = 3` ([layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts)) 이 이 계산의 *하한*이다.
+현재 코드의 `CHANNEL_MIN = 3` ([layeredWizard.ts](../../../frontend/src/autoLayout/layeredWizard.ts)) 이 이 계산의 *하한*이다.
 
 ### 4.1 한 연결이 채널에서 쓰는 자원
 
@@ -312,10 +312,10 @@ function assignColumns(layers, channels):
 
 | S-LAYER 요소 | 현재 코드 |
 |---|---|
-| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../../../frontend/src/utils/autoLayout/planner/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts) |
-| 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../../../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts)) → `routePorts` ([manualEdit/facadeRouting.ts](../../../frontend/src/utils/autoLayout/manualEdit/facadeRouting.ts)) / `commitRouting` ([execution/emitPath.ts](../../../frontend/src/utils/autoLayout/execution/emitPath.ts)) |
+| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../../../frontend/src/autoLayout/planner/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../../../frontend/src/autoLayout/layeredWizard.ts) |
+| 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../../../frontend/src/autoLayout/manualEdit/routeFallback.ts)) → `routePorts` ([manualEdit/facadeRouting.ts](../../../frontend/src/autoLayout/manualEdit/facadeRouting.ts)) / `commitRouting` ([execution/emitPath.ts](../../../frontend/src/autoLayout/execution/emitPath.ts)) |
 | 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
-| 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../../../frontend/src/utils/autoLayout/execution/machinePlacer.ts)) |
+| 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../../../frontend/src/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../../../frontend/src/autoLayout/execution/machinePlacer.ts)) |
 
 ---
 

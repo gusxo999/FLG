@@ -48,11 +48,11 @@ tags: [auto-layout, placement, routing]
 
 ## 2. 왜 상자가 안쪽에 갇히나 — 문제
 
-[`clusterModule.generateModule`](../../../frontend/src/utils/autoLayout/module/clusterModule.ts) 은 각
+[`clusterModule.generateModule`](../../../frontend/src/autoLayout/module/clusterModule.ts) 은 각
 클러스터를 **"자기가 트리의 루트인 척"** 만든다(부모를 전혀 보지 않는다). 그래서 완성된 모듈은
 자기 [[용어사전#perimeter ring|ring]] 위에 입·출력 무한상자를 갖는다.
 
-그다음 [`modulePacking.packModuleTree`](../../../frontend/src/utils/autoLayout/planner/modulePacking.ts) 가
+그다음 [`modulePacking.packModuleTree`](../../../frontend/src/autoLayout/planner/modulePacking.ts) 가
 모듈들을 **depth(트리 깊이) 별 세로 열**로 타일링하면서 사이에 [[용어사전#채널 (channel)|채널]]을 둔다.
 이 순간 **로컬 ring 들이 전체 배치의 내부가 된다**:
 
@@ -76,7 +76,7 @@ tags: [auto-layout, placement, routing]
 
 ### ① 계약 — 모듈이 자기에 대해 답한다
 
-**구현:** [`module/clusterModule.ts`](../../../frontend/src/utils/autoLayout/module/clusterModule.ts) `generateModule`
+**구현:** [`module/clusterModule.ts`](../../../frontend/src/autoLayout/module/clusterModule.ts) `generateModule`
 
 모듈은 바깥에서 볼 때 **불투명한 블랙박스**이고, 포트마다 다음만 공개한다:
 
@@ -94,8 +94,8 @@ tags: [auto-layout, placement, routing]
 
 ### ② 예약 — 자리를 먼저 잡는다
 
-**구현:** [`planner/perimeterLanePlanner.ts`](../../../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts) `planPerimeterLanes`
-+ [`planner/modulePacking.ts`](../../../frontend/src/utils/autoLayout/planner/modulePacking.ts) `packModuleTree`
+**구현:** [`planner/perimeterLanePlanner.ts`](../../../frontend/src/autoLayout/planner/perimeterLanePlanner.ts) `planPerimeterLanes`
++ [`planner/modulePacking.ts`](../../../frontend/src/autoLayout/planner/modulePacking.ts) `packModuleTree`
 
 상자마다 **어느 변으로, 어느 통로를 타고** 나갈지 배정한다. 통로(`LaneHost`)는 세 가지:
 
@@ -111,14 +111,14 @@ tags: [auto-layout, placement, routing]
 
 **핵심 — 폭 역전.** `channel` 로 배정된 상자는 자기가 채널에서 쓸 **세로 구간**(`Interval`)을
 내놓고, `packModuleTree` 가 이를 [[용어사전#납품 경로 (deliveryRoute)|납품 경로]] 구간과 **합쳐서**
-[`channelPlanner.assignTracksLeftEdge`](../../../frontend/src/utils/autoLayout/planner/channelPlanner.ts) 에
+[`channelPlanner.assignTracksLeftEdge`](../../../frontend/src/autoLayout/planner/channelPlanner.ts) 에
 넘긴다. 나온 트랙 수가 곧 채널 폭이다.
 
 > 즉 **"상자가 나갈 길"이 채널 폭 계산의 입력**이 된다. 그래서 배치가 끝났을 때 그 길은
 > **이미 비어 있음이 보장**된다. 이것이 "예약 철학"이며, [[channel-geometry-reservation]]
 > 이 상위 문서다.
 
-`self`/`margin` 상자를 위해서는 bbox 사방에 [`PERIMETER_MARGIN`](../../../frontend/src/utils/autoLayout/util/helper.ts) `= 2`
+`self`/`margin` 상자를 위해서는 bbox 사방에 [`PERIMETER_MARGIN`](../../../frontend/src/autoLayout/util/helper.ts) `= 2`
 칸 프레임을 붙인다(`marginNeeds` 가 요구한 변만). 예약한 경로 셀은 `reservedExportCells` 에
 등록해 납품 벨트가 침범하지 못하게 한다.
 
@@ -132,8 +132,8 @@ tags: [auto-layout, placement, routing]
 
 ### ③ 방출 — 계획서대로 그린다
 
-**구현:** [`execution/modulePerimeterPass.ts`](../../../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts) `rePathToPerimeter`
-+ [`planner/perimeterRouter.ts`](../../../frontend/src/utils/autoLayout/planner/perimeterRouter.ts) `routePortToPerimeter`
+**구현:** [`execution/modulePerimeterPass.ts`](../../../frontend/src/autoLayout/execution/modulePerimeterPass.ts) `rePathToPerimeter`
++ [`planner/perimeterRouter.ts`](../../../frontend/src/autoLayout/planner/perimeterRouter.ts) `routePortToPerimeter`
 
 ```
 1. 점유 셀 지도(occ) + 전역 외곽 사각형(perimeter) 계산
@@ -147,7 +147,7 @@ tags: [auto-layout, placement, routing]
 
 `rePathToPerimeter` 는 **순수 함수**다 — 아무것도 직접 고치지 않고 무엇을 떼고(`droppedCellKeys`)
 무엇을 놓고(`addedCells`) 상자가 어디로 갔는지(`relocations`)를 **반환만** 한다. 적용은
-[`moduleWizard.ts`](../../../frontend/src/utils/autoLayout/planner/moduleWizard.ts) 가 `Area` 를 조립할 때
+[`moduleWizard.ts`](../../../frontend/src/autoLayout/planner/moduleWizard.ts) 가 `Area` 를 조립할 때
 한다. 덕분에 store 없이 좌표만으로 단위 테스트가 된다.
 
 **탐색 폴백을 일부러 두지 않는다.** 예약이 "뚫린 방향만"(①의 `wayOuts`) 골랐고 채널 구간은

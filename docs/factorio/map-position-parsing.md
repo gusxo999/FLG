@@ -129,7 +129,7 @@ ent.vector_to_place_result = vec2(safe_get(function() return e.vector_to_place_r
 
 ### [2] 프론트엔드 `normalizeVec2()`
 
-[frontend/src/utils/parseGameData.ts](../../frontend/src/utils/parseGameData.ts):
+[frontend/src/factorio/parseGameData.ts](../../frontend/src/factorio/parseGameData.ts):
 
 ```typescript
 /**
@@ -236,7 +236,7 @@ TypeScript는 `Vec2 | undefined`를 강제하지만, 런타임에서 `{x: undefi
 |--------|------|------|
 | [1] Lua 정규화 | [scripts/export-gamedata.lua](../scripts/export-gamedata.lua) | `vec2()` |
 | [1] Lua 정규화 (min) | [scripts/export-gamedata.min.lua](../scripts/export-gamedata.min.lua) | `V2()` |
-| [2] 파서 정규화 | [frontend/src/utils/parseGameData.ts](../../frontend/src/utils/parseGameData.ts) | `normalizeVec2()`, `normalizeCollisionBox()`, `parseFluidBoxes()` |
+| [2] 파서 정규화 | [frontend/src/factorio/parseGameData.ts](../../frontend/src/factorio/parseGameData.ts) | `normalizeVec2()`, `normalizeCollisionBox()`, `parseFluidBoxes()` |
 | [3] 렌더링 가드 | [frontend/src/pixi/pixi-manager.ts](../../frontend/src/pixi/pixi-manager.ts) | `isValidVec()` |
 | [3] 렌더링 가드 | [frontend/src/components/EntityDetails.tsx](../../frontend/src/components/EntityDetails.tsx) | inline `typeof x === 'number'` |
 

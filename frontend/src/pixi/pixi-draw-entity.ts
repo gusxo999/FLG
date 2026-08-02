@@ -8,7 +8,7 @@
 
 import * as PIXI from 'pixi.js';
 import { EntityType, type Direction } from '../types/layout';
-import { getEntitySizeRotated } from '../utils/entitySize';
+import { getEntitySizeRotated } from '../factorio/entitySize';
 import { useGameDataStore } from '../store/gameDataStore';
 import { isValidVec, rotateVector, directionToVec, drawSingleArrow, drawPoint } from './pixi-draw-utils';
 import { COLOR_FLUID_IN, COLOR_FLUID_OUT, COLOR_FLUID_IO, drawConnectionArrow } from './pixi-draw-pipe';

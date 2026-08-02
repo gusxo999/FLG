@@ -7,7 +7,7 @@
 
 **작업 전 참조 규칙:**
 
-- **자동 레이아웃(auto-layout) 코드**(`frontend/src/utils/autoLayout/**`, `AutoLayoutModal.tsx`, 배치·라우팅·트렁크·채널)를
+- **자동 레이아웃(auto-layout) 코드**(`frontend/src/autoLayout/**`, `AutoLayoutModal.tsx`, 배치·라우팅·트렁크·채널)를
   수정·설계하기 전에 **[code-folders](docs/auto-layout/common/code-folders.md)** 를 먼저 읽는다 — 폴더가 두 축
   (계층 × 관심사) 중 무엇을 말하는지, 어느 파일이 아직 그 축과 어긋나 있는지가 거기 있다.
   그다음은 건드리는 폴더의 `CLAUDE.md` 가 안내한다(`autoLayout/` · `planner/` · `module/` ·

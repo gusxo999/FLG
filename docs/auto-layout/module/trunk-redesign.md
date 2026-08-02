@@ -39,7 +39,7 @@ tags: [auto-layout, placement, routing]
 이 원칙은 **모듈 *사이*(채널)** 에는 적용돼 있다. 그런데 **모듈 *안쪽*** 에는 한 번도 적용된
 적이 없다. 코드가 스스로 그렇게 말한다:
 
-- [`clusterModule.ts`](../../../frontend/src/utils/autoLayout/module/clusterModule.ts) —
+- [`clusterModule.ts`](../../../frontend/src/autoLayout/module/clusterModule.ts) —
   "누적 occupancy … 앞선 line 이 깐 트렁크/인서터/상자 셀만 모은다(**다음 line 이 피해 가도록**)".
 
 > **2026-07-26:** 씨앗 그리디 본체(`trunkPath` · `trunkEmit`)는 **삭제됐다** — 프로덕션
@@ -253,7 +253,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 
 가장 제약 센 결정 = **어느 품목 줄이 어느 면의 어느 레인을 갖는가.** 이게 정해지면
 벨트 구간(머신 기둥의 행 범위), 포트 위치(벨트 끝), 홉 수(품목당 1), 채널 폭(O(품목))이
-전부 유도된다. 배정기는 이미 있다 — [`clusterPortPlanner`](../../../frontend/src/utils/autoLayout/planner/module/clusterPortPlanner.ts)
+전부 유도된다. 배정기는 이미 있다 — [`clusterPortPlanner`](../../../frontend/src/autoLayout/planner/module/clusterPortPlanner.ts)
 의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting) 모델(하위호환 기본값)이 그것이다.
 
 ### 10.2 물리적 모양

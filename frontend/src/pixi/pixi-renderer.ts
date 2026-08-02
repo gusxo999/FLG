@@ -13,16 +13,16 @@ import { useLayoutStore, canvasToGrid } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { EntityType, getCell, type Direction } from '../types/layout';
-import type { Routing } from '../utils/autoLayout/containerModel';
-import { getEntitySizeRotated } from '../utils/entitySize';
-import { getDynamicEntityColor, collectPlacedEntityNames } from '../utils/entityColors';
+import type { Routing } from '../autoLayout/containerModel';
+import { getEntitySizeRotated } from '../factorio/entitySize';
+import { getDynamicEntityColor, collectPlacedEntityNames } from './entityColors';
 import {
   computePipeNetworks,
   computeHoverPipeConnections,
   isPipeCell,
   type PipeNetworkResult,
-} from '../utils/pipeNetwork';
-import { collectModules, type ModuleInfo } from '../utils/autoLayout/moduleInspect';
+} from '../analysis/pipeNetwork';
+import { collectModules, type ModuleInfo } from '../autoLayout/moduleInspect';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { centerAnchorOrigin, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';
 import { drawPipeShape } from './pixi-draw-pipe';

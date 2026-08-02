@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useGameDataStore } from '../store/gameDataStore';
-import { collectModules, type ModulePortCell } from '../utils/autoLayout/moduleInspect';
+import { collectModules, type ModulePortCell } from '../autoLayout/moduleInspect';
 
 export default function ModuleInfoPanel() {
   const moduleKey = useModuleInspectStore((s) => s.moduleKey);

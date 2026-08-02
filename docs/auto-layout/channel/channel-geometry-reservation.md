@@ -9,7 +9,7 @@ tags: [auto-layout, placement, routing]
 > [.ns-face-relief](../module/ns-face-relief.md) — 같은 갇힘 문제의 N/S 면 측 치료, [.priority-ordering](../common/priority-ordering.md)
 
 > **상태: 구현 완료** (2026-07-09 설계 확정, 같은 날 구현). 통합 장부 =
-> `frontend/src/utils/autoLayout/channelGeometryPlanner.ts`, 스위치 =
+> `frontend/src/autoLayout/channelGeometryPlanner.ts`, 스위치 =
 > `AUTO_LAYOUT_CHANNEL_GEOMETRY`(기본 on, `debugFlags.ts`). 신규 코드는 이 문서의 용어를
 > 쓰지만(§8 대응표) 기존 파일명(hop, lane)의 개명은 장기 과제로 남아 있다. 검증 결과는 §9.
 

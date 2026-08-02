@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   AUTO_LAYOUT_COORD_DUMP,
   setAutoLayoutCoordDump,
-} from '../utils/autoLayout/debugFlags';
+} from '../autoLayout/debugFlags';
 import { useUiDebugStore } from '../store/uiDebugStore';
 
 /**

@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildDerived, productYield, useGameDataStore, type GameData } from './gameDataStore';
-import { expandRecipeTree } from '../utils/autoLayout/recipeTree';
+import { expandRecipeTree } from '../autoLayout/recipeTree';
 import type { Recipe } from './gameDataStore';
 
 const r = (

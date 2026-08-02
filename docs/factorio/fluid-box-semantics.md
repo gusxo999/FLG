@@ -206,7 +206,7 @@ FluidBoxInfo
 ("유체 상자의 면은 좌표에서 못 뽑는다") 참고.
 
 머신을 `d` 만큼 돌리면 실제 면은 `(direction + d) % 16` 이다. 읽는 규칙은
-[`resolveFluidConnection`](../../frontend/src/utils/autoLayout/module/fluidPorts.ts) 한 곳에 있다.
+[`resolveFluidConnection`](../../frontend/src/autoLayout/module/fluidPorts.ts) 한 곳에 있다.
 
 ## 상자에 들어갈 유체의 **이름** — 그건 머신이 아니라 레시피가 안다 (2026-07-13)
 

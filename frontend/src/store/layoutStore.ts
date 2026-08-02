@@ -16,14 +16,14 @@ import {
   cellIndex,
   getCell,
 } from '../types/layout';
-import { getEntitySizeRotated } from '../utils/entitySize';
+import { getEntitySizeRotated } from '../factorio/entitySize';
 import { useToastStore } from './toastStore';
 import { t } from '../i18n';
 import { nanoid } from './nanoid';
-import type { Container, Area, PortKind, Routing } from '../utils/autoLayout/containerModel';
+import type { Container, Area, PortKind, Routing } from '../autoLayout/containerModel';
 // 타입만 남았다 — 드래그 재라우팅 구현은 manualEdit/ 으로 격리됐다(Phase 5).
 // RoutingEditSession 은 자료구조로만 남아 있고 세션을 만드는 코드가 없어 항상 null 이다.
-import type { RouteOptions } from '../utils/autoLayout/manualEdit/routeFallback';
+import type { RouteOptions } from '../autoLayout/manualEdit/routeFallback';
 
 /**
  * 같은 카테고리의 엔티티는 정보 모달 없이 덮어쓰기 허용.

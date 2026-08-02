@@ -29,14 +29,14 @@ tags: [moc]
 
 ```
 docs/
-├ auto-layout/  ← frontend/src/utils/autoLayout/ 의 거울
+├ auto-layout/  ← frontend/src/autoLayout/ 의 거울
 │   ├ common/     전략 무관 — 전부가 본다
 │   ├ module/     모듈 안쪽 (형제를 모른다)
 │   ├ link/       모듈과 모듈의 연결
 │   ├ channel/    모듈 사이 통로 예약
 │   └ perimeter/  전역 외곽 반출
-├ factorio/     게임 데이터·시맨틱스 (코드 대응 없음)
-├ blueprint/    import/export
+├ factorio/     ← frontend/src/factorio/ 의 거울 (+ scripts/export-gamedata.lua)
+├ blueprint/    ← frontend/src/blueprint/ 의 거울
 └ deferred/     보류·폐기 — 다음 시도가 같은 함정에 안 빠지게
 ```
 
@@ -95,7 +95,15 @@ docs/
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`
 
-Factorio API/데이터의 비직관적 동작과 그 해석.
+Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [frontend/src/factorio/](../frontend/src/factorio/) 다.
+
+> **이 폴더가 다루는 데이터는 한 계약의 양 끝이다.** 생산자는
+> [scripts/export-gamedata.lua](../scripts/export-gamedata.lua) — 게임 콘솔에 붙여넣어 JSON 을 뽑는다
+> (앱에서는 툴바의 "Lua 복사" 가 `export-gamedata.min.lua` 를 클립보드에 넣는다).
+> 소비자는 [frontend/src/factorio/parseGameData.ts](../frontend/src/factorio/parseGameData.ts) 다.
+> **필드를 늘릴 때는 양쪽을 같이 고친다** — 파서가 문지기라 exporter 가 뽑아도 여기서 안
+> 담으면 그 필드는 앱에 없다(2026-07-16 `amount_min`/`amount_max`·`fluidbox_index` 가
+> 재추출까지 하고도 문 앞에서 사라졌다).
 
 | 문서 | 주제 |
 |------|------|

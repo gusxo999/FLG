@@ -31,5 +31,5 @@
    * 않는다. 산출물은 코드가 아니라 manualEdit/README.md 의 **의도 기록**이다.
    * (storeActions.ts 는 원본 조각을 그대로 보존한 파일이라 애초에 컴파일되지 않는다.)
    */
-  "exclude": ["src/utils/autoLayout/manualEdit"]
+  "exclude": ["src/autoLayout/manualEdit"]
 }

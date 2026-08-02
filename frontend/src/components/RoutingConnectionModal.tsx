@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
 import type { RoutingSessionRouting } from '../store/layoutStore';
-import type { Container } from '../utils/autoLayout/containerModel';
+import type { Container } from '../autoLayout/containerModel';
 
 interface Props {
   open: boolean;
