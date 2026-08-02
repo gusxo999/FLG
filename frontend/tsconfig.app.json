@@ -24,5 +24,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /*
+   * manualEdit/ — 수동 편집(드래그·라우팅 편집) 격리 구역. 호출자 0.
+   * 재구현 시 배치 파이프라인의 자료구조가 크게 달라질 예정이라 코드를 유지 보수하지
+   * 않는다. 산출물은 코드가 아니라 manualEdit/README.md 의 **의도 기록**이다.
+   * (storeActions.ts 는 원본 조각을 그대로 보존한 파일이라 애초에 컴파일되지 않는다.)
+   */
+  "exclude": ["src/utils/autoLayout/manualEdit"]
 }

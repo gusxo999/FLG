@@ -30,7 +30,7 @@ import {
   allocateMachineLinks,
   type MachineLink,
   type MachineLinkGroup,
-} from "../module/allocateMachineLinks";
+} from "./link/allocateMachineLinks";
 import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";

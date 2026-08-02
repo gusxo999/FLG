@@ -9,7 +9,7 @@
  */
 
 import type { Direction } from "../../../types/layout";
-import type { PortFace } from "../containerModel";
+import type { Area, PortFace } from "../containerModel";
 
 /** 칸 하나를 집합·사전의 열쇠로 쓰기 위한 문자열. */
 export function cellKey(x: number, y: number): string {
@@ -54,8 +54,56 @@ export function segment(
   return out;
 }
 
+/** bbox 를 (x, y, w, h) 사각형 하나만큼 넓힌 결과. 기존 bbox 가 없으면 그 사각형 자체. */
+export function expandBbox(
+  bbox: Area['bbox'],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): NonNullable<Area['bbox']> {
+  if (!bbox) return { x, y, w, h };
+  const minX = Math.min(bbox.x, x);
+  const minY = Math.min(bbox.y, y);
+  const maxX = Math.max(bbox.x + bbox.w, x + w);
+  const maxY = Math.max(bbox.y + bbox.h, y + h);
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+
+/**
+ * 한 면(face)의 depth `d` 칸 — 머신 면에서 바깥으로 d 칸, 그 면을 따라 `t` 위치.
+ * `d=0` 은 머신 자신의 가장자리, `d=1` 은 인서터 좌석, `d≥2` 는 belt 레인.
+ * W/E 면이면 `t` 는 y(행), N/S 면이면 `t` 는 x(열)다.
+ *
+ * 여기 있는 이유: **계획(면 배정)과 실행(방출) 양쪽이 쓴다.** 어느 한쪽 계층에 두면
+ * 반대쪽이 그 계층을 import 하게 된다. `faceVector` 와 같은 성격(면 → 좌표)의 순수 셈이다.
+ */
+export function faceCell(
+  ext: { x0: number; y0: number; x1: number; y1: number },
+  face: PortFace,
+  d: number,
+  t: number,
+): { x: number; y: number } {
+  switch (face) {
+    case "W": return { x: ext.x0 - d, y: t };
+    case "E": return { x: ext.x1 + d, y: t };
+    case "N": return { x: t, y: ext.y0 - d };
+    case "S": return { x: t, y: ext.y1 + d };
+  }
+}
+
 /** enumeratePerimeterCells 가 훑는 바깥 반경의 상한. */
 export const MAX_EXTERNAL_SEARCH_RADIUS = 12;
+
+/**
+ * 차단 그룹 — 모든 pipe-to-ground prototype 은 단일 그룹으로 묶여 서로
+ * 차단된다 (Factorio 게임 동작 기준, 사용자 결정 4).
+ *
+ * 여기 있는 이유: 탐색(`containerRouting.routeFluid`)과 방출(`execution/emitPath`)이
+ * **둘 다** 쓴다. 어느 한쪽에 두면 두 파일이 서로를 참조해 순환이 된다.
+ */
+export const PIPE_BLOCK_GROUP = 'pipe-to-ground';
 
 /**
  * 전역 외곽(perimeter)이 모듈 union 에서 몇 칸 바깥인가 — **반출 상자가 앉는 변까지의 거리.**
@@ -80,8 +128,8 @@ export const PERIMETER_MARGIN = 2;
 /**
  * bbox 바깥 minRadius~maxRadius 칸 전체 외부 영역의 셀 좌표 목록.
  * 각 반경(ring)을 시계 방향 N → E → S → W 로 열거한다.
- * wrapExternalsAroundPerimeter 가 머신 기준 manhattan 거리로 재정렬하므로
- * 가까운 ring 부터 열거해 정렬 비용을 줄인다.
+ * 호출자가 머신 기준 manhattan 거리로 재정렬하므로 가까운 ring 부터 열거해
+ * 정렬 비용을 줄인다.
  *
  * minRadius 기본값 = 2 — chest 와 머신 사이 1 셀 gap 확보. 그 gap 셀에
  * 단일 인서터를 두면 chest ↔ machine 직결이 가능하다 (routeItem 의 단일

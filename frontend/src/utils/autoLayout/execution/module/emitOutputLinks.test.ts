@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
-import type { MachineLink, MachineLinkGroup } from "./allocateMachineLinks";
-import { directionToVector } from "../containerRouting";
+import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
+import type { MachineLink, MachineLinkGroup } from "../../planner/link/allocateMachineLinks";
+import { directionToVector } from "../../containerRouting";
 
 /**
  * **한 그룹의 벨트가 다른 그룹의 벨트로 흘러들면 안 된다.**

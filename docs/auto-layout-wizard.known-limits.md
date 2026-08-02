@@ -80,7 +80,7 @@ tags: [auto-layout, placement, routing]
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 **해결 방향:**
 - 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseMachineDirection`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
@@ -178,7 +178,7 @@ tags: [auto-layout, placement, routing]
 
 둘 다 그림상으론 멀쩡하고 라우팅도 "성공"으로 보고된다. 머신만 굶는다.
 
-이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../frontend/src/utils/autoLayout/containerRouting.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
+이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../frontend/src/utils/autoLayout/execution/emitPath.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
 
 **해소됨 (2026-07-25):**
 
@@ -188,7 +188,7 @@ tags: [auto-layout, placement, routing]
 지도를 본다(`plannedChainClear` 의 `fluidBlocked` —
 [.fluid-hop-reservation §8.3](auto-layout-wizard.fluid-hop-reservation.md)).
 
-> **다 사라진 건 아니다.** `containerRouting.emitFluidPath` 는 남아 있고, 사용자 드래그
+> **다 사라진 건 아니다.** `execution/emitPath.emitFluidPath` 는 남아 있고, 사용자 드래그
 > 재라우팅(`areaUnification`)이 그걸 부른다. **그 경로는 여전히 가드를 안 거친다** —
 > 손으로 유체 상자를 끌어 다른 유체 관망 옆에 붙이면 조용히 오염된다. 범위가 줄었을 뿐이다.
 

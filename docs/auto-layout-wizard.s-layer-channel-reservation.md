@@ -122,7 +122,7 @@ automation-science-pack         (L0, 제품)
 > `channelPlanner.ts` 의 `assignTracksLeftEdge` 가 left-edge interval partitioning 으로
 > 채널별 최소 트랙 수를 구하고, `layeredWizard.ts` 가 `channelWidthFromTracks` 로 채널 폭을 동적 결정한다
 > (고정폭 상수 대신 `CHANNEL_MIN = 3` 하한 + 트랙 수 기반 폭). 라우팅은 (depth, track, lo) 순서로 정렬해 깔되, **셀 구성
-> (벨트/투입기/파이프/방향)** 은 검증된 기존 BFS 라우터(`containerRouting.routePorts`)를
+> (벨트/투입기/파이프/방향)** 은 검증된 기존 BFS 라우터(`manualEdit/facadeRouting.routePorts`)를
 > 재사용한다. 트랙 폭이 충분하므로 BFS 가 실패하지 않는다(§8 C2 의 실용 보장).
 > **명시적 셀 직접 깔기(BFS 완전 제거)** 는 follow-up — 기존 Dijkstra 라우터가 지하
 > 변형·방향·유체를 이미 정확히 처리하므로 재구현 리스크를 피해 보류.
@@ -313,9 +313,9 @@ function assignColumns(layers, channels):
 | S-LAYER 요소 | 현재 코드 |
 |---|---|
 | 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../frontend/src/utils/autoLayout/planner/channelPlanner.ts)), 열 x 누적은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) |
-| 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../frontend/src/utils/autoLayout/routeFallback.ts)) → `routePorts`/`commitRouting` ([containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts)) |
+| 트랙 내 벨트/투입기/파이프 깔기 | `routeWithFallback` ([routeFallback.ts](../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts)) → `routePorts` ([manualEdit/facadeRouting.ts](../frontend/src/utils/autoLayout/manualEdit/facadeRouting.ts)) / `commitRouting` ([execution/emitPath.ts](../frontend/src/utils/autoLayout/execution/emitPath.ts)) |
 | 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
-| 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts)) |
+| 머신 좌표 결정·commit | 좌표 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts), footprint commit `commitContainer` ([machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts)) |
 
 ---
 

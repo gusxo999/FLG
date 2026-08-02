@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { rePathToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import { EntityType } from "../../../types/layout";
 import type { IoLine } from "../module/clusterPortPlanner";

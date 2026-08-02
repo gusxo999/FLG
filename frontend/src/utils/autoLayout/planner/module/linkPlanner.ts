@@ -1,0 +1,274 @@
+/**
+ * 링크 면 배정 — **모듈 안쪽 계획**. 좌표를 모른다.
+ *
+ * 자식↔부모를 잇는 링크가 **어느 면에 · 몇 팔로 · 몇 칸 바깥 줄에** 앉을지 정한다.
+ * 기계 좌표가 정해지기 **전에** 돌아야 한다 — gap 폭이 여기서 나오고, 그 폭이 다시
+ * 기계 좌표를 정하기 때문이다(닭과 달걀을 푸는 지점).
+ *
+ * ```
+ * 면 배정(여기, 좌표 없음) → gap 폭 → layoutCluster → 기계 좌표 → 좌석 좌표 입히기
+ * ```
+ *
+ * 그래서 이 파일은 **팔 개수만** 본다. `Container` 도 `machines[]` 도 받지 않는다.
+ *
+ * 장부 두 권을 쓴다(둘은 서로 유도되지 않는다):
+ *  - `used`(좌석) — **팔마다** 하나. 면이 찼는지 판단
+ *  - `faceGroups`(그룹 수) — **그룹마다** 하나. 막힌 면의 벨트 깊이 순번
+ */
+
+import type { PortFace } from "../../containerModel";
+import type { MachineLinkGroup } from "../link/allocateMachineLinks";
+import type { PlannedSide } from "../../module/clusterPortPlanner";
+
+export interface LinkFacePlan {
+  /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */
+  face: PortFace;
+  /** N/S 일 때 가로 벨트를 놓을 gap index — 머신 `gap` 과 `gap+1` 사이. */
+  gap?: number;
+  /**
+   * 이 그룹의 벨트가 앉을 **면에서의 깊이**([faceCell] 의 `d`). 좌석은 언제나 d1 이므로
+   * 이 값이 곧 **이 그룹이 면 바깥으로 먹는 줄 수**다 — gap 폭이 여기서 나온다
+   * ([gapRowsFromPlans])**이자** 방출기가 벨트를 놓는 깊이다([emitOutputLinks]).
+   * 두 곳이 같은 필드를 보므로 폭과 기하가 어긋날 수 없다.
+   */
+  laneDepth: number;
+  /**
+   * **반출 깊이 — gap 전용.**
+   *
+   * W/E 면에서는 빠져나가는 방향이 면과 **수직**이라, 벨트가 자기 좌석 구간만 덮고 끝에서
+   * 꺾으면 그만이다(그래서 여러 그룹이 같은 깊이를 나눠 쓴다). gap 은 다르다 — 나가는 쪽
+   * (부모=서쪽)이 면과 **평행**이라 모든 벨트가 서쪽 변까지 달려야 하고, 같은 줄 두 벨트는
+   * 반드시 합쳐진다.
+   *
+   * 그래서 이 면의 **n 번째 그룹은 한 칸 더 깊은 줄로 내려가서** 달린다. 내려가는 건
+   * **벨트가 벨트를 먹이는 것**이라 팔 길이와 무관하다 — 팔은 `laneDepth`(수집 줄)까지만
+   * 닿으면 된다. 첫 그룹은 `laneDepth` 와 같다(내려갈 것도 없이 이미 서쪽 변에서 시작).
+   */
+  exitDepth?: number;
+  /** 이 그룹이 쓰는 머신 index → 팔 수. */
+  arms: Map<number, number>;
+}
+
+/**
+ * 링크 그룹 하나가 실제로 앉은 자리 — 면 + 머신마다 쓰는 **면 위 위치** `t`.
+ * `t` 는 [faceCell] 과 같은 뜻이다: W/E 면이면 y(행), N/S 면이면 x(열).
+ */
+export interface LinkSeats extends LinkFacePlan {
+  /** 머신 index → 그 머신 면에서 이 그룹이 쓰는 연속 `t` 값들. */
+  slots: Map<number, number[]>;
+}
+
+/** 좌석 장부의 열쇠 — 머신 하나의 한 면. 면마다 예산이 따로다(`machine.h` 행). */
+export function seatKey(machineIndex: number, face: PortFace): string {
+  return `${machineIndex}:${face}`;
+}
+
+/**
+ * 그룹이 머신마다 몇 팔을 쓰나. `side` 는 이 그룹을 **어느 쪽 관점**에서 보나다 —
+ * "from"(출력, 자식 머신 하나 고정) 이면 항목이 하나뿐이고, "to"(입력, 부모 머신 여럿)
+ * 이면 `taps` 를 그대로 목적지별로 편다.
+ */
+function armsByMachine(group: MachineLinkGroup, side: "from" | "to"): Map<number, number> {
+  // 구조가 대칭이라 그냥 그쪽을 본다([MachineLinkGroup] — 2026-07-23 정의 확장 전에는
+  // fromMachine(스칼라)과 taps(배열)를 각각 풀어 Map 으로 만들어야 했다).
+  return group[side];
+}
+
+/**
+ * 링크 벨트의 기본 깊이 — 좌석(d1) 바로 바깥. v1 은 그룹마다 이 한 줄뿐이다
+ * (레인 늘리기 = 긴팔로 d≥3 을 집는 것은 후속).
+ */
+const LINK_LANE_DEPTH = 2;
+
+/**
+ * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
+ * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
+ * 옮길 수는 없다.
+ *
+ * 면마다 한계가 **좌석 수 하나**다(2026-07-22). 예전엔 좌석과 별개로 **depth(레인)** 도
+ * 다퉜다 — 벨트가 면을 따라 끝까지 달렸기 때문에 같은 depth 두 줄이 반드시 부딪혔고, 그래서
+ * 한 면의 줄 수가 팔 길이 종류 수에 묶였다. 이제 벨트는 **자기 좌석 구간만 덮고 끝에서 포트
+ * 쪽으로 꺾으므로**([emitOutputLinks]) 행 구간이 안 겹치는 그룹끼리는 **같은 depth 를 그냥
+ * 나눠 쓴다.** 다툴 게 없으니 장부도 없다.
+ *
+ *  - **W/E**: 머신 옆면의 d1 칸 = `machine.h` 개. 여러 그룹이 행을 나눠 쓴다.
+ *  - **N/S(gap)**: 머신 위/아래 면의 d1 칸 = `machine.w` 개. v1 은 **면당 그룹 하나**
+ *    (가로 벨트 한 줄만 깐다). 그리고 그 방향에 **gap 이 실제로 있어야** 한다: 맨 위 머신에
+ *    N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
+ */
+function tryLinkFace(
+  machine: { w: number; h: number },
+  count: number,
+  group: MachineLinkGroup,
+  side: "from" | "to",
+  face: PortFace,
+  used: Map<string, number>,
+  faceGroups: Map<string, number>,
+): LinkFacePlan | undefined {
+  const arms = armsByMachine(group, side);
+  for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
+  // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
+  // 하고, 관통하는 순간 다른 그룹과 depth 를 다퉈야 한다(그 다툼을 없앤 게 이번 재설계다).
+  // v1 의 [edgeLinkGroups] 는 tap 이 하나뿐인 그룹만 내므로 여기 걸릴 일이 없지만, 걸리면
+  // 조용히 겹치는 대신 **정직하게 자리 없음**으로 떨어뜨린다(병합을 되살릴 때 여기가 관문).
+  if (arms.size !== 1) return undefined;
+
+  if (face === "N" || face === "S") {
+    const [mi, k] = [...arms][0];
+    // **클러스터 양 끝은 gap 이 아니라 바깥이다.** 맨 위 머신의 N, 맨 아래 머신의 S 에는
+    // 이웃이 없어 벨트가 모듈 밖으로 나간다 — 그래서 `gap` 이 `undefined` 이고, 벌릴 gap 도
+    // 없다([gapRowsFromPlans] 가 안 센다). 자리는 그냥 **바깥으로 자란다**: 모듈이 차지하는
+    // 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다.
+    const g = face === "S" ? mi : mi - 1;
+    const gap = g >= 0 && g < count - 1 ? g : undefined;
+    const base = used.get(seatKey(mi, face)) ?? 0;
+    if (base + k > machine.w) return undefined; // 이 면의 좌석(열)이 다 찼다
+    // **[[ParallelBelt]] — 막힌 면** — 이 면의 몇 번째 그룹인가가 곧 자기 줄의 깊이다
+    // (탐색 없이 순번으로 결정. 줄이 달라야 두 벨트가 **합류하지 않는다**).
+    // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
+    // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
+    const nth = faceGroups.get(seatKey(mi, face)) ?? 0;
+    return { face, gap, arms, laneDepth: LINK_LANE_DEPTH, exitDepth: LINK_LANE_DEPTH + nth };
+  }
+
+  for (const [mi, k] of arms) {
+    if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
+  }
+  return { face, arms, laneDepth: LINK_LANE_DEPTH };
+}
+
+/**
+ * [tryLinkFace] 가 낸 배정을 장부에 확정한다 — 좌석(팔 수)과 그룹 수를 따로 센다.
+ * 둘은 유도가 안 된다: 좌석은 **팔마다** 하나, 반출 줄은 **그룹마다** 하나다.
+ */
+function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>, faceGroups: Map<string, number>): void {
+  for (const [mi, k] of plan.arms) {
+    const key = seatKey(mi, plan.face);
+    used.set(key, (used.get(key) ?? 0) + k);
+    faceGroups.set(key, (faceGroups.get(key) ?? 0) + 1);
+  }
+}
+
+/**
+ * **링크 면 배정 — 선호 면부터 채우고, 차면 gap 으로 넘어간다.**
+ *
+ * 머신 하나의 한 면에는 인서터가 `machine.h` 개까지만 앉는다(d1 칸이 그것뿐이다). 팔이 그보다
+ * 많으면(거대 출력) 다른 면으로 넘길 수밖에 없다. **넘어갈 곳은 N/S(gap) 뿐이다:**
+ * 반대 옆면(E)으로 넘기면 벨트가 채널 반대쪽에서 출발해 **되돌아올 길이 없다**(gap 이 0 이면
+ * 클러스터를 통째로 돌아야 한다). N/S 로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서
+ * 90° 꺾이고, **그 꺾이는 칸이 곧 평범한 W 포트**가 된다 — 채널 장부가 이미 아는 모양이다.
+ *
+ * 두 단계로 나눈 이유(굶주림 방지): 출력은 W, 입력은 E 를 선호한다. 출력을 통째로 먼저
+ * 처리하면 출력의 넘침이 gap 을 먼저 먹어 입력이 굶는다. 그래서
+ *  - 1단계: 출력·입력 **양쪽의 선호 면 수요**를 먼저 앉히고,
+ *  - 2단계: 그러고 남은 gap 을 넘침끼리 다툰다.
+ *
+ * 못 앉은 그룹은 `undefined` — 방출기가 정직하게 `unrouted` 로 낸다.
+ */
+export function allocateLinkFaces(
+  machine: { w: number; h: number },
+  count: number,
+  groups: MachineLinkGroup[],
+  side: "from" | "to",
+  prefer: PortFace,
+  used: Map<string, number>,
+  faceGroups: Map<string, number>,
+): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
+  const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
+  const deferred: number[] = [];
+  groups.forEach((g, i) => {
+    const plan = tryLinkFace(machine, count, g, side, prefer, used, faceGroups);
+    if (plan) {
+      commitLinkFace(plan, used, faceGroups);
+      plans[i] = plan;
+    } else deferred.push(i);
+  });
+  return { plans, deferred };
+}
+
+/**
+ * [allocateLinkFaces] 의 2단계 — 선호 면이 찬 그룹을 gap 으로 넘긴다.
+ * 아래 gap(S)을 먼저 본다: 링크 수열이 위→아래 단조라 아래쪽이 뒤에 오는 목적지와 가깝다.
+ */
+export function spillLinkFacesToGap(
+  machine: { w: number; h: number },
+  count: number,
+  groups: MachineLinkGroup[],
+  side: "from" | "to",
+  used: Map<string, number>,
+  out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
+  faceGroups: Map<string, number>,
+): void {
+  for (const i of out.deferred) {
+    for (const face of ["S", "N"] as const) {
+      const plan = tryLinkFace(machine, count, groups[i], side, face, used, faceGroups);
+      if (!plan) continue;
+      commitLinkFace(plan, used, faceGroups);
+      out.plans[i] = plan;
+      break;
+    }
+  }
+}
+
+/**
+ * **gap 폭 = 그 gap 에 놓일 것들이 먹는 줄 수.** 우리가 고르는 값이 아니라 배정의 부산물이다.
+ *
+ * 한쪽 면이 먹는 줄 = 좌석(d1) … 벨트(d`laneDepth`) = `laneDepth` 줄. 양쪽이 쓰면 각자
+ * 자기 머신 면에서 재므로 그냥 더해진다(위 머신은 위에서, 아래 머신은 아래에서 센다).
+ *
+ * 이 수는 방출기가 벨트를 놓을 때 쓰는 `laneDepth` **바로 그 값**이다 — 상수를 따로 적어두면
+ * 방출 기하가 바뀔 때 폭이 조용히 안 따라와 벨트가 옆 머신 몸통에 놓인다.
+ *
+ * **더하기가 맞는 이유는 전제 하나에 달려 있다: 한 면에는 그룹이 하나뿐**([tryLinkFace] 의
+ * N/S 분기가 `used > 0` 이면 거절하고, 그 장부는 출력·입력이 공유한다). 그래서 한 gap 에
+ * 들어오는 계획은 최대 둘이고 그 둘은 **반드시 다른 면**(위 머신의 S, 아래 머신의 N)이라,
+ * 각자 자기 쪽에서 세므로 그냥 더하면 된다.
+ *
+ * **그 전제를 푸는 사람에게(면당 여러 줄):** 같은 면의 둘째 그룹은 첫 그룹을 **덮는 게 아니라
+ * 한 줄 더 바깥**이므로(d2 옆에 d3), 그때는 같은 면끼리 `max` 를 잡고 **면 둘을 더해야** 한다.
+ * 지금처럼 전부 더하면 안 쓰는 줄만큼 클러스터가 조용히 벌어진다(2026-07-22 확인 — 지금은
+ * 발현 불가라 산술을 미리 안 바꿨다).
+ */
+export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
+  // 같은 면의 그룹들은 **덮어쓰는 게 아니라 한 줄씩 더 깊어지므로** 가장 깊은 것 하나만
+  // 세고(max), 마주 보는 두 면은 각자 자기 쪽에서 재므로 더한다(sum).
+  const deepest = new Map<string, number>(); // `gap:face` → 그 면이 먹는 줄 수
+  for (const list of plans)
+    for (const p of list) {
+      if (!p || p.gap === undefined) continue;
+      const key = `${p.gap}:${p.face}`;
+      const d = p.exitDepth ?? p.laneDepth;
+      deepest.set(key, Math.max(deepest.get(key) ?? 0, d));
+    }
+  const rows = new Array(Math.max(0, count - 1)).fill(0);
+  for (const [key, d] of deepest) rows[Number(key.split(":")[0])] += d;
+  return rows;
+}
+
+/**
+ * 면마다 링크가 먹은 **최대 좌석 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값.
+ *
+ * W/E 만 반환하지 않는다 — `used` 의 키는 [tryLinkFace] 가 N/S(gap 스필)에도 똑같이
+ * 적는다(`seatKey(mi, "N"|"S")`). **지금은** planner 가 N/S 를 시도하는 유일한 경로
+ * (`input.nsFaces`)가 count=1 일 때만 켜지고, gap 스필은 count≥2 일 때만 생겨 서로
+ * 상호배타라 이 값이 없어도 조용히 안 터졌다 — 그건 우연이지 설계가 아니다. 계산해 둔
+ * 값을 버리지 않는 쪽이 항상 맞다(2026-07-21, [발견 ③] 근치).
+ */
+export function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, number>> {
+  const by: Partial<Record<PlannedSide, number>> = {};
+  for (const [k, v] of used) {
+    const face = k.slice(k.indexOf(":") + 1) as PlannedSide;
+    by[face] = Math.max(by[face] ?? 0, v);
+  }
+  return by;
+}
+
+/**
+ * 면 배정(팔 수)에 좌표를 입힌다 — 머신이 놓인 뒤에 부른다.
+ * `t` 의 뜻은 [faceCell] 과 같다: W/E 면이면 y(행), N/S 면이면 x(열).
+ *
+ * **gap 면의 좌석은 포트 쪽부터 채운다.** 막힌 면의 [[ParallelBelt]]는 "포트에 가까운 그룹이 얕은 줄"이라야
+ * 성립하기 때문이다 — 먼 그룹이 얕은 줄을 차지하면 그 줄이 가까운 그룹의 열 위를 지나며
+ * 남의 자리를 밟는다. 출력은 포트가 서쪽이라 서→동, 입력은 동쪽이라 **동→서**다.
+ * (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
+ */

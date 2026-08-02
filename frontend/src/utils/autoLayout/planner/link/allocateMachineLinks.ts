@@ -25,7 +25,7 @@
  * 두 방향은 `min(그릇, 부모올림, 자식내림)` 한 줄에서 자동으로 절충된다.
  */
 
-import { requiredInserterCount, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
+import { requiredInserterCount, type IoLine, type SupplyCapacity } from "../../module/clusterPortPlanner";
 
 /** 자식 머신 하나 → 부모 머신 하나로 가는, 인서터 n개가 채우는 벨트 하나. */
 export interface MachineLink {

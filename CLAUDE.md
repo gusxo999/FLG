@@ -20,9 +20,6 @@
   다룰 때는 [docs/README.md](docs/README.md) 의 "Factorio 데이터" / "Blueprint" 그룹에서 해당 문서를 찾아 읽는다.
 - 문서와 코드가 어긋나면 **코드가 현재 사실**이다(문서는 시점 기록). 어긋남을 발견하면 문서를 갱신한다.
 
-**새 설계 결정을 내렸으면** [docs/README.md](docs/README.md) "새 문서 작성 가이드" 형식에 맞춰 `docs/` 에 문서를 추가하고
-frontmatter 태그를 단다.
-
 ## 자동 배치 실행 경로 (2026-07-26)
 
 배치 알고리즘은 **모듈 파이프라인 단일 경로**다. 폴백할 옛 경로는 없다.
@@ -35,27 +32,15 @@ AutoLayoutContainerPanel
           → 실패: RejectReason (그 문구가 UI 실패 라벨로 그대로 나간다)
 ```
 
-**이름이 역사를 담고 있다.** `layeredWizard` 의 "layered" 는 삭제된 옛 전략 `S-LAYER` 에서 왔다 —
-이 파일에 레이어도 tidy-tree 도 없다. 문서에서 `S-LAYER` 를 만나면 **역사 기록**이다.
-지금 도는 전략에는 아직 고유 이름이 없다("모듈 파이프라인"은 구현 서술어다).
 
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
 사유 목록은 `moduleWizard.RejectReason`, 읽는 법은 [docs/변수명사전.md](docs/변수명사전.md).
-
-## 검증 — 타입검사 함정
-
-`npx tsc --noEmit` 은 **파일을 하나도 검사하지 않는다.** 루트 `tsconfig.json` 이 `files: []` + references
-구조라 조용히 성공한다. 반드시 프로젝트를 지정한다:
 
 ```powershell
 cd frontend
 npx tsc -p tsconfig.app.json --noEmit   # 또는 npx tsc -b (= npm run build 앞단)
 npx vitest run
 ```
-
-**기준선(2026-07-26 실측): 타입 에러 0 · 44개 파일 462 테스트 전량 통과.** 문서에 적힌 옛 기준선
-(21 에러, 510/494 테스트 등)은 낡았다. 타입은 런타임을 다 잡지 못하므로 `vitest run` 까지 돌리는
-원칙은 그대로다.
 
 ## 프로젝트 메모리
 

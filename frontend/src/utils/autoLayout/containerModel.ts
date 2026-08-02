@@ -145,7 +145,7 @@ export interface Area {
    * 단일 그룹(`"pipe-to-ground"`) 으로 묶이며, belt 는 prototype `entityName`
    * 자체가 그룹이라 다른 티어의 underground-belt 와는 독립.
    *
-   * (placement-search §4 / §6 O2 — 지하 변형 우선 규칙의 검증 자료구조.)
+   * (placement-search §6 O2 — 지하 변형 우선 규칙의 검증 자료구조.)
    */
   undergroundCorridors: UndergroundCorridor[];
 }
@@ -195,12 +195,6 @@ export interface PlacedCell {
 export type RoutingKind = 'item' | 'fluid';
 
 /**
- * 한 라우팅 인스턴스 — 두 port 사이를 잇는 운반체 체인.
- *
- * 라우팅 1개 = 컨테이너 1개 (placement-search Q19 a). 처리량이 부족해 한
- * 라우팅으로 못 채우면 컨테이너 *수* 를 늘려 별도 라우팅으로 분할한다.
- */
-/**
  * 모듈 포트 하나가 **어떻게 산출됐는지** 기록 — 표시(ModuleInfoPanel)·진단 전용,
  * 라우팅/배치에 영향 없음. 좌표는 넣지 않는다(드래그·재배치로 stale). 좌표는 항상
  * 라우팅 끝점(현재값)에서 읽는다.
@@ -241,21 +235,6 @@ export interface Routing {
    * `undergroundCorridors` 인덱스로 옮긴다. 점프가 없는 라우팅은 빈 배열.
    */
   corridors: UndergroundCorridor[];
-}
-
-/**
- * chest → machine 또는 machine → chest 연결 정보.
- *
- * `wrapExternalsAroundPerimeter` 가 최종 perimeter 배치 + 라우팅을 수행할 때
- * 필요한 "누가 누구와 연결되는가" 기록. 라우팅은 이 시점 이전에는 발생하지 않는다.
- *
- *  - 외부 입력 (chest → machine) : producerId = chestId, consumerId = machineId
- *  - 루트 출력 (machine → chest) : producerId = machineId, consumerId = chestId
- */
-export interface PendingConnection {
-  producerId: string;
-  consumerId: string;
-  kind: PortKind;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -403,7 +382,7 @@ export type ExternalPortDefault = 'top-left';
  * 입력: 두 컨테이너 + 운반 종류. 출력: 두 컨테이너의 port 페어.
  * 그리디: 두 컨테이너의 *상대 위치* 를 기준으로 가장 가까운 면의 port 를
  * 자동 선택. 라우팅이 실패하면 오케스트레이터가 다른 port 셀을 시도하며
- * 본 함수의 결정을 덮어쓸 수 있다 (placement-search §7.4 fallback).
+ * 본 함수의 결정을 덮어쓸 수 있다 (routeFallback 의 enumeration 폴백).
  */
 export type ResolvePortPair = (
   producer: Container,
@@ -462,10 +441,8 @@ export type RoutePorts = (
 ) => RoutingAttempt;
 
 /**
- * 오케스트레이터 — A↔B 사이클 + 완전 탐색.
- *
- * placement-search §7 의 알고리즘 흐름 그대로. 진행 UI 콜백, AbortSignal
- * 로 사용자 Esc 중단을 받는다.
+ * 오케스트레이터 — 진입점 시그니처. 진행 UI 콜백, AbortSignal 로 사용자 Esc
+ * 중단을 받는다.
  */
 export type RunContainerWizard = (
   input: ContainerWizardInput,
@@ -505,7 +482,7 @@ export interface ContainerWizardResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §9. 영역 통합 (placement-search §3 / §8.3)
+// §9. 영역 통합 (placement-search §3)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

@@ -11,9 +11,9 @@
  * → docs/fluid-box-semantics.md
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useGameDataStore } from "../../store/gameDataStore";
+import { useGameDataStore } from "../../../store/gameDataStore";
 import { enumerateContainerPorts, resolvePortPair } from "./portInference";
-import type { Container } from "./containerModel";
+import type { Container } from "../containerModel";
 
 /**
  * 화학 공장 3×3 — 실측 게임데이터 모양. 유체 입력은 N면, 출력은 S면(회전 0 기준).

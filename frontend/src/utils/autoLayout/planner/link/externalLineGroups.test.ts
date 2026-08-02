@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { externalLineGroups } from "./allocateMachineLinks";
-import type { IoLine, SupplyCapacity } from "./clusterPortPlanner";
+import type { IoLine, SupplyCapacity } from "../../module/clusterPortPlanner";
 
 /**
  * **외부 줄도 [MachineLinkGroup] 이다** (2026-07-23 사장님 결정).

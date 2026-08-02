@@ -36,7 +36,7 @@ placer 입력으로도 받지 않는다.
 - `crafting_speed × (1 / energy_required)` 로 초당 처리량이 결정된다.
 - 고체 입출력은 측면 아무 셀에서나 인서터로 가능. 액체 입출력은 `fluid_boxes[].connections[].positions` 에 정의된 **고정 셀** 에서만.
 
-**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](auto-layout-wizard.known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/machinePlacer.ts) `machineEntityType`).
+**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](auto-layout-wizard.known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 ---
 

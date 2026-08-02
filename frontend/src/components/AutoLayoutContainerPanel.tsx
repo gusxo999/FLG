@@ -15,12 +15,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
-import type { RoutingEditSession, RoutingSessionRouting } from '../store/layoutStore';
 import { useToastStore } from '../store/toastStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useWizardStore } from '../store/wizardStore';
 import { runLayeredWizard } from '../utils/autoLayout/layeredWizard';
-import { buildRoutingOptions } from '../utils/autoLayout/routeFallback';
 import {
   unifyAreas,
 } from '../utils/autoLayout/areaUnification';
@@ -193,54 +191,8 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     store.setAutoLayoutCanvasBbox(canvasBbox ?? null);
   }
 
-  function buildSessionFromLeaf(
-    leaf: CandidateLeaf,
-    containerOriginOffset: { x: number; y: number },
-  ): RoutingEditSession {
-    const allContainers = [...leaf.internal.containers, ...leaf.external.containers];
-    const machineIdSet = new Set(leaf.internal.containers.filter(c => c.kind === 'machine').map(c => c.id));
-
-    const machineParent: Record<string, string | null> = {};
-    const machineChildren: Record<string, string[]> = {};
-    for (const c of leaf.internal.containers) {
-      if (c.kind === 'machine') { machineParent[c.id] = null; machineChildren[c.id] = []; }
-    }
-
-    const routings: RoutingSessionRouting[] = leaf.routings.map(r => ({
-      id: r.id,
-      portKind: r.from.kind,
-      fromContainerId: r.from.containerId,
-      toContainerId: r.to.containerId,
-    }));
-
-    for (const r of leaf.routings) {
-      const fi = r.from.containerId, ti = r.to.containerId;
-      if (machineIdSet.has(fi) && machineIdSet.has(ti)) {
-        machineParent[fi] = ti;
-        if (!machineChildren[ti].includes(fi)) machineChildren[ti].push(fi);
-      }
-    }
-
-    const input: ContainerWizardInput = {
-      targetRecipe: props.targetRecipe,
-      countMode:
-        props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
-      externalIngredients: props.externalIngredients,
-      recipeOverrides: props.recipeOverrides,
-      selectedMachines: Array.from(props.selectedMachines),
-      selectedInserters: Array.from(props.selectedInserters),
-      selectedBelts: Array.from(props.selectedBelts),
-      selectedUndergroundPipes: Array.from(props.selectedUndergroundPipes),
-      selectedUndergroundBelts: Array.from(props.selectedUndergroundBelts),
-      inserterOverrides,
-      externalPortsDefault: 'top-left',
-    };
-
-    return { containers: allContainers, routings, machineParent, machineChildren, routeOptions: buildRoutingOptions(input), containerOriginOffset };
-  }
-
   function handleApplyCandidate(leaf: CandidateLeaf) {
-    const { placed, internalBbox, canvasBbox, offset } = unifyAreas(leaf.internal, leaf.external);
+    const { placed, internalBbox, canvasBbox } = unifyAreas(leaf.internal, leaf.external);
 
     if (AUTO_LAYOUT_COORD_DUMP) {
       // 레이아웃 좌표를 dump 하기 전에 그 레이아웃이 생성된 *런타임 환경* 을 먼저 출력한다.
@@ -340,27 +292,12 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       showToast('빈 후보 — 적용할 셀 없음', 'warning');
       return;
     }
-    // container.origin (layout space) → 그리드 좌표 오프셋.
-    // unifyAreas 가 placed 셀(=그리드 입력)에 실제로 적용한 offset 과 **동일** 해야
-    // 라우팅 선(liveArea 원본 좌표 + offset)이 그리드 벨트 위에 정확히 겹친다.
-    // (과거엔 machineBbox 기준 internalBbox 로 계산해, 머신 왼쪽/위로 셀이 튀어나온
-    //  모듈 경로에서 fullPlacedBbox 기준 정규화와 어긋나 선이 옆으로 밀렸다.)
-    // applyPlacedCells 가 음수 정규화 셀을 sx/sy 만큼 추가 시프트하므로 그 분도 포함한다.
-    let minCellX = 0, minCellY = 0;
-    for (const { x, y } of cells) {
-      if (x < minCellX) minCellX = x;
-      if (y < minCellY) minCellY = y;
-    }
-    const containerOriginOffset = {
-      x: offset.x + Math.max(0, -minCellX),
-      y: offset.y + Math.max(0, -minCellY),
-    };
     applyPlacedCells(cells);
     applyLayoutBboxes(internalBbox, canvasBbox);
-    useLayoutStore.getState().setRoutingEditSession({
-      ...buildSessionFromLeaf(leaf, containerOriginOffset),
-      liveArea: { internal: leaf.internal, external: leaf.external, routings: leaf.routings },
-    });
+    // 수동 편집(드래그 재라우팅) 비활성 — 세션을 만들지 않는다.
+    // 코드는 utils/autoLayout/manualEdit/ 에 격리돼 있고 호출자가 0 이다.
+    // 세션이 항상 null 이라 드래그는 "이동만" 되고 벨트가 따라오지 않는다.
+    // 재구현 계획: manualEdit/README.md
     useLayoutStore.getState().setRoutingEditMode(false);
     resetViewport();
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');

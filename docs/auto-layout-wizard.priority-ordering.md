@@ -37,8 +37,8 @@ tags: [auto-layout, placement, routing]
 | P1  | **연결 처리 순서** (외부상자 배치)      | 삽입 순서 = DFS 노드 → 재료 → 머신, 출력은 입력 뒤                  | **Q** | [areaUnification.ts](../frontend/src/utils/autoLayout/areaUnification.ts) — 드래그 재라우팅 경로에만 남음. 위저드 본패스의 상자 배치는 P10/P11 로 대체됐다 |
 | P2  | **셀 후보 정렬** (한 연결 내)        | `machine.origin`(좌상단 코너) 맨해튼 거리 오름차순, 첫 라우팅 성공 셀 채택 | **Q** | [areaUnification.ts:341](../frontend/src/utils/autoLayout/areaUnification.ts#L341)                                                                                 |
 | P3  | **ring 성장 변 선택**            | 실패한 chest의 머신 최근접 변만 +1 (전체 링 성장 회피)                | **Q** | [areaUnification.ts:234](../frontend/src/utils/autoLayout/areaUnification.ts#L234)                                                                                 |
-| P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/routeFallback.ts#L143)                                                                                     |
-| P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/routeFallback.ts#L73)                                                                                       |
+| P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts#L143)                                                                                     |
+| P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts#L73)                                                                                       |
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](auto-layout-wizard.fluid-hop-reservation.md) |
@@ -69,8 +69,8 @@ P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 홉이 
 
 머신이 노출하는 포트 셀 수는 kind마다 다르다:
 
-- **item:** footprint 둘레 전체 `2(w+h)`개 ([itemPorts](../frontend/src/utils/autoLayout/portInference.ts#L93))
-- **fluid:** `fluid_boxes[].connections[].positions`의 셀만, `fb.filter` 일치 box만 — 보통 1~2개 ([fluidPorts](../frontend/src/utils/autoLayout/portInference.ts#L116))
+- **item:** footprint 둘레 전체 `2(w+h)`개 ([itemPorts](../frontend/src/utils/autoLayout/manualEdit/portInference.ts#L93))
+- **fluid:** `fluid_boxes[].connections[].positions`의 셀만, `fb.filter` 일치 box만 — 보통 1~2개 ([fluidPorts](../frontend/src/utils/autoLayout/manualEdit/portInference.ts#L116))
 
 → fluid 후보는 item의 **엄격한 부분집합이자 훨씬 작음** = 제약이 크다. *(이 방향성은 코드로 확인됨.)*
 

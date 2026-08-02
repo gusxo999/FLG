@@ -81,7 +81,7 @@ tags: [auto-layout, placement, routing]
 `containerModel`(타입 — 32곳이 임포트), `debugFlags`, `buildSpec`, `recipeTree`,
 `wizardUtils`, `types`, `beltThroughput`, `inserterThroughput`, `containerRouting`(dijkstra —
 `planner/moduleHop` 이 쓴다), `areaUnification`(사용자 드래그 재라우팅), `routeFallback`,
-`machinePlacer`, `externalPlacer`, `portInference`, `moduleInspect`, `techGroup`, `layeredWizard`(진입점).
+`machinePlacer`, `portInference`, `moduleInspect`, `techGroup`, `layeredWizard`(진입점).
 
 ## 검증
 
@@ -109,7 +109,7 @@ tags: [auto-layout, placement, routing]
 동작 변경 0(골든 스냅샷 불변). 검증: `makeContainerCell` 이 셀 위치에 `at` 만 쓰고
 `chest.origin` 은 안 읽어(cellBuilder) 순수화가 셀 좌표를 안 바꾼다. 라우팅은 `port.anchor`
 가 아니라 `tapAnchor`+`chest.origin` 을 읽으므로 필요한 건 새 origin·belts 뿐. 214 green/tsc
-clean. 회귀: [modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/planner/modulePerimeterPass.test.ts)
+clean. 회귀: [modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts)
 "순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언.
 
 > 남은 확인: `tryRunModulePipeline`(moduleWizard 진입점)은 gameDataStore 의존이라 단위

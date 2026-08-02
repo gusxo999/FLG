@@ -11,7 +11,7 @@ import {
 } from "./channelGeometryPlanner";
 import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { rePathToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import type { IoLine } from "../module/clusterPortPlanner";
 

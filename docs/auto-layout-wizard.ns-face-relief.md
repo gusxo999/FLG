@@ -66,7 +66,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 
 ## 5. 남은 것 (이 문서 범위 밖)
 
-- **조각 C(홉 지하벨트) 완료(2026-07-08):** 홉 emit 을 `containerRouting.emitItemPath`
+- **조각 C(홉 지하벨트) 완료(2026-07-08):** 홉 emit 을 `execution/emitPath.emitItemPath`
   (edge-aware)로 통일하고 `maxJump` 를 config 게이트로 재활성 — 점프 경로가 지하벨트
   입/출구로 materialize 되고 corridor 가 홉 간 누적·Area 에 기록된다. 정책: `'length'`
   비용(지상 우선, 점프=충돌 회피 전용) + 양 끝 셀 점프 방향 강제(`requiredStartJump`=
@@ -87,11 +87,11 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
      채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `laneX−anchor.x` 부호로
      정한다. face 가 N/S(fv.x=0)여도 laneX 가 있으면 elbow 를 그대로 재생 — 옛
      `N/S-side channel divert unsupported` 무조건 거부 제거(kr-glass 류 해소).
-  2. **auto 폴백**([modulePerimeterPass.ts](../frontend/src/utils/autoLayout/planner/modulePerimeterPass.ts)):
+  2. **auto 폴백**([modulePerimeterPass.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts)):
      예약 배정이 실제로 막힌 경우(코너 어깨 상자의 채널 우회가 **자기 트렁크를 관통** —
      planner 가 못 본 충돌, copper-cable 사례) hint 없는 auto 탐색으로 폴백해 열린 변(대개
      face 직진)으로 내보낸다. 홉의 dijkstra 최후폴백과 대칭이고, skip 을 재배치로만 바꿔
      겹침 0·회귀 0. 실측(advanced-circuit 동형, count 1~8): 상자 7개 전부 재배치, skip 0.
   - **남은 trade-off:** copper-cable 의 예약된 채널 트랙은 auto 폴백이 다른 변으로 나가면
     **쓰이지 않고 폭만 낭비**된다. planner 가 뚫린 face 를 먼저 고르는 근본 치료는 좌표 후
-    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/planner/modulePerimeterPass.test.ts) "count≥2 코너 어깨".
+    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts) "count≥2 코너 어깨".

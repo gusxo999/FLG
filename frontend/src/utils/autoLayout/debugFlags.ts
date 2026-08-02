@@ -9,7 +9,6 @@
  *
  * true 일 때 dump 출력 시점:
  *  - handleApplyCandidate          : 컨테이너·라우팅·정규화 좌표
- *  - wrapExternalsAroundPerimeter  : perimeter ring 배치 과정
  *  - dragExternalContainer         : 외부상자 드래그 시도·결과·드래그 후 그리드 상태
  *  - dragAssemblerGroup            : 조립기계 그룹 드래그 시도·결과·새 perimeter ring + 그리드 상태
  *  - moveAssemblerGroup            : Area 모델 경로로 갈 수 없어 grid fallback 으로 빠진 경우 한 줄

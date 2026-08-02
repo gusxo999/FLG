@@ -1,11 +1,11 @@
 /**
  * 모듈 3a — port 유추 (그리디).
  *
- * 단일 출처: docs/auto-layout-wizard.placement-search.md §5 / §7.4 / Q21.
+ * 단일 출처: docs/auto-layout-wizard.placement-search.md §2.2.
  *
  * 두 컨테이너 (producer, consumer) 의 *상대 위치* 를 보고 가장 가까운 면의
- * port 를 자동 선택한다. 라우팅이 실패하면 오케스트레이터가 본 함수의 결정을
- * 무시하고 다른 port 셀을 시도할 수 있다 (placement-search §7.4 fallback).
+ * port 를 자동 선택한다. 라우팅이 실패하면 호출자가 본 함수의 결정을 무시하고
+ * 다른 port 셀을 시도할 수 있다 (routeFallback 의 enumeration 폴백).
  *
  * 우선순위:
  *  1. 두 컨테이너의 origin 중심을 잇는 벡터로 가장 가까운 두 면을 선택.
@@ -14,9 +14,9 @@
  *     아니라 *고정된 셀* 만 사용 가능.
  */
 
-import { useGameDataStore } from '../../store/gameDataStore';
-import type { Entity } from '../../store/gameDataStore';
-import { resolveFluidConnection } from './module/fluidPorts';
+import { useGameDataStore } from '../../../store/gameDataStore';
+import type { Entity } from '../../../store/gameDataStore';
+import { resolveFluidConnection } from '../module/fluidPorts';
 import type {
   Container,
   ContainerPort,
@@ -24,7 +24,7 @@ import type {
   PortKind,
   PortPair,
   ResolvePortPair,
-} from './containerModel';
+} from '../containerModel';
 
 /**
  * 그리디 port 매칭. 실패 시 null (예: fluid kind 인데 한쪽 컨테이너에

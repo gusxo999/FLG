@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "../planner/modulePacking";
+import { routeModuleHops } from "../planner/moduleHop";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";
-import { seatIsBeltFeeder } from "./moduleHop";
+import { seatIsBeltFeeder } from "../planner/moduleHop";
 import type { IoLine } from "../module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 

@@ -1,8 +1,6 @@
 /**
  * 라우팅 fallback — 그리디 매칭 실패 시 다른 port 셀 시도.
  *
- * 단일 출처: docs/auto-layout-wizard.placement-search.md §7.4.
- *
  * 두 컨테이너 사이에 라우팅을 깔되, `resolvePortPair` 의 그리디 결정이 실패하면
  * 모든 port 조합을 manhattan 거리 오름차순으로 시도한다. 어느 조합이라도
  * 라우팅 성공하면 그 라우팅 반환. 모두 실패하면 ok=false + 시도 목록.
@@ -10,8 +8,8 @@
  * `routePorts` 자체는 area 를 mutate 하지 않으므로 (`commitRouting` 이 따로)
  * 시도 중에 영역 상태를 더럽히지 않는다.
  *
- * 본 함수는 오케스트레이터 (`containerWizard`) 와 통합 단계 (`areaUnification`
- * 의 드래그 재시도) 양쪽에서 사용된다.
+ * 본 함수는 통합 단계 (`areaUnification` 의 드래그 재시도) 와 사용자 라우팅 편집
+ * (`layoutStore`) 에서 사용된다.
  */
 
 import type {
@@ -19,21 +17,20 @@ import type {
   Container,
   ContainerPort,
   ContainerWizardInput,
-  PortFace,
   PortKind,
   PortPair,
   RoutingAttempt,
-} from './containerModel';
-import { routePorts, routeItemMulti } from './containerRouting';
-import { faceVector } from './util/helper';
-import { makeBuildSpec, type BuildSpec } from './buildSpec';
+} from '../containerModel';
+import { routePorts, routeItemMulti } from './facadeRouting';
+import { faceVector } from '../util/helper';
+import { makeBuildSpec, type BuildSpec } from '../buildSpec';
 import { enumerateContainerPorts, resolvePortPair } from './portInference';
 
 /**
  * 옛 경로(Dijkstra 탐색)의 옵션 = [BuildSpec](./buildSpec.ts) **+ 탐색 전용 손잡이**.
  *
  * 둘을 갈라 둔 이유: BuildSpec("무엇으로 지을 수 있나")은 탐색과 무관해서 **예약 경로도**
- * 본다. 아래 필드들(`turnPenalty`·`routingBounds`·`inwardPortFace`·`preferUnderground`)은
+ * 본다. 아래 필드들(`turnPenalty`·`routingBounds`·`preferUnderground`)은
  * **탐색기에게만 뜻이 있다** — 예약 경로엔 탐색이 없으므로 아무 의미가 없다.
  * 그래서 새 경로는 `RouteOptions` 가 아니라 `BuildSpec` 만 import 한다.
  */
@@ -50,19 +47,10 @@ export interface RouteOptions extends BuildSpec {
   inserterOverride?: { throughput?: number; stackSize?: number };
   /**
    * 라우팅 허용 영역 (포함 경계). 주어지면 모든 belt/pipe 경로가 이 직사각형 안에
-   * 머문다 — perimeter ring 의 단일 외곽선 불변식(ring 바깥 누출 금지). wrap 패스가
-   * 현재 ring 직사각형으로 설정한다. 미지정이면 제약 없음(드래그 재라우팅 등 기존 동작).
+   * 머문다 — 단일 외곽선 불변식(레이아웃 바깥 누출 금지). 드래그 재라우팅이 현재
+   * 레이아웃 직사각형으로 설정한다. 미지정이면 제약 없음.
    */
   routingBounds?: { x0: number; y0: number; x1: number; y1: number };
-  /**
-   * perimeter ring 게이트웨이 제약 — ring 위 외부상자는 *내부향 한 면* 으로만
-   * 포트(인서터)를 노출한다(서벽→E, 동벽→W, 북벽→S, 남벽→N). 지정 시 해당
-   * `containerId` 의 후보 포트를 `face` 한 면으로 좁혀, 벽과 나란한 수직 인서터를
-   * 막고 상자↔내부 라우팅을 동–서/남–북 수평·수직축으로 정렬한다. 머신이 1칸
-   * 간격으로 인접하면 이 면의 포트 셀이 머신 포트 셀과 일치 → 단일 인서터 직접
-   * 투입(코너 케이스)이 자동 형성된다. 미지정이면 4면 전부(기존 동작).
-   */
-  inwardPortFace?: { containerId: string; face: PortFace };
 }
 
 export function routeWithFallback(
@@ -79,33 +67,13 @@ export function routeWithFallback(
    */
   pickBest = false,
 ): RoutingAttempt {
-  // ring 게이트웨이 제약 — 지정된 외부상자는 내부향 한 면으로만 포트를 노출한다.
-  // 머신 등 다른 컨테이너 포트는 무제약. 미지정이면 항등(기존 동작).
-  const ipf = options.inwardPortFace;
-  const constrainPorts = (
-    c: Container,
-    ports: ContainerPort[],
-  ): ContainerPort[] =>
-    ipf && c.id === ipf.containerId
-      ? ports.filter((p) => p.face === ipf.face)
-      : ports;
-  // 그리디 페어가 제약면을 어기면(상자 쪽 포트가 내부향이 아니면) 폐기.
-  const pairObeysConstraint = (pp: PortPair): boolean => {
-    if (!ipf) return true;
-    if (pp.producer.containerId === ipf.containerId && pp.producer.face !== ipf.face)
-      return false;
-    if (pp.consumer.containerId === ipf.containerId && pp.consumer.face !== ipf.face)
-      return false;
-    return true;
-  };
-
   // 0. 멀티소스/멀티싱크 우선 경로 — item 초기 배치(pickBest=false)에서, 후보 포트를
   //    미리 고르지 않고 한 번의 Dijkstra 로 전역 최적 포트 페어를 찾는다. 실패(null)면
   //    아래 기존 그리디+enumeration 으로 폴백(코너 케이스·fluid·드래그 재라우팅 보존).
   if (kind === 'item' && !pickBest) {
     const multi = routeItemMulti(
-      constrainPorts(producer, enumerateContainerPorts(producer, kind, 'producer')),
-      constrainPorts(consumer, enumerateContainerPorts(consumer, kind, 'consumer')),
+      enumerateContainerPorts(producer, kind, 'producer'),
+      enumerateContainerPorts(consumer, kind, 'consumer'),
       area,
       options,
       external,
@@ -131,10 +99,7 @@ export function routeWithFallback(
 
   // 1. 그리디 시도
   const greedyRaw = resolvePortPair(producer, consumer, kind);
-  const greedy =
-    greedyRaw && pairInBounds(greedyRaw) && pairObeysConstraint(greedyRaw)
-      ? greedyRaw
-      : null;
+  const greedy = greedyRaw && pairInBounds(greedyRaw) ? greedyRaw : null;
   let best: RoutingAttempt | null = null;
   const bestLen = (): number =>
     best && best.ok ? best.routing.placed.length : Infinity;
@@ -155,8 +120,8 @@ export function routeWithFallback(
   // 2. 모든 port 조합 enumerate, 그리디 페어는 제외 후 manhattan 거리 오름차순.
   // 유체는 **재료 칸과 결과물 칸이 다르다** — enumeration 폴백도 역할을 지켜야 한다.
   // 안 지키면 "어떤 조합이든 라우팅만 되면 성공"이라 재료 파이프가 출력 칸에 꽂힌다.
-  const producerPorts = constrainPorts(producer, enumerateContainerPorts(producer, kind, 'producer'));
-  const consumerPorts = constrainPorts(consumer, enumerateContainerPorts(consumer, kind, 'consumer'));
+  const producerPorts = enumerateContainerPorts(producer, kind, 'producer');
+  const consumerPorts = enumerateContainerPorts(consumer, kind, 'consumer');
   if (producerPorts.length === 0 || consumerPorts.length === 0) {
     if (best !== null) return best;
     return { ok: false, reason: 'no-port-pair', tried: greedy ? [greedy] : [] };
@@ -200,7 +165,7 @@ function samePort(a: ContainerPort, b: ContainerPort): boolean {
  * 옛 경로용 옵션 = [makeBuildSpec](./buildSpec.ts) + 탐색 전용 손잡이.
  *
  * `preferUnderground` 만 여기서 유도한다(지하 변형을 하나라도 골랐으면 켠다) — 나머지
- * 탐색 손잡이(`turnPenalty`·`routingBounds`·`inwardPortFace`)는 호출자가 상황에 따라 얹는다.
+ * 탐색 손잡이(`turnPenalty`·`routingBounds`)는 호출자가 상황에 따라 얹는다.
  *
  * **새 경로(예약)는 이 함수를 부르지 않는다** — `makeBuildSpec` 을 직접 부른다.
  */

@@ -1,16 +1,15 @@
 /**
  * 모듈 A — 머신 배치 (내부 영역).
  *
- * 단일 출처: docs/auto-layout-wizard.placement-search.md §5 / §7.2 / Q6.
- *
  * 컨테이너를 내부 영역에 commit 하는 공용 헬퍼를 제공한다. 머신의 좌표 결정
- * 자체는 배치 전략(S-LAYER)이 담당하고, 여기서는 결정된 컨테이너를 셀로 펼쳐
- * `internal.placed`/`bbox` 에 반영한다.
+ * 자체는 모듈 파이프라인(`planner/`)이 하고, 여기서는 결정된 컨테이너를 셀로
+ * 펼쳐 `internal.placed`/`bbox` 에 반영한다.
  */
 
-import { EntityType, createEmptyCell } from '../../types/layout';
-import type { Direction, GridCell } from '../../types/layout';
-import type { Area, Container, PlacedCell } from './containerModel';
+import { EntityType, createEmptyCell } from '../../../types/layout';
+import type { Direction, GridCell } from '../../../types/layout';
+import type { Area, Container, PlacedCell } from '../containerModel';
+import { expandBbox } from '../util/helper';
 
 /**
  * 컨테이너를 내부 영역에 commit — footprint 셀을 `placed` 에 펼치고 bbox 확장.
@@ -49,19 +48,4 @@ function machineEntityType(entityName: string): GridCell['entityType'] {
   if (entityName === 'infinity-chest') return EntityType.InfinityChest;
   if (entityName === 'infinity-pipe') return EntityType.InfinityPipe;
   return EntityType.Assembler;
-}
-
-function expandBbox(
-  bbox: Area['bbox'],
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): NonNullable<Area['bbox']> {
-  if (!bbox) return { x, y, w, h };
-  const minX = Math.min(bbox.x, x);
-  const minY = Math.min(bbox.y, y);
-  const maxX = Math.max(bbox.x + bbox.w, x + w);
-  const maxY = Math.max(bbox.y + bbox.h, y + h);
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }

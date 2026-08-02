@@ -21,7 +21,7 @@ import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "../module/clusterPortPlanner";
-import { externalLineGroups } from "../module/allocateMachineLinks";
+import { externalLineGroups } from "./link/allocateMachineLinks";
 import { chooseMachineDirection } from "../module/fluidPorts";
 import {
   collectPipeFlow,
@@ -33,7 +33,7 @@ import {
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import { rePathToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
@@ -41,7 +41,7 @@ import { clusterLineRate } from "../recipeTree";
 // [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
 import { makeBuildSpec, tapCapacity } from "../buildSpec";
 import { makeEmptyArea, machineSpeedFraction } from "../wizardUtils";
-import { commitContainer } from "../machinePlacer";
+import { commitContainer } from "../execution/machinePlacer";
 
 /** layeredWizard NodeMeta 와 동형(필요한 부분만). */
 export interface ModuleNodeMeta {

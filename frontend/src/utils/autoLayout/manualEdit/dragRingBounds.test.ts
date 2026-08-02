@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createEmptyCell, EntityType } from '../../types/layout';
-import { useGameDataStore, type Entity, type Recipe } from '../../store/gameDataStore';
-import type { Area, Container, PendingConnection, PlacedCell, Routing } from './containerModel';
-import type { RouteOptions } from './routeFallback';
-import { wrapExternalsAroundPerimeter, dragExternalContainer, boundsOfCells } from './areaUnification';
+import { createEmptyCell, EntityType } from '../../../types/layout';
+import { useGameDataStore, type Entity, type Recipe } from '../../../store/gameDataStore';
+import type { Area, Container, PlacedCell, Routing } from '../containerModel';
+import { routeWithFallback, type RouteOptions } from './routeFallback';
+import { commitRouting } from '../execution/emitPath';
+import { makeContainerCell } from '../util/cellBuilder';
+import { dragExternalContainer, boundsOfCells } from './dragArea';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 드래그 재라우팅 ring 가둠 — 단일 외곽 ring 불변식
@@ -45,8 +47,8 @@ afterEach(() => { vi.restoreAllMocks(); });
 function machineContainer(id: string, x: number, y: number): Container {
   return { id, kind: 'machine', entityName: 'asm', origin: { x, y }, size: { w: 3, h: 3 }, recipeName: 'gear' };
 }
-function chestContainer(id: string, content = 'iron-plate'): Container {
-  return { id, kind: 'infinity-chest', entityName: 'infinity-chest', origin: { x: 0, y: 0 }, size: { w: 1, h: 1 }, content, role: 'input' };
+function chestContainer(id: string, x: number, y: number, content = 'iron-plate'): Container {
+  return { id, kind: 'infinity-chest', entityName: 'infinity-chest', origin: { x, y }, size: { w: 1, h: 1 }, content, role: 'input' };
 }
 function machineCells(c: Container): PlacedCell[] {
   const out: PlacedCell[] = [];
@@ -56,23 +58,32 @@ function machineCells(c: Container): PlacedCell[] {
   return out;
 }
 
+/**
+ * 배치가 끝난 상태를 손으로 만든다 — 머신 둘, 그 바깥 한 칸 띄운 자리에 상자 둘,
+ * 그리고 상자→머신 라우팅. 상자를 머신 면에서 2칸 밖에 두면 사이 한 칸이 인서터
+ * 자리라 단일 인서터로 직결된다(드래그가 재현하려는 그 형태).
+ */
 function buildPlacedAreas() {
   const m1 = machineContainer('M1', 5, 5);
   const m2 = machineContainer('M2', 5, 12);
+  const c1 = chestContainer('C1', 5, 3);   // M1 의 N 면 위 2칸
+  const c2 = chestContainer('C2', 3, 12);  // M2 의 W 면 왼쪽 2칸
   const internal: Area = {
-    kind: 'internal', containers: [m1, m2],
+    kind: 'internal', containers: [m1, m2, c1, c2],
     placed: [...machineCells(m1), ...machineCells(m2)], undergroundCorridors: [],
   };
   const external: Area = {
-    kind: 'external', containers: [chestContainer('C1'), chestContainer('C2')],
-    placed: [], undergroundCorridors: [],
+    kind: 'external', containers: [c1, c2],
+    placed: [makeContainerCell(c1, c1.origin), makeContainerCell(c2, c2.origin)],
+    undergroundCorridors: [],
   };
-  const connections: PendingConnection[] = [
-    { producerId: 'C1', consumerId: 'M1', kind: 'item' },
-    { producerId: 'C2', consumerId: 'M2', kind: 'item' },
-  ];
   const routings: Routing[] = [];
-  wrapExternalsAroundPerimeter(internal, external, routings, connections, OPTIONS);
+  for (const [chest, machine] of [[c1, m1], [c2, m2]] as const) {
+    const attempt = routeWithFallback(chest, machine, 'item', internal, OPTIONS, external);
+    if (!attempt.ok) throw new Error(`fixture 라우팅 실패: ${chest.id} → ${machine.id}`);
+    commitRouting(attempt.routing, internal);
+    routings.push(attempt.routing);
+  }
   return { internal, external, routings };
 }
 

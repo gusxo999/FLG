@@ -38,10 +38,10 @@ import type { ModulePort } from "../module/clusterModule";
 import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
-import { moduleExtent, type PackResult } from "./modulePacking";
-import { seatIsBeltFeeder } from "./moduleHop";
-import type { LaneAssignment } from "./perimeterLanePlanner";
-import { routePortToPerimeter, type Rect } from "./perimeterRouter";
+import { moduleExtent, type PackResult } from "../planner/modulePacking";
+import { seatIsBeltFeeder } from "../planner/moduleHop";
+import type { LaneAssignment } from "../planner/perimeterLanePlanner";
+import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../module/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 
