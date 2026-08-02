@@ -5,112 +5,165 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
 > **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md)
 
-# auto-layout 코드 폴더 — 모듈 안쪽 / 모듈 사이 / 잔손
+# auto-layout 코드 폴더 — 두 축으로 나눈다
 
-**한 줄 요약:** `frontend/src/utils/autoLayout/` 아래 코드를 관심사별로 세 폴더로 나눴다 —
-`module/`(한 모듈 안쪽만 아는 코드), `planner/`(모듈 사이를 조율하는 코드),
-`util/`(둘 다 쓰는 잔손 함수).
+**한 줄 요약:** `frontend/src/utils/autoLayout/` 의 폴더는 **두 가지 질문**에 답한다 —
+**축 1 계층**(계획인가 실행인가)과 **축 2 관심사**(무엇에 대한 일인가).
+`planner/` ↔ `execution/` 이 계층으로 대칭이고, 그 **안에서** 관심사 이름이 반복된다.
 
-## 문제 — 왜 나눴나
+> **2026-08-02 정정.** 이 문서는 예전에 `planner/` 를 *"모듈 사이를 조율하는 코드"* 로
+> 정의했다. **코드를 조사한 결과 사실이 아니었고**, 그 정의를 근거로 삼았다가 실제로 한 번
+> 잘못된 판단을 했다. 아래 §"planner 는 상위 조율 주체다" 가 정정 내용이다.
 
-`autoLayout/` 폴더 하나에 40여 개 파일이 평평하게 쌓여 있었다. 어떤 파일이 "한 모듈 안쪽"
-일이고 어떤 파일이 "여러 모듈 사이" 일인지 폴더 구조로는 전혀 보이지 않았다. 게다가 한 모듈을
-만드는 핵심 파일(`clusterModule`)이 함수 하나 때문에 1218줄짜리 옛 파일(`areaUnification`)을
-통째로 불러오고, 트렁크 벨트 파일(당시의 `trunkPath`/`trunkEmit`)이 1299줄짜리 옛 파일
-(`containerRouting`)에 매달려 있었다. 잔손 함수 몇 개가 큰 파일에 갇혀 있던 탓이다.
+## 축 1 — 계층: 무엇을 산출하는가
 
-## 세 폴더
+| 폴더 | 산출물 | 판정 (기계적) |
+|---|---|---|
+| **`planner/`** | 좌표·배정 | `PlacedCell` 을 **안 만든다** |
+| **`execution/`** | `PlacedCell` | **만든다** |
+| **`util/`** | 순수 셈·생성자 | 계층 무관. 양쪽이 쓴다 |
+| 루트 | 타입·계약, 배치 이전 단계 | 좌표를 안 다룬다 |
 
-### `module/` — 한 모듈 안쪽만 아는 코드
+**판정의 적용 대상은 *파이프라인 단계*다.** 아래 셋은 셀을 만들어도 `execution/` 이 아니다:
 
-머신 N대를 한 덩어리(클러스터)로 만드는 데 필요한 전부. 이 폴더의 코드는 옛 세계를 모른다
-(타입 정의 `containerModel` 과 `util/` 만 본다).
+- **생성자 라이브러리**(`util/cellBuilder`) — 만들 뿐 배치하지 않는다
+- **파사드 API** — 여러 단계를 엮는 것이 책임이다
+- **수동 편집 경로**(`manualEdit/`) — 배치 파이프라인 소속이 아니다
 
-`clusterLayout`(N대를 기둥/줄 중 어떤 모양으로 세울지), `clusterPortPlanner`(입출력 줄을
-어느 변·몇 칸 바깥·어떤 인서터에 붙일지), `clusterModule`(머신+트렁크+상자를 실제로 놓아
-덩어리 완성), `moduleTransform`(모듈 통째 회전 — 현재 항상 회전 없음으로 고정).
+이름에 속으면 안 되는 예:
 
-### `planner/` — 모듈 사이를 조율하는 코드
+| 파일 | 인상 | 실제 |
+|---|---|---|
+| `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
+| `planner/moduleHop` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
+| `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
-여러 덩어리를 한 청사진으로 엮는다.
+## 축 2 — 관심사: 무엇에 대한 일인가
 
-`modulePacking`(덩어리들을 깊이별 열에 세로 정렬), `channelPlanner`(모듈 사이 빈 통로 폭),
-`channelGeometryPlanner`(그 통로 안에서 누가 어느 세로줄), `perimeterLanePlanner`(상자가
-바깥으로 나갈 길 예약), `perimeterRouter`(포트에서 바깥 변까지 벨트 모양), `moduleHop`
-(자식 출력 → 부모 입력 잇기), `modulePerimeterPass`(살아남은 상자를 전체 외곽으로 이사),
-`moduleWizard`(위 전부를 순서대로 엮는 진입점).
+| 관심사 | 범위 | 판정 |
+|---|---|---|
+| **module** | 한 모듈 안쪽 | **형제 모듈을 모른다** |
+| **link** | 모듈과 모듈의 연결 | 두 모듈의 **식별자**를 안다 |
+| **channel** | 모듈 사이 통로 | 여러 연결이 **공유하는 자원**을 다룬다 |
+| **perimeter** | 배치 전체의 바깥 테두리 | **전역 외곽**을 안다 |
 
-> 이름 주의: 이 폴더의 절반(`channelPlanner`·`channelGeometryPlanner`·`perimeterLanePlanner`)은
-> 좌표만 계산하고 아무것도 놓지 않지만, 나머지 절반(`moduleHop`·`modulePerimeterPass`·
-> `modulePacking`)은 실제로 벨트·인서터·상자를 격자에 **놓는다**. `planner` 라는 이름은
-> "계획만 한다"가 아니라 **"모듈 사이 일"** 이라는 뜻으로 읽는다.
+## `planner/` 는 "모듈 사이"가 아니라 **상위 조율 주체**다
 
-### `util/` — 둘 다 쓰는 잔손 함수 두 파일
+옛 정의(*"모듈 사이를 조율하는 코드"*)가 틀린 근거:
 
-큰 파일에 갇혀 있던, 혼자서는 큰 의미가 없지만 여기저기서 자주 쓰이는 작은 함수들을 꺼냈다.
-두 무리로 갈라 파일 경계로 못 박았다.
+```
+module/  →  planner/   :  거의 0     ← module 은 planner 를 (사실상) 모른다
+planner/ →  module/    :  다수       ← modulePacking · moduleWizard · moduleHop
+```
 
-**`util/helper.ts` — 격자 위에서 셈만 하는 함수.** 아무것도 놓지 않는다. 칸의 좌표를 받아
-다른 숫자나 칸 목록을 돌려줄 뿐이다.
+의존이 사실상 단방향이고 **진입점(`moduleWizard`)도 `planner/` 에 있다.**
+즉 `planner` 가 상위이고 `module`·`link`·`channel`·`perimeter` 는 **그 안의 관심사**다.
+**모듈 *사이*만 조율하는 역할은 `link` 가 맡는다.**
 
-- `cellKey(3, 7)` → `"3,7"`. 칸 하나를 집합·사전의 열쇠로 쓰려고 문자열로.
-- `faceVector("E")` → `{x:1, y:0}`. "동쪽 변" 같은 말을 "오른쪽으로 한 칸" 화살표로.
-- `vectorToDirection(1, 0)` → 팩토리오가 아는 방향 숫자. 위 화살표를 게임 값으로.
-- `segment(A, B)` → A에서 B까지 일직선으로 늘어선 칸들의 목록.
-- `enumeratePerimeterCells(사각형)` → 그 사각형의 둘레를 안쪽 한 바퀴, 그다음 한 칸 더
-  바깥 한 바퀴… 도는 칸 목록.
+이 구분이 중요한 이유는 예약 철학이다 — *"큰 그림을 보는 주체 **하나**가 자리를 먼저 잡고,
+뒤 단계는 탐색 없이 놓기만 한다."* 그 주체가 곧 `planner/` 다. 주체가 둘로 갈리면
+*"무관한 판정이 이미 끝난 예약을 삼키는"* 종류의 버그가 난다(2026-07-21 실측).
 
-**`util/cellBuilder.ts` — 정해진 칸을 물건으로 채우는 함수.** 좌표와 방향이 이미 정해진 뒤
-불린다. 어디에 놓을지 고르지 않고, 길도 찾지 않는다. "이 칸에 이 방향으로 벨트" 라고 하면
-벨트 한 칸을 만들어 돌려줄 뿐이다.
+## 현재 트리
 
-- `makeBeltCell(칸, 흐르는 방향, 벨트 종류, 소속)` → 벨트 한 칸.
-- `makeInserterCell(칸, 집어올 쪽, 인서터 종류, 소속)` → 인서터 한 칸.
-- `makeContainerCell(상자, 칸)` → 무한상자/무한파이프 한 칸(안에 뭘 얼마나 채울지 딸린
-  함수와 함께).
+```
+autoLayout/
+├ planner/                     계획 — 조율 주체
+│   ├ module/                    한 모듈 안쪽 계획
+│   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
+│   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
+│   ├ link/allocateMachineLinks.ts 어느 기계 쌍을 몇 벨트로 잇나
+│   ├ perimeter/wayOuts.ts         모듈이 "내 몸통에 안 막히는 방향"을 답한다
+│   ├ moduleWizard.ts            ★ 배치 전체 진입점
+│   ├ modulePacking.ts             모듈들을 깊이별 열에 배열
+│   ├ channelPlanner.ts            모듈 사이 통로 폭
+│   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
+│   ├ perimeterLanePlanner.ts      상자가 바깥으로 나갈 길 예약
+│   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
+│   └ moduleHop.ts                 자식 출력 → 부모 입력 잇기
+├ execution/                   실행 — 계획대로 셀을 놓는다
+│   ├ module/emitModule.ts         트렁크·링크·탭 인서터·유체
+│   ├ emitPath.ts                  경로 → 벨트·파이프 셀
+│   ├ machinePlacer.ts             머신 footprint
+│   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
+├ module/                      한 모듈 안쪽 (형제를 모른다)
+│   ├ clusterModule.ts             모듈 생성 오케스트레이터
+│   ├ clusterPortPlanner.ts        줄 슬롯 배정 · tap/direct 판정
+│   ├ clusterLayout.ts             N대를 어떤 모양으로
+│   ├ fluidPorts.ts                유체 면 선택
+│   ├ moduleTransform.ts           모듈 회전
+│   └ pipeFlow.ts                  유체 합류 가드
+├ manualEdit/                  ★ 비활성 격리 — 호출자 0, 타입검사·테스트 제외
+├ util/                        cellBuilder(생성자) · helper(순수 셈)
+└ (루트)                       containerModel(타입) · containerRouting(Dijkstra) ·
+                               layeredWizard(최상위 진입점) · recipeTree · buildSpec ·
+                               wizardUtils · beltThroughput · inserterThroughput ·
+                               techGroup · types · debugFlags · moduleInspect ·
+                               areaUnification(배치 결과 표시)
+```
 
-> 새 함수를 `util/` 에 넣기 전 확인: 이 함수가 "어디에 무엇을 놓을지" 를 *고르는가*, 아니면
-> 이미 고른 자리를 *채우거나 세기만* 하는가? 고른다면 `util/` 이 아니다.
+> **`manualEdit/` 를 읽지 말 것.** 드래그·수동 편집 코드를 격리해 둔 곳이고 **호출자가 0**
+> 이다. 타입검사·테스트에서도 빠져 있다. 무엇을 하려던 기능이었는지는
+> `manualEdit/README.md` 에 있다.
 
-## 폴더 밖에 남은 것 — 공용 기반
+> **`areaUnification.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
+> **배치 결과를 화면 좌표로 평탄화하는 표시 경로**(`unifyAreas`)다. 드래그 부분은
+> `manualEdit/dragArea.ts` 로 갔다.
 
-예전엔 "폴더 밖 = 옛 경로" 였다. **지금은 아니다** — 옛 S-LAYER 본체가 Phase 3 에서
-삭제되면서, 폴더 밖 파일은 **새 경로도 쓰는 공용 기반**으로 남았다.
+## 아직 두 축과 어긋나 있는 것 (미해소)
 
-**공용 기반 — 살아 있다:**
-`containerModel`(타입 — 32곳이 임포트), `debugFlags`, `buildSpec`, `recipeTree`,
-`wizardUtils`, `types`, `beltThroughput`, `inserterThroughput`, `containerRouting`(dijkstra —
-`planner/moduleHop` 이 쓴다), `areaUnification`(사용자 드래그 재라우팅), `routeFallback`,
-`machinePlacer`, `portInference`, `moduleInspect`, `techGroup`, `layeredWizard`(진입점).
+정직하게 적는다 — **폴더가 이미 정답이라고 읽으면 안 된다.**
 
-## 검증
+| # | 코드 | 지금 | 두 축이 말하는 자리 | 근거 |
+|---|---|---|---|---|
+| **V3** | `module/clusterPortPlanner.ts` (796줄) | `module/` | `planner/module/` | `PlacedCell` 0개(계획) + 형제 모름(module). 지금 `planner/module/` 두 파일이 **역방향으로** 이 파일을 import 한다 |
+| **V4** | `planner/link/allocateMachineLinks.ts` (247줄) | 한 파일 | **둘로 갈라야** | `allocateMachineLinks`(childCount/parentCount = 두 클러스터)만 link 다. `MachineLinkGroup`·`makeLink`·`readLinkRole`·`externalLineGroups` 는 **로컬 머신 index + 팔 수**뿐이라 module 이다 |
+| **V5** | `module/clusterModule.ts` 다이렉트 인서팅 방출 (~120줄) | `module/` | `execution/module/` | 셀을 만든다(축 1 위반). `module/` 에서 셀을 만드는 유일한 곳이다 |
 
-폴더 이동 당시: 동작 변경 0, 212개 테스트 동일 통과, 골든 스냅샷 불변.
+계획: [tempPlanDocs/모듈-계층-리팩토링-계획.md] Phase 6 (저장소에 없는 임시 문서).
 
-> **함정(2026-07-25 정정):** 이 저장소에서 `npx tsc --noEmit` 은 테스트를 "검사 안 하는"
-> 게 아니라 **파일을 하나도 안 본다.** 루트 `tsconfig.json` 이 `files: []` + references 구조라
-> 그렇다. 반드시 **`npx tsc -b`** (= `npm run build` 앞단) 로 확인한다. 그래도 `vitest run`
-> 까지 돌리는 원칙은 그대로다 — 타입은 런타임을 다 잡지 못한다.
+## util 두 파일의 경계
+
+**`util/helper.ts` — 격자 위에서 셈만 한다.** 아무것도 놓지 않는다.
+`cellKey` · `faceVector` · `vectorToDirection` · `segment` · `faceCell` ·
+`enumeratePerimeterCells` · `expandBbox` + 공유 상수(`PERIMETER_MARGIN` · `PIPE_BLOCK_GROUP`).
+
+**`util/cellBuilder.ts` — 정해진 칸을 물건으로 채운다.** 좌표와 방향이 이미 정해진 뒤 불린다.
+어디에 놓을지 고르지 않고, 길도 찾지 않는다.
+`makeBeltCell` · `makeInserterCell` · `makeContainerCell`.
+
+> 새 함수를 `util/` 에 넣기 전 확인: 이 함수가 *"어디에 무엇을 놓을지"* 를 **고르는가**,
+> 아니면 이미 고른 자리를 **채우거나 세기만** 하는가? 고른다면 `util/` 이 아니다.
+
+## 검증 방법 — 함정 있음
+
+```powershell
+cd frontend
+npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
+npx vitest run
+```
+
+기준선: **타입 에러 0 · 41파일 448테스트.** (`manualEdit/` 는 양쪽에서 제외돼 있다.)
+
+> **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
+> 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가
+> 전부 통과하는데 링크 배정 분기는 한 번도 안 지나는 상황을 실제로 만났다).
 
 ## modulePerimeterPass 순수화 (2026-07-11 완료)
 
 폴더 이동 당시 `modulePerimeterPass` 는 남의 모듈 내부 셀을 직접 지우고 새로 깔았다
 (`mod.cells` filter+push, `port.cells`·`port.anchor`·`chest.origin` 뮤테이션). 이제
-`moduleHop` 과 같은 규약으로 바꿨다 — **모듈 그래프를 건드리지 않고 설명을 반환**한다:
+`moduleHop` 과 같은 규약이다 — **모듈 그래프를 건드리지 않고 설명을 반환**한다:
 
 - 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·
   `relocations`(상자별 새 origin·belts).
 - 적용은 호출자 [moduleWizard](../frontend/src/utils/autoLayout/planner/moduleWizard.ts)
-  가 Area 를 지을 때 한다: `mod.cells` 순회에서 droppedCellKeys 를 건너뛰고, addedCells 를
-  분류(InfinityChest→external·나머지→internal)하고, external.containers·routing 끝점에
-  새 origin(원본 Container 미변형=사본)과 belts 를 반영한다.
+  가 Area 를 지을 때 한다.
 
-동작 변경 0(골든 스냅샷 불변). 검증: `makeContainerCell` 이 셀 위치에 `at` 만 쓰고
-`chest.origin` 은 안 읽어(cellBuilder) 순수화가 셀 좌표를 안 바꾼다. 라우팅은 `port.anchor`
-가 아니라 `tapAnchor`+`chest.origin` 을 읽으므로 필요한 건 새 origin·belts 뿐. 214 green/tsc
-clean. 회귀: [modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts)
-"순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언.
+동작 변경 0(골든 스냅샷 불변). 회귀:
+[modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts)
+의 "순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언한다.
 
 > 남은 확인: `tryRunModulePipeline`(moduleWizard 진입점)은 gameDataStore 의존이라 단위
 > 테스트가 없다 — 어댑터 적용은 등가성 추적 + 브라우저 실측으로만 확인된다.
