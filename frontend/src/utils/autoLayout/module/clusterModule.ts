@@ -21,7 +21,6 @@
  */
 
 import {
-  insertingPlanner,
   type IoLine,
   type PlannedLine,
   type PlannedSide,
@@ -29,19 +28,12 @@ import {
   type SupplyCapacity,
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
-import type { SpecBelt, SpecInserter } from "../buildSpec";
+import type { SpecBelt } from "../buildSpec";
 import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "../planner/link/allocateMachineLinks";
 import { layoutCluster } from "./clusterLayout";
-// 링크 면 배정 — 좌표 이전 단계(모듈 안쪽 계획). planner/module/ 소관.
-import {
-  allocateLinkFaces,
-  spillLinkFacesToGap,
-  gapRowsFromPlans,
-  seatRowsByFace,
-  seatKey,
-  type LinkFacePlan,
-  type LinkSeats,
-} from "../planner/module/linkPlanner";
+// 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
+import { planModulePorts } from "../planner/module/planModulePorts";
+import type { LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
 import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
@@ -232,27 +224,20 @@ export interface ModuleInput {
 export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
   const count = Math.max(1, input.count);
-
-  // ── 링크 면 배정 — **머신을 놓기 전에** ────────────────────────────────────
-  // 순서가 뒤집힌 이유: gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고, **gap 폭 = 그
-  // gap 을 지나는 가로 벨트 수**다. 폭이 곧 머신 좌표를 정하므로 좌표보다 면이 먼저다.
-  // 이 단계는 팔 **수**만 본다(좌표 없음) — 논리 층이 기하를 안 보는 그 성질 그대로다.
   const outLinkGroups = input.outputLinks ?? [];
   const inLinkGroups = input.inputLinks ?? [];
-  const faceLedger = new Map<string, number>();
-  // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
-  // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
-  const faceGroupLedger = new Map<string, number>();
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, faceGroupLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, faceGroupLedger);
-  // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, faceGroupLedger);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, faceGroupLedger);
-  const rowGaps = gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]);
+
+  // ── 계획 — **머신을 놓기 전에 전부 끝난다** ───────────────────────────────
+  // 자리를 정하는 일은 여기 한 번뿐이다([planModulePorts]). 좌표가 없어야 이 순서가 성립한다:
+  // gap 으로 넘어간 링크는 gap 안에 가로 벨트를 놓고, **gap 폭 = 그 gap 을 지나는 가로 벨트
+  // 수**인데, 그 폭이 다시 머신 좌표를 정하기 때문이다(닭과 달걀을 푸는 지점).
+  //
+  // 아래는 전부 **방출**이다 — 계획이 못박은 자리에 놓기만 하고, 탐색이 없다.
+  const plan = planModulePorts(input, count);
 
   const layout = layoutCluster(
     { w: input.machine.w, h: input.machine.h, count },
-    rowGaps.some((g) => g > 0) ? rowGaps : MODULE_ROW_GAP,
+    plan.rowGaps.some((g) => g > 0) ? plan.rowGaps : MODULE_ROW_GAP,
   );
 
   const machines: Container[] = layout.positions.map((pos, i) => ({
@@ -281,111 +266,19 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
 
-  const plannedLines = input.lines;
+  const supply = plan.supply;
 
-  // ── 유체(pipe) 줄 — generateModule 이 직접 조립·면찍기(planner 유체 역할 제거) ──────
-  // 유체 면은 우리가 못 고른다 — 머신 fluid_box 가 강제하고 [ModuleInput.fluidTrunk].side
-  // 로 온다. 그래서 planner 에 안 보내고 여기서 [PlannedLine] 을 만든다([planClusterPorts]
-  // 가 하던 stamping 을 옮김: side=fluidTrunk.side, depth=1, reach 없음). planner 의 **케이스 B
-  // 아이템 예약은 그대로**다 — input.fluidTrunk.side 를 pipeSide 로 따로 받아 그 면 아이템을
-  // 깊이로 밀 뿐, 유체 **줄**은 안 본다.
-  const pipeLines = input.lines.filter((l) => l.kind === "pipe");
-  const pipePlanned: PlannedLine[] = input.fluidTrunk
-    ? pipeLines.map((line) => ({
-        line,
-        side: input.fluidTrunk!.side,
-        clusterBeltDepth: 1,
-        reach: undefined,
-      }))
-    : [];
-  // 유체는 트렁크(tap)로만 성립한다 — 자리가 아예 없으면(트렁크 미해결·다중 유체 v1 밖)
-  // 통째로 정직히 실패한다(현행 보존: 예전엔 planner 가 complex→다이렉트→!plan.ok 로
-  // 전부 unrouted 였다).
-  const fluidCannotPlace =
-    pipeLines.length > 0 && (!input.fluidTrunk || pipeLines.length > 1);
-
-  // 안내원(planner): 보장된 columnTapCapacity 슬롯을 줄마다 1:1 못박는다
-  // (natural-divergence 대체). 각 줄 → {면 W/E, 레인 near/far, 인서터}. 결과 순서가
-  // 곧 처리 순서(입력 먼저·near 면부터). complex(과용량·무인서터)면 전부 위임.
-  // 공급 방식 판정(docs/auto-layout-wizard.trunk-redesign.md §10) — 트렁크로 합칠 수
-  // 있으면 "tap", 안 되면 "direct"(1:1). 거절은 **항상 안전**하다: 1:1 은 구성으로 성립한다.
+  // ── 링크 방출 — 먼저 ───────────────────────────────────────────────────────
+  // 링크 줄은 계획에서 이미 자기 좌석·면·순번을 받았고([ModulePortPlan.linkFaces]), 여기서
+  // 자기 벨트·포트를 스스로 놓는다. 먼저 놓아야 occupancy 가 채워져, 아래 나머지 줄 방출이
+  // 그 자리를 피한다.
   //
-  // slotsPerFace = 다이렉트 인서팅의 면 용량(그 면의 둘레 칸 수). 이 수는 아래 방출 루프의
-  // `lateral`(슬롯 상한)과 **같아야** 한다 — 어긋나면 planner 가 없는 자리를 배정하거나
-  // (미탭) 있는 자리를 안 쓴다(스필). 탭 인서팅(면당 2)을 1:1 에 쓰면 3×3 머신의 셋째
-  // 입력이 자리가 남는데도 출력면(W)으로 넘친다. (용어: docs/용어사전.md §D)
-  // ModuleInput 의 이진 인서터 필드(reach 1 기본 + 긴팔 하나)를 planner 가 먹는 reach
-  // 목록으로 번역한다. planner 는 서로 다른 reach 하나당 [ClusterBelt] 한 줄을 세운다 —
-  // 지금은 최대 2종(1·긴팔)이라 옛 동작과 동일하지만, 여기 목록이 늘면 벨트 줄도 는다.
-  // (BuildSpec.inserters 를 ModuleInput 까지 직접 통과시키는 일은 후속.)
-  const plannerInserters: SpecInserter[] = [
-    { entityName: input.inserterEntityName, reach: 1, throughput: input.throughput?.normal ?? 0 },
-    ...(input.longInserter
-      ? [{
-          entityName: input.longInserter.entityName,
-          reach: input.longInserter.reach,
-          throughput: input.throughput?.long ?? 0,
-        }]
-      : []),
-  ];
-  // [isJumpableToClusterPipe] — "유체 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
-  // 셋 다 성립해야 true (하나라도 어긋나면 옛 스파인 = 케이스 B 로 **연속적 저하**):
-  //  ① 상자 칸 위치를 안다(fluidboxOffset) + 지하파이프를 골랐다.
-  //  ② 점프 거리가 최악 폭을 감당한다 — 입구 d1 → 출구 d(2+최대reach), 좌표 차 = 최대reach+1.
-  //     (실제 폭은 그 면에 배정된 벨트로 정해져 더 좁을 수 있다 — 여기선 보수적으로 최악.)
-  //  ③ 좌석 줄에서 상자 행 1개를 빼고도 벨트 좌석이 남는다: 벨트 수 ≤ 면 좌석 − 1.
-  const ft = input.fluidTrunk;
-  const maxReach = plannerInserters.reduce((a, i) => Math.max(a, i.reach), 0);
-  const isJumpableToClusterPipe =
-    !!ft &&
-    ft.fluidboxOffset !== undefined &&
-    !!ft.undergroundPipeEntityName &&
-    (ft.pipeMaxUndergroundDistance ?? 0) >= maxReach + 1 &&
-    plannerInserters.length <= input.machine.h - 1;
-
-  // ── 링크 줄 분리 ──────────────────────────────────────────────────────────
-  // 링크가 있는 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
-  // tap/direct 판정 대상이 아니다. planner 에서 빼고, 대신 그 줄이 **먹을 좌석을 예약**해
-  // 남은 줄들이 정확한 예산을 보게 한다. 안 빼면 두 문제가 생긴다:
-  //  ① 링크 줄이 좌석을 넘겨 planner 가 direct 로 떨어지면, 링크 방출이 안 불려 포트가 통째로
-  //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샌다 — 2026-07-19 실측).
-  //  ② planner 가 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
-  const linkedKeys = new Set([
-    ...outLinkGroups.map((g) => `output:${g.item}`),
-    ...inLinkGroups.map((g) => `input:${g.item}`),
-  ]);
-  // 면 배정(위, 좌표 이전)에 이제 좌표를 입힌다.
-  const placeLedger = new Map<string, number>();
-  const outSeats = placeLinkSeats(machines, outFaces.plans, placeLedger, false);
-  const inSeats = placeLinkSeats(machines, inFaces.plans, placeLedger, true); // 입력 포트는 동쪽
-  const seatRowsUsed = seatRowsByFace(faceLedger);
-
-  const plannerInput = {
-    lines: plannedLines.filter(
-      (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
-    ),
-    inserters: plannerInserters,
-    outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
-    nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
-    slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
-    seatRowsUsed, // 링크 방출이 먼저 먹는 행
-    pipeSide: input.fluidTrunk?.side, // 유체가 붙는 면.
-    isJumpableToClusterPipe, // true=좌석 살림(일반 면), false=옛 스파인(케이스 B).
-    belts: input.belts,
-  };
-  const supply: InsertingDecisionResult = insertingPlanner(
-    plannerInput,
-    machines.length,
-    input.supplyCapacity,
-  );
-
-  // ── 링크 방출 — tap/direct 판정과 **무관하게, 언제나 먼저** ────────────────
-  // 링크 줄은 planner 를 안 거쳤고(위에서 linkedKeys 로 뺐다) 자기 좌석·벨트·포트를 스스로
-  // 놓는다. **아래 !plan.ok 는 링크와 무관한 나머지 줄의 판정**이다 — 그 판정으로 링크
-  // 방출을 막으면, 이미 성공한 예약(면 배정·gap 폭이 layoutCluster 에 반영됨)을 시도조차
-  // 안 하고 버리게 된다(2026-07-21 발견 — 무관한 판정이 끝난 예약을 삼키는 순서 버그였다).
-  // 먼저 놓아야 occupancy 가 채워져, 아래 나머지 줄 방출이 그 자리를 피한다.
-  const lineOf = new Map(plannedLines.map((l) => [`${l.role}:${l.name}`, l]));
+  // **나머지 줄의 판정([ModulePortPlan.rest])은 여기 관여하지 않는다.** 예전엔 그 판정이
+  // `!plan.ok` 라는 이름으로 링크 방출보다 앞에 있어, 무관한 판정이 이미 성공한 링크 예약을
+  // 통째로 삼켰다(2026-07-21). 이름이 `rest` 로 갈라진 지금은 그 착각이 생길 자리가 없다.
+  const outSeats = placeLinkSeats(machines, plan.linkFaces.out);
+  const inSeats = placeLinkSeats(machines, plan.linkFaces.in);
+  const lineOf = new Map(input.lines.map((l) => [`${l.role}:${l.name}`, l]));
   if (outLinkGroups.length > 0) {
     const m = new Map(outLinkGroups.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
     emitOutputLinks({ groups: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
@@ -395,15 +288,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     emitInputLinks({ groups: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
   }
 
-  const plan = supply.plan;
-  // 유체는 트렁크(tap)로만 성립하므로, 자리가 없거나(fluidCannotPlace) 아이템이 다이렉트로
-  // 떨어지면(유체는 다이렉트 불가) 통째로 정직히 실패한다 — 유체 재료 하나가 안 되면 그
-  // 모듈은 옛 경로로 넘어가야 하기 때문(예전엔 planner 가 complex 로 같은 결과를 냈다).
-  const fluidNeedsTap = pipeLines.length > 0 && (fluidCannotPlace || supply.mode === "direct");
-  if (!plan.ok || fluidNeedsTap) {
-    // 링크가 없는 나머지 줄만 unrouted — 링크 줄은 위에서 이미 성패가 갈렸다(자기 몫만
-    // unroutedLines 에 넣거나 포트를 냈다). 여기서 다시 넣으면 성공한 링크까지 오염된다.
-    for (const l of plannedLines) if (!linkedKeys.has(`${l.role}:${l.name}`)) unroutedLines.push(l);
+  // 나머지 줄이 못 앉았으면 그 줄들만 unrouted 로 낸다 — **못 앉은 줄이 계획에 적혀 있어서**
+  // 여기서 다시 고를 필요가 없다([ModulePortPlan.rest.unplaced]). 링크 줄은 위에서 이미
+  // 성패가 갈렸으므로 그 목록에 없다.
+  if (!plan.rest.ok) {
+    unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
@@ -426,15 +315,15 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // 기하를 **함께** 본다 — stagger 와 pipeJumpMode 는 아이템·유체를 한 번에 훑어야 어긋나지
     // 않는다([buildTrunkContext]). 유체 PlannedLine 은 옛 planner 가 찍던 것과 값이 같아
     // (side=fluidTrunk.side·depth=1) 기하·수치 불변이다.
-    const trunkPlan = { ok: true as const, lines: [...plan.lines, ...pipePlanned] };
-    const ctx = buildTrunkContext(trunkPlan, machines, input, isJumpableToClusterPipe);
+    const trunkPlan = { ok: true as const, lines: [...plan.rest.lines, ...plan.pipePlanned] };
+    const ctx = buildTrunkContext(trunkPlan, machines, input, plan.isJumpableToClusterPipe);
     const seqRef = { n: 0 };
     // **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 — 방출기가 링크와 같은 자료구조를 본다.**
     // 링크 방출([emitOutputLinks])이 이미 group 을 주 자료로 보므로, 탭 방출도 여기 맞춘다
     // (자료구조 통일 1단계). 팔 수는 [requiredInserterCount] 에서 오므로 planner 값과 **같다** →
     // 기하·수치 불변(점수 불변). 다음 단계에서 group 의 `from`/`to`(머신마다 팔)를 실제로 쓴다.
     const groupOf = new Map<string, MachineLinkGroup>();
-    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, linkedKeys)) {
+    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, plan.linkedKeys)) {
       groupOf.set(`${readLinkRole(g)}:${g.item}`, g);
     }
     emitTapInserting({
@@ -472,7 +361,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 먹는 머신에 초당 0.667개짜리 인서터 하나가 붙은 배치가 나왔다(2026-07-16 실측).
   const slotOnFace = new Map<PlannedSide, number>(); // 면별로 소비한 행/열 슬롯 수
   let seq = 0;
-  for (const planned of plan.lines) {
+  for (const planned of plan.rest.lines) {
     const line = planned.line;
     if (line.kind !== "belt") {
       // 다이렉트 인서팅은 유체를 못 다룬다(인서터로 유체를 옮길 수 없다) — planner 가 이미
@@ -572,29 +461,31 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     supply,
   };
 }
+/**
+ * 면 배정에 **좌표를 입힌다** — 머신이 놓인 뒤에 부른다. 하는 일은 덧셈뿐이다.
+ *
+ * "면에서 몇 번째 칸" 은 배정의 일이라 [commitLinkFace] 가 이미 끝냈고
+ * ([LinkFacePlan.slotIndex] — 채우는 방향까지 거기서 정해진다), 여기서는 그 순번에
+ * 머신 원점을 더해 `t` 로 바꾼다. `t` 의 뜻은 [faceCell] 과 같다:
+ * W/E 면이면 y(행), N/S 면이면 x(열).
+ *
+ * **이 함수가 장부를 안 쓴다는 것이 요점이다.** 예전엔 여기서 빈 장부(`placeLedger`)를
+ * 새로 만들어 배정이 이미 센 누적을 처음부터 다시 셌다 — 같은 사실을 두 주체가 두 번
+ * 계산하면 언젠가 어긋난다.
+ */
 function placeLinkSeats(
   machines: Container[],
   plans: (LinkFacePlan | undefined)[],
-  used: Map<string, number>,
-  gapFromEast: boolean,
 ): (LinkSeats | undefined)[] {
   return plans.map((plan) => {
     if (!plan) return undefined;
+    const isGap = plan.face === "N" || plan.face === "S";
     const slots = new Map<number, number[]>();
-    for (const [mi, k] of [...plan.arms].sort((a, b) => a[0] - b[0])) {
+    for (const [mi, idx] of plan.slotIndex) {
       const m = machines[mi];
       if (!m) return undefined;
-      const key = seatKey(mi, plan.face);
-      const base = used.get(key) ?? 0;
-      used.set(key, base + k);
-      const isGap = plan.face === "N" || plan.face === "S";
-      if (isGap && gapFromEast) {
-        const east = m.origin.x + m.size.w - 1;
-        slots.set(mi, Array.from({ length: k }, (_, t) => east - base - t).reverse());
-      } else {
-        const origin = isGap ? m.origin.x : m.origin.y;
-        slots.set(mi, Array.from({ length: k }, (_, t) => origin + base + t));
-      }
+      const origin = isGap ? m.origin.x : m.origin.y;
+      slots.set(mi, idx.map((i) => origin + i));
     }
     return { ...plan, slots };
   });

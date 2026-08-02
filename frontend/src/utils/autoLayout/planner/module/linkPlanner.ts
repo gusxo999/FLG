@@ -14,6 +14,11 @@
  * 장부 두 권을 쓴다(둘은 서로 유도되지 않는다):
  *  - `used`(좌석) — **팔마다** 하나. 면이 찼는지 판단
  *  - `faceGroups`(그룹 수) — **그룹마다** 하나. 막힌 면의 벨트 깊이 순번
+ *
+ * **셋째 장부는 없다.** 예전엔 `generateModule` 이 좌표 단계에서 `placeLedger` 라는 빈 장부를
+ * 새로 만들어 **여기서 이미 센 누적값을 처음부터 다시 셌다**. 배정이 알던 값을 계층 경계
+ * 너머로 전하지 못해 생긴 중복이었다 — 이제 [commitLinkFace] 가 그 순번을
+ * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
  */
 
 import type { PortFace } from "../../containerModel";
@@ -47,7 +52,25 @@ export interface LinkFacePlan {
   exitDepth?: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
+  /**
+   * 머신 index → 이 그룹이 그 머신 면에서 쓰는 **머신 원점 기준 상대 칸 번호**들(오름차순).
+   * 키 순서는 머신 index 오름차순이다(방출 순서가 결정적이어야 하므로).
+   *
+   * **좌표가 아니다 — 순번이다.** "면에서 몇 번째 칸"까지가 배정의 일이라 여기서 끝내고,
+   * 남는 일은 `m.origin.x`(또는 `.y`)를 **더하는 것뿐**이다([placeLinkSeats]).
+   * 그래서 이 필드가 있으면 planner 가 진짜 단일 주체가 된다 — 좌표를 모르면서도
+   * 자리를 완결한다.
+   *
+   * gap 면(N/S)의 입력 그룹은 **동쪽 끝에서부터** 센다: 막힌 면의 [[ParallelBelt]]는
+   * "포트에 가까운 그룹이 얕은 줄"이라야 성립하는데, 입력의 포트는 동쪽이기 때문이다.
+   * 그 뒤집기까지 여기서 끝내므로 좌표 단계는 방향을 알 필요가 없다(`fromEast` 같은
+   * 플래그를 밖으로 내보내지 않는다).
+   */
+  slotIndex: Map<number, number[]>;
 }
+
+/** [commitLinkFace] 전의 배정안 — 순번(`slotIndex`)은 확정 시점에야 정해진다. */
+type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
 
 /**
  * 링크 그룹 하나가 실제로 앉은 자리 — 면 + 머신마다 쓰는 **면 위 위치** `t`.
@@ -104,7 +127,7 @@ function tryLinkFace(
   face: PortFace,
   used: Map<string, number>,
   faceGroups: Map<string, number>,
-): LinkFacePlan | undefined {
+): LinkFaceCandidate | undefined {
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
   // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
@@ -140,13 +163,39 @@ function tryLinkFace(
 /**
  * [tryLinkFace] 가 낸 배정을 장부에 확정한다 — 좌석(팔 수)과 그룹 수를 따로 센다.
  * 둘은 유도가 안 된다: 좌석은 **팔마다** 하나, 반출 줄은 **그룹마다** 하나다.
+ *
+ * **여기서 순번([LinkFacePlan.slotIndex])도 함께 낸다.** 장부를 늘리기 직전의 값(`base`)이
+ * 곧 "이 그룹이 몇 번째 칸부터 쓰나" 이므로, 확정과 순번은 **같은 순간의 같은 사실**이다.
+ * 나눠 두면 나중 단계가 같은 누적을 다시 세야 한다(옛 `placeLedger`).
  */
-function commitLinkFace(plan: LinkFacePlan, used: Map<string, number>, faceGroups: Map<string, number>): void {
-  for (const [mi, k] of plan.arms) {
-    const key = seatKey(mi, plan.face);
-    used.set(key, (used.get(key) ?? 0) + k);
+function commitLinkFace(
+  machine: { w: number; h: number },
+  cand: LinkFaceCandidate,
+  side: "from" | "to",
+  used: Map<string, number>,
+  faceGroups: Map<string, number>,
+): LinkFacePlan {
+  const isGap = cand.face === "N" || cand.face === "S";
+  // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
+  // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
+  const fromEast = isGap && side === "to";
+  const slotIndex = new Map<number, number[]>();
+  // 머신 index 오름차순 — 방출 순서가 결정적이어야 한다.
+  for (const [mi, k] of [...cand.arms].sort((a, b) => a[0] - b[0])) {
+    const key = seatKey(mi, cand.face);
+    const base = used.get(key) ?? 0;
+    used.set(key, base + k);
     faceGroups.set(key, (faceGroups.get(key) ?? 0) + 1);
+    // 면의 길이 방향 칸 수 — W/E 면은 세로(h), N/S 면은 가로(w).
+    const span = isGap ? machine.w : machine.h;
+    slotIndex.set(
+      mi,
+      fromEast
+        ? Array.from({ length: k }, (_, t) => span - 1 - base - t).reverse()
+        : Array.from({ length: k }, (_, t) => base + t),
+    );
   }
+  return { ...cand, slotIndex };
 }
 
 /**
@@ -177,11 +226,9 @@ export function allocateLinkFaces(
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const plan = tryLinkFace(machine, count, g, side, prefer, used, faceGroups);
-    if (plan) {
-      commitLinkFace(plan, used, faceGroups);
-      plans[i] = plan;
-    } else deferred.push(i);
+    const cand = tryLinkFace(machine, count, g, side, prefer, used, faceGroups);
+    if (cand) plans[i] = commitLinkFace(machine, cand, side, used, faceGroups);
+    else deferred.push(i);
   });
   return { plans, deferred };
 }
@@ -201,10 +248,9 @@ export function spillLinkFacesToGap(
 ): void {
   for (const i of out.deferred) {
     for (const face of ["S", "N"] as const) {
-      const plan = tryLinkFace(machine, count, groups[i], side, face, used, faceGroups);
-      if (!plan) continue;
-      commitLinkFace(plan, used, faceGroups);
-      out.plans[i] = plan;
+      const cand = tryLinkFace(machine, count, groups[i], side, face, used, faceGroups);
+      if (!cand) continue;
+      out.plans[i] = commitLinkFace(machine, cand, side, used, faceGroups);
       break;
     }
   }
@@ -262,13 +308,3 @@ export function seatRowsByFace(used: Map<string, number>): Partial<Record<Planne
   }
   return by;
 }
-
-/**
- * 면 배정(팔 수)에 좌표를 입힌다 — 머신이 놓인 뒤에 부른다.
- * `t` 의 뜻은 [faceCell] 과 같다: W/E 면이면 y(행), N/S 면이면 x(열).
- *
- * **gap 면의 좌석은 포트 쪽부터 채운다.** 막힌 면의 [[ParallelBelt]]는 "포트에 가까운 그룹이 얕은 줄"이라야
- * 성립하기 때문이다 — 먼 그룹이 얕은 줄을 차지하면 그 줄이 가까운 그룹의 열 위를 지나며
- * 남의 자리를 밟는다. 출력은 포트가 서쪽이라 서→동, 입력은 동쪽이라 **동→서**다.
- * (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
- */
