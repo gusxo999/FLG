@@ -42,7 +42,7 @@ import { moduleExtent, type PackResult } from "../planner/modulePacking";
 import { seatIsBeltFeeder } from "../planner/moduleHop";
 import type { LaneAssignment } from "../planner/perimeterLanePlanner";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
-import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../module/pipeFlow";
+import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 
 export interface PerimeterPassConfig {

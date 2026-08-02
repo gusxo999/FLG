@@ -49,7 +49,7 @@ import type {
   PortPair,
   UndergroundCorridor,
 } from "../containerModel";
-import { dijkstraWithJumps, type DijkstraResult } from "../containerRouting";
+import { dijkstraWithJumps, type DijkstraResult } from "./containerRouting";
 import { emitItemPath, emitFluidPath } from "../execution/emitPath";
 import { cellKey, faceVector, segment } from "../util/helper";
 import type { ModulePort } from "../module/clusterModule";

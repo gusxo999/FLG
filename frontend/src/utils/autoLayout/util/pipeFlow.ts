@@ -53,8 +53,8 @@
 
 import type { Entity } from "../../../store/gameDataStore";
 import type { Direction } from "../../../types/layout";
-import { cellKey } from "../util/helper";
-import { fluidPortSlots } from "./fluidPorts";
+import { cellKey } from "./helper";
+import { fluidPortSlots } from "../module/fluidPorts";
 
 /**
  * 파이프 한 줄(유체 하나)을 깔기 전에 "여기엔 놓으면 안 된다"고 알려주는 칸의 지도.

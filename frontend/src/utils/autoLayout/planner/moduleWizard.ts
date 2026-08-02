@@ -29,7 +29,7 @@ import {
   type PipeFlow,
   type PipeFlowMachine,
   type PipeFlowPipe,
-} from "../module/pipeFlow";
+} from "../util/pipeFlow";
 import type { RecipeTreeNode } from "../types";
 import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";

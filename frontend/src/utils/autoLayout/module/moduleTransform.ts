@@ -216,3 +216,52 @@ function faceFromVec(x: number, y: number): PortFace {
   }
   return "N";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 평행이동·범위 — 회전과 같은 **강체 기하**다(무엇을 놓을지 고르지 않는다).
+// 배열을 정하는 `planner/modulePacking` 에 있었으나, 하는 일은 모듈 하나를 통째로
+// 다루는 것이라 여기가 맞다(2026-08-02 이관).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 모듈이 차지하는 실제 범위 = 머신 footprint ∪ 모든 placed 셀(튀어나온 포트 상자 포함). */
+export function moduleExtent(mod: GeneratedModule): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const mk = (x: number, y: number) => {
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  };
+  for (const m of mod.machines) {
+    mk(m.origin.x, m.origin.y);
+    mk(m.origin.x + m.size.w - 1, m.origin.y + m.size.h - 1);
+  }
+  for (const c of mod.cells) mk(c.x, c.y);
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+export function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedModule {
+  const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
+  const ctn = (c: Container): Container => ({ ...c, origin: pt(c.origin) });
+  const chestById = new Map<string, Container>();
+  const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
+  // **`...p` / `...mod` 를 먼저 편다.** 이 함수는 평행이동만 하는데, 예전엔 필드를 하나씩 적어
+  // 재구성해서 **좌표와 무관한 필드가 새로 생길 때마다 여기서 조용히 사라졌다** — 옮길 것만
+  // 덮어쓰면 그 실수가 구조적으로 불가능해진다(2026-07-24 `beltMerges` 가 여기서 증발했다.
+  // 같은 모양의 재구성이 moduleTransform 에도 있었고 거기서도 `supply` 를 잃고 있었다).
+  const port = (p: ModulePort): ModulePort => ({
+    ...p,
+    anchor: pt(p.anchor),
+    tapAnchor: pt(p.tapAnchor),
+    chest: chestById.get(p.chest.id) ?? ctn(p.chest),
+    cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+  });
+  return {
+    ...mod,
+    machines: mod.machines.map(ctn),
+    chests,
+    cells: mod.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+    ring: mod.ring.map(pt),
+    inputPorts: mod.inputPorts.map(port),
+    outputPorts: mod.outputPorts.map(port),
+    bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
+  };
+}

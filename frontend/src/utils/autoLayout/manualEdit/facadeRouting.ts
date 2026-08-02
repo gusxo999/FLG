@@ -29,7 +29,7 @@ import {
   dijkstraWithJumps,
   collectBeltFlow,
   type DijkstraEndpoint,
-} from '../containerRouting';
+} from '../planner/containerRouting';
 
 
 /**

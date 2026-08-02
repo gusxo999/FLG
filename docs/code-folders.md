@@ -68,22 +68,27 @@ planner/ →  module/    :  다수       ← modulePacking · moduleWizard · mo
 
 ```
 autoLayout/
-├ planner/                     계획 — 조율 주체
+├ planner/                     계획 — 조율 주체. 아무것도 놓지 않는다
 │   ├ module/                    한 모듈 안쪽 계획
 │   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
 │   │   ├ clusterPortPlanner.ts    줄 슬롯 배정 · tap/direct 판정
 │   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
-│   ├ link/allocateMachineLinks.ts 어느 기계 쌍을 몇 벨트로 잇나
-│   ├ perimeter/wayOuts.ts         모듈이 "내 몸통에 안 막히는 방향"을 답한다
+│   ├ link/                      모듈과 모듈을 잇는 일
+│   │   ├ allocateMachineLinks.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
+│   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
+│   ├ perimeter/                 전역 외곽
+│   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
+│   │   └ lanes.ts                 반출 예약의 입력 준비 (프레임 확장 · 대상 포트 수집)
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점
-│   ├ modulePacking.ts             모듈들을 깊이별 열에 배열
+│   ├ modulePacking.ts             조율자 — 모듈 배열 + 위 관심사들을 순서대로 엮는다
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
-│   ├ perimeterLanePlanner.ts      상자가 바깥으로 나갈 길 예약
+│   ├ perimeterLanePlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
-│   └ moduleHop.ts                 자식 출력 → 부모 입력 잇기
+│   ├ moduleHop.ts                 자식 출력 → 부모 입력 잇기
+│   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
 ├ execution/                   실행 — 계획대로 셀을 놓는다
-│   ├ module/emitModule.ts         트렁크·링크·탭/다이렉트 인서터·유체
+│   ├ module/emitModule.ts         트렁크 · 링크 · 탭/다이렉트 인서터 · 유체
 │   ├ emitPath.ts                  경로 → 벨트·파이프 셀
 │   ├ machinePlacer.ts             머신 footprint
 │   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
@@ -92,15 +97,17 @@ autoLayout/
 │   ├ machineLinkGroup.ts          벨트 한 줄 = 팔 묶음 (자료 구조 + 조립·판독)
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                유체 면 선택
-│   ├ moduleTransform.ts           모듈 회전
-│   └ pipeFlow.ts                  유체 합류 가드
+│   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
 ├ manualEdit/                  ★ 비활성 격리 — 호출자 0, 타입검사·테스트 제외
-├ util/                        cellBuilder(생성자) · helper(순수 셈)
-└ (루트)                       containerModel(타입) · containerRouting(Dijkstra) ·
+├ util/                        양쪽 계층이 쓰는 도구. 아무것도 고르지 않는다
+│   ├ cellBuilder.ts               정해진 칸을 물건으로 채운다
+│   ├ helper.ts                    격자 위에서 셈만 한다
+│   └ pipeFlow.ts                  파이프 합류 가드 (판정만 — 자리를 고르지 않는다)
+└ (루트)                       **배치 이전 단계** — 좌표가 없어 계층 축이 무의미하다
                                layeredWizard(최상위 진입점) · recipeTree · buildSpec ·
                                wizardUtils · beltThroughput · inserterThroughput ·
-                               techGroup · types · debugFlags · moduleInspect ·
-                               areaUnification(배치 결과 표시)
+                               techGroup + containerModel(타입) · types · debugFlags ·
+                               moduleInspect(진단) · areaUnification(배치 결과 표시)
 ```
 
 > **`manualEdit/` 를 읽지 말 것.** 드래그·수동 편집 코드를 격리해 둔 곳이고 **호출자가 0**
@@ -139,7 +146,24 @@ rg "^import" frontend/src/utils/autoLayout/planner/link/allocateMachineLinks.ts
 `MachineLinkGroup`·`makeLink`·`readLinkRole`·`externalLineGroups`(로컬 머신 index + 팔 수뿐
 = module)가 한 파일에 있었다. 그래서 `module/` 이 그 파일을 부르고, 그 파일이 다시 `module/`
 의 `requiredInserterCount` 를 불렀다. 갈라 놓으니 **두 간선이 동시에 사라졌다** —
-`planner/link/` 는 이제 아무것도 import 하지 않는 순수 산술이다.
+`planner/link/allocateMachineLinks` 는 이제 아무것도 import 하지 않는 순수 산술이다.
+
+## 자리를 정한 근거 — 판단이 갈렸던 것들
+
+폴더가 자명하지 않았던 파일들이다. **"무엇을 아는가"로 판정했다.**
+
+| 파일 | 어디로 | 왜 |
+|---|---|---|
+| `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
+| `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
+| `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
+| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/moduleHop` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
+| 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput`·`techGroup` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
+
+**아직 안 가른 것 하나:** `modulePacking.materializeChannelGeometry` 는 납품(channel)과
+반출(perimeter)을 **한 번에** 훑는다. 둘이 같은 트랙 풀을 다투기 때문이다
+(`planChannelGeometry(deliveries, exports, …)` 가 둘을 함께 받는 것과 같은 이유).
+관심사로 가르려면 **그 다툼을 먼저 풀어야** 한다 — 지금 가르면 배정이 갈라져 예약이 깨진다.
 
 ## util 두 파일의 경계
 

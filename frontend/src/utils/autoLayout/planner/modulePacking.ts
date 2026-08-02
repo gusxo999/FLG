@@ -26,14 +26,22 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import { allocateMachineLinks, type MachineLink } from "./link/allocateMachineLinks";
+// link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
+import { hopMapKey, pairHopPorts, edgeLinkGroups } from "./link/edgeLinks";
 import type { MachineLinkGroup } from "../module/machineLinkGroup";
-import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
+// perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
+import { planLanes, expandBbox } from "./perimeter/lanes";
+import type { LanePlan } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
-import type { Container, PlacedCell } from "../containerModel";
-import type { Orientation } from "../module/moduleTransform";
+import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
+
+// 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·moduleHop·moduleWizard·
+// modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
+// 자연스럽다. 정의의 소유자는 각각 `link/edgeLinks` 와 `module/moduleTransform` 이다.
+export { hopMapKey, edgeMachineLinks, edgeLinkGroups } from "./link/edgeLinks";
+export { moduleExtent } from "../module/moduleTransform";
 
 /** 채널 폭 하한(셀). 단일 홉(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
 const MODULE_CHANNEL_MIN = 4;
@@ -149,92 +157,6 @@ export interface PackChannelGeometry {
   reservedExportCells: Set<string>;
 }
 
-/**
- * **신원 없는(옛 탭/다이렉트, 교환 가능) 홉만을 위한** 위치 기반 키. **직접 부르지 않는다** —
- * 모든 소비처는 [hopMapKey] 를 쓴다. 밖으로 안 내보내는 이유: 이 함수만 부르면 `linkId` 를
- * 빠뜨린 채 `seq=0` 기본값으로 **엉뚱한 홉**을 조회하게 된다(2026-07-21, 바로 이 실수가
- * `channelGeometryPlanner.test.ts` 에 있었다 — count=1 픽스처라 우연히 안 터졌을 뿐이었다).
- *
- * 1:1 방출(트렁크 비활성)에서는 자식 출력 포트가 머신 수만큼, 부모 입력 포트도 머신 수만큼
- * 있으므로 같은 (from,to,item) 홉이 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다 —
- * 포트가 물리적으로 교환 가능해 위치가 곧 정직한 유일한 신원이기 때문이다.
- */
-function hopKey(fromId: string, toId: string, item: string, seq = 0): string {
-  return `${fromId}→${toId}:${item}#${seq}`;
-}
-
-/**
- * `PackChannelGeometry.hops`/[reservationEmittable] 의 조회 키 — 소비처가 부를 **유일한**
- * 함수. 신원(`linkId`)이 있으면 그대로 쓰고, 없으면(교환 가능 포트) [hopKey] 로 위치 기반
- * 키를 만든다.
- */
-export function hopMapKey(hop: { fromId: string; toId: string; item: string; seq: number; linkId?: string }): string {
-  return hop.linkId ?? hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
-}
-
-/**
- * **링크 그룹 신원** — 자식→부모 간선의 몇 번째 벨트인가. [edgeLinkGroups] 가 자식·부모
- * 양쪽에서 **같은 값으로(child, parent, item, config)** 독립으로 계산되므로, 이 키를
- * 대화 없이 양쪽이 동일하게 재현할 수 있다. `ModulePort.linkId` 가 이 값을 그대로 든다.
- */
-function linkGroupId(childId: string, parentId: string, item: string, groupIndex: number): string {
-  return `${childId}→${parentId}:${item}#${groupIndex}`;
-}
-
-/**
- * 자식 출력 포트 ↔ 부모 입력 포트 **짝짓기** (같은 품목).
- *
- * 두 종류가 섞여 들어온다:
- *  - **신원 있는 포트**([ModulePort.linkId], link 그룹에서 난 포트) — 상대가 **정해져 있다**.
- *    `linkId` 로 직접 조회한다(추측이 아니라 조회). 못 찾으면 **예약 불변식이 깨졌다는
- *    신호**([channel-geometry-reservation] 철학)라 그 포트만 raw 로 남기고 `mismatches` 에
- *    사유를 남긴다 — `modulePerimeterPass.fail` 과 같은 관용구(skip, throw 안 함).
- *  - **신원 없는 포트**(옛 탭/다이렉트) — 물리적으로 교환 가능해 정답이 없다. 등장 순서대로
- *    **1:1 로 짝**짓는다(기존 동작 그대로).
- *
- * 개수가 안 맞으면(신원 없는 쪽) 남는 쪽은 짝이 없다 — 부모 입력이 남으면 무한상자로 남아
- * 외부에서 공급받고(raw), 자식 출력이 남으면 무한상자 sink 로 남는다. 둘 다 perimeter 로
- * 나가야 하므로 `rawPorts` 에 들어간다.
- *
- * `usedIn` 은 **같은 부모를 여러 자식이 먹일 때**(같은 품목을 두 노드가 생산) 부모 입력
- * 포트를 두 번 쓰지 않게 하는 장부다.
- */
-function pairHopPorts(
-  childMod: GeneratedModule,
-  parentMod: GeneratedModule,
-  item: string,
-  usedIn: Set<string>,
-  mismatches: string[],
-): { out: ModulePort; inp: ModulePort }[] {
-  const outs = childMod.outputPorts.filter((p) => p.line.name === item);
-  const ins = parentMod.inputPorts.filter((p) => p.line.name === item && !usedIn.has(p.chest.id));
-  const pairs: { out: ModulePort; inp: ModulePort }[] = [];
-
-  // ① 신원이 있는 쪽 — 조회. 배열 위치가 아니라 linkId 로 짝을 찾는다.
-  const insById = new Map(ins.filter((p) => p.linkId !== undefined).map((p) => [p.linkId!, p]));
-  const exchangeableOuts: ModulePort[] = [];
-  for (const out of outs) {
-    if (out.linkId === undefined) { exchangeableOuts.push(out); continue; }
-    const inp = insById.get(out.linkId);
-    if (!inp) {
-      mismatches.push(`${out.linkId}: no matching parent input port (child emitted, parent didn't)`);
-      continue;
-    }
-    usedIn.add(inp.chest.id);
-    insById.delete(out.linkId);
-    pairs.push({ out, inp });
-  }
-
-  // ② 신원이 없는 쪽(옛 탭/다이렉트) — 교환 가능이라 위치-zip 이 정답이다(기존 동작 그대로).
-  const exchangeableIns = ins.filter((p) => p.linkId === undefined && !usedIn.has(p.chest.id));
-  for (let i = 0; i < Math.min(exchangeableOuts.length, exchangeableIns.length); i++) {
-    usedIn.add(exchangeableIns[i].chest.id);
-    pairs.push({ out: exchangeableOuts[i], inp: exchangeableIns[i] });
-  }
-
-  return pairs;
-}
-
 export interface PackResult {
   placements: ModulePlacement[];
   hops: HopSpec[];
@@ -257,84 +179,6 @@ export interface PackResult {
 // ─────────────────────────────────────────────────────────────────────────────
 // 진입점
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 한 엣지(자식→부모, 한 품목)의 [MachineLink] 목록을 spec 의 rate·count 에서 유도.
- * rate 나 처리량을 모르면 `undefined`(지어내지 않는다).
- *
- * **논리 층 — 좌표·전략 무관.** 자식 머신당 산출 = 클러스터 산출 ÷ 대수, 부모 머신당
- * 수요 = 클러스터 수요 ÷ 대수. 인서터 처리량은 보수적으로 min(normal, long)([insertingPlanner]
- * 의 tapCap 과 동일), 벨트는 가장 빠른 티어. Phase 2(출력 emit)가 이 결과를 소비한다.
- */
-export function edgeMachineLinks(
-  child: NodeSpec,
-  parent: NodeSpec,
-  item: string,
-  config: PackConfig,
-): MachineLink[] | undefined {
-  // 팔 하나의 처리량 = [SupplyCapacity.tapCapacity] — **여기서 다시 유도하지 않는다.**
-  // 예전엔 `min(throughput.normal, throughput.long)` 을 자체 계산했는데, 같은 값을
-  // moduleWizard 도 따로 계산해 `tapCapacity` 에 담고 있었다. 유도가 두 곳에 있으면 한쪽만
-  // 고쳐도 조용히 어긋난다 — 실제로 그렇게 어긋났다(2026-07-22 벨트 포화). 한 곳만 읽는다.
-  const tp = child.supplyCapacity?.tapCapacity ?? 0;
-  const belt = config.belts?.[0]?.throughput ?? 0;
-  if (tp <= 0 || belt <= 0 || child.count <= 0 || parent.count <= 0) return undefined;
-  const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);
-  const inTotal = parent.supplyCapacity?.lineRates?.get(`input:${item}`);
-  if (outTotal === undefined || inTotal === undefined) return undefined;
-  return allocateMachineLinks({
-    childCount: child.count,
-    parentCount: parent.count,
-    childProduction: outTotal / child.count,
-    parentDemand: inTotal / parent.count,
-    item,
-    inserterThroughput: tp,
-    beltThroughput: belt,
-  });
-}
-
-/**
- * 한 엣지의 링크를 **벨트**로 — **링크 하나 = 벨트 하나 = 포트 한 쌍**(v1, 2026-07-22).
- *
- * 예전엔 여기서 같은 (품목, 자식 머신)의 연속 링크를 `min(그릇, 자식 머신 좌석)` 까지 한
- * 벨트로 묶었다. 그 병합이 부모 머신의 **인접**을 요구했고(벨트 하나가 여럿을 관통해야
- * 하므로), 인접이 클러스터를 세로 한 줄로 못박아 한 면의 벨트 줄 수를 팔 길이에 묶었다 —
- * 채널 트랙 하나 값으로는 너무 비쌌다. 되살릴 때는 채널 층에서 합친다(같은 품목 벨트끼리는
- * 합류해도 오염이 없다).
- *
- * 이 함수는 간선당 [packModuleTree] 안에서 **한 번만** 불린다(사전 캐시) — 자식(출력 emit)과
- * 부모(입력 emit)는 그 결과 [MachineLinkGroup] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.
- * `id`([linkGroupId])도 여기서 한 번 매겨져 그룹 안에 실린다.
- */
-export function edgeLinkGroups(
-  child: NodeSpec,
-  parent: NodeSpec,
-  item: string,
-  config: PackConfig,
-): MachineLinkGroup[] | undefined {
-  // 유체는 팔로 나르지 않는다 — [externalLineGroups] 가 외부 줄에 두는 것과 **같은 가드**다.
-  // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
-  // (물을 인서터로 옮길 수 없다), `linkedKeys` 에 실려 아이템 방출기
-  // (emitOutputLinks/emitInputLinks)로 흘러가 트렁크 파이프 경로를 통째로 건너뛴다.
-  // 그러면 유체 포트가 안 생기고 → 홉도 안 생긴다(2026-07-26 브라우저 실측에서 발견).
-  //
-  // 링크를 안 만든다고 부모-자식 유체 연결이 끊기는 게 아니다 — [emitTrunkPipe] 가 같은
-  // 줄로 포트를 내고, [pairHopPorts] 가 이름으로 짝지어 **유체 홉**이 된다. 그게 설계다
-  // (docs/auto-layout-wizard.fluid-hop-reservation.md).
-  if (child.lines.find((l) => l.role === "output" && l.name === item)?.kind !== "belt") {
-    return undefined;
-  }
-  const links = edgeMachineLinks(child, parent, item, config);
-  if (!links || links.length === 0) return undefined;
-  // 내부 링크는 양쪽 다 머신 하나씩 — 자식이 내놓고 부모가 받는다([MachineLinkGroup]).
-  // 외부 줄은 한쪽이 비는데(밖), 그건 다른 호출부가 만든다.
-  return links.map((l, gi) => ({
-    id: linkGroupId(child.id, parent.id, item, gi),
-    item: l.item,
-    from: new Map([[l.fromMachine, l.inserterCount]]),
-    to: new Map([[l.toMachine, l.inserterCount]]),
-  }));
-}
 
 export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
   const byId = new Map(specs.map((s) => [s.id, s]));
@@ -785,110 +629,9 @@ function materializeChannelGeometry(args: {
   return { hops, reservedExportCells };
 }
 
-/** marginNeeds 만큼 bbox 프레임을 넓힌다(상자 seat 자리 예약, ②가 소비). */
-function expandBbox(
-  b: { x: number; y: number; w: number; h: number },
-  m: { N: boolean; S: boolean; W: boolean; E: boolean },
-): { x: number; y: number; w: number; h: number } {
-  const M = PERIMETER_MARGIN;
-  const l = m.W ? M : 0, r = m.E ? M : 0, t = m.N ? M : 0, bt = m.S ? M : 0;
-  return { x: b.x - l, y: b.y - t, w: b.w + l + r, h: b.h + t + bt };
-}
-
-/**
- * 살아남은 외부상자 포트(raw 입력 + 루트 출력)를 모아 exit-lane 을 배정한다.
- * 모듈 내부를 안 보는 planner 의 입력(변·abs y·depth·열 밴드)만 준비.
- */
-function planLanes(
-  specs: NodeSpec[],
-  oriented: Map<string, { module: GeneratedModule; orientation: Orientation }>,
-  topY: Map<string, number>,
-  /** 홉으로 짝지어진 상자 id — 이 포트들은 belt 로 이어지므로 반출 대상이 아니다. */
-  pairedChestIds: ReadonlySet<string>,
-  maxDepth: number,
-  absPortY: (id: string, anchorY: number) => number,
-): LanePlan {
-  // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
-  // (X변 우선), N/S 레인의 chest 는 트렁크가 레인을 따라 수평으로 자라 코너 어깨
-  // (x·y 둘 다 bbox 밖)에 앉을 수 있어 W/E 로 오분류된다 — N 레인 상자는 위가 전역
-  // 마진이라 self-N 직진이 정답인데 채널 우회로 배정되는 낭비/실패 위험.
-  const sideOf = (p: ModulePort): ExitEdge => p.meta.side;
-  const ports: LanePortInput[] = [];
-  let gyMin = Infinity, gyMax = -Infinity;
-  const bandsByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
-  for (const s of specs) {
-    const mod = oriented.get(s.id)!.module;
-    const ext = moduleExtent(mod);
-    const top = topY.get(s.id)!;
-    const bottom = top + ext.h - 1;
-    gyMin = Math.min(gyMin, top);
-    gyMax = Math.max(gyMax, bottom);
-    (bandsByDepth.get(s.depth) ?? bandsByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
-    // 반출 대상 = **홉으로 짝지어지지 않은 포트 전부**. 입력이면 외부 공급 무한상자,
-    // 출력이면 무한 sink — 둘 다 perimeter 로 나가야 한다. (1:1 방출이라 자식 출력이
-    // 부모 입력보다 많으면 남는 출력도 여기 들어온다.) wayOuts = 모듈이 답해준
-    // "나갈 수 있는 방향들" — 배정이 못 쓰는 방향을 예약하지 않게 한다.
-    for (const p of [...mod.inputPorts, ...mod.outputPorts])
-      if (!pairedChestIds.has(p.chest.id))
-        ports.push({
-          id: p.chest.id,
-          role: p.line.role,
-          depth: s.depth,
-          side: sideOf(p),
-          anchorY: absPortY(s.id, p.anchor.y),
-          wayOuts: p.moduleWayOuts,
-        });
-  }
-  const ctx: LaneContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, bandsByDepth };
-  return planPerimeterLanes(ports, ctx);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // extent / 이동 / 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** 모듈이 차지하는 실제 범위 = 머신 footprint ∪ 모든 placed 셀(튀어나온 포트 상자 포함). */
-export function moduleExtent(mod: GeneratedModule): { x: number; y: number; w: number; h: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const mk = (x: number, y: number) => {
-    minX = Math.min(minX, x); minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-  };
-  for (const m of mod.machines) {
-    mk(m.origin.x, m.origin.y);
-    mk(m.origin.x + m.size.w - 1, m.origin.y + m.size.h - 1);
-  }
-  for (const c of mod.cells) mk(c.x, c.y);
-  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
-}
-
-function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedModule {
-  const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
-  const ctn = (c: Container): Container => ({ ...c, origin: pt(c.origin) });
-  const chestById = new Map<string, Container>();
-  const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
-  // **`...p` / `...mod` 를 먼저 편다.** 이 함수는 평행이동만 하는데, 예전엔 필드를 하나씩 적어
-  // 재구성해서 **좌표와 무관한 필드가 새로 생길 때마다 여기서 조용히 사라졌다** — 옮길 것만
-  // 덮어쓰면 그 실수가 구조적으로 불가능해진다(2026-07-24 `beltMerges` 가 여기서 증발했다.
-  // 같은 모양의 재구성이 moduleTransform 에도 있었고 거기서도 `supply` 를 잃고 있었다).
-  const port = (p: ModulePort): ModulePort => ({
-    ...p,
-    anchor: pt(p.anchor),
-    tapAnchor: pt(p.tapAnchor),
-    chest: chestById.get(p.chest.id) ?? ctn(p.chest),
-    cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
-  });
-  return {
-    ...mod,
-    machines: mod.machines.map(ctn),
-    chests,
-    cells: mod.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
-    ring: mod.ring.map(pt),
-    inputPorts: mod.inputPorts.map(port),
-    outputPorts: mod.outputPorts.map(port),
-    bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
-  };
-}
 
 function unionExtent(placements: ModulePlacement[]): { x: number; y: number; w: number; h: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

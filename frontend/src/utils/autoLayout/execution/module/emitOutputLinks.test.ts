@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
 import type { MachineLink } from "../../planner/link/allocateMachineLinks";
 import type { MachineLinkGroup } from "../../module/machineLinkGroup";
-import { directionToVector } from "../../containerRouting";
+import { directionToVector } from "../../planner/containerRouting";
 
 /**
  * **한 그룹의 벨트가 다른 그룹의 벨트로 흘러들면 안 된다.**

@@ -15,10 +15,10 @@
  * 1차 구현 범위: item kind 만. fluid kind / underground 변형은 후속 커밋에서.
  */
 
-import { EntityType } from '../../types/layout';
-import type { Direction } from '../../types/layout';
-import type { Area, UndergroundCorridor } from './containerModel';
-import { cellKey } from './util/helper';
+import { EntityType } from '../../../types/layout';
+import type { Direction } from '../../../types/layout';
+import type { Area, UndergroundCorridor } from '../containerModel';
+import { cellKey } from '../util/helper';
 
 export function buildOccupancy(area: Area, extra?: Area): Set<string> {
   const blocked = new Set<string>();

@@ -22,7 +22,7 @@ import type {
 import { vectorToDirection, PIPE_BLOCK_GROUP } from '../util/helper';
 import { makeBeltCell } from '../util/cellBuilder';
 // 타입 전용 — 런타임 간선이 아니므로 containerRouting 과 순환이 되지 않는다.
-import type { DijkstraResult, JumpEdge } from '../containerRouting';
+import type { DijkstraResult, JumpEdge } from '../planner/containerRouting';
 
 /**
  * 한 라우팅을 area 에 *적용* — 라우팅의 placed cells 를 area.placed 에 push.
