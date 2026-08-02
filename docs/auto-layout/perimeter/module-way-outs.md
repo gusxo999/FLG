@@ -2,9 +2,9 @@
 tags: [auto-layout, placement, routing]
 ---
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
-> **관련 문서:** [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) — 예약 철학의 본문,
-> [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) — 코너 어깨 상자가 생기는 경위
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md)
+> **관련 문서:** [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) — 예약 철학의 본문,
+> [.ns-face-relief](../module/ns-face-relief.md) — 코너 어깨 상자가 생기는 경위
 
 # moduleWayOuts — "이 상자가 방을 빠져나갈 수 있는 문은 어느 쪽인가"
 
@@ -19,7 +19,7 @@ tags: [auto-layout, placement, routing]
 
 [[용어사전#채널 (channel)|채널]](모듈 사이 복도)의 **폭은 그 안을 지날 벨트 수(트랙 수)만큼 미리 예약**해서 정해진다.
 예약의 목적은 "깔기 전에 자리를 잡아 나중에 막히는 일을 없애는 것"이다
-([.channel-geometry-reservation §1](auto-layout-wizard.channel-geometry-reservation.md)).
+([.channel-geometry-reservation §1](../channel/channel-geometry-reservation.md)).
 
 그런데 반출 경로 예약([`perimeterLanePlanner`](../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts))은
 상자의 **`meta.side`**(포트 계획기가 배정한 레인 면) 만 보고 출구를 정했다. 모듈 내부는
@@ -43,7 +43,7 @@ tags: [auto-layout, placement, routing]
 ```
 
 - copper-cable 상자는 **코너 어깨**에 앉는다(`face=S` 인데 `meta.side=E`). count≥2 기둥에서
-  트렁크가 레인을 따라 자라며 상자가 끝면으로 밀려난 결과다([.ns-face-relief](auto-layout-wizard.ns-face-relief.md)).
+  트렁크가 레인을 따라 자라며 상자가 끝면으로 밀려난 결과다([.ns-face-relief](../module/ns-face-relief.md)).
 - 예약기는 `side=E` 만 보고 **"동쪽 채널로 우회"** 로 배정하고, 채널에 트랙 x=10 을 잡아
   **복도를 한 칸 넓혔다.**
 - 그런데 동쪽으로 가는 가로 진입은 **형제 포트(electronic-circuit)의 세로 트렁크**에 막혀 있다.
@@ -84,7 +84,7 @@ tags: [auto-layout, placement, routing]
 **자유도**다. 나중에 더 **까다로운 제약**을 가진 쪽(절단선이 납품 경로를 가둠, 채널 트랙
 부족 등)이 **양보를 요구**할 수 있으므로, planner 가 미리 하나로 못박아 자유도를 없애면 안 된다.
 느슨한 결정은 느슨하게 두고, 제약이 센 쪽이 먼저 고르게 한다(스도쿠 원리 —
-[.priority-ordering](auto-layout-wizard.priority-ordering.md)).
+[.priority-ordering](../common/priority-ordering.md)).
 
 `LaneAssignment` 의 평평한 필드(`exitEdge`/`host`/`interval`/`entry`)는 **현재 확정**이고,
 `options` 가 **남은 자유도**다. 장부가 제약 때문에 다른 후보로 양보시킬 수 있다.

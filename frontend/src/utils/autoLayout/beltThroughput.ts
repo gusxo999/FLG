@@ -25,7 +25,7 @@ export function beltThroughput(entity: Entity | undefined, override?: number): n
 
 /**
  * **determineBeltCount** — 이 초당 수요를 나르려면 **벨트를 어떤 걸 몇 줄** 깔아야 하나
- * (2026-07-12 사용자 명명, [용어사전](../../../docs/용어사전.md#determinebeltcount)).
+ * (2026-07-12 사용자 명명, [용어사전](../../../../docs/용어사전.md#determinebeltcount)).
  *
  * 규칙(2026-07-16 사용자 지정):
  *  1. **가장 빠른 벨트부터** 채워 수요를 감당한다.

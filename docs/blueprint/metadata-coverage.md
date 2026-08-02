@@ -19,7 +19,7 @@ tags: [blueprint]
 | `entity_number` | uint32 | ✅ | ✅ | 1부터 순차 |
 | `name` | string | ✅ | ✅ | Factorio 내부 이름 |
 | `position` | MapPosition | ✅ | ✅ | 그리드 좌표(x,y) |
-| `direction` | defines.direction | | ✅ | Factorio 2.0 16-방향 인코딩(0/4/8/12 = N/E/S/W). cardinal 4방향만 현재 지원, sub-cardinal(곡선 레일) 미지원. 1.x 블루프린트 import 시 ×2 자동 업그레이드. 자세한 의미는 [direction-encoding.md](direction-encoding.md) |
+| `direction` | defines.direction | | ✅ | Factorio 2.0 16-방향 인코딩(0/4/8/12 = N/E/S/W). cardinal 4방향만 현재 지원, sub-cardinal(곡선 레일) 미지원. 1.x 블루프린트 import 시 ×2 자동 업그레이드. 자세한 의미는 [direction-encoding.md](../factorio/direction-encoding.md) |
 | `recipe` (entity별 확장) | string | | ✅ | 별도 RecipeBinding UI |
 | `items` | BlueprintInsertPlan[] | | ❌ | **모듈, 연료, 인벤토리 아이템 (BIG)** |
 | `quality` | string | | ❌ | 일반/uncommon/rare/epic/legendary |

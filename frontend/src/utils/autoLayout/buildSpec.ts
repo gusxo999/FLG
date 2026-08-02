@@ -99,7 +99,7 @@ export interface BuildSpec {
  * 프로토타입 사전에 없거나, `max_underground_distance` 가 0/미정.
  */
 /**
- * **[tapCapacity](../../../docs/용어사전.md) — 팔 하나가 초당 몇 개를 옮기나.**
+ * **[tapCapacity](../../../../docs/용어사전.md) — 팔 하나가 초당 몇 개를 옮기나.**
  * [SupplyCapacity.tapCapacity](./module/clusterPortPlanner.ts) 에 담기는 그 값이고,
  * 이 함수가 **유일한 출처**다.
  *

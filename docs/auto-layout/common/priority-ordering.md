@@ -4,8 +4,8 @@ tags: [auto-layout, placement, routing]
 
 # 우선순위 정리 — 배치·라우팅의 모든 순서 결정점
 
-> **부모 문서:** [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)
-> **관련 문서:** [.known-limits](auto-layout-wizard.known-limits.md), [.entity-roles](entity-roles.md)
+> **부모 문서:** [auto-layout-wizard.placement-search.md](placement-search.md)
+> **관련 문서:** [.known-limits](known-limits.md), [.entity-roles](entity-roles.md)
 > **목적:** 자동 레이아웃 파이프라인 곳곳에 흩어진 "무엇을 먼저 하나" 결정을 한곳에 모아, 각각이 **정합성 보장(불변)** 인지 **품질 최적화(교체 가능)** 인지 분류한다.
 
 ---
@@ -14,7 +14,7 @@ tags: [auto-layout, placement, routing]
 
 우선순위는 단일 모듈의 문제가 아니다. **배치(머신·외부상자 위치 선정)** 와 **라우팅(경로·포트·운반체 선택)** 양쪽에 독립적으로 존재하고, 종류가 다르다:
 
-- **배치의 우선순위 = 패킹 품질.** place-then-grow 구조([placement-search §3 단일 링 불변식](auto-layout-wizard.placement-search.md))에서 한 연결이 실패하면 링이 통째로 커진다. 따라서 "누구를 먼저 놓나"가 최종 bbox 크기를 좌우한다.
+- **배치의 우선순위 = 패킹 품질.** place-then-grow 구조([placement-search §3 단일 링 불변식](placement-search.md))에서 한 연결이 실패하면 링이 통째로 커진다. 따라서 "누구를 먼저 놓나"가 최종 bbox 크기를 좌우한다.
 - **라우팅의 우선순위 = 비용·성공.** 어느 포트·어느 경로·어느 운반체를 먼저 시도하느냐가 belt 길이·꺾임·성공 여부를 좌우한다.
 
 ---
@@ -39,10 +39,10 @@ tags: [auto-layout, placement, routing]
 | P3  | **ring 성장 변 선택**            | 실패한 chest의 머신 최근접 변만 +1 (전체 링 성장 회피)                | **Q** | [areaUnification.ts:234](../frontend/src/utils/autoLayout/areaUnification.ts#L234)                                                                                 |
 | P4  | **포트 페어 정렬** (라우팅 fallback) | 모든 포트 조합 manhattan 거리 오름차순                          | **Q** | [routeFallback.ts:143](../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts#L143)                                                                                     |
 | P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../frontend/src/utils/autoLayout/manualEdit/routeFallback.ts#L73)                                                                                       |
-| P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](auto-layout-wizard.placement-search.md)                                                                                                    |
-| P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](auto-layout-wizard.placement-search.md)                                                                                                   |
-| P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](auto-layout-wizard.fluid-hop-reservation.md) |
-| P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](auto-layout-wizard.fluid-hop-reservation.md) |
+| P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](placement-search.md)                                                                                                    |
+| P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](placement-search.md)                                                                                                   |
+| P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../frontend/src/utils/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](../channel/fluid-hop-reservation.md) |
+| P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../frontend/src/utils/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](../channel/fluid-hop-reservation.md) |
 
 ### P10·P11 — "제약 센 것" 이 아니라 "실패하면 비싼 것" 먼저 (2026-07-25)
 
@@ -103,7 +103,7 @@ P2는 `machine.origin`(좌상단 코너) 기준 거리라, 멀티타일 머신(3
 
 ## 5. 결정성 불변식
 
-모든 우선순위 정렬은 [placement-search §8 결정성](auto-layout-wizard.placement-search.md)([[용어사전#결정성 (determinism)|결정성]])을 지켜야 한다 — 난수 금지, **안정 정렬 + 명시적 [[용어사전#tie-break|tie-break]]**. 동일 입력 → 동일 출력을 보장해야 한다. 새 우선순위 키를 추가할 때 동률 처리(예: `machineId → chestId` 사전순)를 반드시 명시한다.
+모든 우선순위 정렬은 [placement-search §8 결정성](placement-search.md)([[용어사전#결정성 (determinism)|결정성]])을 지켜야 한다 — 난수 금지, **안정 정렬 + 명시적 [[용어사전#tie-break|tie-break]]**. 동일 입력 → 동일 출력을 보장해야 한다. 새 우선순위 키를 추가할 때 동률 처리(예: `machineId → chestId` 사전순)를 반드시 명시한다.
 
 ---
 

@@ -5,8 +5,8 @@ aliases: [유체홉예약, fluid-hop-reservation]
 
 # 유체 홉을 채널 기하 예약 안으로 — 설계 계획서
 
-> **부모 문서:** [[auto-layout-wizard.channel-geometry-reservation]] — 통합 장부(같은 쪽 판정)의 원 설계
-> **관련:** [[auto-layout-wizard.fluid-hop]] · [[auto-layout-wizard.trunk-pipe]] · [[pipe-semantics]]
+> **부모 문서:** [[channel-geometry-reservation]] — 통합 장부(같은 쪽 판정)의 원 설계
+> **관련:** [[fluid-hop]] · [[trunk-pipe]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 구현 완료.** 리팩토링 Phase 4-B(P4-4 · P4-5).
 > 검증 = `planner/fluidHopReservation.test.ts`(11개) + 전체 521 테스트.
@@ -281,7 +281,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 못 비킨다. 지금 계획은 이걸 거절로 보낸다. 계측에서 이 케이스가 실제로 흔하면 두 갈래가 있다:
 
 - **(가) 지하파이프 횡단 도입** — D2 를 뒤집어 pipe-to-ground 페어링까지 장부에 모델링.
-  → **설계 완료: [[auto-layout-wizard.fluid-underground-crossing]]**. 조사해 보니 페어링
+  → **설계 완료: [[fluid-underground-crossing]]**. 조사해 보니 페어링
   규칙(`isJumpAllowed`)이 라우터에 이미 있고 장부의 행이 이미 절대 좌표라, 예상보다 작다.
 - **(나) 채널 밖 우회** — 유체 한 줄을 채널이 아니라 모듈 위/아래(N/S 마진)로 돌린다. 장부에 네 번째 경로 종류가 생긴다.
 

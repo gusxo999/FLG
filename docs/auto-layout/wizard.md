@@ -12,8 +12,8 @@ tags: [auto-layout, placement, routing]
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
 > `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
-> 흐름은 [[code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
-> 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
+> 흐름은 [[code-folders]], 링크 모델은 [[machine-link]],
+> 채널 예약은 [[channel-geometry-reservation]] 를 보라.
 >
 
 
@@ -25,11 +25,11 @@ tags: [auto-layout, placement, routing]
 
 | 문서 | 주제 |
 |------|------|
-| [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5) |
-| [auto-layout-wizard.s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 — 본체는 코드에서 삭제됨 |
-| [entity-roles.md](entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
-| [auto-layout-wizard.known-limits.md](auto-layout-wizard.known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
-| [auto-layout-wizard.control-behavior-scope.md](auto-layout-wizard.control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
+| [auto-layout-wizard.placement-search.md](common/placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어(§5.5) |
+| [auto-layout-wizard.s-layer-channel-reservation.md](channel/s-layer-channel-reservation.md) | ↳ **[역사]** 전략 S-LAYER 의 레이어 간 라우팅 채널 예약 단계 — 본체는 코드에서 삭제됨 |
+| [entity-roles.md](common/entity-roles.md) | ↳ 위저드가 다루는 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
+| [auto-layout-wizard.known-limits.md](common/known-limits.md) | ↳ 알려진 한계 + 우선순위(P0~P3) |
+| [auto-layout-wizard.control-behavior-scope.md](../blueprint/control-behavior-scope.md) | ↳ 위저드가 추적하는 ControlBehavior 필드 범위 |
 
 ---
 
@@ -97,7 +97,7 @@ tags: [auto-layout, placement, routing]
 ## 알고리즘
 
 알고리즘 본문 (컨테이너 모델, 조건 등록부, 라우팅, 모듈 구성, **배치 전략 레이어**) 은
-[auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) 가
+[auto-layout-wizard.placement-search.md](common/placement-search.md) 가
 **단일 출처**다. 본 문서에서는 위저드 UI 와 알고리즘 입출력의 연결만 다룬다.
 
 ### 입력 — `WizardInput`

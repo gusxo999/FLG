@@ -4,15 +4,15 @@ tags: [auto-layout, placement, routing]
 
 # 자동완성 위저드 — 알려진 약점 및 한계
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
+> **관련 문서:** [.placement-search](placement-search.md), [.s-layer-channel-reservation](../channel/s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
 
 본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../frontend/src/utils/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
 >
-> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 모듈 파이프라인의 트렁크 파이프 + 유체 홉으로 처리된다 ([[auto-layout-wizard.fluid-hop]] · [[auto-layout-wizard.trunk-pipe]]).
+> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 모듈 파이프라인의 트렁크 파이프 + 유체 홉으로 처리된다 ([[fluid-hop]] · [[trunk-pipe]]).
 
 ---
 
@@ -131,7 +131,7 @@ tags: [auto-layout, placement, routing]
 - [[용어사전#O1|O1]](정사각형 근접)은 [[용어사전#squarenessPenalty|`squarenessPenalty`]] 로 *계산만* 되고 선택에 쓰이지 않는다.
 
 **원인:**
-- 설계상 단일 패스([placement-search.md](auto-layout-wizard.placement-search.md) §8). 다수 후보 전략(S-EXH/S-MEMO/S-DP)은 미구현.
+- 설계상 단일 패스([placement-search.md](placement-search.md) §8). 다수 후보 전략(S-EXH/S-MEMO/S-DP)은 미구현.
 
 **해결 방향:**
 - 형태/순서 변주를 소수 생성하는 전략 추가, 또는 사용자 드래그로 사후 조정(드래그는 별도 기능).
@@ -146,10 +146,10 @@ tags: [auto-layout, placement, routing]
 - 같은 ingredient 를 여러 부모가 요청해도 트리가 품목을 중복 전개해 각자 별도 라인을 만든다(공유 합류 없음).
 
 **원인:**
-- 트리 펼침이 DAG 가 아닌 트리. 공유 자식은 명시적 비-목표([placement-search.md](auto-layout-wizard.placement-search.md) §10.1).
+- 트리 펼침이 DAG 가 아닌 트리. 공유 자식은 명시적 비-목표([placement-search.md](placement-search.md) §10.1).
 
 **해결 방향:**
-- DAG 합류(허브) 도입 시 채널의 더미/트렁크 메커니즘이 받쳐줌([s-layer-channel-reservation.md](auto-layout-wizard.s-layer-channel-reservation.md) §6).
+- DAG 합류(허브) 도입 시 채널의 더미/트렁크 메커니즘이 받쳐줌([s-layer-channel-reservation.md](../channel/s-layer-channel-reservation.md) §6).
 
 ---
 
@@ -186,7 +186,7 @@ tags: [auto-layout, placement, routing]
 옛 S-LAYER 경로가 Phase 3 에서 삭제되면서 무방비로 파이프를 깔던 자리가 없어졌다.
 유체는 이제 전부 모듈 파이프라인을 타며 `PipeFlow` 가드를 거친다. 계획 경로도 같은
 지도를 본다(`plannedChainClear` 의 `fluidBlocked` —
-[.fluid-hop-reservation §8.3](auto-layout-wizard.fluid-hop-reservation.md)).
+[.fluid-hop-reservation §8.3](../channel/fluid-hop-reservation.md)).
 
 > **다 사라진 건 아니다.** `execution/emitPath.emitFluidPath` 는 남아 있고, 사용자 드래그
 > 재라우팅(`areaUnification`)이 그걸 부른다. **그 경로는 여전히 가드를 안 거친다** —
@@ -210,7 +210,7 @@ tags: [auto-layout, placement, routing]
 > **해소되어 삭제된 항목 (2026-07-25 감사):**
 > - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).
 > - ~~트렁크 병합 v1 한계~~ — `clusterTrunkMerge`·`externalMergePass` 자체가 삭제됐다.
->   모듈 경로는 [[auto-layout-wizard.machine-link]] 링크 모델로 공급을 나눈다.
+>   모듈 경로는 [[machine-link]] 링크 모델로 공급을 나눈다.
 > - ~~collect 트렁크 코너 방향 반전 버그~~ — 처방대로 고쳐졌고, 그 뒤 씨앗 그리디
 >   트렁크(`trunkEmit`) 자체가 삭제됐다(2026-07-26).
 >

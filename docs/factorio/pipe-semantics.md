@@ -4,8 +4,8 @@ tags: [factorio-data, routing, auto-layout]
 
 # 파이프의 작동 방식 — 벨트와 무엇이 같고 무엇이 다른가
 
-> **짝 문서:** [entity-roles §C 고체 운반(벨트)](entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식
-> **관련 문서:** [fluid-box-semantics](fluid-box-semantics.md) (유체 상자의 면·이름) · [auto-layout-wizard.trunk-pipe](auto-layout-wizard.trunk-pipe.md) (트렁크 파이프) · [용어사전](용어사전.md)
+> **짝 문서:** [entity-roles §C 고체 운반(벨트)](../auto-layout/common/entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식
+> **관련 문서:** [fluid-box-semantics](fluid-box-semantics.md) (유체 상자의 면·이름) · [auto-layout-wizard.trunk-pipe](../auto-layout/module/trunk-pipe.md) (트렁크 파이프) · [용어사전](../용어사전.md)
 
 파이프는 "벨트의 액체 버전" 이 **아니다.** 겉보기엔 둘 다 "물건을 A 에서 B 로 나르는 1×1 칸" 이지만,
 게임이 정한 규칙이 근본적으로 다르고, 그 차이가 우리 배치 알고리즘의 **거의 모든 선택**을 바꾼다.
@@ -26,7 +26,7 @@ tags: [factorio-data, routing, auto-layout]
 | **줄 수 결정** | 처리량이 모자라면 **줄을 늘린다**(`determineBeltCount`) | **늘릴 일이 없다** — 유체판 대응물이 없다 |
 | **지하 변형** | `underground-belt` — 같은 prototype 끼리만 간섭 | `pipe-to-ground` — **prototype 무관 전부** 간섭 |
 | **잘못 이어졌을 때** | 아이템이 섞여 눈에 띔 | **조용하다.** 화면상 멀쩡하고 라우팅도 "성공"이라 보고함 |
-| **합류 가드** | [`collectBeltFlow`](용어사전.md#collectbeltflow) + Dijkstra lazy-constraint | [`collectPipeFlow`](용어사전.md#pipeflow--collectpipeflow) + 예약 경로 검사 |
+| **합류 가드** | [`collectBeltFlow`](../용어사전.md#collectbeltflow) + Dijkstra lazy-constraint | [`collectPipeFlow`](../용어사전.md#pipeflow--collectpipeflow) + 예약 경로 검사 |
 
 ---
 
@@ -63,7 +63,7 @@ tags: [factorio-data, routing, auto-layout]
   유체 두 줄이 한 관망이 되는 건 게임에서도 우리 모델에서도 잃는 게 없다. 그래서 합류 가드가
   막는 건 오직 **다른 유체**다.
 - 딸린 그림: **모듈 여러 개가 유체 공급을 공유**할 수 있다(무한파이프 하나로 N 모듈). 아이템은
-  처리량 때문에 못 하는 일이다. (아직 미구현 — [용어사전 `joinableTile`](용어사전.md#pipeflow--collectpipeflow))
+  처리량 때문에 못 하는 일이다. (아직 미구현 — [용어사전 `joinableTile`](../용어사전.md#pipeflow--collectpipeflow))
 
 > ### 규모를 실측했다 (2026-07-25)
 >
@@ -77,7 +77,7 @@ tags: [factorio-data, routing, auto-layout]
 > 유체 쪽 병목은 생기지 않는다. 트렁크 한 줄 정책은 이 규모에서 그대로 유효하다.
 >
 > 실측에서 실제로 문제였던 건 유량이 아니라 **형태**다 — 20대에서 13×64 로 늘어진다.
-> → [[auto-layout-wizard.known-limits]] §1.
+> → [[known-limits]] §1.
 
 ## 3. 파이프는 머신 벽 아무 데나 붙지 않는다
 
@@ -112,7 +112,7 @@ tags: [factorio-data, routing, auto-layout]
 - 남의 머신 **출력** 유체 상자에 스치면 → 그 머신의 생산물이 내 관망으로 **새어나간다.**
 
 둘 다 **화면상으로는 멀쩡하고, 라우팅은 "성공" 이라고 보고한다.** 그래서 파이프를 깔기 전에
-"밟으면 안 되는 칸" 의 지도를 만들어 검사한다 = [`collectPipeFlow` / `PipeFlow`](용어사전.md#pipeflow--collectpipeflow)
+"밟으면 안 되는 칸" 의 지도를 만들어 검사한다 = [`collectPipeFlow` / `PipeFlow`](../용어사전.md#pipeflow--collectpipeflow)
 ([module/pipeFlow.ts](../frontend/src/utils/autoLayout/module/pipeFlow.ts)).
 
 벨트 가드와의 대칭:
@@ -144,18 +144,18 @@ tags: [factorio-data, routing, auto-layout]
 | 자리 | 어떻게 | 합류 가드 |
 |---|---|---|
 | **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 배치 실패(폴백 없음) |
-| **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
+| **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](../용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
 | **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 상자만 skip(로컬 ring 잔류) |
-| **옛 경로** (`execution/emitPath.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](auto-layout-wizard.known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
+| **옛 경로** (`execution/emitPath.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](../auto-layout/common/known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
 
 스파인 폴백이 면 하나를 통째로 먹는 대가는 **케이스 B** 로 계산돼 있다: 그 면엔 일반 인서터가
 앉을 자리가 없어서 긴팔 인서터가 depth 2 에 앉아 depth 4 에서 집는다 → 그 면의 아이템 레인이
-**하나뿐**이다. → [auto-layout-wizard.trunk-pipe](auto-layout-wizard.trunk-pipe.md)
+**하나뿐**이다. → [auto-layout-wizard.trunk-pipe](../auto-layout/module/trunk-pipe.md)
 
 ---
 
 ## 아직 안 만든 것
 
-- **지하 파이프 일반 라우팅** — 새 경로의 지하파이프는 지금 [pipeJumpToClusterPipe](용어사전.md#pipejumptoclusterpipe) **한 가지 모양**뿐이다. 임의 경로에서 장애물을 지하로 넘는 일반 라우팅은 나중에(잊지 말 것).
+- **지하 파이프 일반 라우팅** — 새 경로의 지하파이프는 지금 [pipeJumpToClusterPipe](../용어사전.md#pipejumptoclusterpipe) **한 가지 모양**뿐이다. 임의 경로에서 장애물을 지하로 넘는 일반 라우팅은 나중에(잊지 말 것).
 - **모듈 간 유체 공급 공유**(`joinableTile`) — "같은 유체면 이미 깔린 관을 타고 간다".
 - **펌프**(`pump`) — 자동 배치 미사용. 방향이 있는 유일한 유체 엔티티라 별도 취급이 필요하다.

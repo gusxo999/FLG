@@ -4,7 +4,7 @@ tags: [auto-layout, placement, routing]
 
 # 노출 N/S 면 완화 — count=1 클러스터의 raw 입력 슬롯
 
-> **부모 문서:** [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md) — 모델·전략 단일 출처
+> **부모 문서:** [auto-layout-wizard.placement-search.md](../common/placement-search.md) — 모델·전략 단일 출처
 
 ---
 

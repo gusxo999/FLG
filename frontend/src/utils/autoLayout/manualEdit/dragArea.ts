@@ -5,7 +5,7 @@
  * 다시 깔던 코드다. 배치 파이프라인이 아니라 **사후 편집** 경로다.
  *
  * 지금은 호출자가 없다 — `setRoutingEditSession` 이 제거돼 세션이 항상 null 이다.
- * 무엇을 하려던 코드인지는 [README.md](./README.md) 참조.
+ * 무엇을 하려던 코드인지는 [README.md](../../../../../docs/README.md) 참조.
  */
 
 import type {

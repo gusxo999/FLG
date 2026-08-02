@@ -85,7 +85,7 @@ export function makePipeCell(
  * 터널은 그 반대로 진행한다(containerRouting emitFluidPath 와 같은 컨벤션 — pipeNetwork.ts:226).
  *
  * 지하파이프는 표면에서 `direction` **한 면으로만** 연결된다 — 옆(수직 방향)으론 안 이어진다.
- * 그래서 [ClusterPipeTapCell](../../../../docs/용어사전.md)은 ClusterPipe 줄 **위가 아니라
+ * 그래서 [ClusterPipeTapCell](../../../../../docs/용어사전.md)은 ClusterPipe 줄 **위가 아니라
  * 1칸 안쪽**에 앉는다(줄 위에 앉히면 세로 연속이 끊긴다).
  */
 export function makeUndergroundPipeCell(

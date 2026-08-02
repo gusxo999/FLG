@@ -22,6 +22,11 @@
 - **파사드 API** — 여러 단계를 엮는 것이 책임이다
 - **수동 편집 경로** (`manualEdit/`) — 배치 파이프라인 소속이 아니다
 
+## 읽을 문서
+
+반출 방출은 [perimeter-export](../../../../../docs/auto-layout/perimeter/perimeter-export.md) §3③ 이
+총론이다. 모듈 안쪽 방출은 `docs/auto-layout/module/`.
+
 ## 파일
 
 | 파일 | 무엇을 놓나 |

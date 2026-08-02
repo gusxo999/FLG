@@ -14,12 +14,14 @@
 
 ## 하위 폴더 = 관심사
 
-| 폴더 | 판정 | 내용 |
-|---|---|---|
-| `module/` | **형제 모듈을 모른다** | `planModulePorts`(모듈 안쪽 계획 단일 진입점) · `linkPlanner` |
-| `link/` | 두 모듈의 **식별자**를 안다 | `allocateMachineLinks` — 어느 기계 쌍을 몇 벨트로 |
-| `perimeter/` | **전역 외곽**을 안다 | `wayOuts` |
-| (평면) | 조율·통로 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `moduleHop` |
+| 폴더 | 판정 | 내용 | 문서 |
+|---|---|---|---|
+| `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · `clusterPortPlanner` · `linkPlanner` | `docs/auto-layout/module/` |
+| `link/` | 두 모듈의 **식별자**를 안다 | `allocateMachineLinks` · `edgeLinks` | `docs/auto-layout/link/` |
+| `perimeter/` | **전역 외곽**을 안다 | `wayOuts` · `lanes` | `docs/auto-layout/perimeter/` |
+| (평면) | 조율·통로·탐색 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `moduleHop` · `containerRouting` | `docs/auto-layout/channel/` |
+
+**문서 폴더가 코드 폴더의 거울이다** — 위 표의 오른쪽 폴더를 열면 그 관심사의 설계 문서가 다 있다.
 
 ## 새 파일을 여기 둘지 판정
 

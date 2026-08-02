@@ -2,8 +2,8 @@
 tags: [auto-layout, placement, routing]
 ---
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
-> **관련 문서:** [.placement-search](auto-layout-wizard.placement-search.md), [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md)
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md)
+> **관련 문서:** [.placement-search](placement-search.md), [.channel-geometry-reservation](../channel/channel-geometry-reservation.md)
 
 # auto-layout 코드 폴더 — 두 축으로 나눈다
 

@@ -20,7 +20,7 @@
  *    집는다(케이스 B).
  *
  * ## 유체(pipe) 줄
- * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) — 면을 **우리가 못 고른다**.
+ * [트렁크 파이프](../../../../../../docs/auto-layout/module/trunk-pipe.md) — 면을 **우리가 못 고른다**.
  * 머신 `fluid_box` 가 정하고, 호출자가 머신을 돌려 그 면을 W/E 로 맞춘 결과가 [PortPlannerInput.pipeSide]
  * 다. clusterBeltDepth 는 늘 1(파이프는 팔이 없어 머신에 닿아야 한다). 그 면의 아이템 벨트는
  * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다. v1 은 유체 줄 1개까지.
@@ -74,7 +74,7 @@ export interface PlannedLine {
   line: IoLine;
   side: PlannedSide;
   /**
-   * [ClusterBeltDepth](../../../../docs/용어사전.md) — 머신 면에서 바깥 칸 거리.
+   * [ClusterBeltDepth](../../../../../../docs/용어사전.md) — 머신 면에서 바깥 칸 거리.
    * pipe=1, 벨트=`1+reach`(케이스 B 면 `2+reach`).
    */
   clusterBeltDepth: number;
@@ -89,10 +89,10 @@ export interface PlannedLine {
    */
   beltEntityName?: string;
   /**
-   * **[requiredInserterCount](../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
+   * **[requiredInserterCount](../../../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
    * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. **공급 방식과 무관한 물리량**이다
    * (`ceil(머신당 수요 ÷ 인서터 하나 처리량)`) — 탭이면 그 팔들이 같은 [ClusterBelt] 에서
-   * 집고([Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting)), 다이렉트면
+   * 집고([Parallel Inserting](../../../../../../docs/용어사전.md#parallel-inserting)), 다이렉트면
    * 각자 자기 상자에서 집는다. 팔 **개수** 자체는 어느 쪽이든 같다.
    *
    * [insertingPlanner] 가 [SupplyCapacity] 로 **두 모드 모두에** 채운다. 미지정 = 수량을
@@ -151,19 +151,19 @@ export interface PortPlannerInput {
    */
   slotsPerFace?: { WE: number; NS: number };
   /**
-   * [트렁크 파이프](../../../../docs/용어사전.md)가 차지하는 면 — **우리가 못 고른다.**
+   * [트렁크 파이프](../../../../../../docs/용어사전.md)가 차지하는 면 — **우리가 못 고른다.**
    * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
    * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
    *
    * 이 면의 아이템 벨트가 어떻게 놓이는지는 [isJumpableToClusterPipe] 가 가른다:
    *
    *  - **점프 가능**(true): 파이프는 머신 유체 상자 칸 **하나만** 먹고
-   *    [pipeJumpToClusterPipe](../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
+   *    [pipeJumpToClusterPipe](../../../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
    *    [ClusterPipe] 로 나간다. 좌석 줄의 나머지 칸이 살아서 이 면은 **일반 면과 같은**
    *    벨트를 세운다(상자 행만 좌석에서 빠진다 — 그 판정은 호출자가 이 불리언에 접었다).
    *
    *  - **점프 불가**(false/미지정, 옛 동작): clusterBeltDepth 1(좌석 줄) **전체가** 파이프
-   *    스파인으로 채워진다 → 아이템 벨트는 [케이스 B](../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)
+   *    스파인으로 채워진다 → 아이템 벨트는 [케이스 B](../../../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)
    *    로만 놓인다 — reach `r` 인서터가 좌석을 2칸으로 밀어 앉아 파이프를 넘어 `2+r`칸에서
    *    집는다. reach 1 인서터는 1칸에 앉아야 하는데 그 자리가 파이프라 **못 쓴다** →
    *    이 면의 아이템 벨트는 **reach≥2 인서터만** 세울 수 있다.
@@ -466,7 +466,7 @@ export interface InsertingDecisionResult {
 }
 
 /**
- * **[requiredInserterCount](../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
+ * **[requiredInserterCount](../../../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
  * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. 모르면 `undefined`.
  *
  * **공급 방식과 무관한 물리량이다.** 인서터 하나가 나르는 양은 그 팔이 벨트에서 집든
@@ -575,11 +575,11 @@ export function allocateArms(
  *
  * ## 판정 순서 — "레인 개수 검사"는 별도 관문이 아니다
  *
- * 먼저 **이 레시피가 [간단한 레시피](용어사전.md#간단한-레시피)인가**를 본다 —
+ * 먼저 **이 레시피가 [간단한 레시피](../../../../../../docs/용어사전.md#간단한-레시피)인가**를 본다 —
  * 기둥 클러스터로 표현 가능해 탭 인서팅(면에 reach-N 인서터 줄이 지나가는 구조)으로
  * 연속 처리할 수 있는가. **간단한 레시피로 판명나면 레인 자리는 정의상 이미 있다** —
  * 판정 자체가 곧 그 검사이므로 따로 셀 것이 없다. `planClusterPorts` 가 이미 이
- * 판별을 한다(`ok` vs `complex`) — 새로 안 만든다. [복잡한 레시피](용어사전.md#복잡한-레시피)면
+ * 판별을 한다(`ok` vs `complex`) — 새로 안 만든다. [복잡한 레시피](../../../../../../docs/용어사전.md#복잡한-레시피)면
  * 정의상 다이렉트(1:1)로 간다.
  *
  * 그다음 두 축을 본다([SupplyCapacity.lineRates] 가 있을 때만) — **섞으면 안 된다**:

@@ -1,7 +1,7 @@
 # autoLayout/ — 자동 배치
 
 폴더는 **두 축**으로 나뉜다. 정의와 현재 트리는
-[docs/code-folders.md](../../../../docs/code-folders.md) 가 단일 출처다.
+[docs/code-folders.md](../../../../docs/auto-layout/common/code-folders.md) 가 단일 출처다.
 
 ```
 축 1 계층    planner/ (안 놓는다)  ↔  execution/ (PlacedCell 을 만든다)
@@ -40,3 +40,15 @@ npx vitest run
 ## 하위 `CLAUDE.md`
 
 `planner/` · `module/` · `execution/` · `manualEdit/` 에 각각 있다. 그 폴더 파일을 열면 함께 들어온다.
+
+## 문서는 코드 트리의 거울이다
+
+```
+frontend/src/utils/autoLayout/planner/module/   ↔   docs/auto-layout/module/
+                              planner/link/     ↔   docs/auto-layout/link/
+                              planner/perimeter/↔   docs/auto-layout/perimeter/
+                              (channel 관련)     ↔   docs/auto-layout/channel/
+```
+
+전략 무관 문서는 `docs/auto-layout/common/` 에 있다 — 그중
+[code-folders](../../../../docs/auto-layout/common/code-folders.md) 가 폴더 경계의 단일 출처다.

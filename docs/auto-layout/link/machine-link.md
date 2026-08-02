@@ -4,8 +4,8 @@ tags: [auto-layout, placement, routing]
 
 # 자식→부모 연결의 통일 모델 — Link · 통로 · 예약
 
-> **부모 문서:** [auto-layout-wizard](auto-layout-wizard.md)
-> **관련 문서:** [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) · [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) · [.ns-face-relief](auto-layout-wizard.ns-face-relief.md)
+> **부모 문서:** [auto-layout-wizard](../wizard.md)
+> **관련 문서:** [.trunk-redesign](../module/trunk-redesign.md) · [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) · [.ns-face-relief](../module/ns-face-relief.md)
 > **용어:** [[용어사전#MachineLink|MachineLink]] · [[용어사전#allocateMachineLinks|allocateMachineLinks]] · [[용어사전#기둥 (column)|기둥]]
 
 ## 한 줄 요약
@@ -97,7 +97,7 @@ tags: [auto-layout, placement, routing]
 
 [[용어사전#채널 (channel)|채널]]과 gap 은 이름을 유지하되(사용자 지정), **개념은 하나**다: **링크가 지나며 트랙(주행선)을 다투는 공간.** 짧으면 gap, 길면 채널.
 
-예약은 [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) 의 기계를 그대로 쓴다 — 지상에서 안 겹치면 트랙 나눠 쓰고, Jordan 곡선상 겹칠 수밖에 없으면 **지하로 건넌다**. **통로 폭 = 배정된 트랙 수에서 유도**(폭 역전)되므로:
+예약은 [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) 의 기계를 그대로 쓴다 — 지상에서 안 겹치면 트랙 나눠 쓰고, Jordan 곡선상 겹칠 수밖에 없으면 **지하로 건넌다**. **통로 폭 = 배정된 트랙 수에서 유도**(폭 역전)되므로:
 
 > **gap 폭 = 그 gap 을 지나는 가로 벨트 수.** 우리가 정하는 값이 아니라 예약의 부산물이다. 채널 폭이 이미 그렇게 유도되듯 gap 폭도 같은 기계로 나온다. → "gap 은 항상 부산물"의 실체.
 

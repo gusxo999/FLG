@@ -22,103 +22,138 @@ tags: [moc]
 
 ## 🧭 주제별 지도
 
-### 🏗️ 레이아웃 자동완성 (auto-layout) `#auto-layout`
+> **디렉토리가 곧 분류다.** 2026-08-02 부터 문서는 폴더로 나뉘고, `auto-layout/` 은
+> **코드 트리의 거울**이다 — 코드 폴더의 `CLAUDE.md` 가 같은 이름의 문서 폴더를 가리키므로
+> 그 코드를 건드리면 해당 문서가 자동으로 시야에 들어온다.
+> 폴더 경계의 정의는 [code-folders](auto-layout/common/code-folders.md) 의 **두 축**이다.
 
-레시피 → 머신/투입기/벨트 자동 배치 위저드와 그 알고리즘. **부모: [auto-layout-wizard](auto-layout-wizard.md)**
+```
+docs/
+├ auto-layout/  ← frontend/src/utils/autoLayout/ 의 거울
+│   ├ common/     전략 무관 — 전부가 본다
+│   ├ module/     모듈 안쪽 (형제를 모른다)
+│   ├ link/       모듈과 모듈의 연결
+│   ├ channel/    모듈 사이 통로 예약
+│   └ perimeter/  전역 외곽 반출
+├ factorio/     게임 데이터·시맨틱스 (코드 대응 없음)
+├ blueprint/    import/export
+└ deferred/     보류·폐기 — 다음 시도가 같은 함정에 안 빠지게
+```
+
+### 🏗️ 레이아웃 자동완성 `#auto-layout`
+
+레시피 → 머신/투입기/벨트 자동 배치. **부모: [wizard](auto-layout/wizard.md)**
 
 > **현행(2026-07-26):** 실행 경로는 **모듈 파이프라인 단일 경로**다 —
 > `layeredWizard.runLayeredWizard`(트리 전개·머신 선정) → `moduleWizard.tryRunModulePipeline`(배치 전부).
 > 폴백할 옛 경로가 없어, 실패하면 `RejectReason` 이 그대로 UI 실패 라벨로 나온다.
-> 이 전략에는 아직 고유 이름이 없다(=모듈 파이프라인은 서술어).
 >
-> 아래 표에서 **[역사]** 는 코드에 없는 것을 설명하는 문서다 — 왜 그렇게 안 하는지의 논거로만 읽는다.
+> 아래에서 **[역사]** 는 코드에 없는 것을 설명하는 문서다 — 왜 그렇게 안 하는지의 논거로만 읽는다.
 
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [auto-layout-wizard](auto-layout-wizard.md) | **[부모]** 위저드 인터페이스 (5단계 UI + 입출력 사양) | `#auto-layout` |
-| [.placement-search](auto-layout-wizard.placement-search.md) | ↳ **모델·전략 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M) + 전략 레이어. Part II 의 S-LAYER 흐름은 삭제됨(Phase 3) — 남은 전략은 전부 미구현 후보다 | `#placement` `#routing` |
-| [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) | ↳ **[역사]** S-LAYER 의 레이어 간 라우팅 채널 예약 — **본체는 코드에서 삭제됨**(Phase 3). 남긴 이유 = "왜 채널을 비워 두는가" 논거. 예약 철학은 `.channel-geometry-reservation` 이 상위 호환으로 계승 | `#placement` `#routing` |
-| [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) | ↳ 채널 예약을 폭→기하로 승격 — 납품·반출 경로의 같은 쪽 판정 (구현 완료) | `#placement` `#routing` |
-| [.machine-link](auto-layout-wizard.machine-link.md) | ↳ **[설계]** 자식→부모 연결 통일 — 논리(MachineLink, 전략무관) vs 기하(통로 예약) 두 층. Hop=Link 통일, seq 소멸, 포트=링크 끝점, gap=부산물. **벨트 병합은 그릇이 시키는 게 아니라 우리가 사는 것**(대가=머신 인접) | `#placement` `#routing` |
-| [.trunk-redesign](auto-layout-wizard.trunk-redesign.md) | ↳ **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과"(경계 마샬). §10 이 `insertingPlanner`+`emitTapInserting` 으로 돌고, 소스 주석 4곳이 §10·§7 을 인용한다. 논박 대상이던 씨앗 그리디(`trunkPath`/`trunkEmit`)는 2026-07-26 삭제됨 | `#placement` `#routing` |
-| [.trunk-pipe](auto-layout-wizard.trunk-pipe.md) | ↳ **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전, 케이스 B(파이프 넘김 레인). 방출 = `emitTrunkPipe` | `#placement` `#fluid` |
-| [.fluid-hop](auto-layout-wizard.fluid-hop.md) | ↳ **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). 2026-07-16 실측 성공 후 **링크 모델 도입으로 조용히 죽었다가 2026-07-26 복구**(자식→부모 링크의 유체 가드 누락 + `productOf` 다산출 오짝짓기). v1=모듈당 유체 1줄, 다-유체는 fallback 실패 | `#placement` `#fluid` |
-| [.fluid-underground-crossing](auto-layout-wizard.fluid-underground-crossing.md) | ↳ **[계획]** 유체 지하 횡단을 장부 안으로 — 페어링 규칙(`isJumpAllowed`)은 라우터에 이미 있고 장부 행은 이미 절대 좌표. 모듈 내부 지하파이프 corridor 미기록 결함 포함 | `#placement` `#fluid` `#routing` |
-| [.fluid-hop-reservation](auto-layout-wizard.fluid-hop-reservation.md) | ↳ **[구현됨]** 유체 홉을 채널 기하 예약 안으로 (리팩토링 Phase 4-B) — 장부가 잡아 둔 유체 트랙을 라우터가 버리던 것을 수리. 인접(합류) 규칙 + 유체 지상 우선권 + 탐색 폴백 제거 | `#placement` `#fluid` `#routing` |
-| [entity-roles](entity-roles.md) | **[최상위]** 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) — 라우팅·유체·블루프린트가 다 같이 봐서 접두어를 뗐다 | `#routing` |
-| [.known-limits](auto-layout-wizard.known-limits.md) | ↳ 알려진 약점·한계 9건 + 우선순위(P1~P3) | `#placement` `#routing` |
-| [.priority-ordering](auto-layout-wizard.priority-ordering.md) | ↳ 배치·라우팅 순서 결정점 등록부 (부모=placement-search) | `#placement` `#routing` |
-| [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) | ↳ count=1 raw 입력의 노출 N/S 면 슬롯 (E→N/S→W, W-spill 갇힘 원인 치료) | `#placement` `#routing` |
-| [.module-way-outs](auto-layout-wizard.module-way-outs.md) | ↳ **moduleWayOuts** — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다. 예약이 막힌 방향을 안 잡게 해 탐색 폴백 제거 + 폭 낭비 제거 | `#placement` `#routing` |
-| [.control-behavior-scope](auto-layout-wizard.control-behavior-scope.md) | ↳ 추적하는 ControlBehavior 필드 범위 | `#blueprint` |
-| [.pipeline-metrics](auto-layout-wizard.pipeline-metrics.md) | ↳ **[이력]** 계측기 — 도구는 삭제됨(부를 통로가 없었다). 남긴 건 1:1 기준선 **실측 수치** | `#auto-layout` |
-| [code-folders](code-folders.md) | **[최상위]** 코드 폴더 분리 — module/(모듈 안쪽) · planner/(모듈 사이) · util/(helper 셈 · cellBuilder 채우기) | `#auto-layout` |
+#### `common/` — 전략 무관, 전부가 본다
+
+| 문서 | 주제 |
+|------|------|
+| [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
+| [placement-search](auto-layout/common/placement-search.md) | **모델 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M). Part II 의 S-LAYER 흐름은 삭제됨 |
+| [entity-roles](auto-layout/common/entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
+| [known-limits](auto-layout/common/known-limits.md) | 알려진 약점·한계 9건 + 우선순위(P1~P3) |
+| [priority-ordering](auto-layout/common/priority-ordering.md) | 배치·라우팅 순서 결정점 등록부 |
+| [tech-tree-resolution](auto-layout/common/tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 산출 (배치 이전 단계) |
+
+#### `module/` — 모듈 안쪽 (형제를 모른다)
+
+| 문서 | 주제 |
+|------|------|
+| [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 이 `insertingPlanner`+`emitTapInserting` 으로 돈다 |
+| [trunk-pipe](auto-layout/module/trunk-pipe.md) | **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전 |
+| [ns-face-relief](auto-layout/module/ns-face-relief.md) | count=1 raw 입력의 노출 N/S 면 슬롯 (W-spill 갇힘 치료) |
+
+#### `link/` — 모듈과 모듈의 연결
+
+| 문서 | 주제 |
+|------|------|
+| [machine-link](auto-layout/link/machine-link.md) | **[설계]** 자식→부모 연결 통일 — 논리(MachineLink) vs 기하 두 층. Hop=Link, 포트=링크 끝점, gap=부산물 |
+| [fluid-hop](auto-layout/link/fluid-hop.md) | **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). v1=모듈당 유체 1줄 |
+
+#### `channel/` — 모듈 사이 통로 예약
+
+| 문서 | 주제 |
+|------|------|
+| [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 같은 쪽 판정 (구현 완료) |
+| [fluid-hop-reservation](auto-layout/channel/fluid-hop-reservation.md) | **[구현됨]** 유체 홉을 채널 기하 예약 안으로. 인접(합류) 규칙 + 유체 지상 우선권 |
+| [fluid-underground-crossing](auto-layout/channel/fluid-underground-crossing.md) | **[계획]** 유체 지하 횡단을 장부 안으로 |
+| [s-layer-channel-reservation](auto-layout/channel/s-layer-channel-reservation.md) | **[역사]** S-LAYER 채널 예약 — 본체는 삭제됨. 남긴 이유 = "왜 채널을 비워 두는가" |
+
+#### `perimeter/` — 전역 외곽 반출
+
+| 문서 | 주제 |
+|------|------|
+| [perimeter-export](auto-layout/perimeter/perimeter-export.md) | **총론** — 왜 상자가 바깥에 있어야 하나 · 3단 흐름(계약/예약/방출) · 옛 탐색형을 왜 버렸나 |
+| [module-way-outs](auto-layout/perimeter/module-way-outs.md) | ↳ ①단계 계약 — 모듈이 "이 상자가 나갈 수 있는 문"을 답한다 |
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`
 
 Factorio API/데이터의 비직관적 동작과 그 해석.
 
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [pipe-semantics](pipe-semantics.md) | **파이프의 작동 방식 — 벨트와 항목별 대조**(방향 없음·처리량 무한·유체 상자 연결 칸·합류 가드) | `#fluid` `#routing` |
-| [fluid-box-semantics](fluid-box-semantics.md) | 유체 상자의 `production_type` vs `flow_direction` 차이, 상자의 **면**(`direction`)과 **받는 유체 이름**(`fluidbox_index`) | `#fluid` |
-| [map-position-parsing](map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태 문제와 3중 방어 정규화 | `#blueprint` |
-| [direction-encoding](direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향 인코딩으로 통일 (1.x ×2 자동 업그레이드) | `#blueprint` |
-| [tech-tree-resolution](tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 자동 산출 | `#auto-layout` |
+| 문서 | 주제 |
+|------|------|
+| [pipe-semantics](factorio/pipe-semantics.md) | **파이프의 작동 방식 — 벨트와 항목별 대조**(방향 없음·처리량 무한·합류 가드) |
+| [fluid-box-semantics](factorio/fluid-box-semantics.md) | `production_type` vs `flow_direction`, 상자의 **면**과 **받는 유체 이름** |
+| [map-position-parsing](factorio/map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태와 3중 방어 정규화 |
+| [direction-encoding](factorio/direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향으로 통일 (1.x ×2 업그레이드) |
 
 ### 📦 Blueprint import/export `#blueprint`
 
-블루프린트 왕복(round-trip)의 메타데이터 커버리지.
-
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [blueprint-metadata-coverage](blueprint-metadata-coverage.md) | export 메타데이터 커버리지 — 현재(4필드+recipe) → 전체 단계별 계획 + 체크리스트 | `#blueprint` |
+| 문서 | 주제 |
+|------|------|
+| [metadata-coverage](blueprint/metadata-coverage.md) | export 메타데이터 커버리지 — 현재 → 전체 단계별 계획 + 체크리스트 |
+| [control-behavior-scope](blueprint/control-behavior-scope.md) | 추적하는 ControlBehavior 필드 범위 |
 
 ### 🔍 검사 · 진단 `#visualization`
 
-배치된 결과를 사후에 읽어 사용자에게 되돌려주는 기능.
-
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [belt-flow-inspection](belt-flow-inspection.md) | 벨트 셀 클릭 → 그 지점의 운반 품목·items/sec. 라우팅 세션이 아니라 **그리드 자체를 정적 분석** — 수동 배치·수정한 벨트도 동작 | `#visualization` `#factorio-data` |
+| 문서 | 주제 |
+|------|------|
+| [belt-flow-inspection](belt-flow-inspection.md) | 벨트 셀 클릭 → 운반 품목·items/sec. 세션이 아니라 **그리드 정적 분석**이라 수동 배치도 동작 |
 
 ### 🚧 보류 · 폐기 결정 `#deferred`
 
 시도했으나 보류/폐기한 항목. **다음 시도가 같은 함정에 빠지지 않도록** 기록.
 
-| 문서 | 주제 | 태그 |
-|------|------|------|
-| [icon-mapping](icon-mapping.md) | 엔티티 아이콘 매핑 — 런타임 API 의도적 차단, 모드 우회 부적절 (보류) | `#factorio-data` |
-| [surface-restriction-limits](surface-restriction-limits.md) | 우주/지상 표면 제약 자동 판단 포기 → 사용자가 직접 머신 선택 | `#factorio-data` `#auto-layout` |
-| [parametrized-blueprints-deferred](parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 (향후 parametrized blueprint 기능과 함께) | `#blueprint` |
+| 문서 | 주제 |
+|------|------|
+| [icon-mapping](deferred/icon-mapping.md) | 엔티티 아이콘 매핑 — 런타임 API 의도적 차단 (보류) |
+| [surface-restriction-limits](deferred/surface-restriction-limits.md) | 표면 제약 자동 판단 포기 → 사용자가 직접 머신 선택 |
+| [parametrized-blueprints-deferred](deferred/parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 |
+| [pipeline-metrics](deferred/pipeline-metrics.md) | **[이력]** 계측기 — 도구는 삭제됨. 남긴 건 1:1 기준선 **실측 수치** |
 
 ---
 
-## 도큐먼트 명명 규칙 — 부모/자식
+## 도큐먼트 명명 규칙 — 디렉토리가 관계를 말한다
 
-복합 기능의 경우 **dot-notation** 으로 부모 → 자식 관계를 파일명에 드러낸다:
+**2026-08-02 개정: dot-notation 폐지.** 예전엔 파일명 접두어로 부모–자식을 표현했다
+(`auto-layout-wizard.placement-search.md`). 정렬된 목록에서 부모 아래 자식이 모이게 하려던
+것인데, **디렉토리가 그 일을 더 잘 한다** — 게다가 접두어는 폴더 이름과 중복이 된다.
 
 ```
-auto-layout-wizard.md                          ← 부모 (기능 자체)
-auto-layout-wizard.placement-search.md         ← ↳ 자식: 컨테이너 모델·전략 레이어
-auto-layout-wizard.known-limits.md             ← ↳ 자식: 알려진 한계
-auto-layout-wizard.control-behavior-scope.md   ← ↳ 자식: 추적 범위
+auto-layout-wizard.placement-search.md   →  auto-layout/common/placement-search.md
+auto-layout-wizard.module-way-outs.md    →  auto-layout/perimeter/module-way-outs.md
 ```
 
-**Why:** 정렬된 파일 목록에서 부모 바로 아래에 자식들이 모여 부모-자식 관계가 한눈에 보인다. 테스트 파일
-`foo.test.ts` 와 같은 패턴.
+**어느 폴더인가는 [code-folders](auto-layout/common/code-folders.md) 의 두 축으로 판정한다.**
+문서가 코드 폴더에 대응하면 그 거울로 두고, 대응이 없으면 주제로 둔다(`factorio/`·`blueprint/`).
+사전과 MOC 는 전역이라 최상위에 남는다.
 
-**접두어를 떼는 때:** 그 문서를 부모 밖에서도 참조하게 되면 자식이 아니다. 접두어를 떼고 최상위로 올린다
-(`entity-roles.md` · `code-folders.md` 가 그렇게 나왔다 — 라우팅·유체·블루프린트가 다 같이 본다).
-파일명이 "누가 읽는가"를 말하게 두고, 부모와의 관계는 문서 서두 박스가 말한다.
-
-**자식 문서의 서두**에는 부모 문서와 같은 묶음의 다른 문서들을 안내하는 박스를 넣어, 어느 묶음에 속한 문서인지
-즉시 알 수 있게 한다:
+**파일명은 짧게, 관계는 서두 박스가 말한다:**
 
 ```markdown
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
-> **관련 문서:** [.algorithm](...), [.binary-search](...), ...
+> **부모 문서:** [wizard.md](../wizard.md)
+> **관련 문서:** [module-way-outs](module-way-outs.md) — ①단계 계약 상세 · …
 ```
+
+> **`[[위키링크]]` 는 이름으로 찾으므로 폴더 이동에 안 깨진다.** 대신 **이름을 바꾸면 깨진다** —
+> 이번 개정에서 115군데를 고쳤다. 반대로 `](상대경로.md)` 는 폴더 이동에 깨지고 이름 변경에도
+> 깨진다(168군데 재계산). 새 문서를 만들 때 **문서끼리는 `[[위키링크]]`** 를 쓰면 나중이 싸다.
 
 ## 태그 규칙 (Obsidian)
 

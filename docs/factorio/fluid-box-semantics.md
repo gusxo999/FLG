@@ -202,7 +202,7 @@ FluidBoxInfo
 
 **좌표(`positions`)로 면을 역추정하면 안 된다.** 화학 공장의 유체 상자 좌표는 `(-1,-1)` 처럼
 머신 **안쪽 모서리 칸**이라 `|x| = |y|` 이고, 위로 나가는지 옆으로 나가는지 좌표에 정보가 없다.
-자세한 사례와 그 대가는 [auto-layout-wizard.trunk-pipe.md §3](auto-layout-wizard.trunk-pipe.md)
+자세한 사례와 그 대가는 [auto-layout-wizard.trunk-pipe.md §3](../auto-layout/module/trunk-pipe.md)
 ("유체 상자의 면은 좌표에서 못 뽑는다") 참고.
 
 머신을 `d` 만큼 돌리면 실제 면은 `(direction + d) % 16` 이다. 읽는 규칙은

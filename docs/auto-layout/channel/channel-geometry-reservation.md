@@ -4,9 +4,9 @@ tags: [auto-layout, placement, routing]
 
 # 채널 기하 예약 — 납품·반출 경로의 "같은 쪽 판정"
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md) — 채널 예약(폭 계산)의 기존 설계,
-> [.ns-face-relief](auto-layout-wizard.ns-face-relief.md) — 같은 갇힘 문제의 N/S 면 측 치료, [.priority-ordering](auto-layout-wizard.priority-ordering.md)
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
+> **관련 문서:** [.s-layer-channel-reservation](s-layer-channel-reservation.md) — 채널 예약(폭 계산)의 기존 설계,
+> [.ns-face-relief](../module/ns-face-relief.md) — 같은 갇힘 문제의 N/S 면 측 치료, [.priority-ordering](../common/priority-ordering.md)
 
 > **상태: 구현 완료** (2026-07-09 설계 확정, 같은 날 구현). 통합 장부 =
 > `frontend/src/utils/autoLayout/channelGeometryPlanner.ts`, 스위치 =
@@ -34,7 +34,7 @@ tags: [auto-layout, placement, routing]
 
 원인은 라우터의 실력 부족이 아니라 **예약의 구멍**이다. 현재 파이프라인의 순서는:
 
-1. 채널 폭을 계산해 빈 세로 띠를 예약한다 (`channelPlanner.ts` — [.s-layer-channel-reservation §4](auto-layout-wizard.s-layer-channel-reservation.md)).
+1. 채널 폭을 계산해 빈 세로 띠를 예약한다 (`channelPlanner.ts` — [.s-layer-channel-reservation §4](s-layer-channel-reservation.md)).
 2. 머신을 배치하고, 자식→부모 벨트(납품 경로)를 **먼저** 깐다.
 3. 맨 마지막에 갇힌 상자를 테두리로 빼는 벨트(반출 경로)를 깔려고 시도한다.
 
@@ -256,7 +256,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 > 정상 배정 + laneX·예약셀 생성). 유일한 구멍은 방출기가 `port.face` 로 진입 방향을 정하다
 > fv.x=0 에서 거부한 것뿐 — laneX 로 구동하게 바꿔 elbow 를 그대로 재생한다. 예약된 채널
 > 트랙이 상자 자신의 트렁크를 관통하는 드문 케이스(copper-cable)는 ⑥C 가 occ 기반 auto
-> 탐색으로 폴백해 뚫린 face 로 내보낸다(dijkstra 최후폴백과 대칭). 상세: [.ns-face-relief §5](auto-layout-wizard.ns-face-relief.md).
+> 탐색으로 폴백해 뚫린 face 로 내보낸다(dijkstra 최후폴백과 대칭). 상세: [.ns-face-relief §5](../module/ns-face-relief.md).
 
 **코드 개명 대응표** (신규 코드는 문서 용어 사용, 기존 파일명 개명은 장기 과제):
 

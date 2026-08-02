@@ -5,8 +5,8 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 
 # 유체 지하 횡단을 장부 안으로 — 설계 계획서 (방식 A)
 
-> **부모 문서:** [[auto-layout-wizard.fluid-hop-reservation]] §6 "잔여 결정" 의 (가) 안
-> **관련:** [[auto-layout-wizard.channel-geometry-reservation]] · [[pipe-semantics]]
+> **부모 문서:** [[fluid-hop-reservation]] §6 "잔여 결정" 의 (가) 안
+> **관련:** [[channel-geometry-reservation]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 설계 계획 — 미구현.** 조사(§1)는 코드 실측 완료.
 

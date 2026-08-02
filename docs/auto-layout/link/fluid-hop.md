@@ -5,7 +5,7 @@ aliases: [유체홉, fluid-hop]
 
 # 유체 홉 — 자식 유체 출력 → 부모 유체 입력 (새 경로)
 
-> 관련: [[auto-layout-wizard.trunk-pipe]] · [[pipe-semantics]] · [[용어사전]] (ClusterPipe / pipeJumpToClusterPipe)
+> 관련: [[trunk-pipe]] · [[pipe-semantics]] · [[용어사전]] (ClusterPipe / pipeJumpToClusterPipe)
 
 > **상태(2026-07-16): 실측 성공 — 살아서 동작한다.** `wood ← water` 체인으로 확인:
 > **`S-LAYER(module) · 2 노드 · 1 홉 · 실패 0`**, 홉 셀은 `pipe`(벨트 아님). 그 전까지 모든

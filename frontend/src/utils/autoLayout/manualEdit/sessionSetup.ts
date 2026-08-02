@@ -5,7 +5,7 @@
  * 드래그 재라우팅용 `RoutingEditSession` 을 만들던 코드다. 삭제 시점 그대로 옮겼다.
  *
  * **컴파일되지 않는다** — `props`·컴포넌트 지역 스코프를 그대로 참조한다.
- * 재구현 시 "무엇을 준비했는가"의 증거로만 읽는다. 의도는 [README.md](./README.md).
+ * 재구현 시 "무엇을 준비했는가"의 증거로만 읽는다. 의도는 [README.md](../../../../../docs/README.md).
  *
  * 원본 위치: AutoLayoutContainerPanel.tsx 196–240(buildSessionFromLeaf) · 343–357(오프셋 산정)
  */

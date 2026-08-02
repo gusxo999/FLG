@@ -153,7 +153,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     return { ok: false, reason };
   };
 
-  // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](docs/auto-layout-wizard.trunk-pipe.md)
+  // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](../../../../../docs/auto-layout/module/trunk-pipe.md)
   //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
   //    거절 사유가 다 다르므로 각각 이유를 남긴다(진단).
   const fluidTrunkOf = new Map<RecipeTreeNode, NodeSpec["fluidTrunk"]>();

@@ -33,7 +33,7 @@ tags: [visualization, factorio-data]
 
 - 머신(레시피 보유): 생산율 = `유효제작속도/energy_required × amount × probability × productivity`
   (모듈 효과는 `moduleEffects.applyEffectsToMachine` 재사용). 소비율은 ingredient amount 기준.
-- 상자(무한상자 포함): 무한 공급/회수 → 인서터 처리량([[auto-layout-wizard.known-limits|inserterThroughput]]
+- 상자(무한상자 포함): 무한 공급/회수 → 인서터 처리량([[known-limits|inserterThroughput]]
   모델 + 위저드 override 반영)이 곧 기여량.
 - 레시피 미상(용광로 자동 레시피 등): 인서터 처리량 폴백 + UI 에 ⚠ 근사 표시
   (`machineRateUnknownCount`).

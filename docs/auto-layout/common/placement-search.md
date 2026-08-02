@@ -12,12 +12,12 @@ tags: [auto-layout, placement, routing]
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
 > `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
-> 흐름은 [[code-folders]], 링크 모델은 [[auto-layout-wizard.machine-link]],
-> 채널 예약은 [[auto-layout-wizard.channel-geometry-reservation]] 를 보라.
+> 흐름은 [[code-folders]], 링크 모델은 [[machine-link]],
+> 채널 예약은 [[channel-geometry-reservation]] 를 보라.
 
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.s-layer-channel-reservation](auto-layout-wizard.s-layer-channel-reservation.md), [.entity-roles](entity-roles.md), [.known-limits](auto-layout-wizard.known-limits.md)
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
+> **관련 문서:** [.s-layer-channel-reservation](../channel/s-layer-channel-reservation.md), [.entity-roles](entity-roles.md), [.known-limits](known-limits.md)
 
 ---
 
@@ -138,5 +138,5 @@ tags: [auto-layout, placement, routing]
 - **splitter 분기** — 컨테이너 분할 또는 트렁크 병합으로 우회. splitter 미사용.
 
 ### 10.2 보류 항목 (재검토 가능)
-- **클러스터 형태 일반화** (기둥 → 행/격자) — [known-limits.md](auto-layout-wizard.known-limits.md) §1.
+- **클러스터 형태 일반화** (기둥 → 행/격자) — [known-limits.md](known-limits.md) §1.
 - **회전 4방향 후보** — fluid_box 위치가 회전마다 달라지는 머신의 배치 가능성을 늘릴 때.

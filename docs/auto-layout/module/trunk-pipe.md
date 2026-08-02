@@ -3,16 +3,16 @@ tags: [auto-layout, placement, routing, fluid]
 aliases: [트렁크 파이프, trunk-pipe, 유체 레시피]
 ---
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
-> **앞선 결정:** [.trunk-redesign §10](auto-layout-wizard.trunk-redesign.md) — 아이템 쪽 트렁크(탭 인서팅)
-> **용어:** [트렁크 파이프](용어사전.md#트렁크-파이프-trunk-pipe) (2026-07-13, 사용자 명명)
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md)
+> **앞선 결정:** [.trunk-redesign §10](trunk-redesign.md) — 아이템 쪽 트렁크(탭 인서팅)
+> **용어:** [트렁크 파이프](../../용어사전.md#트렁크-파이프-trunk-pipe) (2026-07-13, 사용자 명명)
 
 # 트렁크 파이프 — 유체를 모듈 파이프라인에 들이기
 
 ## 0. 한 줄 요약
 
 파이프 **한 줄**이 기둥을 따라 달리며 머신들의 유체 입구를 **죽 이어서** 공급한다.
-아이템의 [탭 인서팅](용어사전.md#탭-인서팅-tap-inserting)과 같은 자리에 서는 유체판이다.
+아이템의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting)과 같은 자리에 서는 유체판이다.
 
 ## 1. 그림 먼저 — 무엇이 다른가
 
@@ -203,5 +203,5 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 - **유체 홉** — 자식→부모 유체 전달.
 - ~~**처리량** — 파이프 한 줄의 유체 처리량 한계~~ — **해당 없음**(2026-07-25 정정).
   길이에 따른 유량 감쇠는 1.x 이야기고, 2.0 은 관망 안에서 유량이 무제한이다. 트렁크를
-  길게 뽑아도 유체 병목은 없으므로 [determineBeltCount](용어사전.md#determinebeltcount)
+  길게 뽑아도 유체 병목은 없으므로 [determineBeltCount](../../용어사전.md#determinebeltcount)
   의 유체판은 **만들 자리가 아니다**. → [[pipe-semantics]] §2

@@ -57,13 +57,13 @@ export interface NodeSpec {
   /** ingredients=input, products=output. */
   lines: IoLine[];
   /**
-   * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
+   * [트렁크 파이프](../../../../../docs/auto-layout/module/trunk-pipe.md) 계획 — 유체 줄이
    * 있는 노드만. 머신 회전 각도 + 파이프가 달릴 면. `fluid_boxes` 를 봐야 알 수 있어서
    * 게임데이터에 닿는 moduleWizard 가 계산해 넣는다.
    */
   fluidTrunk?: ModuleInput["fluidTrunk"];
   /**
-   * [Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting) 용량 — 줄별 클러스터
+   * [Parallel Inserting](../../../../../docs/용어사전.md#parallel-inserting) 용량 — 줄별 클러스터
    * rate(items/sec) + 탭(인서터) 처리량. 게임데이터(레시피 시간·머신 속도)를 보는 moduleWizard 가
    * 계산해 넣는다(module/ 는 순수). 미지정이면 탭 1개(휴면).
    */

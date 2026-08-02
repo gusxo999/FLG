@@ -204,7 +204,7 @@ export function perMachineItemsPerSec(
 
 /**
  * **클러스터 전체**(머신 N대)가 한 I/O 줄을 초당 몇 개 다루나 — 입력이면 소비 rate,
- * 출력이면 산출 rate. [Parallel Inserting](../../../docs/용어사전.md#parallel-inserting)의
+ * 출력이면 산출 rate. [Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting)의
  * `SupplyCapacity.lineRates` 를 채우는 값이다.
  *  - 입력: 제작 횟수 × ingredient.amount. (재료엔 범위 수량이 없다 — 실데이터 확인)
  *  - 출력: 제작 횟수 × [[productYield]] × productivityMultiplier.

@@ -4,8 +4,8 @@ tags: [auto-layout, blueprint]
 
 # 자동완성 위저드 — ControlBehavior 추적 범위
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md) — 위저드 인터페이스
-> **관련 문서:** [.known-limits](auto-layout-wizard.known-limits.md)
+> **부모 문서:** [auto-layout-wizard.md](../auto-layout/wizard.md) — 위저드 인터페이스
+> **관련 문서:** [.known-limits](../auto-layout/common/known-limits.md)
 
 **목적:** 위저드가 의미 있는 결과를 내려면 일부 ControlBehavior 필드가 입력으로 필요하다 (예: 인서터 stack size 가 처리량을 좌우). 32개 변종 전부를 다루기보다 **레이아웃 자동완성에 영향이 있는 것만 추적**한다.
 
@@ -70,6 +70,6 @@ import한 값을 그대로 보존만 하고, 자동완성 로직은 무시. roun
 
 ## 참고
 
-- 32개 BlueprintControlBehavior 변종 전체 목록과 export 스키마: [blueprint-metadata-coverage.md](blueprint-metadata-coverage.md) 2절
-- 위저드 부모 문서: [auto-layout-wizard.md](auto-layout-wizard.md)
-- 알고리즘 상세: [auto-layout-wizard.placement-search.md](auto-layout-wizard.placement-search.md)
+- 32개 BlueprintControlBehavior 변종 전체 목록과 export 스키마: [blueprint-metadata-coverage.md](metadata-coverage.md) 2절
+- 위저드 부모 문서: [auto-layout-wizard.md](../auto-layout/wizard.md)
+- 알고리즘 상세: [auto-layout-wizard.placement-search.md](../auto-layout/common/placement-search.md)

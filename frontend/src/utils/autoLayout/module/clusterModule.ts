@@ -186,7 +186,7 @@ export interface ModuleInput {
    */
   inputLinks?: MachineLinkGroup[];
   /**
-   * [트렁크 파이프](../../../../docs/auto-layout-wizard.trunk-pipe.md) 계획 — 유체 줄이
+   * [트렁크 파이프](../../../../../docs/auto-layout/module/trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
    * 프로토타입의 `fluid_boxes` 가 정하므로, **게임데이터를 보는 호출자**가 계산해 넘긴다
    * (module/ 는 순수 — store 를 안 본다). 계산은 [fluidPorts.chooseMachineDirection].

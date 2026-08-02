@@ -5,7 +5,7 @@ tags: [auto-layout, routing]
 # 자동완성 위저드 — 엔티티 역할 4분류
 
 > **독립 문서** — 위저드 밖(라우팅·블루프린트·유체)에서도 참조하므로 `auto-layout-wizard.` 접두어를 떼었다.
-> **주 소비처:** [auto-layout-wizard.md](auto-layout-wizard.md) · [.placement-search](auto-layout-wizard.placement-search.md) · [.known-limits](auto-layout-wizard.known-limits.md) · [pipe-semantics](pipe-semantics.md)
+> **주 소비처:** [auto-layout-wizard.md](../wizard.md) · [.placement-search](placement-search.md) · [.known-limits](known-limits.md) · [pipe-semantics](../../factorio/pipe-semantics.md)
 
 자동완성 [[용어사전#위저드 (wizard)|위저드]]가 그리드에 깔아내는 엔티티는 작동 방식 측면에서 **[[용어사전#엔티티 4역할|4가지 역할]]**로 나뉜다.
 이 4가지는 placer / router 가 채워야 할 자리를 결정하는 골격이며,
@@ -19,10 +19,10 @@ placer 입력으로도 받지 않는다.
 
 | 역할 | 대표 type | placer 위치 | router occupancy | 남은 한계 |
 |------|-----------|-------------|------------------|--------|
-| **A. [[용어사전#변환기|변환기]]** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin + `tile_width×tile_height` footprint (가변) | `machine` (통과 불가) | 회전 0 고정 ([known-limits §6](auto-layout-wizard.known-limits.md)); [[용어사전#EntityType|EntityType]] 단순화(전부 Assembler) |
-| **B. [[용어사전#핸드오프|핸드오프]]** | `inserter` 와 변형, `loader` | 머신 면 셀(seat)에 인서터 1셀, direction=픽업 방향 | `inserter` (통과 불가) | 머신 수 산정에 [[용어사전#처리량 (throughput)|throughput]] 미반영 ([§8](auto-layout-wizard.known-limits.md)), loader 미사용 |
-| **C. [[용어사전#고체 운반|고체 운반]]** | `transport-belt`, `underground-belt`, `splitter` | router([[용어사전#Dijkstra|Dijkstra]])가 깐 belt + 지하벨트 점프 경로 | 모든 belt 셀 통과 불가([[용어사전#mixing|mixing]] 미구현) | belt/pipe mixing ([§5](auto-layout-wizard.known-limits.md)), splitter 자동 분기 미사용 |
-| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 `fluid_boxes` 연결 칸(면은 `PipeConnection.direction`) + [트렁크 파이프](auto-layout-wizard.trunk-pipe.md) 기둥 / 옛 경로는 Dijkstra | 모든 pipe 셀 통과 불가 + [합류 가드](pipe-semantics.md#5-잘못-이어지면-조용하다--그래서-가드가-필요하다) 금지 칸 | pump 자동배치 미사용 |
+| **A. [[용어사전#변환기|변환기]]** | `assembling-machine`, `furnace`, `rocket-silo`, `lab`, `mining-drill` … | 머신 origin + `tile_width×tile_height` footprint (가변) | `machine` (통과 불가) | 회전 0 고정 ([known-limits §6](known-limits.md)); [[용어사전#EntityType|EntityType]] 단순화(전부 Assembler) |
+| **B. [[용어사전#핸드오프|핸드오프]]** | `inserter` 와 변형, `loader` | 머신 면 셀(seat)에 인서터 1셀, direction=픽업 방향 | `inserter` (통과 불가) | 머신 수 산정에 [[용어사전#처리량 (throughput)|throughput]] 미반영 ([§8](known-limits.md)), loader 미사용 |
+| **C. [[용어사전#고체 운반|고체 운반]]** | `transport-belt`, `underground-belt`, `splitter` | router([[용어사전#Dijkstra|Dijkstra]])가 깐 belt + 지하벨트 점프 경로 | 모든 belt 셀 통과 불가([[용어사전#mixing|mixing]] 미구현) | belt/pipe mixing ([§5](known-limits.md)), splitter 자동 분기 미사용 |
+| **D. [[용어사전#액체 운반|액체 운반]]** | `pipe`, `pipe-to-ground`, `pump` | 머신 `fluid_boxes` 연결 칸(면은 `PipeConnection.direction`) + [트렁크 파이프](../module/trunk-pipe.md) 기둥 / 옛 경로는 Dijkstra | 모든 pipe 셀 통과 불가 + [합류 가드](../../factorio/pipe-semantics.md#5-잘못-이어지면-조용하다--그래서-가드가-필요하다) 금지 칸 | pump 자동배치 미사용 |
 
 ---
 
@@ -36,7 +36,7 @@ placer 입력으로도 받지 않는다.
 - `crafting_speed × (1 / energy_required)` 로 초당 처리량이 결정된다.
 - 고체 입출력은 측면 아무 셀에서나 인서터로 가능. 액체 입출력은 `fluid_boxes[].connections[].positions` 에 정의된 **고정 셀** 에서만.
 
-**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](auto-layout-wizard.known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
+**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 ---
 
@@ -61,7 +61,7 @@ placer 입력으로도 받지 않는다.
 - **[[용어사전#splitter|splitter]]** (2×1): 두 입력 → 두 출력. 분배 / 우선순위 / 필터 가능.
 - 진행 방향 = `direction` 필드. 라인 합류는 splitter 또는 측면 합류로만.
 
-**두 lane 의 의미:** 게임상 한 belt 는 좌/우 두 lane 으로 서로 다른 두 item 까지 동시 운반 가능하다. **현재 router 는 이를 활용하지 않는다** — occupancy 가 모든 belt 셀을 통과 불가로 처리해 라우팅끼리 벨트를 공유하지 못한다(belt mixing 미구현, [known-limits §5](auto-layout-wizard.known-limits.md)). 한 라우팅 = 한 컨테이너 = 한 belt 줄.
+**두 lane 의 의미:** 게임상 한 belt 는 좌/우 두 lane 으로 서로 다른 두 item 까지 동시 운반 가능하다. **현재 router 는 이를 활용하지 않는다** — occupancy 가 모든 belt 셀을 통과 불가로 처리해 라우팅끼리 벨트를 공유하지 못한다(belt mixing 미구현, [known-limits §5](known-limits.md)). 한 라우팅 = 한 컨테이너 = 한 belt 줄.
 
 **벨트 연결 = 타일 겹침 + [[용어사전#흐름-인접 (flow adjacency)|흐름-인접]] 둘 다.** 게임에서 두 벨트는 **같은 타일을 공유할 때만** 이어지는 게
 아니다 — *한 벨트의 지표 출력이 옆 타일의 벨트로 떨어지면* 타일을 공유하지 않아도 물리적으로 이어진다
@@ -80,20 +80,20 @@ placer 입력으로도 받지 않는다.
 
 > **참고(파이프):** D 의 파이프는 방향과 무관하게 4면 인접이면 자동 연결되므로 이 흐름-인접 모델이
 > 아니라 **인접 자체**가 합류다. 그 무방향 버전의 가드가 [`collectPipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts)
-> 다(2026-07-14 구현, 새 모듈 경로 한정). 벨트와의 차이 전부는 [pipe-semantics](pipe-semantics.md).
+> 다(2026-07-14 구현, 새 모듈 경로 한정). 벨트와의 차이 전부는 [pipe-semantics](../../factorio/pipe-semantics.md).
 
 ---
 
 ## D. 액체 운반 (파이프)
 
 **벨트의 fluid 버전이 아니다.** 규칙이 근본적으로 다르고 그 차이가 배치의 거의 모든 선택을 바꾼다 —
-전부는 **[pipe-semantics](pipe-semantics.md)** 에 있다(벨트와 항목별로 대조). 요약:
+전부는 **[pipe-semantics](../../factorio/pipe-semantics.md)** 에 있다(벨트와 항목별로 대조). 요약:
 
 - **pipe** (1×1): **방향이 없다**(0 고정). 직교로 닿으면 **무조건** 한 관망이 된다.
 - **처리량 무한**(우리 모델의 결정) → 유체판 `determineBeltCount` 가 없고, **같은 유체 합류는 무해**하다.
 - 파이프는 머신 벽 아무 데나가 아니라 **유체 상자의 연결 칸**에만 붙는다 → 유체 줄의 면은 우리가 고르는
   게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseMachineDirection](../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
-  그 칸이 어디인지는 좌표가 아니라 `PipeConnection.direction` 이 답한다 → [fluid-box-semantics](fluid-box-semantics.md).
+  그 칸이 어디인지는 좌표가 아니라 `PipeConnection.direction` 이 답한다 → [fluid-box-semantics](../../factorio/fluid-box-semantics.md).
 - **pipe-to-ground** (1×1 두 개): prototype 무관 **전부** 간섭(벨트와 다르다) → 단일 blockGroup.
 - **[[용어사전#pump (펌프)|pump]]** (1×2): **자동 배치 미사용**.
 - **합류 가드**: [`collectPipeFlow` / `PipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts) — 다른 유체

@@ -2,10 +2,10 @@
 tags: [auto-layout, placement, routing]
 ---
 
-> **부모 문서:** [auto-layout-wizard.md](auto-layout-wizard.md)
-> **관련 문서:** [.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) — 예약 철학의 본문,
-> [.module-way-outs](auto-layout-wizard.module-way-outs.md) — 예약이 거짓말하지 않게 만든 직전 작업,
-> [.known-limits](auto-layout-wizard.known-limits.md) — 우선순위 등록부
+> **부모 문서:** [auto-layout-wizard.md](../wizard.md)
+> **관련 문서:** [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) — 예약 철학의 본문,
+> [.module-way-outs](../perimeter/module-way-outs.md) — 예약이 거짓말하지 않게 만든 직전 작업,
+> [.known-limits](../common/known-limits.md) — 우선순위 등록부
 
 # 트렁크 재설계 — "씨앗에서 발견"에서 "1:1 을 합친 결과"로
 
@@ -13,7 +13,7 @@ tags: [auto-layout, placement, routing]
 > 트렁크는 W/E 면 → 홉이 잇는다)은 지금 `clusterPortPlanner` + `emitTrunk` + `moduleHop`
 > 으로 돌아간다. `[진행]` 이 아니다.
 >
-> 단, §10.1 의 **"홉 수(품목당 1)" 은 대체됐다** — [[auto-layout-wizard.machine-link]] 가
+> 단, §10.1 의 **"홉 수(품목당 1)" 은 대체됐다** — [[machine-link]] 가
 > 간선-단위 링크로 세분화했다(`edgeMachineLinks` → `HopSpec.linkId`). 품목 하나가
 > 여러 홉으로 쪼개질 수 있다.
 
@@ -31,7 +31,7 @@ tags: [auto-layout, placement, routing]
 
 ## 1. 문제 — 모듈 안쪽은 예약이 아니라 발견이다
 
-[.channel-geometry-reservation](auto-layout-wizard.channel-geometry-reservation.md) 이 세운
+[.channel-geometry-reservation](../channel/channel-geometry-reservation.md) 이 세운
 원칙은 이것이다:
 
 > **깔기 전에 자리를 잡는다. 그래서 나중에 막히는 일이 없다. 탐색은 최후 폴백이다.**
@@ -52,7 +52,7 @@ tags: [auto-layout, placement, routing]
 ### 그 결과 (실측)
 
 advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
-[moduleWayOuts](auto-layout-wizard.module-way-outs.md) 가 **`[S]` 하나뿐**이었다. 먼저 깔린
+[moduleWayOuts](../perimeter/module-way-outs.md) 가 **`[S]` 하나뿐**이었다. 먼저 깔린
 형제(electronic-circuit)의 세로 트렁크가 동쪽 길을 막았기 때문이다. **문이 하나 남았다.**
 형제가 하나만 더 끼어들었으면 `[]` — 상자가 블루프린트 안에 완전히 갇힌다.
 
@@ -133,7 +133,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 **탐색을 없애는 게 아니라, 탐색을 안전한 곳으로 옮기는 것이다.** 그리고 그것이 지금 겪는
 모든 증상(갇힌 상자, 거짓 예약, 탐색 폴백, 낭비된 폭)의 실제 치료다.
 
-부수 효과: [`moduleWayOuts`](auto-layout-wizard.module-way-outs.md) 는 **"사후에 관찰하는 값"**
+부수 효과: [`moduleWayOuts`](../perimeter/module-way-outs.md) 는 **"사후에 관찰하는 값"**
 에서 **"생성이 보장하는 계약"** 으로 승격된다 — 행마다 자기 자리가 예약돼 있으면 모든 상자는
 **정의상** 자기 면으로 나갈 수 있다.
 
@@ -228,15 +228,15 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 ## 9. 아직 안 정한 것
 
 - **이름** — 명명 완료:
-  - (2026-07-11) **[탭 인서팅](용어사전.md#탭-인서팅-tap-inserting)**(belt 한 줄을 여러 머신이
-    인서터로 나눠 집음) / **[다이렉트 인서팅](용어사전.md#다이렉트-인서팅-direct-inserting)**
+  - (2026-07-11) **[탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting)**(belt 한 줄을 여러 머신이
+    인서터로 나눠 집음) / **[다이렉트 인서팅](../../용어사전.md#다이렉트-인서팅-direct-inserting)**
     (둘레 칸마다 상자+인서터 직결).
-  - (2026-07-12) 판정 함수 = **[insertingPlanner](용어사전.md#insertingplanner)**, 결과 타입 =
-    **[InsertingDecisionResult](용어사전.md#insertingdecisionresult)**. "레인 개수 검사"는
-    별도 이름을 붙이지 않는다 — [간단한 레시피](용어사전.md#간단한-레시피) 판별이 곧 그 검사다
+  - (2026-07-12) 판정 함수 = **[insertingPlanner](../../용어사전.md#insertingplanner)**, 결과 타입 =
+    **[InsertingDecisionResult](../../용어사전.md#insertingdecisionresult)**. "레인 개수 검사"는
+    별도 이름을 붙이지 않는다 — [간단한 레시피](../../용어사전.md#간단한-레시피) 판별이 곧 그 검사다
     (§10.3 참고, 사용자가 직접 지적: "레인 갯수 검사는 존재해서는 안 된다"). 벨트·인서터
-    처리량 검사 = **[determineBeltCount](용어사전.md#determinebeltcount)**.
-    (옛 [머지 그룹핑 게이트](용어사전.md#머지-그룹핑-게이트)는 **다른 코드 경로**였고
+    처리량 검사 = **[determineBeltCount](../../용어사전.md#determinebeltcount)**.
+    (옛 [머지 그룹핑 게이트](../../용어사전.md#머지-그룹핑-게이트)는 **다른 코드 경로**였고
     재사용하지 않았다 — 혼동 정정. 그 경로는 이후 코드에서 삭제됐다.)
 - **병합 순서** — 같은 복도 안에서 어떤 것부터 합칠지. 단조적이라 그리디로 안전하지만,
   그리디 ≠ 최적. 나중 문제.
@@ -254,7 +254,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 가장 제약 센 결정 = **어느 품목 줄이 어느 면의 어느 레인을 갖는가.** 이게 정해지면
 벨트 구간(머신 기둥의 행 범위), 포트 위치(벨트 끝), 홉 수(품목당 1), 채널 폭(O(품목))이
 전부 유도된다. 배정기는 이미 있다 — [`clusterPortPlanner`](../frontend/src/utils/autoLayout/module/clusterPortPlanner.ts)
-의 [탭 인서팅](용어사전.md#탭-인서팅-tap-inserting) 모델(하위호환 기본값)이 그것이다.
+의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting) 모델(하위호환 기본값)이 그것이다.
 
 ### 10.2 물리적 모양
 
@@ -270,7 +270,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 ```
 
 - **폭이 1:1 과 같다** — 면당 2칸(인서터+벨트 vs 인서터+상자). far 레인(긴팔)을 쓰면 3칸.
-- 벨트가 기둥 전체를 **직선**으로 지나므로 옛 트렁크의 [untapped](용어사전.md#untapped)
+- 벨트가 기둥 전체를 **직선**으로 지나므로 옛 트렁크의 [untapped](../../용어사전.md#untapped)
   (둘러싸여 탭 불가)는 **구성상 발생 불가** — 모든 머신의 행이 벨트와 접한다.
 - 면당 레인 수 = 인서터 종류 수(탭 인서팅의 정의): normal=near(depth 2), long=far(depth 3).
   모듈 용량 = 2면 × 레인 수. 긴팔 포함 시 4줄 — advanced-circuit(입력 3+출력 1)이 정확히 들어간다.
@@ -286,7 +286,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 
 > **② 판정 순서 정정(2026-07-12):** "레인 관문 → 용량 관문" 두 개의 대등한 관문으로 처음
 > 짰다가 사용자가 바로잡았다 — 레인 자리 검사는 **독립된 검사가 아니라**, "이 레시피가
-> 기둥 클러스터로 표현되는 [간단한 레시피](용어사전.md#간단한-레시피)인가"라는 **선행 분류**
+> 기둥 클러스터로 표현되는 [간단한 레시피](../../용어사전.md#간단한-레시피)인가"라는 **선행 분류**
 > 자체다. 간단하다고 판명나면 레인 자리는 정의상 이미 있다. `planClusterPorts` 의
 > `ok`/`complex` 가 그 분류를 이미 하고 있었으므로 새 검사를 만들지 않고 재사용했다.
 

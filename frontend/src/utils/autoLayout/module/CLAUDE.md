@@ -38,6 +38,12 @@ emit*(...)                                      ← execution/module/emitModule
 `execution/module/emitModule` 소관이다(다이렉트 인서팅 1:1 방출까지 포함).
 여기서 셀을 만들고 싶어지면 계층이 새는 것이다.
 
+## 읽을 문서
+
+`docs/auto-layout/module/` 이 이 폴더의 거울이다 — [trunk-redesign](../../../../../docs/auto-layout/module/trunk-redesign.md)
+(탭 인서팅) · [trunk-pipe](../../../../../docs/auto-layout/module/trunk-pipe.md)(유체) ·
+[ns-face-relief](../../../../../docs/auto-layout/module/ns-face-relief.md)(N/S 면 슬롯).
+
 ## 게임데이터를 안 본다
 
 `module/` 은 순수하다 — store 를 안 본다. 유체 면·머신 회전처럼 prototype 이 정하는 값은

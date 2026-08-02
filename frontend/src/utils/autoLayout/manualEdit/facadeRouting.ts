@@ -7,7 +7,7 @@
  *
  * 배치 파이프라인은 이걸 쓰지 않는다. 저수준 원시(`dijkstraWithJumps`·`emitItemPath`)를
  * 직접 조합한다. 이 파일의 소비자는 `routeFallback` 하나뿐이고, 그 위는 드래그·라우팅
- * 편집이다. 무엇을 하려던 코드인지는 [README.md](./README.md) 참조.
+ * 편집이다. 무엇을 하려던 코드인지는 [README.md](../../../../../docs/README.md) 참조.
  */
 
 import type {

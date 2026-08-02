@@ -36,7 +36,7 @@ Factorio 2.0의 **parametrized blueprint** (매개변수화 청사진) 시스템
 
 1. **export 분리**: 일반 recipes/items 와 별도 array로 (`o.parameter_slots = {...}`)
 2. **UI 토글**: RecipeBinding에 "Parameter slot" 탭 추가 — 의도적으로 parameter 슬롯 바인딩 가능
-3. **자동완성 통합**: [auto-layout-wizard.md](auto-layout-wizard.md) 의 레시피 트리에서 parameter 슬롯을 "abstract leaf" 로 처리해 머신 매핑 단계를 스킵
+3. **자동완성 통합**: [auto-layout-wizard.md](../auto-layout/wizard.md) 의 레시피 트리에서 parameter 슬롯을 "abstract leaf" 로 처리해 머신 매핑 단계를 스킵
 
 ## 빠른 제외법 (필요해질 경우)
 
@@ -52,4 +52,4 @@ if r.is_parameter then goto continue end  -- 또는 if not r.is_parameter then .
 
 - Factorio 0.46+ (2.0) parametrized blueprint 출시 노트
 - `LuaRecipePrototype.is_parameter` (runtime API)
-- 위저드 설계 + 알고리즘: [auto-layout-wizard.md](auto-layout-wizard.md)
+- 위저드 설계 + 알고리즘: [auto-layout-wizard.md](../auto-layout/wizard.md)
