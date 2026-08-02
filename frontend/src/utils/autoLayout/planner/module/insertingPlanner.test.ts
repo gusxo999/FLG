@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { insertingPlanner, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
-import type { SpecInserter } from "../buildSpec";
+import type { SpecInserter } from "../../buildSpec";
 
 const inL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
 const outL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });

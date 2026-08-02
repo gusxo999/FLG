@@ -40,7 +40,7 @@ import {
   type IoLine,
   type PlannedLine,
   type InsertingDecisionResult,
-} from "../../module/clusterPortPlanner";
+} from "./clusterPortPlanner";
 import type { SpecInserter } from "../../buildSpec";
 import type { ModuleInput } from "../../module/clusterModule";
 import {

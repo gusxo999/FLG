@@ -22,8 +22,8 @@
  */
 
 import type { PortFace } from "../../containerModel";
-import type { MachineLinkGroup } from "../link/allocateMachineLinks";
-import type { PlannedSide } from "../../module/clusterPortPlanner";
+import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import type { PlannedSide } from "./clusterPortPlanner";
 
 export interface LinkFacePlan {
   /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */

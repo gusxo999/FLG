@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeLink, readLinkRole, type MachineLinkGroup } from "./allocateMachineLinks";
+import { makeLink, readLinkRole, type MachineLinkGroup } from "./machineLinkGroup";
 
 /**
  * **"빈 쪽 = 밖" 규약의 단일 출처** — [makeLink](만들기) / [readLinkRole](읽기) 한 쌍.

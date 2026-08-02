@@ -23,29 +23,28 @@
 import {
   type IoLine,
   type PlannedLine,
-  type PlannedSide,
   type PortSide,
   type SupplyCapacity,
   type InsertingDecisionResult,
-} from "./clusterPortPlanner";
+} from "../planner/module/clusterPortPlanner";
 import type { SpecBelt } from "../buildSpec";
-import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "../planner/link/allocateMachineLinks";
+import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "./machineLinkGroup";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
 import { planModulePorts } from "../planner/module/planModulePorts";
 import type { LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
-import type { Container, ModulePortMeta, PlacedCell, PortFace, PortPair } from "../containerModel";
+import type { Container, ModulePortMeta, PlacedCell, PortFace } from "../containerModel";
 import type { Direction } from "../../../types/layout";
-import { cellKey, enumeratePerimeterCells, faceVector } from "../util/helper";
-import { makeContainerCell, makeInserterCell } from "../util/cellBuilder";
+import { cellKey, enumeratePerimeterCells } from "../util/helper";
 // 방출 — 계획이 끝난 배정을 셀로 놓는다(배치 실행 계층).
 import {
   emitOutputLinks,
   emitInputLinks,
   emitTapInserting,
   emitTrunkPipe,
+  emitDirectInserting,
 } from "../execution/module/emitModule";
 
 /**
@@ -340,111 +339,10 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
   }
 
-  // ── 다이렉트 인서팅(1:1) 방출 ───────────────────────────────────────────────
-  // 한 (머신, 품목, 팔 하나) = 두 칸뿐이다:
-  //     [상자] [인서터] [머신 …]      (W 면 예: x=-2, x=-1, x=0..2)
-  // 같은 면의 줄들은 **서로 다른 행**(슬롯)을 쓰므로 절대 부딪히지 않는다 — 자리 잡기가
-  // 곧 성공이고, 탐색이 없다. 상자 바깥쪽은 늘 비어 있어 **모든 포트의 바깥 탈출로가
-  // 구성으로 보장**된다(우선순위 ②).
-  //
-  // 트렁크가 이 경로를 대체하지 **않는다** — 트렁크가 거절되면(복잡한 레시피·용량 초과)
-  // 언제나 여기로 돌아온다. 그게 "거절은 항상 안전하다"의 실체다.
-  //
-  // **[requiredInserterCount] 만큼 팔을 놓는다.** 인서터 하나가 나르는 양은 유한하므로,
-  // 머신 한 대의 수요가 그걸 넘으면 팔이 여러 개 필요하다 — 이건 탭이냐 다이렉트냐와
-  // 무관한 물리량이다. 탭은 그 팔들을 같은 [ClusterBelt] 에 앉히고([Parallel Inserting]),
-  // 다이렉트는 **팔마다 자기 상자**를 준다: 상자 한 칸의 이웃은 4칸뿐이고 인서터는 상자와
-  // 머신 **양쪽에 닿아야** 하므로 팔을 늘리려면 상자도 늘어야 한다. 그래서 한 줄이 면의
-  // 행을 `arms` 개 먹고, 포트도 그만큼 는다(= 상자 여러 개가 머신 한 대를 먹인다).
-  //
-  // 예전엔 이 수를 **묻지도 않고** 줄당 팔 하나만 놓고 "성공"이라 보고했다 — 초당 8개를
-  // 먹는 머신에 초당 0.667개짜리 인서터 하나가 붙은 배치가 나왔다(2026-07-16 실측).
-  const slotOnFace = new Map<PlannedSide, number>(); // 면별로 소비한 행/열 슬롯 수
-  let seq = 0;
-  for (const planned of plan.rest.lines) {
-    const line = planned.line;
-    if (line.kind !== "belt") {
-      // 다이렉트 인서팅은 유체를 못 다룬다(인서터로 유체를 옮길 수 없다) — planner 가 이미
-      // complex 로 막지만(fluid-requires-trunk-pipe) 안전망으로 둔다.
-      unroutedLines.push(line);
-      continue;
-    }
-    const face = planned.side as PortFace;
-    const fv = faceVector(face);
-    const lateral = face === "W" || face === "E" ? input.machine.h : input.machine.w;
-    // 수량을 모르면(lineRates 에 없던 줄) 보류값 1 — 없는 숫자를 지어내지 않는다.
-    const arms = Math.max(1, planned.requiredInserterCount ?? 1);
-    const slot = slotOnFace.get(planned.side) ?? 0;
-    if (slot + arms > lateral) {
-      // 이 면에 팔을 다 앉힐 행이 없다. 팔 개수는 협상 대상이 아니므로(레시피·머신·인서터가
-      // 정한다) 줄여서 놓으면 **굶는 배치**가 된다 — 못 놓는다고 정직하게 말한다.
-      unroutedLines.push(line);
-      continue;
-    }
-    slotOnFace.set(planned.side, slot + arms);
-
-    for (const m of machines) {
-      for (let k = 0; k < arms; k++) {
-      // 인서터가 앉는 머신 둘레 칸(rim) — 면 위에서 slot+k 번째. 팔마다 자기 행.
-      const seat = rimCell(m, face, slot + k);
-      const chestAt = { x: seat.x + fv.x, y: seat.y + fv.y };
-      if (occupancy.has(cellKey(seat.x, seat.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
-        continue; // 기둥 중간 머신의 N/S 면 등 — 슬롯 모델상 안 생기지만 안전망.
-      }
-
-      const chestId = `${prefix}-${line.role}-${line.name}-${seq++}`;
-      const chest: Container = {
-        id: chestId,
-        kind: "infinity-chest",
-        entityName: "infinity-chest",
-        origin: { ...chestAt },
-        size: { w: 1, h: 1 },
-        content: line.name,
-        role: line.role,
-      };
-      chests.push(chest);
-
-      // 인서터 방향 = **집는 쪽**(cellBuilder 규약). 입력이면 상자(바깥)에서 집어 머신에
-      // 넣고, 출력이면 머신(안쪽)에서 집어 상자에 놓는다.
-      const pickup = line.role === "input" ? fv : { x: -fv.x, y: -fv.y };
-      const pair: PortPair = {
-        producer: { containerId: line.role === "input" ? chestId : m.id, cell: { ...seat }, face, kind: "item" },
-        consumer: { containerId: line.role === "input" ? m.id : chestId, cell: { ...seat }, face, kind: "item" },
-      };
-      const lineCells: PlacedCell[] = [
-        makeContainerCell(chest, chestAt),
-        makeInserterCell(seat, pickup, input.inserterEntityName, pair),
-      ];
-      for (const c of lineCells) {
-        cells.push(c);
-        occupancy.add(cellKey(c.x, c.y));
-      }
-
-      const port: ModulePort = {
-        line,
-        anchor: { ...chestAt },
-        // machine-side 끝점 = anchor 에서 안쪽 2칸 = 머신 가장자리 칸. Routing 선이
-        // chest↔machine 으로 이어지게 한다(from==to 방지). 벨트가 없어도 규약은 같다.
-        tapAnchor: { x: chestAt.x - 2 * fv.x, y: chestAt.y - 2 * fv.y },
-        face,
-        // 전 포트 emit 후 한꺼번에 채운다(아래 fillModuleWayOuts).
-        moduleWayOuts: [],
-        chest,
-        cells: [], // 모듈 안에 벨트가 없다 — 트렁크 spine 부재.
-        meta: {
-          item: line.name,
-          side: planned.side,
-          laneDepth: 2, // 상자는 머신 면에서 늘 2칸(인서터 1 + 상자 1).
-          inserter: "normal", // 1:1 은 reach 1 로 충분 — 긴팔 불필요.
-          amount: line.amount,
-          endPreference: input.lineEnds?.get(`${line.role}:${line.name}`),
-        },
-      };
-      if (line.role === "output") outputPorts.push(port);
-      else inputPorts.push(port);
-      }
-    }
-  }
+  emitDirectInserting({
+    lines: plan.rest.lines, machines, input, prefix, occupancy,
+    cells, chests, inputPorts, outputPorts, unroutedLines,
+  });
 
   // 전 포트 emit 완료 → 모듈 몸통이 확정됐으니 각 포트의 moduleWayOuts 를 채운다.
   fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
@@ -568,15 +466,4 @@ function buildTrunkContext(
   }
 
   return { ext, pipeJumpMode, clusterPipeDepth, emitDepthOf, maxDepthAtEnd };
-}
-
-function rimCell(m: Container, face: PortFace, slot: number): { x: number; y: number } {
-  const { x, y } = m.origin;
-  const { w, h } = m.size;
-  switch (face) {
-    case "W": return { x: x - 1, y: y + slot };
-    case "E": return { x: x + w, y: y + slot };
-    case "N": return { x: x + slot, y: y - 1 };
-    case "S": return { x: x + slot, y: y + h };
-  }
 }

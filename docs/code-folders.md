@@ -71,6 +71,7 @@ autoLayout/
 ├ planner/                     계획 — 조율 주체
 │   ├ module/                    한 모듈 안쪽 계획
 │   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
+│   │   ├ clusterPortPlanner.ts    줄 슬롯 배정 · tap/direct 판정
 │   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
 │   ├ link/allocateMachineLinks.ts 어느 기계 쌍을 몇 벨트로 잇나
 │   ├ perimeter/wayOuts.ts         모듈이 "내 몸통에 안 막히는 방향"을 답한다
@@ -82,13 +83,13 @@ autoLayout/
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
 │   └ moduleHop.ts                 자식 출력 → 부모 입력 잇기
 ├ execution/                   실행 — 계획대로 셀을 놓는다
-│   ├ module/emitModule.ts         트렁크·링크·탭 인서터·유체
+│   ├ module/emitModule.ts         트렁크·링크·탭/다이렉트 인서터·유체
 │   ├ emitPath.ts                  경로 → 벨트·파이프 셀
 │   ├ machinePlacer.ts             머신 footprint
 │   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
-├ module/                      한 모듈 안쪽 (형제를 모른다)
+├ module/                      한 모듈 안쪽 (형제를 모른다. 셀을 만들지 않는다)
 │   ├ clusterModule.ts             모듈 생성 오케스트레이터
-│   ├ clusterPortPlanner.ts        줄 슬롯 배정 · tap/direct 판정
+│   ├ machineLinkGroup.ts          벨트 한 줄 = 팔 묶음 (자료 구조 + 조립·판독)
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                유체 면 선택
 │   ├ moduleTransform.ts           모듈 회전
@@ -110,17 +111,35 @@ autoLayout/
 > **배치 결과를 화면 좌표로 평탄화하는 표시 경로**(`unifyAreas`)다. 드래그 부분은
 > `manualEdit/dragArea.ts` 로 갔다.
 
-## 아직 두 축과 어긋나 있는 것 (미해소)
+## 두 축이 실제로 지켜지는가 — 기계적으로 확인할 수 있다
 
-정직하게 적는다 — **폴더가 이미 정답이라고 읽으면 안 된다.**
+```powershell
+# 축 1 — 계획 계층이 셀을 만들면 위반이다. 둘 다 0 이어야 한다(주석 매치 제외).
+rg -c "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" `
+   frontend/src/utils/autoLayout/module frontend/src/utils/autoLayout/planner
 
-| # | 코드 | 지금 | 두 축이 말하는 자리 | 근거 |
-|---|---|---|---|---|
-| **V3** | `module/clusterPortPlanner.ts` (796줄) | `module/` | `planner/module/` | `PlacedCell` 0개(계획) + 형제 모름(module). 지금 `planner/module/` 두 파일이 **역방향으로** 이 파일을 import 한다 |
-| **V4** | `planner/link/allocateMachineLinks.ts` (247줄) | 한 파일 | **둘로 갈라야** | `allocateMachineLinks`(childCount/parentCount = 두 클러스터)만 link 다. `MachineLinkGroup`·`makeLink`·`readLinkRole`·`externalLineGroups` 는 **로컬 머신 index + 팔 수**뿐이라 module 이다 |
-| **V5** | `module/clusterModule.ts` 다이렉트 인서팅 방출 (~120줄) | `module/` | `execution/module/` | 셀을 만든다(축 1 위반). `module/` 에서 셀을 만드는 유일한 곳이다 |
+# 축 2 — module 이 형제를 아는 통로. 0 이어야 한다.
+rg "planner/link" frontend/src/utils/autoLayout/module
 
-계획: [tempPlanDocs/모듈-계층-리팩토링-계획.md] Phase 6 (저장소에 없는 임시 문서).
+# link 는 순수 배정기다 — import 가 하나도 없어야 한다.
+rg "^import" frontend/src/utils/autoLayout/planner/link/allocateMachineLinks.ts
+```
+
+2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:
+
+| # | 무엇이 문제였나 | 어떻게 |
+|---|---|---|
+| V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `planner/perimeter/wayOuts.ts` |
+| V2 | `allocateMachineLinks` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
+| V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/` |
+| V4 | 한 파일에 **두 관심사**가 있어 `module/ ⇄ planner/link/` 왕복 간선이 생겼다 | 둘로 가름 — 아래 |
+| V5 | `clusterModule` 이 다이렉트 인서팅 셀을 **직접 만들었다** | → `execution/module/emitDirectInserting` |
+
+**V4 가 왜 왕복 간선을 만들었나:** `allocateMachineLinks`(두 클러스터의 대수를 본다 = link)와
+`MachineLinkGroup`·`makeLink`·`readLinkRole`·`externalLineGroups`(로컬 머신 index + 팔 수뿐
+= module)가 한 파일에 있었다. 그래서 `module/` 이 그 파일을 부르고, 그 파일이 다시 `module/`
+의 `requiredInserterCount` 를 불렀다. 갈라 놓으니 **두 간선이 동시에 사라졌다** —
+`planner/link/` 는 이제 아무것도 import 하지 않는 순수 산술이다.
 
 ## util 두 파일의 경계
 

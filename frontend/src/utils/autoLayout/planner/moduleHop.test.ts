@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import { routeModuleHops, type HopConfig } from "./moduleHop";
 import { faceVector } from "../util/helper";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });

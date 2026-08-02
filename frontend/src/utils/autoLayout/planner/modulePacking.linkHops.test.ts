@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 import * as allocateMachineLinksModule from "./link/allocateMachineLinks";
 import { faceVector } from "../util/helper";
 import { EntityType } from "../../../types/layout";

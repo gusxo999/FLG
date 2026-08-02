@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "../../module/clusterModule";
-import type { MachineLinkGroup } from "../../planner/link/allocateMachineLinks";
+import type { MachineLinkGroup } from "../../module/machineLinkGroup";
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.
 //

@@ -26,8 +26,8 @@
  * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다. v1 은 유체 줄 1개까지.
  */
 
-import type { SpecBelt, SpecInserter } from "../buildSpec";
-import { determineBeltCount } from "../beltThroughput";
+import type { SpecBelt, SpecInserter } from "../../buildSpec";
+import { determineBeltCount } from "../../beltThroughput";
 
 /** 컬럼의 좌/우 면. */
 export type PortSide = "W" | "E";

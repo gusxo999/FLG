@@ -33,8 +33,9 @@
 자리가 없으면 **만들어 내지 말고** 정직하게 실패시킨다. 실패 사유는
 `moduleWizard.RejectReason` 이 단일 출처이고, 그 문구가 UI 실패 라벨로 그대로 나간다.
 
-## 아직 어긋난 것
+## `link/` 는 아무것도 import 하지 않는다
 
-`module/clusterPortPlanner.ts`(796줄)는 계획인데 `module/` 에 있다 —
-여기 두 파일이 **역방향으로** 그것을 import 한다. 자세한 것은
-[docs/code-folders.md](../../../../../docs/code-folders.md) 의 "아직 두 축과 어긋나 있는 것".
+`allocateMachineLinks` 는 *"어느 기계 쌍을 몇 벨트로 잇나"* 만 답하는 순수 산술이다.
+벨트 한 줄의 자료 구조(`MachineLinkGroup`)는 로컬 머신 index + 팔 수만 알아
+**`module/machineLinkGroup.ts`** 에 있다 — 한 파일에 있던 시절엔 `module/ ⇄ planner/link/`
+왕복 간선이 생겼다(2026-08-02 해소). 이 파일이 순수하게 남아 있는 한 그 간선은 안 돌아온다.

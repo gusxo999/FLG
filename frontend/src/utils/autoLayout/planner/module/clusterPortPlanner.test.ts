@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { planClusterPorts, type IoLine } from "./clusterPortPlanner";
-import type { SpecInserter } from "../buildSpec";
+import type { SpecInserter } from "../../buildSpec";
 
 // 고른 인서터 = reach 목록. 서로 다른 reach 하나당 ClusterBelt 한 줄(reach r → depth 1+r).
 const insR = (reach: number, throughput = 0): SpecInserter => ({

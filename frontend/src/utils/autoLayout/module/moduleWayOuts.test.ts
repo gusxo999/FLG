@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModulePort } from "./clusterModule";
-import type { IoLine } from "./clusterPortPlanner";
+import type { IoLine } from "../planner/module/clusterPortPlanner";
 import type { PortFace } from "../containerModel";
 
 const inL = (name: string, amount?: number): IoLine => ({ name, kind: "belt", role: "input", amount });

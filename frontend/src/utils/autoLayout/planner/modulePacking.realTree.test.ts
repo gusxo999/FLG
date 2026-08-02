@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 
 // 실제 트리(advanced-circuit, count=1)가 링크 기반 새 경로로 라우팅되는지 — 토이 2노드가
 // 아니라 다-노드·다-품목·내부간선+external 혼합 트리. production(브라우저)이 rate 를 채우면

@@ -20,8 +20,8 @@
 import { useGameDataStore } from "../../../store/gameDataStore";
 import { EntityType } from "../../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
-import type { IoLine } from "../module/clusterPortPlanner";
-import { externalLineGroups } from "./link/allocateMachineLinks";
+import type { IoLine } from "./module/clusterPortPlanner";
+import { externalLineGroups } from "../module/machineLinkGroup";
 import { chooseMachineDirection } from "../module/fluidPorts";
 import {
   collectPipeFlow,

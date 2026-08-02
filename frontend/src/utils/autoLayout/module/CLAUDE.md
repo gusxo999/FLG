@@ -32,15 +32,11 @@ emit*(...)                                      ← execution/module/emitModule
 여기서는 `ModulePort.linkId` 로 그대로 흘려보낸다. **파싱하는 코드가 0 인 것이
 모듈-링크 분리의 실질**이다 — 파싱하는 순간 모듈이 형제를 알게 된다.
 
-## 아직 어긋난 것 두 개
+## 이 폴더는 셀을 만들지 않는다
 
-| 파일 | 문제 |
-|---|---|
-| `clusterPortPlanner.ts` (796줄) | **계획인데 여기 있다** — `PlacedCell` 0개. `planner/module/` 이 맞다 |
-| `clusterModule.ts` 다이렉트 인서팅 방출 (~120줄) | **셀을 만든다** — `module/` 에서 셀을 만드는 유일한 곳. `execution/module/` 이 맞다 |
-
-자세한 것은 [docs/code-folders.md](../../../../../docs/code-folders.md) 의
-"아직 두 축과 어긋나 있는 것".
+`makeContainerCell`·`makeInserterCell` 을 부르는 코드가 **0 이다**. 방출은 전부
+`execution/module/emitModule` 소관이다(다이렉트 인서팅 1:1 방출까지 포함).
+여기서 셀을 만들고 싶어지면 계층이 새는 것이다.
 
 ## 게임데이터를 안 본다
 

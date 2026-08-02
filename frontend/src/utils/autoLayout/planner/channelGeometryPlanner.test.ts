@@ -13,7 +13,7 @@ import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./mod
 import { routeModuleHops } from "./moduleHop";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 
 const ctx = { yMin: 0, yMax: 10 };
 

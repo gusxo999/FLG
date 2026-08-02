@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
-import type { MachineLink, MachineLinkGroup } from "../../planner/link/allocateMachineLinks";
+import type { MachineLink } from "../../planner/link/allocateMachineLinks";
+import type { MachineLinkGroup } from "../../module/machineLinkGroup";
 import { directionToVector } from "../../containerRouting";
 
 /**

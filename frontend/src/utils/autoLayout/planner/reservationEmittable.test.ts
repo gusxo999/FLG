@@ -20,7 +20,7 @@ import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./
 import { routeModuleHops } from "./moduleHop";
 import { routePortToPerimeter } from "./perimeterRouter";
 import { cellKey } from "../util/helper";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 
 const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
 const outL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });

@@ -4,7 +4,7 @@ import { routeModuleHops } from "../planner/moduleHop";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";
 import { seatIsBeltFeeder } from "../planner/moduleHop";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });

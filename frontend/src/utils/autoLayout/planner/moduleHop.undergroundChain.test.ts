@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeModuleHops } from "./moduleHop";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 
 /**
  * **모서리에 걸린 지하 점프를 한 구간 일찍 먹으면 안 된다** (2026-07-22).

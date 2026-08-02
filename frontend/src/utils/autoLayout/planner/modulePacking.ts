@@ -26,14 +26,11 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import {
-  allocateMachineLinks,
-  type MachineLink,
-  type MachineLinkGroup,
-} from "./link/allocateMachineLinks";
+import { allocateMachineLinks, type MachineLink } from "./link/allocateMachineLinks";
+import type { MachineLinkGroup } from "../module/machineLinkGroup";
 import { planPerimeterLanes, type LaneContext, type LanePlan, type LanePortInput, type ExitEdge } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
-import type { IoLine } from "../module/clusterPortPlanner";
+import type { IoLine } from "./module/clusterPortPlanner";
 import type { Container, PlacedCell } from "../containerModel";
 import type { Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";

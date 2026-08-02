@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "./clusterModule";
-import type { IoLine } from "./clusterPortPlanner";
+import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../../types/layout";
 
 const inItem = (name: string): IoLine => ({ name, kind: "belt", role: "input" });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
-import type { IoLine } from "./clusterPortPlanner";
+import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { transformModule, rotationToFace, type Orientation, type Rotation } from "./moduleTransform";
 import { EntityType } from "../../../types/layout";
 import type { PlacedCell } from "../containerModel";
