@@ -41,9 +41,9 @@ tags: [auto-layout, placement, routing]
 | 무한상자 (infinity chest) | `infinity-chest` (1×1) | 외부 item I/O |
 | 무한파이프 (infinity pipe) | `infinity-pipe` (1×1) | 외부 fluid I/O |
 
-각 컨테이너의 [[용어사전#footprint|footprint]] 는 [`Entity.tile_width × tile_height`](../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
+각 컨테이너의 [[용어사전#footprint|footprint]] 는 [`Entity.tile_width × tile_height`](../../../frontend/src/store/gameDataStore.ts), fluid I/O 셀 좌표는 [`Entity.fluid_boxes[].connections[].positions`](../frontend/src/store/gameDataStore.ts) 에서 결정된다. 무한상자는 fluid_boxes 가 없으므로 item port 만 노출.
 
-구현: [containerModel.ts](../frontend/src/utils/autoLayout/containerModel.ts) `Container`.
+구현: [containerModel.ts](../../../frontend/src/utils/autoLayout/containerModel.ts) `Container`.
 
 ### 2.2 ports
 
@@ -54,7 +54,7 @@ tags: [auto-layout, placement, routing]
 | item port | footprint 둘레 셀 (`2(w + h)` 개) | ✓ | ✓ | — |
 | fluid port (특정 fluid) | `fluid_boxes[].connections[].positions` (회전 0 기준 고정) | ✓ (해당 머신만) | — | ✓ |
 
-`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현: [portInference.ts](../frontend/src/utils/autoLayout/manualEdit/portInference.ts) `enumerateContainerPorts`.
+`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현: [portInference.ts](../../../frontend/src/utils/autoLayout/manualEdit/portInference.ts) `enumerateContainerPorts`.
 
 ---
 
@@ -92,7 +92,7 @@ tags: [auto-layout, placement, routing]
 | `pipe-to-ground` | **무조건** — entity prototype 이 달라도 서로 차단. 단일 `blockGroup = "pipe-to-ground"`. |
 | `underground-belt` | **같은 prototype 만** — 다른 티어는 독립. `blockGroup = entityName`. |
 
-지하 운반체는 입출구가 *직선* 으로만 이어지므로 꺾임은 반드시 지상 셀에서 일어난다. Dijkstra 상태 `(x, y, arr)` (arr = 도착 방식·방향) 가 **출구 직진**(출구 셀은 같은 방향 직진만 + 재점프 금지)·**입구 직진**(점프는 도착 방향과 같은 방향으로만 시작; 시작 셀만 예외) 두 제약을 강제해, 직각 코너에 항상 연결용 지상 한 칸이 남게 한다. 구현: [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `dijkstraWithJumps`.
+지하 운반체는 입출구가 *직선* 으로만 이어지므로 꺾임은 반드시 지상 셀에서 일어난다. Dijkstra 상태 `(x, y, arr)` (arr = 도착 방식·방향) 가 **출구 직진**(출구 셀은 같은 방향 직진만 + 재점프 금지)·**입구 직진**(점프는 도착 방향과 같은 방향으로만 시작; 시작 셀만 예외) 두 제약을 강제해, 직각 코너에 항상 연결용 지상 한 칸이 남게 한다. 구현: [containerRouting.ts](../../../frontend/src/utils/autoLayout/planner/containerRouting.ts) `dijkstraWithJumps`.
 
 > *지하 변형의 게임 메커니즘 자체*(왜 직선만, 왜 차단되는가)는 본 문서 범위 밖이다.
 
@@ -102,8 +102,8 @@ tags: [auto-layout, placement, routing]
 
 | 모듈 | 책임 | 구현 |
 |---|---|---|
-| **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
-| **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `commitContainer` |
+| **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [recipeTree.ts](../../../frontend/src/utils/autoLayout/recipeTree.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
+| **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../../../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `commitContainer` |
 | **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `execution/module/emitModule.emitTapInserting` |
 | **채널 계획** | 모듈 사이 라우팅 채널 폭/트랙 산정 | `channelPlanner.ts` |
 | **오케스트레이터** | 위 모듈을 엮어 후보 생성 | `moduleWizard.ts` `tryRunModulePipeline` |

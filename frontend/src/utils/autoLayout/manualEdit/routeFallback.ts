@@ -27,7 +27,7 @@ import { makeBuildSpec, type BuildSpec } from '../buildSpec';
 import { enumerateContainerPorts, resolvePortPair } from './portInference';
 
 /**
- * 옛 경로(Dijkstra 탐색)의 옵션 = [BuildSpec](./buildSpec.ts) **+ 탐색 전용 손잡이**.
+ * 옛 경로(Dijkstra 탐색)의 옵션 = [BuildSpec](../buildSpec.ts) **+ 탐색 전용 손잡이**.
  *
  * 둘을 갈라 둔 이유: BuildSpec("무엇으로 지을 수 있나")은 탐색과 무관해서 **예약 경로도**
  * 본다. 아래 필드들(`turnPenalty`·`routingBounds`·`preferUnderground`)은
@@ -162,7 +162,7 @@ function samePort(a: ContainerPort, b: ContainerPort): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 옛 경로용 옵션 = [makeBuildSpec](./buildSpec.ts) + 탐색 전용 손잡이.
+ * 옛 경로용 옵션 = [makeBuildSpec](../buildSpec.ts) + 탐색 전용 손잡이.
  *
  * `preferUnderground` 만 여기서 유도한다(지하 변형을 하나라도 골랐으면 켠다) — 나머지
  * 탐색 손잡이(`turnPenalty`·`routingBounds`)는 호출자가 상황에 따라 얹는다.

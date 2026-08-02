@@ -100,7 +100,7 @@ export interface BuildSpec {
  */
 /**
  * **[tapCapacity](../../../../docs/용어사전.md) — 팔 하나가 초당 몇 개를 옮기나.**
- * [SupplyCapacity.tapCapacity](./module/clusterPortPlanner.ts) 에 담기는 그 값이고,
+ * [SupplyCapacity.tapCapacity](planner/module/clusterPortPlanner.ts) 에 담기는 그 값이고,
  * 이 함수가 **유일한 출처**다.
  *
  * 값은 **reach 1 중 가장 빠른 것**이다. 좌석은 거의 전부 d1 에 앉아 d2 를 집으므로 후보가

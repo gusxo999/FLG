@@ -148,7 +148,7 @@ routings.map(clone) ─┘
 
 ## 유체 합류 가드가 없다
 
-`docs/auto-layout-wizard.known-limits.md` **§9 Deprecated Dijkstra Guard**:
+[known-limits](../../../../../docs/auto-layout/common/known-limits.md) **§9 Deprecated Dijkstra Guard**:
 
 > 파이프는 **방향이 없다.** 닿기만 하면 남의 관망과 그냥 합쳐진다.
 > - **오염** — 다른 유체 파이프가 옆을 스치면 두 관망이 하나가 된다.
@@ -156,7 +156,7 @@ routings.map(clone) ─┘
 >
 > 둘 다 그림상 멀쩡하고 라우팅도 "성공"으로 보고된다. **기계만 굶는다.**
 
-배치 파이프라인에는 이 가드(`collectPipeFlow`/`pipeFlowConflict`)가 걸려 있지만
+배치 파이프라인에는 이 가드(`util/pipeFlow` 의 `collectPipeFlow`/`pipeFlowConflict`)가 걸려 있지만
 **드래그 경로에는 없었다.** 이 폴더가 비활성이 되면서 그 결함의 영향 범위는 **0** 이 됐다.
 
 **재구현 시 이 가드를 반드시 함께 넣을 것.**

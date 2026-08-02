@@ -7,7 +7,7 @@
  *
  * **왜 이 파일이 필요한가.** 예전 K(≈16.67)는 "bulk 12스택 = 8/s" 라는 **틀린 앵커** 하나에서
  * 나왔고(실제 ≈ 27.7), 그래서 모든 인서터가 3~3.5배 느렸다. 그 값이
- * [requiredInserterCount](./module/clusterPortPlanner.ts) 로 흘러 **어떤 머신으로도 kr-glass 를
+ * [requiredInserterCount](planner/module/clusterPortPlanner.ts) 로 흘러 **어떤 머신으로도 kr-glass 를
  * 못 짓게** 만들었다(2026-07-16 실측). 앵커가 조용히 틀리는 걸 여기서 막는다.
  *
  * **K 범위는 넓다** — 모드 인서터·고급 인서터·스택 보너스. 그래서 특정 값이 아니라 **식의

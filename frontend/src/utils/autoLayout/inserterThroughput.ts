@@ -25,7 +25,7 @@ import type { Entity } from '../../store/gameDataStore';
  *
  * > **2026-07-16 정정.** 예전 K 는 `8/(0.04×12) ≈ 16.67` 이었다 — "bulk-inserter 가 12스택으로
  * > 초당 8개" 라는 앵커 하나에서 나온 값인데, **그 앵커가 틀렸다**(실제 ≈ 27.7). 그래서 모든
- * > 인서터가 3~3.5배 느리게 나왔고, [requiredInserterCount](./module/clusterPortPlanner.ts) 가
+ * > 인서터가 3~3.5배 느리게 나왔고, [requiredInserterCount](planner/module/clusterPortPlanner.ts) 가
  * > 팔을 몇 배로 요구해 **어떤 머신으로도 kr-glass 를 못 짓는** 상태였다(실측: 가장 느린
  * > stone-furnace 조차 팔 3개 > 면 2행). 지금 K 는 앵커가 아니라 **틱 정의에서 유도**되므로,
  * > 모드 인서터가 어떤 rotation_speed 를 갖든 같은 식으로 답한다.

@@ -65,6 +65,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
+| [module-planning](auto-layout/module/module-planning.md) | **모듈 안쪽 계획은 어떻게 도는가** — 자리를 정하는 주체는 하나(`planModulePorts`) · 순서가 제약의 세기인 이유 · 좌표의 경계. **모듈 생성 순서를 바꾸기 전에 읽는다** |
 | [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 이 `insertingPlanner`+`emitTapInserting` 으로 돈다 |
 | [trunk-pipe](auto-layout/module/trunk-pipe.md) | **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전 |
 | [ns-face-relief](auto-layout/module/ns-face-relief.md) | count=1 raw 입력의 노출 N/S 면 슬롯 (W-spill 갇힘 치료) |

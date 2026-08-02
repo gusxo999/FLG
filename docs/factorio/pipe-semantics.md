@@ -41,7 +41,7 @@ tags: [factorio-data, routing, auto-layout]
 어느 쪽을 보고 있는지 전혀 상관없다. 유체는 관망 안에서 압력이 알아서 흐른다 — 우리가 흐름을
 설계하지 않는다. 그래서:
 
-- 파이프 셀의 `direction` 은 **항상 0** 이다([cellBuilder.makePipeCell](../frontend/src/utils/autoLayout/util/cellBuilder.ts)).
+- 파이프 셀의 `direction` 은 **항상 0** 이다([cellBuilder.makePipeCell](../../frontend/src/utils/autoLayout/util/cellBuilder.ts)).
   0 은 "북쪽" 이 아니라 **"뜻 없음"** 이다.
 - 파이프 가드는 검사가 **한 갈래**다: "이 칸에 놓으면 이으면 안 될 것과 이어지느냐."
 - 남의 파이프 한 칸이 있으면 **그 사방 네 칸 전부**가 금지 칸이다(대각선은 안 닿는다).
@@ -89,7 +89,7 @@ tags: [factorio-data, routing, auto-layout]
 
 즉 유체 줄이 **어느 면으로 들어가는지는 우리가 고르는 게 아니라 머신이 정한다.** 우리가 할 수 있는
 건 **머신을 돌리는 것**뿐이다. 그래서 유체 레시피 모듈은 머신을 90° 돌려 유체 입구가 우리가 원하는
-면(E)을 보게 한다([fluidPorts.chooseMachineDirection](../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
+면(E)을 보게 한다([fluidPorts.chooseMachineDirection](../../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
 
 **연결 칸이 어디인지는 좌표로 못 뽑는다.** 화학 공장의 유체 상자는 3×3 의 **모서리 칸**이라 `|x| = |y|`
 이고, 그 연결이 위로 나가는지 옆으로 나가는지 좌표에 정보가 **없다.** 답은 `PipeConnection.direction`
@@ -113,7 +113,7 @@ tags: [factorio-data, routing, auto-layout]
 
 둘 다 **화면상으로는 멀쩡하고, 라우팅은 "성공" 이라고 보고한다.** 그래서 파이프를 깔기 전에
 "밟으면 안 되는 칸" 의 지도를 만들어 검사한다 = [`collectPipeFlow` / `PipeFlow`](../용어사전.md#pipeflow--collectpipeflow)
-([module/pipeFlow.ts](../frontend/src/utils/autoLayout/module/pipeFlow.ts)).
+([module/pipeFlow.ts](../../frontend/src/utils/autoLayout/util/pipeFlow.ts)).
 
 벨트 가드와의 대칭:
 
@@ -137,7 +137,7 @@ tags: [factorio-data, routing, auto-layout]
 - `underground-belt` — **같은 prototype 끼리만** 간섭한다. 티어가 다른 지하벨트는 같은 직선 위에서
   서로 통과한다.
 - `pipe-to-ground` — **prototype 무관 전부** 간섭한다. 그래서 우리 모델은 지하 파이프를 단일
-  `blockGroup = "pipe-to-ground"` 으로 묶는다([containerModel.UndergroundCorridor](../frontend/src/utils/autoLayout/containerModel.ts)).
+  `blockGroup = "pipe-to-ground"` 으로 묶는다([containerModel.UndergroundCorridor](../../frontend/src/utils/autoLayout/containerModel.ts)).
 
 ## 7. 그래서 우리 배치에서 파이프는 어떻게 깔리나
 

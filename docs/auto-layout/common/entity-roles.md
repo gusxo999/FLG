@@ -36,7 +36,7 @@ placer 입력으로도 받지 않는다.
 - `crafting_speed × (1 / energy_required)` 로 초당 처리량이 결정된다.
 - 고체 입출력은 측면 아무 셀에서나 인서터로 가능. 액체 입출력은 `fluid_boxes[].connections[].positions` 에 정의된 **고정 셀** 에서만.
 
-**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
+**현재 알고리즘:** 머신 footprint 는 `tile_width × tile_height` 를 그대로 써 **가변 지원**(보일러 3×2, 사일로 9×9 등도 배치)되지만, **회전은 0(북쪽) 고정**이다. 회전·fluidbox 면 제약은 [known-limits §6](known-limits.md). 단, 모든 변환기는 렌더 `EntityType` 이 Assembler 로 단순 매핑된다([machinePlacer.ts](../../../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 ---
 
@@ -48,7 +48,7 @@ placer 입력으로도 받지 않는다.
 - **inserter** (1×1): direction 이 "픽업 → 드랍" 을 가리키며, 자기 양옆 1칸씩 두 셀에 닿아 운반.
 - 변형: `long-handed-inserter` (2칸 사거리), `fast-inserter`, `bulk-inserter` (한 번에 여러 개).
 - **[[용어사전#loader (로더)|loader]] / loader-1x1**: 머신/체스트의 한 면에 붙으면 인서터 없이 자동 적재/배출. 인서터 + 짧은 벨트의 융합.
-- throughput 은 `rotation_speed × stack_size` 로 결정. 인서터 처리량 모델은 [inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) 참조 — 사용자 override 우선.
+- throughput 은 `rotation_speed × stack_size` 로 결정. 인서터 처리량 모델은 [inserterThroughput.ts](../../../frontend/src/utils/autoLayout/inserterThroughput.ts) 참조 — 사용자 override 우선.
 
 ---
 
@@ -72,14 +72,14 @@ placer 입력으로도 받지 않는다.
 > **서로 다른 라우팅의 벨트 셀은 흐름 방향으로 인접해선 안 된다** — 내 벨트의 출력 칸이 외부 벨트
 > 타일이 되거나, 외부 벨트의 출력 칸 위에 내 벨트가 놓여선 안 된다.
 
-이 불변식은 [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) 의 [[용어사전#collectBeltFlow|`collectBeltFlow`]]
+이 불변식은 [containerRouting.ts](../../../frontend/src/utils/autoLayout/planner/containerRouting.ts) 의 [[용어사전#collectBeltFlow|`collectBeltFlow`]]
 (이미 배치된 벨트의 타일 + 지표 출력 칸 수집) + `dijkstraWithJumps` 의 lazy-constraint 가드
 (`beltFlowConflictCell` — 합류하는 셀을 `blocked` 에 넣고 재탐색)로 강제된다. 트렁크 방출도
 외부 벨트의 출력 칸을 occupancy 에 더해 그 위에 트렁크 벨트를 놓지 않는다. 어느 패스가 먼저
 깔리든 **나중에 깔리는 쪽**이 이미 배치된 벨트를 보고 우회하므로 순서와 무관하게 성립한다.
 
 > **참고(파이프):** D 의 파이프는 방향과 무관하게 4면 인접이면 자동 연결되므로 이 흐름-인접 모델이
-> 아니라 **인접 자체**가 합류다. 그 무방향 버전의 가드가 [`collectPipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts)
+> 아니라 **인접 자체**가 합류다. 그 무방향 버전의 가드가 [`collectPipeFlow`](../../../frontend/src/utils/autoLayout/util/pipeFlow.ts)
 > 다(2026-07-14 구현, 새 모듈 경로 한정). 벨트와의 차이 전부는 [pipe-semantics](../../factorio/pipe-semantics.md).
 
 ---
@@ -92,11 +92,11 @@ placer 입력으로도 받지 않는다.
 - **pipe** (1×1): **방향이 없다**(0 고정). 직교로 닿으면 **무조건** 한 관망이 된다.
 - **처리량 무한**(우리 모델의 결정) → 유체판 `determineBeltCount` 가 없고, **같은 유체 합류는 무해**하다.
 - 파이프는 머신 벽 아무 데나가 아니라 **유체 상자의 연결 칸**에만 붙는다 → 유체 줄의 면은 우리가 고르는
-  게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseMachineDirection](../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
+  게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseMachineDirection](../../../frontend/src/utils/autoLayout/module/fluidPorts.ts)).
   그 칸이 어디인지는 좌표가 아니라 `PipeConnection.direction` 이 답한다 → [fluid-box-semantics](../../factorio/fluid-box-semantics.md).
 - **pipe-to-ground** (1×1 두 개): prototype 무관 **전부** 간섭(벨트와 다르다) → 단일 blockGroup.
 - **[[용어사전#pump (펌프)|pump]]** (1×2): **자동 배치 미사용**.
-- **합류 가드**: [`collectPipeFlow` / `PipeFlow`](../frontend/src/utils/autoLayout/module/pipeFlow.ts) — 다른 유체
+- **합류 가드**: [`collectPipeFlow` / `PipeFlow`](../../../frontend/src/utils/autoLayout/util/pipeFlow.ts) — 다른 유체
   파이프의 사방 + 머신 유체 상자의 연결 칸. 새 모듈 경로(트렁크·반출)에만 걸려 있다.
 
 ### 본 역할이 자동으로 흡수하지 *않는* 인접 항목

@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.placement-search](placement-search.md), [.s-layer-channel-reservation](../channel/s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
 
-본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../frontend/src/utils/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
+본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../../../frontend/src/utils/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
@@ -25,7 +25,7 @@ tags: [auto-layout, placement, routing]
 - 입출력 포트가 많거나(재료 4종+ 등) **다중 fluid** 인 레시피(정유소 등)는 한 열에서 필요한 면을 다 확보하지 못해 트렁크 병합 실패·1:1 폴백·미관 저하가 발생.
 
 **원인:**
-- [module/clusterLayout.ts](../frontend/src/utils/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+레인 타일 등 다른 형태가 없다.
+- [module/clusterLayout.ts](../../../frontend/src/utils/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+레인 타일 등 다른 형태가 없다.
 - [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
@@ -59,7 +59,7 @@ tags: [auto-layout, placement, routing]
 - 채널/공간을 실제보다 보수적으로 점유 → 면적 증가, 빡빡한 경우 우회 길이 증가.
 
 **원인:**
-- [containerRouting.ts](../frontend/src/utils/autoLayout/containerRouting.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
+- [containerRouting.ts](../../../frontend/src/utils/autoLayout/planner/containerRouting.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
 
 **해결 방향:**
 - belt-route 셀에 운반 item 종류 태깅 → 같은/호환 종류 통과 허용. fluid 는 같은 fluid 파이프 공유. C3 mixing 검사와 함께 도입.
@@ -76,11 +76,11 @@ tags: [auto-layout, placement, routing]
 - fluid 입출력은 prototype 의 `fluid_boxes` 가 정의한 **고정 면 셀** 에만 닿을 수 있어, 기둥 클러스터에서 다중 fluid 머신을 서빙하기 어렵다(§1 과 연동).
 
 **원인:**
-- 유체 회전은 [module/fluidPorts.ts](../frontend/src/utils/autoLayout/module/fluidPorts.ts) `chooseMachineDirection` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
+- 유체 회전은 [module/fluidPorts.ts](../../../frontend/src/utils/autoLayout/module/fluidPorts.ts) `chooseMachineDirection` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../../../frontend/src/utils/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../frontend/src/utils/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 **해결 방향:**
 - 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseMachineDirection`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
@@ -95,7 +95,7 @@ tags: [auto-layout, placement, routing]
 - 조립기 1·2·3 을 모두 체크해도 카테고리에 맞는 **선택 목록상 첫 머신** 만 모든 노드에 사용. "후반만 조립기3" 같은 의도 표현 불가.
 
 **원인:**
-- [wizardUtils.ts](../frontend/src/utils/autoLayout/wizardUtils.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
+- [wizardUtils.ts](../../../frontend/src/utils/autoLayout/wizardUtils.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
 
 **해결 방향:**
 1. 머신 선택 UI 에 우선순위(drag-reorder) 또는 레시피별 매핑.
@@ -115,7 +115,7 @@ tags: [auto-layout, placement, routing]
 > 부족분만큼 머신이 더 놓인다. 남은 건 모듈 modelling 뿐이라 항목을 그쪽으로 좁힌다.
 
 **원인:**
-- [wizardUtils.ts](../frontend/src/utils/autoLayout/wizardUtils.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
+- [wizardUtils.ts](../../../frontend/src/utils/autoLayout/wizardUtils.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
 
 **해결 방향:**
 - 모듈 multiplier 를 `NodeMachineParams` 입력으로.
@@ -178,7 +178,7 @@ tags: [auto-layout, placement, routing]
 
 둘 다 그림상으론 멀쩡하고 라우팅도 "성공"으로 보고된다. 머신만 굶는다.
 
-이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../frontend/src/utils/autoLayout/execution/emitPath.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
+이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../../../frontend/src/utils/autoLayout/execution/emitPath.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
 
 **해소됨 (2026-07-25):**
 
@@ -188,9 +188,13 @@ tags: [auto-layout, placement, routing]
 지도를 본다(`plannedChainClear` 의 `fluidBlocked` —
 [.fluid-hop-reservation §8.3](../channel/fluid-hop-reservation.md)).
 
-> **다 사라진 건 아니다.** `execution/emitPath.emitFluidPath` 는 남아 있고, 사용자 드래그
-> 재라우팅(`areaUnification`)이 그걸 부른다. **그 경로는 여전히 가드를 안 거친다** —
-> 손으로 유체 상자를 끌어 다른 유체 관망 옆에 붙이면 조용히 오염된다. 범위가 줄었을 뿐이다.
+> **2026-08-02 — 현재 노출 0, 그러나 결함은 보존돼 있다.** 드래그 재라우팅 코드는
+> `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이다(세션을 만드는 코드가 없어
+> `routingEditSession` 이 항상 `null`). 그래서 지금 이 결함을 밟을 방법이 없다.
+>
+> **항목을 지우지 않는 이유:** 수동 편집은 재구현 예정이고, 재구현이 이 가드를 안 넣으면
+> 결함이 그대로 돌아온다. `manualEdit/README.md` 가 *"재구현 시 반드시 넣어야 하는 것"*
+> 목록에 이 항목을 링크로 걸어 두었다 — **결함이 요구사항으로 바뀐 셈**이다.
 
 
 **찾는 법:**

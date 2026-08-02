@@ -201,11 +201,11 @@ npx vitest run
 - 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·
   `relocations`(상자별 새 origin·belts).
-- 적용은 호출자 [moduleWizard](../frontend/src/utils/autoLayout/planner/moduleWizard.ts)
+- 적용은 호출자 [moduleWizard](../../../frontend/src/utils/autoLayout/planner/moduleWizard.ts)
   가 Area 를 지을 때 한다.
 
 동작 변경 0(골든 스냅샷 불변). 회귀:
-[modulePerimeterPass.test.ts](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts)
+[modulePerimeterPass.test.ts](../../../frontend/src/utils/autoLayout/execution/modulePerimeterPass.test.ts)
 의 "순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언한다.
 
 > 남은 확인: `tryRunModulePipeline`(moduleWizard 진입점)은 gameDataStore 의존이라 단위

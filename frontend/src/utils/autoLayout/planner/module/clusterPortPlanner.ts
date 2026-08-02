@@ -106,7 +106,7 @@ export interface PortPlannerInput {
   /** 배정할 I/O 줄들(아이템 + 유체). */
   lines: IoLine[];
   /**
-   * 고른 인서터들([BuildSpec.inserters](../buildSpec.ts)) — reach 오름차순, 같은 reach 는
+   * 고른 인서터들([BuildSpec.inserters](../../buildSpec.ts)) — reach 오름차순, 같은 reach 는
    * 하나만. **ClusterBelt 수를 이게 정한다**: 서로 다른 reach 하나당 벨트 한 줄
    * (reach `r` → clusterBeltDepth `1+r`). 옛 `caps.hasNormal/hasLong` 이진값을 대체했다 —
    * reach 가 2종을 넘어도 벨트 줄이 그만큼 는다(하드코딩 아님). throughput 은
@@ -176,7 +176,7 @@ export interface PortPlannerInput {
    */
   isJumpableToClusterPipe?: boolean;
   /**
-   * 고를 수 있는 벨트들([BuildSpec.belts](../buildSpec.ts)). [insertingPlanner] 가 이걸로
+   * 고를 수 있는 벨트들([BuildSpec.belts](../../buildSpec.ts)). [insertingPlanner] 가 이걸로
    * [determineBeltCount] 를 돌려 줄 수를 정한다. **미지정이면 줄 수를 안 늘린다**(옛 동작:
    * 수요가 벨트 한 줄을 넘으면 거절).
    */

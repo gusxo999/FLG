@@ -158,7 +158,7 @@ export interface NodeMachineParams {
    * **머신이 실제로 도는 비율**(0 < f ≤ 1). 미지정 = 1(안 굶는다).
    *
    * 인서터 팔을 다 앉힐 자리가 없으면 머신은 **가장 굶는 줄의 속도로만** 돈다
-   * ([allocateArms](./module/clusterPortPlanner.ts) 가 계산). 그 사실을 여기 담아 산출·수요에
+   * ([allocateArms](planner/module/clusterPortPlanner.ts) 가 계산). 그 사실을 여기 담아 산출·수요에
    * 곱하면, **머신 수가 자연히 늘어나 부족분을 보상**한다(2026-07-16 사용자 설계).
    *
    * 순환하지 않는다: 비율은 **전속력 기준 수요**로 정하고, 그렇게 앉힌 팔이 나르는 양이 곧

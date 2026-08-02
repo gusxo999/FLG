@@ -21,7 +21,7 @@ tags: [auto-layout, placement, routing]
 예약의 목적은 "깔기 전에 자리를 잡아 나중에 막히는 일을 없애는 것"이다
 ([.channel-geometry-reservation §1](../channel/channel-geometry-reservation.md)).
 
-그런데 반출 경로 예약([`perimeterLanePlanner`](../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts))은
+그런데 반출 경로 예약([`perimeterLanePlanner`](../../../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts))은
 상자의 **`meta.side`**(포트 계획기가 배정한 레인 면) 만 보고 출구를 정했다. 모듈 내부는
 안 본다는 원칙(블랙박스) 때문이다. 문제는 **그 방향이 실제로 뚫려 있는지 아무도 확인하지
 않았다**는 것이다.
@@ -52,7 +52,7 @@ tags: [auto-layout, placement, routing]
   예약된 트랙 x=10 은 **영원히 빈 채** 남아 폭만 낭비됐다.
 
 **핵심 진단:** 정보가 없어서가 아니었다. `planLanes` 가 불리는 시점엔 **모듈들이 이미 생성돼
-있고**([`modulePacking.ts`](../frontend/src/utils/autoLayout/planner/modulePacking.ts) —
+있고**([`modulePacking.ts`](../../../frontend/src/utils/autoLayout/planner/modulePacking.ts) —
 `planLanes(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
 몰라도 판정할 수 있었다. 예약기가 **일부러 안 보고 있었을 뿐**이다.
 
@@ -101,15 +101,15 @@ tags: [auto-layout, placement, routing]
 ## 4. 탐색 폴백 제거
 
 예약이 **뚫린 방향만** 고르고 채널 구간은 장부가 비워두므로, **예약된 경로는 항상 방출 가능**
-하다. 따라서 [`modulePerimeterPass`](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts)
+하다. 따라서 [`modulePerimeterPass`](../../../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts)
 의 탐색 폴백(routeAuto)을 **제거**했다. 이제 hint 재생 실패는 "탐색으로 우회할 일"이 아니라
 **예약 불변식이 깨졌다는 신호**다 — 그 상자만 skip 하고 사유를 남긴다(가짜 물류 금지).
 
 ## 5. 검증 (2026-07-11)
 
-불변식 테스트: [`reservationEmittable.test.ts`](../frontend/src/utils/autoLayout/planner/reservationEmittable.test.ts)
+불변식 테스트: [`reservationEmittable.test.ts`](../../../frontend/src/utils/autoLayout/planner/reservationEmittable.test.ts)
 — "예약(hint) 재생만으로 모든 상자가 방출된다" + "배정된 출구의 진출 방향은 항상 wayOuts 안".
-[`moduleWayOuts.test.ts`](../frontend/src/utils/autoLayout/module/moduleWayOuts.test.ts) — 독립
+[`moduleWayOuts.test.ts`](../../../frontend/src/utils/autoLayout/module/moduleWayOuts.test.ts) — 독립
 재계산 일치 + "자기 face 방향은 항상 나갈 수 있다".
 
 advanced-circuit 동형 트리, count 1~8 실측:
@@ -129,10 +129,10 @@ advanced-circuit 동형 트리, count 1~8 실측:
 
 | 단계 | 파일 | 구현 |
 |---|---|---|
-| 산출 | [`clusterModule.ts`](../frontend/src/utils/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `fillModuleWayOuts` — 전 포트 emit 후(몸통 확정 후) 일괄 계산 |
-| 전달 | [`modulePacking.ts`](../frontend/src/utils/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planLanes` 가 `LanePortInput.wayOuts` 로 전달 |
-| 소비 | [`perimeterLanePlanner.ts`](../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts) | `LaneOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
-| 방출 | [`modulePerimeterPass.ts`](../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
+| 산출 | [`clusterModule.ts`](../../../frontend/src/utils/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `fillModuleWayOuts` — 전 포트 emit 후(몸통 확정 후) 일괄 계산 |
+| 전달 | [`modulePacking.ts`](../../../frontend/src/utils/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planLanes` 가 `LanePortInput.wayOuts` 로 전달 |
+| 소비 | [`perimeterLanePlanner.ts`](../../../frontend/src/utils/autoLayout/planner/perimeterLanePlanner.ts) | `LaneOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
+| 방출 | [`modulePerimeterPass.ts`](../../../frontend/src/utils/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
 ## 7. 함정 (다음 사람에게)
 

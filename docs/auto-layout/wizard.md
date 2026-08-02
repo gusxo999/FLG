@@ -132,9 +132,9 @@ tags: [auto-layout, placement, routing]
 
 ### 구현 위치
 
-- [frontend/src/utils/autoLayout/types.ts](../frontend/src/utils/autoLayout/types.ts) — 위저드 입출력 타입
-- [frontend/src/utils/autoLayout/recipeTree.ts](../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
-- [frontend/src/utils/autoLayout/techGroup.ts](../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
-- [frontend/src/utils/autoLayout/inserterThroughput.ts](../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [frontend/src/utils/autoLayout/layeredWizard.ts](../frontend/src/utils/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
-- [frontend/src/components/AutoLayoutModal.tsx](../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI
+- [frontend/src/utils/autoLayout/types.ts](../../frontend/src/utils/autoLayout/types.ts) — 위저드 입출력 타입
+- [frontend/src/utils/autoLayout/recipeTree.ts](../../frontend/src/utils/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
+- [frontend/src/utils/autoLayout/techGroup.ts](../../frontend/src/utils/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
+- [frontend/src/utils/autoLayout/inserterThroughput.ts](../../frontend/src/utils/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
+- [frontend/src/utils/autoLayout/layeredWizard.ts](../../frontend/src/utils/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
+- [frontend/src/components/AutoLayoutModal.tsx](../../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI

@@ -377,7 +377,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     }
   }
 
-  // 1b) [파이프 합류 가드](../module/pipeFlow.ts) — 파이프는 **방향이 없어서** 직교로 닿기만
+  // 1b) [파이프 합류 가드](../util/pipeFlow.ts) — 파이프는 **방향이 없어서** 직교로 닿기만
   //     하면 두 관망이 하나가 된다. 다른 유체끼리 이어지면 오염되고, 남의 머신 **출력** 유체
   //     상자에 스치면 그 머신의 생산물이 내 관망으로 **조용히 샌다** — 화면상으론 멀쩡하고
   //     라우팅도 "성공"이라 보고한다. 그래서 파이프를 깔기 전에 금지 칸 지도를 만들어 둔다.
