@@ -16,7 +16,7 @@ count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 레인이 넘칠 때 W-sp
 
 ## 1. 문제/배경
 
-모듈 파이프라인의 슬롯 배정([clusterPortPlanner](../../../frontend/src/autoLayout/planner/module/clusterPortPlanner.ts))은
+모듈 파이프라인의 슬롯 배정([clusterPortPlanner](../../../src/autoLayout/planner/module/clusterPortPlanner.ts))은
 기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 레인은 기둥 축을 따라 달려야 N대
 전부를 서빙하므로 N/S(축의 끝면)는 스케일이 안 되기 때문이다. 그러나 count=1이면
 이 논리가 퇴화한다 — 4면이 전부 동등한데 관례상 2면을 버리고, 입력 3개 레시피에서
@@ -52,16 +52,16 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 
 ## 4. 구현 위치
 
-- [clusterPortPlanner.ts](../../../frontend/src/autoLayout/planner/module/clusterPortPlanner.ts) —
+- [clusterPortPlanner.ts](../../../src/autoLayout/planner/module/clusterPortPlanner.ts) —
   `PlannedSide`(W/E/N/S), `IoLine.external`, `PortPlannerInput.nsFaces`, 입력 풀 소비
   순서(E→N/S→W), depth 재배정 루프 N/S 포함.
-- [clusterModule.ts](../../../frontend/src/autoLayout/module/clusterModule.ts) —
+- [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) —
   `ModuleInput.nsExposure` → planner `nsFaces` 전달. 트렁크는 기존 faceConstraints
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
-- [modulePacking.ts](../../../frontend/src/autoLayout/planner/modulePacking.ts) —
+- [modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정),
   `planLanes` 의 변 판정을 `meta.side` 로 교체.
-- [containerModel.ts](../../../frontend/src/autoLayout/containerModel.ts) —
+- [containerModel.ts](../../../src/autoLayout/containerModel.ts) —
   `ModulePortMeta.side` 확장('W'|'E'|'N'|'S').
 
 ## 5. 남은 것 (이 문서 범위 밖)
@@ -71,7 +71,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   입/출구로 materialize 되고 corridor 가 홉 간 누적·Area 에 기록된다. 정책: `'length'`
   비용(지상 우선, 점프=충돌 회피 전용) + 양 끝 셀 점프 방향 강제(`requiredStartJump`=
   트렁크 유입 +fv / `requiredEndJump`=유출 −fv — 누수·half-lane 방지). 탐색 자체는
-  entrance/exit-straight 를 원래 보장. [moduleHop.ts](../../../frontend/src/autoLayout/planner/moduleHop.ts).
+  entrance/exit-straight 를 원래 보장. [moduleHop.ts](../../../src/autoLayout/planner/moduleHop.ts).
   **브라우저 실측(2026-07-08, advanced-circuit):** min(3대) — kr-glass N perimeter self 직진
   유지, skip 1(copper-cable channel), 회귀 없음. 처리량 20/초(64대) — 후보 성공(penalty=82,
   실패 0), 상자 7 중 5 재배치 / skip 2 는 전부 `N/S-side channel divert unsupported`
@@ -83,15 +83,15 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   미지원으로 skip 되던 문제를 방출 단계에서 두 부분으로 치료했다. **planner 는 그대로**
   (planPerimeterLanes 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
   알 수 없기 때문. 대신 occ 를 아는 ⑥C 방출기를 고쳤다:
-  1. **laneX 구동 jog**([perimeterRouter.ts](../../../frontend/src/autoLayout/planner/perimeterRouter.ts)):
+  1. **laneX 구동 jog**([perimeterRouter.ts](../../../src/autoLayout/planner/perimeterRouter.ts)):
      채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `laneX−anchor.x` 부호로
      정한다. face 가 N/S(fv.x=0)여도 laneX 가 있으면 elbow 를 그대로 재생 — 옛
      `N/S-side channel divert unsupported` 무조건 거부 제거(kr-glass 류 해소).
-  2. **auto 폴백**([modulePerimeterPass.ts](../../../frontend/src/autoLayout/execution/modulePerimeterPass.ts)):
+  2. **auto 폴백**([modulePerimeterPass.ts](../../../src/autoLayout/execution/modulePerimeterPass.ts)):
      예약 배정이 실제로 막힌 경우(코너 어깨 상자의 채널 우회가 **자기 트렁크를 관통** —
      planner 가 못 본 충돌, copper-cable 사례) hint 없는 auto 탐색으로 폴백해 열린 변(대개
      face 직진)으로 내보낸다. 홉의 dijkstra 최후폴백과 대칭이고, skip 을 재배치로만 바꿔
      겹침 0·회귀 0. 실측(advanced-circuit 동형, count 1~8): 상자 7개 전부 재배치, skip 0.
   - **남은 trade-off:** copper-cable 의 예약된 채널 트랙은 auto 폴백이 다른 변으로 나가면
     **쓰이지 않고 폭만 낭비**된다. planner 가 뚫린 face 를 먼저 고르는 근본 치료는 좌표 후
-    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [modulePerimeterPass.test.ts](../../../frontend/src/autoLayout/execution/modulePerimeterPass.test.ts) "count≥2 코너 어깨".
+    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [modulePerimeterPass.test.ts](../../../src/autoLayout/execution/modulePerimeterPass.test.ts) "count≥2 코너 어깨".

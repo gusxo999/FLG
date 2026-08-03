@@ -65,9 +65,9 @@ tags: [factorio-data, auto-layout, deferred]
 
 ## 구현 위치
 
-- **머신 셀렉터:** [frontend/src/components/EntityDetails.tsx](../../frontend/src/components/EntityDetails.tsx) 등에서 자동완성 호출 시 `getMachinesForRecipe(recipeName)` 결과를 사용자에게 그대로 노출. 자동 picking 금지.
+- **머신 셀렉터:** [src/UI/components/EntityDetails.tsx](../../src/UI/components/EntityDetails.tsx) 등에서 자동완성 호출 시 `getMachinesForRecipe(recipeName)` 결과를 사용자에게 그대로 노출. 자동 picking 금지.
 - **자동완성 알고리즘:** 머신 인스턴스를 입력으로 받고, 직접 결정하지 않음 ([docs/auto-layout-wizard.md](../auto-layout/wizard.md) 의 위저드 2단계가 사용자 머신 선택을 입력으로 가정).
-- **표면 데이터 export:** [scripts/export-gamedata.lua](../scripts/export-gamedata.lua) — `surface_conditions` 추출 유지, `collision_mask.layers` 는 향후 표시용으로만 추가 검토.
+- **표면 데이터 export:** [scripts/export-gamedata.lua](../../scripts/export-gamedata.lua) — `surface_conditions` 추출 유지, `collision_mask.layers` 는 향후 표시용으로만 추가 검토.
 - **블루프린트 import/export:** 표면 호환성 검증 로직 추가하지 **않는다**.
 
 ## 사용자에게 노출할 메시지

@@ -29,14 +29,15 @@ tags: [moc]
 
 ```
 docs/
-├ auto-layout/  ← frontend/src/autoLayout/ 의 거울
+├ auto-layout/  ← src/autoLayout/ 의 거울
 │   ├ common/     전략 무관 — 전부가 본다
 │   ├ module/     모듈 안쪽 (형제를 모른다)
 │   ├ link/       모듈과 모듈의 연결
 │   ├ channel/    모듈 사이 통로 예약
 │   └ perimeter/  전역 외곽 반출
-├ factorio/     ← frontend/src/factorio/ 의 거울 (+ scripts/export-gamedata.lua)
-├ blueprint/    ← frontend/src/blueprint/ 의 거울
+├ factorio/     ← src/factorio/ 의 거울 (+ scripts/export-gamedata.lua)
+├ blueprint/    ← src/blueprint/ 의 거울
+├ UI/           ← src/UI/ 의 거울 (components · i18n · pixi · store)
 └ deferred/     보류·폐기 — 다음 시도가 같은 함정에 안 빠지게
 ```
 
@@ -95,12 +96,12 @@ docs/
 
 ### 🧩 Factorio 데이터 · 시맨틱스 `#factorio-data`
 
-Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [frontend/src/factorio/](../frontend/src/factorio/) 다.
+Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/factorio/](../src/factorio/) 다.
 
 > **이 폴더가 다루는 데이터는 한 계약의 양 끝이다.** 생산자는
 > [scripts/export-gamedata.lua](../scripts/export-gamedata.lua) — 게임 콘솔에 붙여넣어 JSON 을 뽑는다
 > (앱에서는 툴바의 "Lua 복사" 가 `export-gamedata.min.lua` 를 클립보드에 넣는다).
-> 소비자는 [frontend/src/factorio/parseGameData.ts](../frontend/src/factorio/parseGameData.ts) 다.
+> 소비자는 [src/factorio/parseGameData.ts](../src/factorio/parseGameData.ts) 다.
 > **필드를 늘릴 때는 양쪽을 같이 고친다** — 파서가 문지기라 exporter 가 뽑아도 여기서 안
 > 담으면 그 필드는 앱에 없다(2026-07-16 `amount_min`/`amount_max`·`fluidbox_index` 가
 > 재추출까지 하고도 문 앞에서 사라졌다).
@@ -119,11 +120,14 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [frontend
 | [metadata-coverage](blueprint/metadata-coverage.md) | export 메타데이터 커버리지 — 현재 → 전체 단계별 계획 + 체크리스트 |
 | [control-behavior-scope](blueprint/control-behavior-scope.md) | 추적하는 ControlBehavior 필드 범위 |
 
-### 🔍 검사 · 진단 `#visualization`
+### 🖥️ UI · 검사 · 진단 `#visualization`
+
+화면에 붙은 것 — React 컴포넌트 · 상태 저장소 · PixiJS 렌더러 · 다국어.
+코드는 [src/UI/](../src/UI/) 다.
 
 | 문서 | 주제 |
 |------|------|
-| [belt-flow-inspection](belt-flow-inspection.md) | 벨트 셀 클릭 → 운반 품목·items/sec. 세션이 아니라 **그리드 정적 분석**이라 수동 배치도 동작 |
+| [belt-flow-inspection](UI/belt-flow-inspection.md) | 벨트 셀 클릭 → 운반 품목·items/sec. 세션이 아니라 **그리드 정적 분석**이라 수동 배치도 동작 |
 
 ### 🚧 보류 · 폐기 결정 `#deferred`
 
@@ -134,7 +138,6 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [frontend
 | [icon-mapping](deferred/icon-mapping.md) | 엔티티 아이콘 매핑 — 런타임 API 의도적 차단 (보류) |
 | [surface-restriction-limits](deferred/surface-restriction-limits.md) | 표면 제약 자동 판단 포기 → 사용자가 직접 머신 선택 |
 | [parametrized-blueprints-deferred](deferred/parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 |
-| [pipeline-metrics](deferred/pipeline-metrics.md) | **[이력]** 계측기 — 도구는 삭제됨. 남긴 건 1:1 기준선 **실측 수치** |
 
 ---
 
@@ -159,10 +162,6 @@ auto-layout-wizard.module-way-outs.md    →  auto-layout/perimeter/module-way-o
 > **부모 문서:** [wizard.md](../wizard.md)
 > **관련 문서:** [module-way-outs](module-way-outs.md) — ①단계 계약 상세 · …
 ```
-
-> **`[[위키링크]]` 는 이름으로 찾으므로 폴더 이동에 안 깨진다.** 대신 **이름을 바꾸면 깨진다** —
-> 이번 개정에서 115군데를 고쳤다. 반대로 `](상대경로.md)` 는 폴더 이동에 깨지고 이름 변경에도
-> 깨진다(168군데 재계산). 새 문서를 만들 때 **문서끼리는 `[[위키링크]]`** 를 쓰면 나중이 싸다.
 
 ## 태그 규칙 (Obsidian)
 
@@ -204,7 +203,6 @@ auto-layout-wizard.module-way-outs.md    →  auto-layout/perimeter/module-way-o
 
 - **한 줄 요약** — 결론을 먼저
 - **문제/배경** — 왜 이 결정이 필요했는가
-- **실데이터 근거** — 이론이 아닌 경험적 검증
 - **대안 검토** — 다른 선택지를 왜 기각했는가
 - **구현 위치** — 코드 어느 파일/함수에 반영됐는가
 - **frontmatter 태그** — 위 태그 규칙표에서 골라 최상단에 추가

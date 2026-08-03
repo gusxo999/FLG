@@ -45,7 +45,7 @@ tags: [auto-layout, placement, routing]
      어느 면·어느 트랙·교차 지하·gap 폭 (부산물은 전부 여기서)
 ```
 
-**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairHopPorts`([modulePacking.ts](../../../frontend/src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateMachineLinks` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
+**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairHopPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateMachineLinks` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
 
 ---
 
@@ -107,7 +107,7 @@ tags: [auto-layout, placement, routing]
 
 > **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 홉이 "탐색 없이 순수"한 이유가 이 불변식이다.
 
-정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책([clusterPortPlanner](../../../frontend/src/autoLayout/planner/module/clusterPortPlanner.ts))의 재적용이다.
+정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책([clusterPortPlanner](../../../src/autoLayout/planner/module/clusterPortPlanner.ts))의 재적용이다.
 
 ---
 
@@ -134,7 +134,7 @@ tags: [auto-layout, placement, routing]
 - **fan-out** — 자식 머신 **하나**의 산출이 **여러 부모**로 갈라진다.
 - **fan-in** — **여러 자식**의 산출이 **한 부모**로 모인다.
 
-둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateMachineLinks.test.ts](../../../frontend/src/autoLayout/planner/link/allocateMachineLinks.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
+둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateMachineLinks.test.ts](../../../src/autoLayout/planner/link/allocateMachineLinks.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
 
 ```
 자식0 ──[3][3][3][2]──> 부모0      ← 자식0 이 부모0·부모1 둘을 먹인다 = fan-out
@@ -148,7 +148,7 @@ tags: [auto-layout, placement, routing]
 
 ### 왜 "논리는 하나" 인가
 
-fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineLinks`](../../../frontend/src/autoLayout/planner/link/allocateMachineLinks.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
+fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineLinks`](../../../src/autoLayout/planner/link/allocateMachineLinks.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
 
 > 자식 손가락과 부모 손가락이 각자 위에서 아래로 훑는다. 자식이 **인서터 한도**를 다 쓰면 자식 손가락이 내려가고, 부모가 **필요량**을 다 채우면 부모 손가락이 내려간다.
 
@@ -162,8 +162,8 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 
 | 조각 | 누가 | 하는 일 |
 |---|---|---|
-| 논리 (fan-out + fan-in) | [`allocateMachineLinks`](../../../frontend/src/autoLayout/planner/link/allocateMachineLinks.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
-| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../frontend/src/autoLayout/module/clusterModule.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
+| 논리 (fan-out + fan-in) | [`allocateMachineLinks`](../../../src/autoLayout/planner/link/allocateMachineLinks.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
+| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
 | 기하 — 부모 쪽 (입력) | `emitInputLinks` (같은 파일, **거울**) | 그룹의 부모 머신**들**을 관통하는 벨트 한 줄 + 머신마다 탭 |
 
 두 방출기는 거울상이라 코드는 닮았지만 **문제의 모양이 다르다:**
@@ -225,7 +225,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 
 ### cap 이 여전히 하는 일
 
-합치기로 한 자리에서만 쓰인다. cap 은 두 한계의 min 이다([`edgeLinkGroups`](../../../frontend/src/autoLayout/planner/modulePacking.ts)):
+합치기로 한 자리에서만 쓰인다. cap 은 두 한계의 min 이다([`edgeLinkGroups`](../../../src/autoLayout/planner/modulePacking.ts)):
 
 - **그릇** `maxInsertersPerBelt = floor(벨트처리량 ÷ 인서터처리량)` — 벨트 한 줄이 실어 나를 수 있는 양.
 - **자식 머신의 면 좌석** `machine.h` — 그룹 전체가 자식 머신 **한 대**의 한 면에 연속으로 앉아야 하므로.
@@ -347,6 +347,6 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 
 - `routeModuleHops(...).failures` 는 **숫자**다(배열 아님).
 - `IoLine` 에 `beltEntityName` 없음 — 그건 `PlannedLine` 필드.
-- 새 emit 의 포트는 [moduleHop](../../../frontend/src/autoLayout/planner/moduleHop.ts) 계약
+- 새 emit 의 포트는 [moduleHop](../../../src/autoLayout/planner/moduleHop.ts) 계약
   (`chest=anchor, seat=anchor−fv, trunkStart=anchor−2fv`)과 **검증 완료**(W면: x0−4/−3/−2, E면 거울).
 - 옛 탭 emit 은 죽은 코드가 아니라 **rate 없을 때의 폴백** — 지우려면 골든 정렬(1번)이 먼저.

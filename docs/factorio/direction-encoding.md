@@ -247,11 +247,11 @@ cardinal 외 라벨은 향후 sub-cardinal 지원 시 자동으로 의미를 가
 
 | 파일 | 역할 |
 |---|---|
-| [frontend/src/types/layout.ts](../../frontend/src/types/layout.ts) | `Direction` 타입 정의 |
-| [frontend/src/types/blueprint.ts](../../frontend/src/types/blueprint.ts) | `BlueprintEntity.direction` 외부 포맷 (0..15) |
-| [frontend/src/factorio/entitySize.ts](../../frontend/src/factorio/entitySize.ts) | 사이즈 회전 |
-| [frontend/src/analysis/pipeNetwork.ts](../../frontend/src/analysis/pipeNetwork.ts) | 파이프 연결 방향 계산 |
-| [frontend/src/pixi/pixi-manager.ts](../../frontend/src/pixi/pixi-manager.ts) | 벡터 회전, 단위 벡터, 파이프 모양 그리기 |
-| [frontend/src/components/Sidebar.tsx](../../frontend/src/components/Sidebar.tsx) | 방향 라벨 UI |
-| [frontend/src/components/Toolbar.tsx](../../frontend/src/components/Toolbar.tsx) | import `normalizeDir`, export `version` |
-| [frontend/src/store/layoutStore.ts](../../frontend/src/store/layoutStore.ts) | `rotateSelected`, persist `migrate` |
+| [src/types/layout.ts](../../src/types/layout.ts) | `Direction` 타입 정의 |
+| [src/types/blueprint.ts](../../src/types/blueprint.ts) | `BlueprintEntity.direction` 외부 포맷 (0..15) |
+| [src/factorio/entitySize.ts](../../src/factorio/entitySize.ts) | 사이즈 회전 |
+| [src/analysis/pipeNetwork.ts](../../src/analysis/pipeNetwork.ts) | 파이프 연결 방향 계산 |
+| [src/UI/pixi/pixi-manager.ts](../../src/UI/pixi/pixi-manager.ts) | 벡터 회전, 단위 벡터, 파이프 모양 그리기 |
+| [src/UI/components/Sidebar.tsx](../../src/UI/components/Sidebar.tsx) | 방향 라벨 UI |
+| [src/UI/components/Toolbar.tsx](../../src/UI/components/Toolbar.tsx) | import `normalizeDir`, export `version` |
+| [src/UI/store/layoutStore.ts](../../src/UI/store/layoutStore.ts) | `rotateSelected`, persist `migrate` |

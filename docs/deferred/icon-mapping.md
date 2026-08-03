@@ -85,7 +85,7 @@ Wube가 의도적으로 차단한 정보를 모드 설치라는 우회 경로로
 
 ## 다음 시도 시 검토할 옵션 (재시도 전 사용자 확인 필수)
 
-1. **수동 큐레이션 (권장)**: vanilla 핵심 ~50개 엔티티의 64×64 PNG를 수동 수집해 `frontend/public/game-icons/` 에 두고 `<entityName>.png` 규칙으로 매칭. 모드는 단색 fallback. 라이선스 처리 필요 (Wube 자산 재배포 가능성 검토).
+1. **수동 큐레이션 (권장)**: vanilla 핵심 ~50개 엔티티의 64×64 PNG를 수동 수집해 `public/game-icons/` 에 두고 `<entityName>.png` 규칙으로 매칭. 모드는 단색 fallback. 라이선스 처리 필요 (Wube 자산 재배포 가능성 검토).
 
 2. **사용자 직접 업로드**: 사용자가 임의의 PNG들을 업로드해서 entity 이름과 수동 매핑. UI는 무겁지만 Wube 자산 미포함, 보안 위배 0.
 
@@ -98,11 +98,11 @@ Wube가 의도적으로 차단한 정보를 모드 설치라는 우회 경로로
 ## 영향 범위 (롤백 시 정리한 것들)
 
 코드:
-- `frontend/src/store/iconStore.ts`, `utils/factorioFolder.ts`, `iconCache.ts`, `iconCompose.ts`, `spriteResolver.ts`, `modZipStorage.ts` — 삭제
+- `src/UI/store/iconStore.ts`, `utils/factorioFolder.ts`, `iconCache.ts`, `iconCompose.ts`, `spriteResolver.ts`, `modZipStorage.ts` — 삭제
 - `Toolbar.tsx`, `Sidebar.tsx`, `pixi-manager.ts`, `App.tsx`, `gameDataStore.ts`, `parseGameData.ts` — 아이콘 관련 추가분 제거
 - `scripts/icon-bridge/` 모드 — 삭제
 - `scripts/export-gamedata.lua` / `.min.lua` — `icon_layers` 추출 로직 제거
-- `frontend/public/game-icons/` (1794개 PNG, ~17 MB) — 시도 1의 잔존물 정리
+- `public/game-icons/` (1794개 PNG, ~17 MB) — 시도 1의 잔존물 정리
 - 의존성: `fflate`, `idb-keyval` 제거
 
 유지된 것 (아이콘과 무관):

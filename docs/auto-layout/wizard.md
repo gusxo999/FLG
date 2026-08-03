@@ -55,9 +55,6 @@ tags: [auto-layout, placement, routing]
   - **사용자 지정** — 타깃 레시피 머신 수를 정수로 입력. 하위 레시피 머신 수는 비례 산정 (`ceil(rate × t_sub / t_target)`).
 - **하위 재료 트리([[용어사전#레시피 트리 (recipe tree)|레시피 트리]]):** 타깃 레시피 → 재료 → 그 재료의 첫 매칭 레시피 → … 를 [[용어사전#BFS|BFS]] 로 펼쳐 보여준다.
   사용자가 트리에서 노드별로 "외부 공급(이 라인에서 만들지 않음)" 으로 토글하면 그 노드와 후손 재료는 라인 입력 벨트로만 수급한다.
-- **선행 기술 사전 체크:** 이 시점에서 `gameDataStore.resolveRequiredTechs()` 로 타깃 + 하위 레시피들의
-  필요 기술 closure 를 구해, 다음 단계들에서 "사용자가 자유롭게 골랐다" 고 가정해도 일관성이 깨지지 않도록
-  벨트/투입기/지하 파이프 후보의 자동 체크 기준값으로 사용한다.
 
 ### 2단계 — 조립기계 선택
 
@@ -70,9 +67,8 @@ tags: [auto-layout, placement, routing]
 ### 3단계 — 투입기 선택
 
 - 후보: `entity.type === 'inserter'` 인 모든 엔티티.
-- **자동 체크 규칙:** 사용자가 후반 투입기(예: stack-inserter) 를 체크하면, 그 투입기를 언록하는 기술의
-  prerequisite closure 안에서 unlock 되는 다른 투입기들도 함께 체크된다.
-  (예: `stack-inserter` 체크 → `bulk-inserter` / `fast-inserter` / `long-handed-inserter` 도 자동 체크)
+- 체크박스는 **사용자가 누른 것만** 토글된다. 선행 기술을 따라 다른 후보를 함께 체크하는 규칙은
+  **없다**(2026-08-03 제거 — 아래 §"제거된 것" 참조).
 - **stack size 파라미터:** 인서터별로 한 번에 집을 수 있는 최대 개수를 슬라이더/입력으로 노출.
   기본값은 stack-size override 가 없는 본래 게임 한도. 처리량 계산에는 아직 반영되지 않음 (Phase 2).
 - 1개뿐이면 스킵.
@@ -80,14 +76,12 @@ tags: [auto-layout, placement, routing]
 ### 4단계 — 벨트 선택
 
 - 후보: `entity.type === 'transport-belt'` 의 트랜스포트 벨트, 그리고 짝이 되는 underground/splitter 변종.
-- 자동 체크 규칙은 투입기와 동일 (선택된 후반 벨트의 선행 기술 체인 안에 있는 모든 벨트 체크).
 - 1개뿐이면 스킵.
 
 ### 5단계 — 지하 파이프 선택
 
 - 후보: `entity.type === 'pipe-to-ground'`.
 - 1개뿐이면 스킵.
-- 자동 체크 규칙 동일.
 - **재설계 적용 시 (M7):** 사용자가 선택한 지하 파이프는 pipe kind 라우팅의 점프 edge 활성화 여부를 결정 — 비어 있으면 점프 edge 비활성, 지상 pipe 만 사용. 일반 (지상) `pipe` 는 게임 데이터에서 1종이라 자동 선택.
 
 ### 6단계 이후 — 모듈 / 빔(beacon)
@@ -132,9 +126,25 @@ tags: [auto-layout, placement, routing]
 
 ### 구현 위치
 
-- [frontend/src/autoLayout/types.ts](../../frontend/src/autoLayout/types.ts) — 위저드 입출력 타입
-- [frontend/src/autoLayout/recipeTree.ts](../../frontend/src/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
-- [frontend/src/autoLayout/techGroup.ts](../../frontend/src/autoLayout/techGroup.ts) — 3·4·5단계 자동 체크 규칙
-- [frontend/src/autoLayout/inserterThroughput.ts](../../frontend/src/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [frontend/src/autoLayout/layeredWizard.ts](../../frontend/src/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
-- [frontend/src/components/AutoLayoutModal.tsx](../../frontend/src/components/AutoLayoutModal.tsx) — 위저드 UI
+- [src/autoLayout/types.ts](../../src/autoLayout/types.ts) — 위저드 입출력 타입
+- [src/autoLayout/recipeTree.ts](../../src/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
+- [src/autoLayout/inserterThroughput.ts](../../src/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
+- [src/autoLayout/layeredWizard.ts](../../src/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
+- [src/UI/components/AutoLayoutModal.tsx](../../src/UI/components/AutoLayoutModal.tsx) — 위저드 UI
+
+## 제거된 것 — 선행 기술 자동 체크 (2026-08-03)
+
+3·4·5단계(투입기·벨트·지하 파이프)에는 **자동 체크 규칙**이 있었다: 후반 엔티티를 체크하면 그것을
+언록하는 기술의 prerequisite closure 안에서 해금되는 **같은 type 의 다른 후보들도 함께 체크**됐다.
+사용자 지시로 **기능 전체를 제거**했다 — 이제 체크박스는 누른 것만 토글된다.
+
+함께 사라진 것:
+
+- `autoLayout/techGroup.ts` (`expandSelectionByPrereq`) — 파일 삭제
+- `AutoLayoutModal.toggleWithPrereq` 와 `CheckboxStep` 의 `autoCheckedHint` 프롭
+- i18n `autoLayoutModal.autoCheckHint`, 그리고 `inserterHelp`·`beltHelp` 의 자동 체크 안내 문장
+- `gameDataStore.resolvePrerequisites` — 이 기능이 **유일한 소비처**여서 함께 제거
+
+> `resolveRequiredTechs` 는 남아 있다. 이 문서는 예전에 그것이 *"후보의 자동 체크 기준값"* 이라고
+> 적었지만 **코드에는 그런 호출이 없었다**(2026-08-03 확인 — 저장소 밖 소비처 0). 서술만 정정했고
+> 함수는 그대로 뒀다. 개념 설명은 [[tech-tree-resolution]].

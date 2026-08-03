@@ -22,7 +22,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 ### 1.1 페어링 규칙은 이미 있다. 30줄짜리 순수 함수다
 
 지하파이프가 서로 짝을 가로채는 문제는 라우터에서 이미 풀려 있다
-([containerRouting.ts:1175](../../../frontend/src/autoLayout/planner/containerRouting.ts#L1175)):
+([containerRouting.ts:1175](../../../src/autoLayout/planner/containerRouting.ts#L1175)):
 
 ```
 충돌 규칙: 같은 axis · 같은 line 위에서 interval 이 strict disjoint 여야 함.
@@ -39,7 +39,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 
 장부 좌표계는 (열, 행)이고, 주석대로 "행 = abs y". 추상인 건 **열뿐**이다.
 열↔절대 x 변환은 호출자가 갖고 있다
-([modulePacking.ts:683](../../../frontend/src/autoLayout/planner/modulePacking.ts#L683)):
+([modulePacking.ts:683](../../../src/autoLayout/planner/modulePacking.ts#L683)):
 
 ```ts
 const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
@@ -54,12 +54,12 @@ const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
 ### 1.3 모듈 내부 지하파이프는 corridor 기록이 **아예 없다** — 선행 결함
 
 `pipeJumpToClusterPipe` 는 머신 유체 상자 행에서 지하파이프 쌍을 놓는다
-([clusterModule.ts:1706-1731](../../../frontend/src/autoLayout/module/clusterModule.ts#L1706-L1731)).
+([clusterModule.ts:1706-1731](../../../src/autoLayout/module/clusterModule.ts#L1706-L1731)).
 그런데 `GeneratedModule` 에 `corridors` 필드가 없고, `clusterModule` 은 corridor 를 한 번도
 만들지 않는다.
 
 `routeModuleHops` 의 corridor 목록은 **빈 배열에서 시작해 홉 경로 것만 쌓인다**
-([moduleHop.ts:208](../../../frontend/src/autoLayout/planner/moduleHop.ts#L208)).
+([moduleHop.ts:208](../../../src/autoLayout/planner/moduleHop.ts#L208)).
 모듈 셀은 `base`(점유)에는 들어가지만 corridor 로는 안 들어간다.
 
 **즉 지금도 홉의 파이프 점프가 모듈 내부 지하파이프의 짝을 끊을 수 있다.** 이 결함은 이
@@ -141,7 +141,7 @@ corridorLedger = [...ctx.existingCorridors] ++ (지금까지 계획한 점프에
 
 게임에서 지하파이프 입구는 **자기 축 한 쪽에만** 표면 연결이 있어, 건너뛴 파이프와 안 닿는다.
 그런데 `pipeFlow` 는 터널 입구도 일반 파이프로 보고 네 이웃을 다 막는다
-([pipeFlow.ts:65](../../../frontend/src/autoLayout/util/pipeFlow.ts#L65)).
+([pipeFlow.ts:65](../../../src/autoLayout/util/pipeFlow.ts#L65)).
 
 **이 보수성을 유지한다.** 넓게 뛰면 되고(파이프 점프 거리는 보통 10), 완화하려면 방향까지
 모델링해야 하는데 그 대가로 얻는 건 몇 칸의 조밀함뿐이다. 완화는 별도 작업(§6).

@@ -34,23 +34,23 @@ aliases: [유체홉예약, fluid-hop-reservation]
 
 홉 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
 
-- `productOf(s)` = 출력 라인 이름 ([modulePacking.ts:338](../../../frontend/src/autoLayout/planner/modulePacking.ts#L338)).
+- `productOf(s)` = 출력 라인 이름 ([modulePacking.ts:338](../../../src/autoLayout/planner/modulePacking.ts#L338)).
   라인의 `kind`(belt/pipe)를 안 본다 → 유체 출력 노드도 그대로 통과.
 - `pairHopPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
-  ([modulePacking.ts:205](../../../frontend/src/autoLayout/planner/modulePacking.ts#L205)).
+  ([modulePacking.ts:205](../../../src/autoLayout/planner/modulePacking.ts#L205)).
   유체 포트는 `linkId` 가 없어 ②번 위치-zip 으로 짝이 된다(v1 모듈당 유체 1포트 → 자명).
 - 그 짝이 그대로 홉 입력에 쌓인다
-  ([modulePacking.ts:521](../../../frontend/src/autoLayout/planner/modulePacking.ts#L521)).
+  ([modulePacking.ts:521](../../../src/autoLayout/planner/modulePacking.ts#L521)).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
-  ([clusterModule.ts:1749](../../../frontend/src/autoLayout/module/clusterModule.ts#L1749)).
+  ([clusterModule.ts:1749](../../../src/autoLayout/module/clusterModule.ts#L1749)).
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
-  ([modulePacking.ts:558-561](../../../frontend/src/autoLayout/planner/modulePacking.ts#L558-L561)).
+  ([modulePacking.ts:558-561](../../../src/autoLayout/planner/modulePacking.ts#L558-L561)).
 
 **즉 유체 상자가 W/E 변에 오면 그 홉은 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 
 그리고 **유체는 항상 W/E 변에 온다** — 선택이 아니라 강제다
-([moduleWizard.ts:149](../../../frontend/src/autoLayout/planner/moduleWizard.ts#L149)):
+([moduleWizard.ts:149](../../../src/autoLayout/planner/moduleWizard.ts#L149)):
 
 ```ts
 // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E)
@@ -68,7 +68,7 @@ if (!chosen) return reject({ kind: 'no-rotation', ... });  // ← 트리 자체�
 ### 1.2 그런데 라우터가 그 계획을 버린다
 
 `routeModuleHops` 의 루프 첫 줄이 유체를 먼저 걷어낸다
-([moduleHop.ts:253](../../../frontend/src/autoLayout/planner/moduleHop.ts#L253)):
+([moduleHop.ts:253](../../../src/autoLayout/planner/moduleHop.ts#L253)):
 
 ```ts
 if (hop.from.chest.kind === "infinity-pipe") {
@@ -83,7 +83,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 ### 1.3 그 dijkstra 는 남의 예약도 안 본다
 
 `routeOneFluidHop` 의 금지 집합은 `base + hopBelts + fluidBlocked` 뿐이다
-([moduleHop.ts:411-415](../../../frontend/src/autoLayout/planner/moduleHop.ts#L411-L415)).
+([moduleHop.ts:411-415](../../../src/autoLayout/planner/moduleHop.ts#L411-L415)).
 아이템 쪽이 쓰는 `reservedExport`(반출 레인)·`reservedHop`(다른 홉의 계획 칸)이 빠져 있다.
 
 ### 1.4 결론 — 손해가 두 번 난다
@@ -93,7 +93,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 | 장부 | 유체 홉 몫으로 트랙을 **잡는다** |
 | 라우터 | 그 트랙을 **안 쓴다**(탐색으로 딴 길) |
 | 그 탐색 | 아이템의 예약 칸을 **밟을 수 있다** |
-| 밟힌 아이템 홉 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([moduleHop.ts:286](../../../frontend/src/autoLayout/planner/moduleHop.ts#L286) 주석의 그 연쇄) |
+| 밟힌 아이템 홉 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([moduleHop.ts:286](../../../src/autoLayout/planner/moduleHop.ts#L286) 주석의 그 연쇄) |
 
 채널은 유체 몫만큼 넓어졌는데 그 자리는 비어 있고, 유체는 아이템 자리를 밟는다.
 **"계획할 수 없어서" 가 아니라 "계획해 놓고 안 써서" 생긴 손해다.**
@@ -103,7 +103,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 ## 2. 유체가 아이템과 다른 점 — 장부가 새로 알아야 할 것 하나
 
 장부의 충돌 판정은 **겹침(overlap)** 하나뿐이다
-([channelGeometryPlanner.ts:180](../../../frontend/src/autoLayout/planner/channelGeometryPlanner.ts#L180)):
+([channelGeometryPlanner.ts:180](../../../src/autoLayout/planner/channelGeometryPlanner.ts#L180)):
 두 도형이 같은 칸을 쓰면 충돌.
 
 벨트는 이걸로 충분하다. **파이프는 아니다** — 파이프는 **닿기만 하면 이어진다**(방향 없음,
@@ -118,7 +118,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 
 다른 유체가 나란히 지나가면 두 유체가 한 통이 된다 = 공장이 조용히 망가진다.
 지금은 이걸 `pipeFlow` 의 `blockedTilesHard` 가 **탐색 시점에** 막고 있다
-([moduleWizard.ts:417](../../../frontend/src/autoLayout/planner/moduleWizard.ts#L417)).
+([moduleWizard.ts:417](../../../src/autoLayout/planner/moduleWizard.ts#L417)).
 계획 시점으로 올리려면 장부가 같은 규칙을 알아야 한다.
 
 **이 한 줄이 이번 작업의 알고리즘 변경 전부다.** 나머지는 배선이다.
@@ -130,7 +130,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 조사에서 가장 반가운 사실:
 
 **`buildPlannedChain` 은 이미 품목-무관하다**
-([moduleHop.ts:514](../../../frontend/src/autoLayout/planner/moduleHop.ts#L514)).
+([moduleHop.ts:514](../../../src/autoLayout/planner/moduleHop.ts#L514)).
 상자 좌표 두 개와 기하 지시(straight/staircase/columnSwitch/undergroundCrossing)를 받아
 칸 순서열로 펴는 순수 함수다. 벨트라서 되는 게 하나도 없다.
 
@@ -145,7 +145,7 @@ if (hop.from.chest.kind === "infinity-pipe") {
 
 그래서 새로 만들 것은 **`finishFluidChain`(계획 체인 → 파이프 방출)** 하나다.
 좌석 이음이 없어 `finishChain` 보다 짧다 — 파이프 포트는 인서터가 없고, 좌석 자리의 파이프는
-떼지 않고 그대로 이음에 쓴다([moduleHop.ts:263](../../../frontend/src/autoLayout/planner/moduleHop.ts#L263)).
+떼지 않고 그대로 이음에 쓴다([moduleHop.ts:263](../../../src/autoLayout/planner/moduleHop.ts#L263)).
 
 ---
 
@@ -186,7 +186,7 @@ v1 은 모듈당 유체 1줄이라 유체 경로 수가 적다 — 비용이 실
 | 3 | 아이템 납품 | ③ 지하 횡단이 회수 — 사실상 손해 없음 |
 
 그래서 `items` 배열 순서를 **유체 납품 → 반출 → 아이템 납품**으로 바꾼다
-([channelGeometryPlanner.ts:429-442](../../../frontend/src/autoLayout/planner/channelGeometryPlanner.ts#L429-L442)).
+([channelGeometryPlanner.ts:429-442](../../../src/autoLayout/planner/channelGeometryPlanner.ts#L429-L442)).
 
 이 한 줄이 §4.4 를 성립시킨다. 유체와 아이템이 교차할 때(끝점이 엇갈리면 교차는 **기하학적으로
 불가피**하다 — `DeliveryPlan.undergroundCrossing` 주석의 Jordan 논증), 지상을 유체가 가지고
@@ -318,7 +318,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 §4.3 은 *배정* 순서만 다뤘다. 그런데 방출 루프에도 같은 문제가 있었다:
 
 아이템 홉이 막히면 "예약 무시 재시도"로 **남의 계획 칸을 밟는다**
-([moduleHop.ts](../../../frontend/src/autoLayout/planner/moduleHop.ts) 의 그 거래). 밟힌 게
+([moduleHop.ts](../../../src/autoLayout/planner/moduleHop.ts) 의 그 거래). 밟힌 게
 유체의 자리였으면 유체는 물러설 데가 없어 트리가 통째로 죽는다.
 
 → `routeModuleHops` 가 **유체 홉을 먼저 깐다**. 유체가 실제로 칸을 차지한 뒤(`hopBelts`)라야

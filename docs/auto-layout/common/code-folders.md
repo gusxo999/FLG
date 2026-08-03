@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 
 # auto-layout 코드 폴더 — 두 축으로 나눈다
 
-**한 줄 요약:** `frontend/src/autoLayout/` 의 폴더는 **두 가지 질문**에 답한다 —
+**한 줄 요약:** `src/autoLayout/` 의 폴더는 **두 가지 질문**에 답한다 —
 **축 1 계층**(계획인가 실행인가)과 **축 2 관심사**(무엇에 대한 일인가).
 `planner/` ↔ `execution/` 이 계층으로 대칭이고, 그 **안에서** 관심사 이름이 반복된다.
 
@@ -105,8 +105,8 @@ autoLayout/
 │   └ pipeFlow.ts                  파이프 합류 가드 (판정만 — 자리를 고르지 않는다)
 └ (루트)                       **배치 이전 단계** — 좌표가 없어 계층 축이 무의미하다
                                layeredWizard(최상위 진입점) · recipeTree · buildSpec ·
-                               wizardUtils · beltThroughput · inserterThroughput ·
-                               techGroup + containerModel(타입) · types · debugFlags ·
+                               wizardUtils · beltThroughput · inserterThroughput
+                               + containerModel(타입) · types · debugFlags ·
                                moduleInspect(진단) · areaUnification(배치 결과 표시)
 ```
 
@@ -123,13 +123,13 @@ autoLayout/
 ```powershell
 # 축 1 — 계획 계층이 셀을 만들면 위반이다. 둘 다 0 이어야 한다(주석 매치 제외).
 rg -c "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" `
-   frontend/src/autoLayout/module frontend/src/autoLayout/planner
+   src/autoLayout/module src/autoLayout/planner
 
 # 축 2 — module 이 형제를 아는 통로. 0 이어야 한다.
-rg "planner/link" frontend/src/autoLayout/module
+rg "planner/link" src/autoLayout/module
 
 # link 는 순수 배정기다 — import 가 하나도 없어야 한다.
-rg "^import" frontend/src/autoLayout/planner/link/allocateMachineLinks.ts
+rg "^import" src/autoLayout/planner/link/allocateMachineLinks.ts
 ```
 
 2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:
@@ -158,7 +158,7 @@ rg "^import" frontend/src/autoLayout/planner/link/allocateMachineLinks.ts
 | `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
 | `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
 | `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/moduleHop` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
-| 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput`·`techGroup` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
+| 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
 **아직 안 가른 것 하나:** `modulePacking.materializeChannelGeometry` 는 납품(channel)과
 반출(perimeter)을 **한 번에** 훑는다. 둘이 같은 트랙 풀을 다투기 때문이다
@@ -181,7 +181,6 @@ rg "^import" frontend/src/autoLayout/planner/link/allocateMachineLinks.ts
 ## 검증 방법 — 함정 있음
 
 ```powershell
-cd frontend
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
 npx vitest run
 ```
@@ -201,11 +200,11 @@ npx vitest run
 - 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·
   `relocations`(상자별 새 origin·belts).
-- 적용은 호출자 [moduleWizard](../../../frontend/src/autoLayout/planner/moduleWizard.ts)
+- 적용은 호출자 [moduleWizard](../../../src/autoLayout/planner/moduleWizard.ts)
   가 Area 를 지을 때 한다.
 
 동작 변경 0(골든 스냅샷 불변). 회귀:
-[modulePerimeterPass.test.ts](../../../frontend/src/autoLayout/execution/modulePerimeterPass.test.ts)
+[modulePerimeterPass.test.ts](../../../src/autoLayout/execution/modulePerimeterPass.test.ts)
 의 "순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언한다.
 
 > 남은 확인: `tryRunModulePipeline`(moduleWizard 진입점)은 gameDataStore 의존이라 단위

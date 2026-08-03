@@ -7,6 +7,10 @@ tags: [factorio-data, auto-layout]
 자동완성(Auto-Layout) 시 사용자가 특정 머신/레시피를 지정하면, "이 항목들이 사용 가능하다" 를
 자연스럽게 만족하기 위해 연구되어야 할 기술 집합을 자동으로 산출한다.
 
+> **현재 소비처 0 (2026-08-03 실측).** 남은 진입점 `resolveRequiredTechs` 를 부르는 코드가
+> `gameDataStore` 밖에 없다. 계산 자체는 맞고 테스트도 있으니 남겨 두지만, **지금 어떤 화면도
+> 이 결과를 쓰지 않는다** — 이 문서를 읽고 "이미 동작 중" 이라고 가정하면 안 된다.
+
 ## 데이터 모델
 
 `factorio-data.json` 의 `technologies[]`:
@@ -38,8 +42,8 @@ tags: [factorio-data, auto-layout]
 
 ## prerequisite 클로저
 
-`resolvePrerequisites(techName)` — 해당 기술의 모든 선행 기술을 BFS 로 모은다.
-visited set 기반이라 사이클(이론상 없어야 하지만) 안전.
+> **`resolvePrerequisites(techName)` 는 제거됐다(2026-08-03).** 유일한 소비처가 위저드의
+> 선행 기술 자동 체크였고, 그 기능이 통째로 사라졌다 → [[wizard#제거된-것--선행-기술-자동-체크-2026-08-03]].
 
 `resolveRequiredTechs({ machines, recipes })` — 입력 집합 → 시드 기술 집합 → 자기 자신 + 모든 선행을
 누적. **`enabled === true` 인 기술(게임 시작 시 해금)은 결과에서 제외** — 그 기술은 호출자
@@ -58,4 +62,4 @@ visited set 기반이라 사이클(이론상 없어야 하지만) 안전.
 이 프로젝트는 백엔드 import 엔드포인트가 별도로 존재하지 않으며 (frontend-only), 사용자가
 업로드한 JSON 을 그대로 `parseGameData.ts` 에서 변환해 zustand store 에 적재한다.
 따라서 기술 트리 인덱스(`techMap`, `recipeToTech`, `itemToRecipe`)는 모두
-[gameDataStore.ts](../../../frontend/src/store/gameDataStore.ts) 의 `buildDerived()` 에서 계산된다.
+[gameDataStore.ts](../../../src/UI/store/gameDataStore.ts) 의 `buildDerived()` 에서 계산된다.
