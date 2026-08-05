@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import { routePortToPerimeter } from "./perimeterRouter";
 import { cellKey } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
@@ -26,7 +26,7 @@ const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "i
 const outL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
-/** production(moduleWizard)과 **같은** 지하벨트 설정. 안 주면 홉이 지상으로만 풀려 배치가 달라진다. */
+/** production(moduleWizard)과 **같은** 지하벨트 설정. 안 주면 납품 경로가 지상으로만 풀려 배치가 달라진다. */
 const UNDERGROUND = {
   undergroundBeltEntityName: "underground-belt",
   beltMaxUndergroundDistance: 4,
@@ -56,8 +56,8 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
   for (const [c0, c1, c2] of COUNTS) {
     it(`${c0}/${c1}/${c2} — 예약(hint) 재생만으로 모든 상자가 방출된다`, () => {
       const pack = packModuleTree(mk(c0, c1, c2), config);
-      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
-      expect(hop.failures).toBe(0);
+      const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
+      expect(delivery.failures).toBe(0);
 
       // modulePerimeterPass 와 동형의 occ/perimeter 재현.
       const occ = new Set<string>();
@@ -67,7 +67,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
             for (let dy = 0; dy < m.size.h; dy++) occ.add(cellKey(m.origin.x + dx, m.origin.y + dy));
         for (const c of pl.module.cells) occ.add(cellKey(c.x, c.y));
       }
-      for (const c of hop.cells) occ.add(cellKey(c.x, c.y));
+      for (const c of delivery.cells) occ.add(cellKey(c.x, c.y));
 
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const pl of pack.placements) {
@@ -80,7 +80,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
 
       for (const pl of pack.placements)
         for (const p of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
-          if (hop.strippedChestIds.has(p.chest.id)) continue;
+          if (delivery.strippedChestIds.has(p.chest.id)) continue;
           const a = asg.get(p.chest.id);
           expect(a, `${p.chest.id} 에 배정이 없다`).toBeDefined();
 

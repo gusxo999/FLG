@@ -34,7 +34,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines: [item("iron", "input"), fluid("water", "input")],
       inserters: longInserters,
       outputSide: "W",
-      pipeSide: "E",
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }],
     });
     expect(plan.ok).toBe(false);
     if (!plan.ok) expect(plan.reason).toBe("fluid-handled-by-generateModule");
@@ -43,7 +43,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
   it("파이프 면의 아이템은 케이스 B(reach 2, d=4) 한 줄뿐", () => {
     // 화학 공장 꼴의 **아이템 쪽**: 파이프가 E 면 좌석을 먹은 상태(pipeSide)에서의 배치.
     const lines = [item("coal", "input"), item("plastic-bar", "output")];
-    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeSide: "E" });
+    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const by = (n: string) => plan.lines.find((l) => l.line.name === n)!;
@@ -60,7 +60,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       item("iron-plate", "input"),
       item("thing", "output"),
     ];
-    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeSide: "E" });
+    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const sides = plan.lines.map((l) => `${l.line.name}:${l.side}${l.clusterBeltDepth}`);
@@ -76,8 +76,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines,
       inserters: longInserters,
       outputSide: "W",
-      pipeSide: "E",
-      isJumpableToClusterPipe: true,
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: true }],
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -93,8 +92,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines,
       inserters: regularInserters,
       outputSide: "W",
-      pipeSide: "E",
-      isJumpableToClusterPipe: true,
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: true }],
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -106,10 +104,10 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
   it("reach≥2 인서터가 없으면 파이프 면에 아이템을 못 놓는다 — 케이스 B 는 긴팔 전용", () => {
     // reach 1 인서터는 좌석(depth 1)에 앉아야 하는데 그 자리가 파이프다.
     const lines = [item("a", "input"), item("b", "input"), item("c", "output")];
-    const plan = planClusterPorts({ lines, inserters: regularInserters, outputSide: "W", pipeSide: "E" });
+    const plan = planClusterPorts({ lines, inserters: regularInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
     // W 면 벨트 1개(reach 1) 뿐 → 아이템 3줄을 못 담는다.
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("belt-demand-exceeds-capacity");
+    if (!plan.ok) expect(plan.reason).toMatch(/^lanes-exceed-capacity/);
   });
 
   it("reach {1,2} → 출력=W(near→far), 입력=E(near→far)", () => {
@@ -151,7 +149,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
     const lines = Array.from({ length: 5 }, (_, i) => item(`x${i}`, "input"));
     const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W" });
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("belt-demand-exceeds-capacity");
+    if (!plan.ok) expect(plan.reason).toMatch(/^lanes-exceed-capacity/);
   });
 
   it("reach {1} → 면당 1벨트(2칸): 출력=W, 입력=E", () => {
@@ -265,21 +263,21 @@ describe("planClusterPorts — 노출 N/S 완화 (E → N/S → W)", () => {
   });
 
   it("내부(external 아님) 입력이 자식 쪽 면(E)을 먼저 갖고, external 이 밀려난다", () => {
-    const lines = [item("out", "output"), ext("i1"), ext("i2"), item("hop", "input")];
+    const lines = [item("out", "output"), ext("i1"), ext("i2"), item("delivery", "input")];
     const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", nsFaces: ["N"] });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const byName = new Map(plan.lines.map((l) => [l.line.name, l]));
 
-    // 자식-공급(홉) 입력은 **자식 쪽 면(E)** 을 갖는다. 등장 순서상 마지막이지만 먼저 배정된다.
-    // 이게 밀려나 출력면(W)에 태어나면 그 홉이 모듈을 빙 돌아와 다른 포트의 탈출로를 끊는다
+    // 자식-공급(납품 경로) 입력은 **자식 쪽 면(E)** 을 갖는다. 등장 순서상 마지막이지만 먼저 배정된다.
+    // 이게 밀려나 출력면(W)에 태어나면 그 납품 경로가 모듈을 빙 돌아와 다른 포트의 탈출로를 끊는다
     // (2026-07-12 실측: 반출 skip 3건의 원인).
-    expect(byName.get("hop")!.side).toBe("E");
+    expect(byName.get("delivery")!.side).toBe("E");
 
-    // 홉 기하 불변: 자식-공급 입력은 **절대 N/S 에 앉지 않는다**(홉은 W/E 축으로만 오간다).
-    expect(["W", "E"]).toContain(byName.get("hop")!.side);
+    // 납품 경로 기하 불변: 자식-공급 입력은 **절대 N/S 에 앉지 않는다**(납품 경로는 W/E 축으로만 오간다).
+    expect(["W", "E"]).toContain(byName.get("delivery")!.side);
 
-    // 밀려나는 건 external 쪽 — 홉이 없어 perimeter 로 나가면 그만이라 안전하다.
+    // 밀려나는 건 external 쪽 — 납품 경로가 없어 perimeter 로 나가면 그만이라 안전하다.
     expect(["N", "W"]).toContain(byName.get("i2")!.side);
   });
 
@@ -295,7 +293,7 @@ describe("planClusterPorts — 노출 N/S 완화 (E → N/S → W)", () => {
     const lines = Array.from({ length: 5 }, (_, i) => ext(`x${i}`));
     const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", nsFaces: ["N", "S"] });
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toBe("belt-demand-exceeds-capacity");
+    if (!plan.ok) expect(plan.reason).toMatch(/^lanes-exceed-capacity/);
   });
 
   it("N 소진 후 다음 노출 면(S) 소비, 그다음에야 W", () => {

@@ -11,7 +11,7 @@ tags: [auto-layout, placement, routing]
 > **상태: 구현 완료** (2026-07-09 설계 확정, 같은 날 구현). 통합 장부 =
 > `src/autoLayout/channelGeometryPlanner.ts`, 스위치 =
 > `AUTO_LAYOUT_CHANNEL_GEOMETRY`(기본 on, `debugFlags.ts`). 신규 코드는 이 문서의 용어를
-> 쓰지만(§8 대응표) 기존 파일명(hop, lane)의 개명은 장기 과제로 남아 있다. 검증 결과는 §9.
+> 쓰지만(§8 대응표) 기존 파일명(delivery, lane)의 개명은 장기 과제로 남아 있다. 검증 결과는 §9.
 
 ---
 
@@ -244,11 +244,11 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 통합 장부 | `channelGeometryPlanner.ts` (신규) | 납품·반출을 한 장부에서 배정. 같은 쪽 판정 → 해소 사다리(①진출 변 뒤집기 ②지하 횡단 — 세로/가로 두 변형 ③fallback 마킹). 지상 배정은 반복 심화 백트래킹(폭 최소 우선, 결정적), 실패 시 탐욕+열 갈아타기. fallback 경로도 폭은 phantom 트랙으로 예약 |
-| 장부 호출·폭 역전 | `modulePacking.ts` | 홉 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(홉 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 홉·N/S 우회 반출)은 폭만 예약 |
-| 납품 경로 좌표 방출 | `moduleHop.ts` | 계획 홉은 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 홉) 침범 금지** |
+| 장부 호출·폭 역전 | `modulePacking.ts` | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로·N/S 우회 반출)은 폭만 예약 |
+| 납품 경로 좌표 방출 | `deliveryRoute.ts` | 계획 납품 경로는 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 납품 경로) 침범 금지** |
 | 반출 경로 재생 | `perimeterLanePlanner.ts` / `perimeterRouter.ts` / `modulePerimeterPass.ts` | `LaneAssignment.entry`(진입 벽)·`laneX`(확정 트랙 x) 추가. ⑥C 는 `laneX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). self/margin 직선 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
 
-미지원(폭만 예약, 기존 경로 유지): 스필로 채널을 정면으로 안 건너는 홉(planner 면 개선이
+미지원(폭만 예약, 기존 경로 유지): 스필로 채널을 정면으로 안 건너는 납품 경로(planner 면 개선이
 근본 치료).
 
 > **갱신(2026-07-11) — N/S 변 포트의 채널 우회 반출 해결.** 이 경로는 사실 장부가 이미
@@ -262,7 +262,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 
 | 문서 용어 | 현 코드 | 개명 목표 |
 |---|---|---|
-| 납품 경로 | hop (`moduleHop.ts`) / 신규 `DeliveryInput`·`DeliveryPlan` | `deliveryRoute` |
+| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan` | `deliveryRoute` |
 | 반출 경로 | lane (`perimeterLanePlanner.ts`) / 신규 `ExportInput`·`ExportPlan` | `exportRoute` |
 | 절단선 | (개념 — sameSideOfCut 내부) | `cut` / `cutLine` |
 | 같은 쪽 판정 | `sameSideOfCut` ✓ | `sameSideOfCut` |
@@ -278,14 +278,14 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 1. **골든 스냅샷** — `modulePipeline.golden.test.ts` 의 구현 전 스냅샷 대비, 의도된 diff 만 확인:
    **relocated 5→7, skipped 2→0, reason null** — 옛 skip 2건(kr-glass "no free lane track",
    n0 출력 "straight blocked to W") 모두 전역 외곽 도달. hopFailures 0 유지.
-2. **불변식 테스트** — `channelGeometryPlanner.test.ts` (15 케이스): (a) 홉 belt 와 모듈
-   셀(strip 제외)·다른 홉의 셀 서로소, (b) 지상 계획 홉은 corridor 0(판정-일치), (c) 결정성
+2. **불변식 테스트** — `channelGeometryPlanner.test.ts` (15 케이스): (a) 납품 경로 belt 와 모듈
+   셀(strip 제외)·다른 납품 경로의 셀 서로소, (b) 지상 계획 납품 경로는 corridor 0(판정-일치), (c) 결정성
    (같은 입력 → 같은 배정/같은 파이프라인 결과). 추가로 §4.3/§4.4(뒤집기·지하 횡단 두 변형)·
    §5-3 완전 교차 fallback 마킹·폭 역전을 단위 검증. 전체 스위트 212/212 green, tsc clean.
 3. **실측** (2026-07-10, advanced-circuit 트리, COORD DUMP 좌표 검증) — 외부상자 7개 중
    6개가 전역 perimeter 도달: **kr-glass (16,−1) N 외곽 ✓**(원래 갇히던 상자), 루트 출력
    (−1,5) W 외곽 ✓, E 외곽 4개. 잔여 1건 = n0 copper-cable — SKIP 사유 "N/S-side channel
    divert unsupported"(N/S 변 포트의 채널 우회, §8 에 미지원으로 명시한 클래스 — 기존 동작과
-   동일, 회귀 아님). moduleHop 폴백 로그 0, 콘솔 에러 0.
+   동일, 회귀 아님). deliveryRoute 폴백 로그 0, 콘솔 에러 0.
    > **갱신(2026-07-11):** 이 잔여 클래스 해결(§8 갱신 박스 참조). advanced-circuit 동형
    > 트리 count 1~8 단위 재현에서 상자 7개 전부 재배치, skip 0, 겹침 0 확인.

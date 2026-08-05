@@ -89,7 +89,7 @@ tags: [factorio-data, routing, auto-layout]
 
 즉 유체 줄이 **어느 면으로 들어가는지는 우리가 고르는 게 아니라 머신이 정한다.** 우리가 할 수 있는
 건 **머신을 돌리는 것**뿐이다. 그래서 유체 레시피 모듈은 머신을 90° 돌려 유체 입구가 우리가 원하는
-면(E)을 보게 한다([fluidPorts.chooseMachineDirection](../../src/autoLayout/module/fluidPorts.ts)).
+면(E)을 보게 한다([fluidPorts.chooseFluidTrunkPlan](../../src/autoLayout/module/fluidPorts.ts)).
 
 **연결 칸이 어디인지는 좌표로 못 뽑는다.** 화학 공장의 유체 상자는 3×3 의 **모서리 칸**이라 `|x| = |y|`
 이고, 그 연결이 위로 나가는지 옆으로 나가는지 좌표에 정보가 **없다.** 답은 `PipeConnection.direction`
@@ -97,9 +97,9 @@ tags: [factorio-data, routing, auto-layout]
 
 ## 4. 유체 상자 하나가 받는 유체는 "이름 하나" 가 아니라 "이름의 집합" 이다
 
-화학 공장은 입력 유체 상자가 **2개**인데 `plastic-bar` 레시피의 유체 재료는 **1개**(석유 가스)다.
-그럼 어느 상자에 넣어야 하나? **아무 데나.** 레시피가 `fluidbox_index` 로 상자를 못박지 않으면 그
-유체는 그 역할의 상자 **전부**에 들어갈 수 있다.
+화학 공장은 유체 입력 상자가 **2개**인데 `plastic-bar` 레시피의 유체 재료는 **1개**(석유 가스)다.
+그럼 어느 유체 상자에 넣어야 하나? **아무 데나.** 레시피가 `fluidbox_index` 로 유체 상자를 못박지
+않으면 그 유체는 그 역할의 유체 상자 **전부**에 들어갈 수 있다.
 
 그래서 "이 칸에 이 유체를 놓아도 되나" 는 **집합 포함 질문**이다. 규칙과 실데이터 확인은
 [fluid-box-semantics](fluid-box-semantics.md).
@@ -122,13 +122,13 @@ tags: [factorio-data, routing, auto-layout]
 | 지도 만드는 함수 | `collectBeltFlow` | `collectPipeFlow` |
 | 지도가 담는 것 | `tiles` · `sinkTargets` (흐름의 두 방향) | `blockedTilesHard` · `blockedTilesSoft` (규칙의 두 **강도**) |
 | 지도가 유체/품목별인가 | 아니다(모든 아이템 합류가 오염) | **그렇다** — 같은 유체는 닿아도 되므로 유체마다 지도가 다르다 |
-| 어기면 | Dijkstra 가 그 칸을 `blocked` 에 넣고 **재탐색**(우회) | 예약 경로라 탐색이 없다 → **거절**(트렁크는 폴백, 반출은 그 상자만 skip) |
+| 어기면 | Dijkstra 가 그 칸을 `blocked` 에 넣고 **재탐색**(우회) | 예약 경로라 탐색이 없다 → **거절**(트렁크는 폴백, 반출은 그 포트만 skip) |
 
 **Hard 와 Soft 의 뜻은 규칙의 강도**다(출처가 아니라):
 
 - **Hard** — 어길 수 없다. 다른 유체 파이프의 사방, 그리고 **모든 유체 출력 상자**의 연결 칸.
-  출력 상자는 **같은 유체라도** 막는다(남의 생산물이 내 관망으로 새므로).
-- **Soft** — 어겨도 물류는 안 망가진다. 이 유체를 **안 받는 입력** 상자의 연결 칸. 머신이 스스로
+  유체 출력 상자는 **같은 유체라도** 막는다(남의 생산물이 내 관망으로 새므로).
+- **Soft** — 어겨도 물류는 안 망가진다. 이 유체를 **안 받는 유체 입력 상자**의 연결 칸. 머신이 스스로
   필터링해 필요한 유체만 가져가므로 엄밀히는 안전하다 — 막는 편이 더 좋은 배치일 뿐이다.
   **자리가 열악하면 푼다. 푸는 기준은 아직 안 정했다.**
 
@@ -145,7 +145,7 @@ tags: [factorio-data, routing, auto-layout]
 |---|---|---|
 | **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 배치 실패(폴백 없음) |
 | **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](../용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
-| **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 상자만 skip(로컬 ring 잔류) |
+| **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 포트만 skip(로컬 ring 잔류) |
 | **옛 경로** (`execution/emitPath.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](../auto-layout/common/known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
 
 스파인 폴백이 면 하나를 통째로 먹는 대가는 **케이스 B** 로 계산돼 있다: 그 면엔 일반 인서터가

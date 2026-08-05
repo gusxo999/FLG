@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops, type HopConfig } from "./moduleHop";
+import { packModuleTree, deliveryKey, type NodeSpec, type PackConfig } from "./modulePacking";
+import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
 import {
   planChannelGeometry,
   type DeliveryInput,
@@ -9,8 +9,8 @@ import {
 import type { IoLine } from "./module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
 
-// 유체 홉이 채널 기하 장부 안에서 계획되고, 그 계획대로 깔리는지.
-// 단일 출처: docs/auto-layout-wizard.fluid-hop-reservation.md
+// 유체 납품 경로가 채널 기하 장부 안에서 계획되고, 그 계획대로 깔리는지.
+// 단일 출처: docs/auto-layout-wizard.fluid-delivery-reservation.md
 //
 // 이력: P4-4a 에서 이 파일은 **결함을 못박는** 특성화 테스트로 태어났다 — "장부가 계획을
 // 만드는데 라우터가 그걸 버린다"(planned=0). P4-5b 에서 그 단언이 뒤집혔다(planned=1).
@@ -25,14 +25,22 @@ const M = { entityName: "assembling-machine-2", w: 3, h: 3 };
 /** 유체 상자가 `side` 면을 보는 회전. moduleWizard 가 wantFace 로 강제하는 것과 같은 값. */
 const fluidTrunk = (side: "W" | "E") => ({
   direction: (side === "W" ? 12 : 4) as 12 | 4,
-  side,
   pipeEntityName: "pipe",
-  fluidboxOffset: 0,
   undergroundPipeEntityName: "pipe-to-ground",
   pipeMaxUndergroundDistance: 10,
+  lines: [
+    {
+      name: "petroleum-gas",
+      role: (side === "W" ? "output" : "input") as "input" | "output",
+      side,
+      fluidboxOffset: 0,
+      rank: 0,
+      boxIndex: 0,
+    },
+  ],
 });
 
-// 자식 gasmaker 가 petroleum-gas 를 만들어 부모 user 가 쓴다(docs/…fluid-hop.md 의 그 트리).
+// 자식 gasmaker 가 petroleum-gas 를 만들어 부모 user 가 쓴다(docs/…fluid-delivery.md 의 그 트리).
 // 출력 유체는 W 면(부모 쪽), 입력 유체는 E 면(자식 쪽) — moduleWizard.ts:149 의 wantFace.
 const fluidSpecs: NodeSpec[] = [
   {
@@ -56,7 +64,7 @@ const packConfig: PackConfig = {
   reservePerimeterLanes: true,
   beltMaxUndergroundDistance: 4,
 };
-const hopConfig: HopConfig = {
+const deliveryConfig: DeliveryConfig = {
   beltEntityName: "transport-belt",
   pipeEntityName: "pipe",
   pipeMaxUndergroundDistance: 10,
@@ -64,39 +72,39 @@ const hopConfig: HopConfig = {
 };
 
 const pack = packModuleTree(fluidSpecs, packConfig);
-const fluidHop = pack.hops.find((h) => h.item === "petroleum-gas");
+const fluidDelivery = pack.deliveries.find((h) => h.item === "petroleum-gas");
 
-describe("유체 홉이 장부의 계획대로 깔린다", () => {
-  it("유체 홉 쌍이 만들어진다 (전제)", () => {
-    expect(fluidHop, "유체 HopSpec 이 없다 — 아래 계측이 무의미해진다").toBeDefined();
-    expect(fluidHop!.from.chest.kind).toBe("infinity-pipe");
+describe("유체 납품 경로가 장부의 계획대로 깔린다", () => {
+  it("유체 납품 경로 쌍이 만들어진다 (전제)", () => {
+    expect(fluidDelivery, "유체 DeliverySpec 이 없다 — 아래 계측이 무의미해진다").toBeDefined();
+    expect(fluidDelivery!.from.chest.kind).toBe("infinity-pipe");
   });
 
-  // §1.1 — 홉 입력 생성에 품목 종류 필터가 없다. 유체 포트는 wantFace 로 W/E 가 강제되고
+  // §1.1 — 납품 경로 입력 생성에 품목 종류 필터가 없다. 유체 포트는 wantFace 로 W/E 가 강제되고
   // (moduleWizard.ts:149, 못 맞추면 트리째 reject), 그게 eligible 조건과 정확히 같다.
-  // 따라서 유체 홉은 **예외 없이** 장부에 들어가 트랙을 하나 차지한다.
-  it("장부가 유체 홉의 경로를 이미 계획한다", () => {
-    const key = hopMapKey(fluidHop!);
+  // 따라서 유체 납품 경로는 **예외 없이** 장부에 들어가 트랙을 하나 차지한다.
+  it("장부가 유체 납품 경로의 경로를 이미 계획한다", () => {
+    const key = deliveryKey(fluidDelivery!);
     const geo = pack.channelGeometry;
     expect(geo, "channelGeometry 가 안 켜졌다 — config 확인").toBeDefined();
     expect(
-      geo!.hops.has(key),
-      "유체 홉이 장부 계획에 없다 — §1.1 조사와 어긋난다(설계 재검토 필요)",
+      geo!.deliveries.has(key),
+      "유체 납품 경로가 장부 계획에 없다 — §1.1 조사와 어긋난다(설계 재검토 필요)",
     ).toBe(true);
   });
 
-  // P4-5b 이전엔 routeModuleHops 루프의 첫 줄이 유체를 걷어내(옛 moduleHop.ts:253)
+  // P4-5b 이전엔 routeDeliveryRoutes 루프의 첫 줄이 유체를 걷어내(옛 deliveryRoute.ts:253)
   // plannedChains 조회에 도달하지 못했다 — 계획이 있는데도 planned=0 이었다.
-  // 지금은 유체도 계획 체인을 탄다. 이 트리의 홉은 유체 하나뿐이므로 planned=1.
+  // 지금은 유체도 계획 체인을 탄다. 이 트리의 납품 경로는 유체 하나뿐이므로 planned=1.
   it("라우터가 그 계획을 쓴다 — 탐색 없이 planned 로 집계", () => {
-    const res = routeModuleHops(pack, hopConfig);
+    const res = routeDeliveryRoutes(pack, deliveryConfig);
     expect(res.failures).toBe(0);
-    expect(res.planned, "유체 홉이 계획 체인으로 안 깔렸다").toBe(1);
+    expect(res.planned, "유체 납품 경로가 계획 체인으로 안 깔렸다").toBe(1);
     expect(res.dijkstraFallback, "유체가 탐색으로 샜다 — D3 위반").toBe(0);
   });
 
-  it("계획으로 깐 유체 홉도 파이프로 나온다 (벨트가 아니라)", () => {
-    const res = routeModuleHops(pack, hopConfig);
+  it("계획으로 깐 유체 납품 경로도 파이프로 나온다 (벨트가 아니라)", () => {
+    const res = routeDeliveryRoutes(pack, deliveryConfig);
     const route = res.routes.find((r) => r.item === "petroleum-gas")!;
     expect(route.ok).toBe(true);
     expect(route.cells.length).toBeGreaterThan(0);

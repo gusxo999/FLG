@@ -9,6 +9,7 @@
  */
 
 import type { Direction, GridCell } from '../types/layout';
+import type { LayoutIssue, LayoutSnapshot } from './layoutIssue';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §2. 컨테이너
@@ -479,6 +480,17 @@ export interface ContainerWizardResult {
   tree: CandidateTree;
   /** 부분 결과 여부 — Esc 중단으로 일부만 생성된 경우 true */
   partial: boolean;
+  /**
+   * **왜 안 됐나(또는 무엇이 아쉬운가)** — 실패면 `error` 들, 성공이어도 `warning` 이 있을 수 있다.
+   * 단일 출처는 [layoutIssue](./layoutIssue.ts).
+   */
+  issues?: LayoutIssue[];
+  /**
+   * 실패를 **짚기 위한 그림**(모듈 사각형 + 납품 경로 선). 배치가 없을 때만, 그것도
+   * `pack` 까지 갔을 때만 있다. **`CandidateLeaf` 가 아니다** — 그리기 전용이라
+   * 배치 경로로 흘러갈 수 없다.
+   */
+  snapshot?: LayoutSnapshot;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

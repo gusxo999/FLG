@@ -122,8 +122,6 @@ interface LayoutState {
   undoStack: HistoryEntry[];
   /** Redo stack */
   redoStack: HistoryEntry[];
-  /** 자동 레이아웃 hover 미리보기 셀 (실제 그리드에 반영되지 않음) */
-  previewCells: ReadonlyArray<{ x: number; y: number; cell: GridCell }> | null;
   /** 자동 레이아웃 계산 실행 중 여부 (화면 하단 처리중 표시용) */
   autoLayoutRunning: boolean;
   /** Blueprint(머신+라우팅) 영역 bbox. 렌더러의 내부/외부 경계선. */
@@ -152,7 +150,6 @@ interface LayoutState {
    * 하나의 undo entry 로 묶이며, 그리드 경계 밖 좌표는 무시한다.
    */
   applyPlacedCells: (placed: ReadonlyArray<{ x: number; y: number; cell: GridCell }>) => void;
-  setPreviewCells: (cells: ReadonlyArray<{ x: number; y: number; cell: GridCell }> | null) => void;
   setAutoLayoutRunning: (v: boolean) => void;
   setExternalAreaBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
   setAutoLayoutCanvasBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
@@ -282,7 +279,6 @@ export const useLayoutStore = create<LayoutState>()(
     selectedDirection: 0,
     undoStack: [],
     redoStack: [],
-    previewCells: null,
     autoLayoutRunning: false,
     externalAreaBbox: null,
     autoLayoutCanvasBbox: null,
@@ -507,8 +503,7 @@ export const useLayoutStore = create<LayoutState>()(
       }
       set({
         grid: { ...workGrid, cells: newCells },
-        previewCells: null,
-        ...(sx > 0 || sy > 0 ? {
+            ...(sx > 0 || sy > 0 ? {
           viewport: shiftViewport(viewport, sx, sy, tileSize),
           externalAreaBbox: shiftBbox(externalAreaBbox, sx, sy),
           autoLayoutCanvasBbox: shiftBbox(autoLayoutCanvasBbox, sx, sy),
@@ -517,8 +512,6 @@ export const useLayoutStore = create<LayoutState>()(
         } : {}),
       });
     },
-
-    setPreviewCells: (cells) => set({ previewCells: cells }),
 
     setAutoLayoutRunning: (v) => set({ autoLayoutRunning: v }),
 

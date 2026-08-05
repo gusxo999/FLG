@@ -1,26 +1,26 @@
 ---
-tags: [auto-layout, fluid, module, hop]
-aliases: [유체홉, fluid-hop]
+tags: [auto-layout, fluid, module, delivery]
+aliases: [유체납품 경로, fluid-delivery]
 ---
 
-# 유체 홉 — 자식 유체 출력 → 부모 유체 입력 (새 경로)
+# 유체 납품 경로 — 자식 유체 출력 → 부모 유체 입력 (새 경로)
 
 > 관련: [[trunk-pipe]] · [[pipe-semantics]] · [[용어사전]] (ClusterPipe / pipeJumpToClusterPipe)
 
 > **상태(2026-07-16): 실측 성공 — 살아서 동작한다.** `wood ← water` 체인으로 확인:
-> **`S-LAYER(module) · 2 노드 · 1 홉 · 실패 0`**, 홉 셀은 `pipe`(벨트 아님). 그 전까지 모든
-> 성공은 `0 홉` 이었다. 다-유체는 설계대로 옛 경로 유지.
+> **`S-LAYER(module) · 2 노드 · 1 납품 경로 · 실패 0`**, 납품 경로 셀은 `pipe`(벨트 아님). 그 전까지 모든
+> 성공은 `0 납품 경로` 이었다. 다-유체는 설계대로 옛 경로 유지.
 
 > ## ⚠️ 그 뒤 링크 모델이 이걸 깨뜨렸다 — 그리고 고쳤다 (2026-07-26)
 >
-> 위 성공은 **링크 모델(2026-07-21~22) 도입 이전**이다. 링크가 들어오면서 유체 홉이
+> 위 성공은 **링크 모델(2026-07-21~22) 도입 이전**이다. 링크가 들어오면서 유체 납품 경로가
 > 조용히 죽었고, 오늘 브라우저 실측으로 드러났다. 원인은 둘:
 >
 > - **자식→부모 링크에 유체 가드가 없었다.** `externalLineGroups` 에는 있는
 >   `if (line.kind !== "belt") continue` 가 `edgeLinkGroups` 에는 없어서, 유체 링크가
 >   인서터 팔을 배정받고(`water: 벨트 1줄, 줄당 팔 3`) `linkedKeys` 에 실려 **아이템
 >   방출기**로 갔다. 트렁크 파이프 경로를 통째로 건너뛰니 유체 포트가 안 생기고, 포트가
->   없으니 홉도 없다. 게다가 가짜 팔 배정이 홉을 여러 개로 쪼개 서로 막아
+>   없으니 납품 경로도 없다. 게다가 가짜 팔 배정이 납품 경로를 여러 개로 쪼개 서로 막아
 >   `fluid-unplannable` 까지 냈다 — 그 거절은 **원인이 아니라 증상**이었다.
 > - **`productOf` 가 첫 출력 라인만 봤다.** 다산출 자식(`barrel + sulfuric-acid`)에서
 >   부산물이 잡혀 부모와 짝이 안 맞았다. 그러면 자식의 유체 출력과 부모의 유체 입력이
@@ -31,14 +31,14 @@ aliases: [유체홉, fluid-hop]
 >
 > | 체인 | 전 | 후 |
 > |---|---|---|
-> | `concrete ← kr-water-from-atmosphere` | `[fluid-unplannable] water ×2` | **1 홉**, 파이프 22칸 한 관망이 두 머신에 접함, 무한파이프 0 |
-> | `battery ← empty-sulfuric-acid-barrel` | 후보는 나오나 **0 홉** + 모순된 무한파이프 2개 | **1 홉**, 20칸 한 관망, 무한파이프 0 |
+> | `concrete ← kr-water-from-atmosphere` | `[fluid-unplannable] water ×2` | **1 납품 경로**, 파이프 22칸 한 관망이 두 머신에 접함, 무한파이프 0 |
+> | `battery ← empty-sulfuric-acid-barrel` | 후보는 나오나 **0 납품 경로** + 모순된 무한파이프 2개 | **1 납품 경로**, 20칸 한 관망, 무한파이프 0 |
 >
 > 회귀 테스트: `planner/modulePacking.fluidLink.test.ts`.
 >
-> **유체 홉을 볼 레시피 고르는 법** — 자식이 유체를 *소비하지 않고* 생산해야 한다.
-> `sulfuric-acid`(물 넣고 산 뽑기)는 유체 2개라 `multi-fluid` 로 먼저 걸린다. 이 조건을
-> 만족하는 (부모, 자식) 쌍은 K2+SE 기준 **1038개** 있다(배럴 비우기·얼음 녹이기 등).
+> **유체 납품 경로를 볼 레시피 고르는 법** — 자식이 유체를 *소비하지 않고* 생산하는 쌍이
+> 가장 단순하다. K2+SE 기준 **1038개** 있다(배럴 비우기·얼음 녹이기 등). 유체를 받아
+> 유체를 내는 레시피(`sulfuric-acid`)도 이제 통과한다 — 한때 `multi-fluid` 로 먼저 걸렸다.
 
 ## 실측 (2026-07-16)
 
@@ -46,11 +46,11 @@ aliases: [유체홉, fluid-hop]
 - **부모 `wood`** — 재료가 **`fluid:water` 하나뿐**(좌석 여유), 머신 `kr-greenhouse` 7×7 정사각형.
 - **자식 `kr-water-from-atmosphere`** — **재료 없음**, 물만 낸다. `kr-atmospheric-condenser` 5×5.
 
-**결과:** `S-LAYER(module)`(= 옛 경로 폴백이 아님) · **1 홉** · 실패 0. 홉 셀 클릭 → `pipe`.
+**결과:** `S-LAYER(module)`(= 옛 경로 폴백이 아님) · **1 납품 경로** · 실패 0. 납품 경로 셀 클릭 → `pipe`.
 
 **부적합했던 레시피 — `concrete`:** 입력이 4종(+출력 1)이라 3×3 좌석에 안 맞는다.
 `seats: W 4탭 > 3행`, 덤프도 `beltDemand 4 + pipeDemand 1 = 5 > columnCapacity 4`.
-**유체와 무관한 한계**(기둥 탭 용량 초과 = 2D 클러스터 미구현). 유체 홉을 볼 땐 **입력이 적은
+**유체와 무관한 한계**(기둥 탭 용량 초과 = 2D 클러스터 미구현). 유체 납품 경로를 볼 땐 **입력이 적은
 부모**를 골라야 한다.
 
 ## 입구가 막혀 있었다 (2026-07-16, 해결됨)
@@ -103,26 +103,30 @@ for (const p of r.products) {
 ## 왜 이 문서
 
 유체 트리는 지금 **새 모듈 경로에서 거절 → 옛 경로**로 간다. 옛 경로(`routeFluid`, dijkstra)는
-유체 홉을 **이미** 처리한다. 그래서 이 작업은 "불가능을 가능하게"가 아니라 **옛 경로 → 새 경로
+유체 납품 경로를 **이미** 처리한다. 그래서 이 작업은 "불가능을 가능하게"가 아니라 **옛 경로 → 새 경로
 이주(parity)**다. 잣대는 하나: **퇴보 0**.
 
-## 불편한 현실 — 유체 레시피는 대부분 다-유체
+## 유체 레시피는 대부분 다-유체 — 그래서 면이 아니라 **깊이**로 푼다
 
 면은 넷(W/E/N/S)뿐인데 정유는 유체 상자만 5개다(원유+물 → 중유+경유+가스). 게다가 회전은
-**모든 상자를 함께 돌린다** — 유체 하나를 한 면에 맞추면 나머지는 프로토타입이 정한 자리로
-흩어진다. 그래서 **다-유체는 별개의 큰 문제**이고, v1 에서 열지 않는다.
+**모든 유체 상자를 함께 돌린다** — 유체 하나를 한 면에 맞추면 나머지는 프로토타입이 정한 자리로
+흩어진다. v1 은 여기서 멈췄다("다-유체는 별개의 큰 문제").
 
-## v1 범위 (2026-07-15 사용자 승인)
+**답은 면을 늘리는 게 아니었다.** 면은 여전히 둘(출력 W · 입력 E)이고, 같은 면에 줄을 **깊이로
+겹쳐 쌓는다** — 유체 하나가 폭 2칸(탭 1 + 관 1). 서로 안 붙는 근거는 지하파이프가 표면에서 한
+면으로만 연결된다는 것이고, 상한은 지하파이프 사거리다. → [[trunk-pipe]] §5.1
 
-- **모듈당 유체 1줄** — 입력 1 **또는** 출력 1(둘 다는 아직). 다-유체 머신(정유·크래킹·황산·
-  화학공장 다중)은 **옛 경로 유지**.
-- **이중 면**(한 모듈 유체 in+out 동시)은 v1 밖.
-- 덮는 것: "자식이 유체 1개를 만들어 부모가 쓰는 체인"이라는 실재 부분집합.
+## 범위 (2026-08-05 확장)
+
+- **모듈당 유체 여러 줄** — 입력과 출력을 **동시에**, 한 면에 **여러 줄**. 정유·크래킹이 들어온다.
+- 면은 여전히 역할이 정한다(출력 W · 입력 E) — 한 면에 역할이 섞이는 회전은 고르지 않는다.
+  이 불변식에 채널 장부가 기대고 있다(`hopSeeds.eligible`).
+- 거절선은 **지하파이프 사거리와 좌석**이다 → [[trunk-pipe]] §5.
 
 ## 왜 퇴보 함정이 있나 — (a)만 하면 안 된다
 
 - **(a) 유체 출력 반출** = 머신 유체 산출 → 무한파이프(출력 포트).
-- **(b) 유체 홉** = 자식 출력 포트 → 부모 입력 포트, pipe-to-pipe.
+- **(b) 유체 납품 경로** = 자식 출력 포트 → 부모 입력 포트, pipe-to-pipe.
 
 자식-공급 유체를 새 경로로 끌어오면서 (b)를 안 하면, 출력·입력 포트가 **연결 안 된 무한파이프
 두 개**(가짜 물류)가 된다 — 옛 경로는 이어줬으니 퇴보. 그래서 **(a)+(b) 한 몸**. (루트 유체
@@ -133,31 +137,31 @@ for (const p of r.products) {
 | # | 결정 | 근거 |
 |---|---|---|
 | D1 | **모듈당 유체 1줄** | 다-유체 4면·회전 얽힘은 별도 문제. 단일-유체 체인이 실재 부분집합 |
-| D2 | 유체 출력 emit = **기존 ClusterPipe/스파인 재사용** | 파이프 emit 은 role 을 흐름으로만 구분·포트를 infinity-pipe 로 끝냄 → 출력도 대칭. 유일 수정: `fluidboxOffset` 을 **그 줄 역할의 상자** 기준으로 |
-| D3 | **`routeFluidHops` 신설**(아이템 홉과 형제) | 파이프는 인서터 없음(좌석 제거 없음)·방향 없음(인접만으로 연결) → 아이템 홉보다 단순. 두 무한파이프를 떼고 pipe 경로로 잇는다 |
-| D4 | `chooseMachineDirection` **재사용**(role="output", wantFace="W") | 출력 유체를 부모 쪽(W)에 맞추는 회전을 고름 |
+| D2 | 유체 출력 emit = **기존 ClusterPipe/스파인 재사용** | 파이프 emit 은 role 을 흐름으로만 구분·포트를 infinity-pipe 로 끝냄 → 출력도 대칭. 유일 수정: `fluidboxOffset` 을 **그 줄 역할의 유체 상자** 기준으로 |
+| D3 | **`routeFluidHops` 신설**(아이템 납품 경로와 형제) | 파이프는 인서터 없음(좌석 제거 없음)·방향 없음(인접만으로 연결) → 아이템 납품 경로보다 단순. 두 무한파이프를 떼고 pipe 경로로 잇는다 |
+| D4 | `chooseFluidTrunkPlan` **재사용**(role="output", wantFace="W") | 출력 유체를 부모 쪽(W)에 맞추는 회전을 고름 |
 | D5 | planner: 유체 줄 → **그 줄 역할 면**(입력 E / 출력 W = `pipeSide`) | `pipeSide` 가 이미 그 역할 면. 단일 유체라 면 충돌 없음 |
 
 ## 이미 되어 있는 것 (재사용)
 
-- **packModuleTree 는 유체 홉 쌍을 이미 만든다** — `pairHopPorts` 는 **이름 기반**이라 유체 포트도
-  짝짓는다(HopSpec.item = 유체 이름). `hopSeeds.eligible`(out W · in E)도 그대로 맞는다.
+- **packModuleTree 는 유체 납품 경로 쌍을 이미 만든다** — `pairDeliveryPorts` 는 **이름 기반**이라 유체 포트도
+  짝짓는다(DeliverySpec.item = 유체 이름). `deliverySeeds.eligible`(out W · in E)도 그대로 맞는다.
 - **유체 포트 식별** = `port.chest.kind === "infinity-pipe"`.
-- **합류 가드** = `collectPipeFlow`/`PipeFlow`(다른 유체 hard, 같은 유체 허용). 홉 경로도 이걸 장애물로.
+- **합류 가드** = `collectPipeFlow`/`PipeFlow`(다른 유체 hard, 같은 유체 허용). 납품 경로 경로도 이걸 장애물로.
 - **점프 emit**(fluidboxPipeCell/ClusterPipeTapCell)은 role-무관 기하라 출력도 그대로.
 
 ## 구현 지점
 
-1. `moduleWizard` 적격성: 유체 1줄(in/out) 허용, 2줄+ 거절(다-유체), 출력이면 side=W·출력 상자·
-   role=output, **자식-공급 유체 입력 거절 제거**(이제 홉이 잇는다).
-2. `routeModuleHops` 호출부: 홉을 **아이템/유체로 가른다**. 유체 홉은 `routeFluidHops` 로 —
+1. `moduleWizard` 적격성: 유체 1줄(in/out) 허용, 2줄+ 거절(다-유체), 출력이면 side=W·유체 출력 상자·
+   role=output, **자식-공급 유체 입력 거절 제거**(이제 납품 경로가 잇는다).
+2. `routeDeliveryRoutes` 호출부: 납품 경로를 **아이템/유체로 가른다**. 유체 납품 경로는 `routeFluidHops` 로 —
    두 무한파이프(자식 출력 sink + 부모 입력 source)를 떼고 자식 ClusterPipe 끝 → 부모 ClusterPipe
    끝을 파이프 경로(dijkstra+점프, pipe 셀)로 잇는다. 장애물 = occupancy + 다른-유체 hard 셀.
-3. `clusterModule` emit: 변경 최소 — `fluidboxOffset` 이 그 줄 역할의 상자를 가리키게만.
-4. **합류 가드 정정**(구현 중 발견) — `collectPipeFlow` 이 출력 상자를 "무조건 hard"로 막아서
-   유체 출력 모듈이 **자기 소스에서 거절**당했다. 정정: **이 유체를 내는 출력 상자는 허용**(소스,
+3. `clusterModule` emit: 변경 최소 — `fluidboxOffset` 이 그 줄 역할의 유체 상자를 가리키게만.
+4. **합류 가드 정정**(구현 중 발견) — `collectPipeFlow` 이 유체 출력 상자를 "무조건 hard"로 막아서
+   유체 출력 모듈이 **자기 소스에서 거절**당했다. 정정: **이 유체를 내는 유체 출력 상자는 허용**(소스,
    같은 유체 병합 무해), **다른 유체 출력만 hard**. `recipeFluids.products` 로 판별.
-5. `routeModuleHops` 는 유체 홉이면 `pipeFlowConflict` 로 걸러진 **다른-유체 hard 셀**을 장애물로
+5. `routeDeliveryRoutes` 는 유체 납품 경로가면 `pipeFlowConflict` 로 걸러진 **다른-유체 hard 셀**을 장애물로
    받아 다른 유체에 안 닿게 한다(moduleWizard 가 `fluidBlocked` 로 넘김).
 
 ## 이미 되어 있던 것 (재사용, 구현 중 확인)
@@ -165,9 +169,11 @@ for (const p of r.products) {
 - **유체 반출**(루트 유체 출력 → 외곽/무한파이프)은 `modulePerimeterPass` 가 이미 처리한다
   (`isFluid`·`layPipePath`·파이프 가드). 적격성 게이트만 열면 그 경로로 흐른다.
 
-## v1 이 빼는 것 (거절 — 폴백 없음)
+## 아직 빼는 것 (거절 — 폴백 없음)
 
-- 다-유체 머신(정유·크래킹·황산·화학공장 다중).
-- 이중 면(한 모듈 유체 in+out 동시).
+- N/S 면 유체 · 비정사각 머신 · 2D 클러스터 → [[trunk-pipe]] §8.
 - 유체 Parallel/MixedItem.
-- 지하 파이프 일반 라우팅(홉은 pipeJumpToClusterPipe 한 모양뿐).
+- 지하 파이프 일반 라우팅(모듈 안쪽은 pipeJumpToClusterPipe 한 모양뿐).
+- **한 채널에 다른 유체 납품이 둘 이상 겹치는 경우** — 장부가 지상 자리를 하나만 주고 나머지는
+  `fluid-no-surface-assignment` → `fluid-unplannable` 로 거절된다. 모듈 안쪽이 아니라 **채널
+  장부** 소관이다 → [[fluid-delivery-reservation]] §4.6. 다-유체를 연 뒤로 이 거절이 늘 수 있다.

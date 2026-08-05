@@ -1,12 +1,12 @@
 /**
  * 공급 보장 — 사용자가 정한 우선순위 두 가지를 **공급 방식과 무관하게** 못박는다
- * (docs/auto-layout-wizard.trunk-redesign.md §7).
+ * (docs/auto-layout/module/trunk-redesign.md §7).
  *
  *   ① 머신이 온전히 작동한다 — 모든 머신이 모든 재료를 받고 산출물을 내보낸다.
  *      = (머신, 줄) 마다 인서터가 **정확히 하나** 머신에 붙어 있고, 그 인서터가 손을
  *        뻗는 바깥 칸이 벨트이거나 상자다(허공이 아니다).
  *   ② 머신 ↔ perimeter ring 라우팅이 보장된다 — 모든 포트가 밖으로 나간다.
- *      = 홉으로 이어졌거나(belt), perimeter 로 재배치됐다. 실패·skip 0.
+ *      = 납품 경로로 이어졌거나(belt), perimeter 로 재배치됐다. 실패·skip 0.
  *
  * **이 둘은 [탭 인서팅](../../../../docs/용어사전.md)(트렁크)이든 다이렉트 인서팅(1:1)이든
  * 똑같이 성립해야 한다** — 그래서 여기 검사는 공급 방식을 묻지 않는다. 방식에 따라 갈리는
@@ -16,7 +16,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import { EntityType } from "../../types/layout";
@@ -56,26 +56,26 @@ const COUNTS: [number, number, number][] = [
   [1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 2], [6, 4, 2], [8, 6, 4], [3, 2, 5],
 ];
 
-/** 파이프라인 한 판 — pack → hop → perimeter, 그리고 최종 셀 맵. */
+/** 파이프라인 한 판 — pack → delivery → perimeter, 그리고 최종 셀 맵. */
 function run(specs: NodeSpec[]) {
   const pack = packModuleTree(specs, config);
-  const hop = routeModuleHops(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
-  const perim = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+  const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt", ...UNDERGROUND });
+  const perim = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
     beltEntityName: "transport-belt",
     inserterEntityName: "inserter",
   });
 
-  // moduleWizard 와 동형으로 최종 셀 맵을 합성한다: 모듈 셀 − 떼어낸 것 + 홉 + 반출.
-  const dropped = new Set([...hop.strippedCellKeys, ...perim.droppedCellKeys]);
+  // moduleWizard 와 동형으로 최종 셀 맵을 합성한다: 모듈 셀 − 떼어낸 것 + 납품 경로 + 반출.
+  const dropped = new Set([...delivery.strippedCellKeys, ...perim.droppedCellKeys]);
   const grid = new Map<string, PlacedCell>();
   for (const pl of pack.placements)
     for (const c of pl.module.cells) {
       const k = cellKey(c.x, c.y);
       if (!dropped.has(k)) grid.set(k, c);
     }
-  for (const c of [...hop.cells, ...perim.addedCells]) grid.set(cellKey(c.x, c.y), c);
+  for (const c of [...delivery.cells, ...perim.addedCells]) grid.set(cellKey(c.x, c.y), c);
 
-  return { pack, hop, perim, grid };
+  return { pack, delivery, perim, grid };
 }
 
 /** 머신 footprint 에 직교 인접한 칸들. */
@@ -130,17 +130,17 @@ describe("공급 보장 — 탭이든 다이렉트든 성립해야 한다", () =
       }
     });
 
-    it(`${tag} — ② 모든 포트가 밖으로 나간다 (홉 실패 0 · 반출 skip 0)`, () => {
-      const { pack, hop, perim } = run(mk(c0, c1, c2));
-      expect(hop.failures, "홉 실패").toBe(0);
+    it(`${tag} — ② 모든 포트가 밖으로 나간다 (납품 경로 실패 0 · 반출 skip 0)`, () => {
+      const { pack, delivery, perim } = run(mk(c0, c1, c2));
+      expect(delivery.failures, "납품 경로 실패").toBe(0);
       expect(perim.skipped, `반출 skip — ${perim.reason ?? "-"}`).toBe(0);
 
-      // 짝지어진 포트(홉) + 반출된 포트 = 전체 포트. 남는 포트가 없어야 한다.
+      // 짝지어진 포트(납품 경로) + 반출된 포트 = 전체 포트. 남는 포트가 없어야 한다.
       const total = pack.placements.reduce(
         (n, pl) => n + pl.module.inputPorts.length + pl.module.outputPorts.length,
         0,
       );
-      expect(hop.strippedChestIds.size + perim.relocated).toBe(total);
+      expect(delivery.strippedChestIds.size + perim.relocated).toBe(total);
     });
 
     it(`${tag} — 모든 포트가 자기 나가는 방향으로 나갈 수 있다 (moduleWayOuts ∋ face)`, () => {

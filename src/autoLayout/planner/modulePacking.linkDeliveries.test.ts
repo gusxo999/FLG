@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "./module/clusterPortPlanner";
 import * as allocateMachineLinksModule from "./link/allocateMachineLinks";
 import { faceVector } from "../util/helper";
 import { EntityType } from "../../types/layout";
 
-// 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 홉으로 이어지는지.
+// 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 납품 경로로 이어지는지.
 // v1 은 **링크 하나 = 벨트 하나**다(2026-07-22).
 // 링크가 작아 그릇에 여유가 남아도 목적지가 다르면 안 묶는다 — 묶으면 그 벨트가 부모 머신
 // 여럿을 관통해야 하고, 그러려면 그 머신들이 붙어 있어야 하기 때문(= ColumnCluster 강제).
@@ -21,7 +21,7 @@ const config: PackConfig = {
   longInserter: { entityName: "long-handed-inserter", reach: 2 },
   throughput: { normal: 6, long: 6 }, // tapCap 6, 그릇 = floor(20/6) = 3
   belts: [{ entityName: "transport-belt", throughput: 20 }],
-  // 예약 장부를 켠다 — 안 켜면 홉이 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
+  // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
   // 검증하지 않는다(2026-07-20 실측: planned 0 / fallback 전부).
   channelGeometry: true,
   reservePerimeterLanes: true,
@@ -107,37 +107,37 @@ describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도
     expect(ports.map((p) => p.cells.length)).toEqual([1, 1]);
   });
 
-  it("홉 2개 — 그룹 순서 1:1, raw 0", () => {
-    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
+  it("납품 경로 2개 — 그룹 순서 1:1, raw 0", () => {
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(2);
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
   });
 
-  it("HopSpec.linkId 가 채널 예약 키로 그대로 흐른다 — seq 위치가 아니라 신원", () => {
-    const hop = pack.hops.find((h) => h.item === "x")!;
-    expect(hop.linkId).toBeDefined();
-    expect(hop.linkId).toBe(hop.from.linkId);
+  it("DeliverySpec.linkId 가 채널 예약 키로 그대로 흐른다 — seq 위치가 아니라 신원", () => {
+    const delivery = pack.deliveries.find((h) => h.item === "x")!;
+    expect(delivery.linkId).toBeDefined();
+    expect(delivery.linkId).toBe(delivery.from.linkId);
   });
 
   it("라우팅 실패 0", () => {
-    const hop = routeModuleHops(pack, {
+    const delivery = routeDeliveryRoutes(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
-    expect(hop.failures).toBe(0);
+    expect(delivery.failures).toBe(0);
     // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
-    expect(hop.dijkstraFallback).toBe(0);
+    expect(delivery.dijkstraFallback).toBe(0);
   });
 
   it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
     expect(pack.linkMismatches).toEqual([]);
   });
 
-  // 포트 상자가 홉 belt 로 바뀌면 그 상자에 붙어 있던 인서터는 **belt→belt** 가 된다 —
+  // 포트 상자가 납품 경로 belt 로 바뀌면 그 상자에 붙어 있던 인서터는 **belt→belt** 가 된다 —
   // 하는 일은 없이 처리량만 인서터 속도로 깎는다. 상자와 **같이** 떨어지고 그 자리도
-  // belt 로 메워져야 홉 벨트가 트렁크로 곧장 흐른다.
+  // belt 로 메워져야 납품 경로 벨트가 트렁크로 곧장 흐른다.
   it("포트 인서터도 상자와 같이 떨어지고, 그 자리는 belt 가 된다", () => {
-    const res = routeModuleHops(pack, {
+    const res = routeDeliveryRoutes(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
@@ -146,8 +146,8 @@ describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도
       res.cells.map((c) => [`${c.x},${c.y}`, c.cell.entityType]),
     );
 
-    for (const hop of pack.hops.filter((h) => h.item === "x")) {
-      for (const port of [hop.from, hop.to]) {
+    for (const delivery of pack.deliveries.filter((h) => h.item === "x")) {
+      for (const port of [delivery.from, delivery.to]) {
         // 링크 포트 = [상자][인서터][벨트]. 좌석 건너편이 벨트임을 먼저 못 박는다 —
         // 이게 거짓이면 아래 기대는 다른 이유로 통과하는 셈이라 증거가 못 된다.
         const fv = faceVector(port.face);
@@ -189,21 +189,21 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
   const child = pack.placements.find((pl) => pl.id === "c")!;
   const parent = pack.placements.find((pl) => pl.id === "p")!;
 
-  it("그룹이 안 묶여 포트 2쌍·홉 2개(fan-out 유지)", () => {
+  it("그룹이 안 묶여 포트 2쌍·납품 경로 2개(fan-out 유지)", () => {
     expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
     expect(parent.module.inputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
-    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(2);
   });
 
   it("라우팅 실패 0", () => {
-    const hop = routeModuleHops(pack, {
+    const delivery = routeDeliveryRoutes(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
-    expect(hop.failures).toBe(0);
+    expect(delivery.failures).toBe(0);
     // 예약이 냈는지까지 본다 — dijkstra 폴백도 길은 내므로 "실패 0" 만으론 증거가 안 된다.
-    expect(hop.dijkstraFallback).toBe(0);
+    expect(delivery.dijkstraFallback).toBe(0);
   });
 
   it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
@@ -213,7 +213,7 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
 
 // 거대 출력 — 자식 머신 하나가 W면 좌석(3행)보다 많은 팔을 낸다. 넘친 그룹은 **gap** 으로
 // 넘어가 가로 벨트로 서쪽 변까지 와서 90° 꺾인다. 여기서 보는 것은 기하가 아니라
-// **그 홉을 누가 냈는가**다 — 모서리 포트가 평범한 W 포트라면 장부가 계획할 수 있어야 한다.
+// **그 납품 경로를 누가 냈는가**다 — 모서리 포트가 평범한 W 포트라면 장부가 계획할 수 있어야 한다.
 describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 계획한다", () => {
   // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + gap 3칸).
   // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
@@ -246,21 +246,21 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
 
   // 이 수가 gap 방향을 고른 **이유**다.
   //
-  // 옛 시도(E 면으로 넘기기)에서는 planned 2 / dijkstraFallback 2 였다 — 넘친 홉이 전부
+  // 옛 시도(E 면으로 넘기기)에서는 planned 2 / dijkstraFallback 2 였다 — 넘친 납품 경로가 전부
   // 탐색으로 났다. 장부는 자식 출력이 **W 로 채널에 들어온다**고 보므로 E 포트는 장부가 아는
   // "납품"이 아니었기 때문이다.
   //
   // gap 으로 넘기면 가로 벨트가 서쪽 변에서 꺾여 **평범한 W 포트**가 되므로, 장부가 새 모양을
   // 배울 필요 없이 그대로 계획한다 → **fallback 0**. 예약 철학이 지켜진다.
-  it("네 홉 전부 예약이 계획한다 — 탐색 0", () => {
-    const hop = routeModuleHops(pack, {
+  it("네 납품 경로 전부 예약이 계획한다 — 탐색 0", () => {
+    const delivery = routeDeliveryRoutes(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
-    expect(hop.failures).toBe(0);
-    expect(hop.planned).toBe(4);
-    expect(hop.dijkstraFallback).toBe(0);
+    expect(delivery.failures).toBe(0);
+    expect(delivery.planned).toBe(4);
+    expect(delivery.dijkstraFallback).toBe(0);
   });
 });
 
@@ -291,8 +291,8 @@ describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자�
     expect(pack.linkMismatches).toEqual([]);
   });
 
-  it("홉 2개, raw 0 — 자식마다 하나씩 정확히 짝지어진다", () => {
-    expect(pack.hops.filter((h) => h.item === "x")).toHaveLength(2);
+  it("납품 경로 2개, raw 0 — 자식마다 하나씩 정확히 짝지어진다", () => {
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(2);
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
   });
 });

@@ -1,12 +1,12 @@
 /**
  * 자식→부모 **유체** 연결이 아이템 링크 장부로 새지 않는지.
  *
- * 2026-07-26 브라우저 실측에서 유체 홉이 **한 번도 성사되지 않는다**는 것이 드러났다.
+ * 2026-07-26 브라우저 실측에서 유체 납품 경로가 **한 번도 성사되지 않는다**는 것이 드러났다.
  * 원인이 둘이었고 둘 다 이 파일이 지킨다.
  *
  *  - **B**: `edgeLinkGroups` 에 유체 가드가 없었다. 유체 링크가 인서터 팔을 배정받고
  *    (`water: 벨트 1줄, 줄당 팔 3`), `linkedKeys` 에 실려 아이템 방출기로 흘러가
- *    트렁크 파이프 경로를 건너뛰었다 → 유체 포트가 안 생기고 홉도 안 생긴다.
+ *    트렁크 파이프 경로를 건너뛰었다 → 유체 포트가 안 생기고 납품 경로도 안 생긴다.
  *  - **A**: `productOf` 가 **첫** 출력 라인을 집었다. 다산출 자식(`barrel + sulfuric-acid`)
  *    에서 엉뚱한 품목이 잡혀 부모와 짝이 안 맞고, 자식의 유체 출력과 부모의 유체 입력이
  *    **각각 외부 무한파이프**로 떨어졌다(실측에선 그 둘이 나란히 붙어 "항상 가득"과
@@ -88,7 +88,7 @@ const packCfg: PackConfig = {
 
 describe("productOf — 부산물이 먼저 와도 부모가 먹는 품목으로 잇는다", () => {
   // 자식 산출물 순서가 [부산물, 진짜] 다 — `empty-sulfuric-acid-barrel` 의 `barrel + acid`
-  // 와 같은 모양. 첫 출력을 집으면 부모에게 "byproduct 입력"을 찾다 실패해 홉이 0이 된다.
+  // 와 같은 모양. 첫 출력을 집으면 부모에게 "byproduct 입력"을 찾다 실패해 납품 경로가 0이 된다.
   const child: NodeSpec = {
     id: "c", depth: 1, parentId: "p", machine: M, count: 1,
     lines: [belt("byproduct", "output"), belt("wanted", "output")],
@@ -104,12 +104,12 @@ describe("productOf — 부산물이 먼저 와도 부모가 먹는 품목으로
   };
   const pack = packModuleTree([parent, child], packCfg);
 
-  it("홉이 생긴다 — 부모가 먹는 품목으로", () => {
-    expect(pack.hops.map((h) => h.item)).toContain("wanted");
+  it("납품 경로가 생긴다 — 부모가 먹는 품목으로", () => {
+    expect(pack.deliveries.map((h) => h.item)).toContain("wanted");
   });
 
-  it("부산물로는 홉을 만들지 않는다", () => {
-    expect(pack.hops.map((h) => h.item)).not.toContain("byproduct");
+  it("부산물로는 납품 경로를 만들지 않는다", () => {
+    expect(pack.deliveries.map((h) => h.item)).not.toContain("byproduct");
   });
 
   it("부산물은 자식의 외부 출력 포트로 남는다(버리지 않는다)", () => {

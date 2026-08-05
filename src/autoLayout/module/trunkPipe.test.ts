@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "./clusterModule";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
+import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
 
 const inItem = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outItem = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -29,7 +30,11 @@ function plasticBar(count: number): ModuleInput {
     inserterEntityName: "inserter",
     beltEntityName: "transport-belt",
     longInserter: { entityName: "long-handed-inserter", reach: 2 },
-    fluidTrunk: { direction: 4, side: "E", pipeEntityName: "pipe" },
+    fluidTrunk: {
+      direction: 4,
+      pipeEntityName: "pipe",
+      lines: [{ name: "petroleum-gas", role: "input", side: "E", fluidboxOffset: 0, rank: 0, boxIndex: 0 }],
+    },
   };
 }
 
@@ -135,7 +140,7 @@ function plasticBarJump(
         : { entityName: "long-handed-inserter", reach: 2 },
     fluidTrunk: {
       ...base.fluidTrunk!,
-      fluidboxOffset: opts?.fluidboxOffset ?? 0,
+      lines: base.fluidTrunk!.lines.map((l) => ({ ...l, fluidboxOffset: opts?.fluidboxOffset ?? 0 })),
       undergroundPipeEntityName: "pipe-to-ground",
       pipeMaxUndergroundDistance: 10,
     },
@@ -239,7 +244,7 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 유체 출력 반출 (docs/auto-layout-wizard.fluid-hop.md) — 머신 유체 산출 → 무한파이프
+// 유체 출력 반출 (docs/auto-layout-wizard.fluid-delivery.md) — 머신 유체 산출 → 무한파이프
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 아이템 입력(coal) + 유체 출력(petroleum-gas). 출력 유체는 W 면(부모 쪽). 3×3. */
@@ -252,12 +257,11 @@ function fluidOut(count: number): ModuleInput {
     beltEntityName: "transport-belt",
     longInserter: { entityName: "long-handed-inserter", reach: 2 },
     fluidTrunk: {
-      direction: 12, // W 면을 보게(테스트 픽스처 — 실제는 chooseMachineDirection 이 고름)
-      side: "W",
+      direction: 12, // W 면을 보게(테스트 픽스처 — 실제는 chooseFluidTrunkPlan 이 고름)
       pipeEntityName: "pipe",
-      fluidboxOffset: 0,
       undergroundPipeEntityName: "pipe-to-ground",
       pipeMaxUndergroundDistance: 10,
+      lines: [{ name: "petroleum-gas", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 }],
     },
   };
 }
@@ -306,7 +310,10 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
     expect(mod.outputPorts).toHaveLength(0);
   });
 
-  it("유체가 둘이면 전부 unrouted — v1 은 모듈당 유체 한 줄", () => {
+  it("트렁크 계획이 못 덮는 유체 줄이 있으면 전부 unrouted — 반만 놓지 않는다", () => {
+    // 여기 한때 *"유체가 둘이면 전부 unrouted — v1 은 모듈당 유체 한 줄"* 이 있었다.
+    // 그 한계는 사라졌다(면당 여러 줄이 선다). 남은 사실은 **배정을 못 받은 줄**이다 —
+    // `lines` 에 있는데 `fluidTrunk.lines` 가 안 덮으면 그 줄의 면·행을 지어낼 수 없다.
     const base = plasticBar(3);
     const mod = generateModule({ ...base, lines: [...base.lines, inFluid("water")] });
     expect(mod.unroutedLines.map((l) => l.name)).toContain("water");
@@ -314,10 +321,11 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
     expect(mod.outputPorts).toHaveLength(0);
   });
 
-  it("아이템이 탭에 못 서면(다이렉트) 유체까지 전부 unrouted — 유체는 다이렉트가 없다", () => {
+  it("아이템이 탭에 못 서도 **유체는 선다** — 기계별 포트로 물러날 뿐이다", () => {
     // 긴팔이 없으면 파이프 면(E)은 케이스 B 를 못 써 아이템 벨트가 0줄 → W 한 줄에 3줄을
-    // 못 담아 탭이 깨진다. 아이템만이면 다이렉트로 물러나면 그만이지만, 유체는 인서터로
-    // 못 옮기므로 다이렉트가 아예 없다 → 이 모듈은 통째로 옛 경로로 넘어가야 한다.
+    // 못 담아 탭이 깨진다. 예전엔 여기서 모듈이 통째로 실패했다 — 파이프 방출이 tap 가지
+    // **안에만** 있어서 물러나는 순간 유체가 조용히 사라졌기 때문이다(`fluidNeedsTap`).
+    // 이제 파이프는 갈래 밖에서 깔리므로, 아이템만 기계별 포트로 내려가고 유체는 그대로 선다.
     const base = plasticBar(3);
     const mod = generateModule({
       ...base,
@@ -325,7 +333,306 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
       lines: [...base.lines, inItem("iron-plate")],
     });
     expect(mod.supply?.mode).toBe("direct");
-    expect(mod.unroutedLines.map((l) => l.name)).toContain("petroleum-gas");
-    expect(mod.outputPorts).toHaveLength(0);
+    expect(mod.unroutedLines).toHaveLength(0);
+    // 유체 포트는 여전히 기둥에 **하나** — 파이프는 쪼개지지 않는다.
+    const fluidPorts = mod.inputPorts.filter((p) => p.line.kind === "pipe");
+    expect(fluidPorts).toHaveLength(1);
+    expect(fluidPorts[0].chest.kind).toBe("infinity-pipe");
+    // 아이템 포트는 **머신마다** — 그게 기계별 포트의 정의다.
+    expect(mod.outputPorts.filter((p) => p.line.name === "plastic-bar")).toHaveLength(3);
+    // 파이프 열(E d1 = x=3)에는 인서터가 없다 — 아이템이 그 면을 비켜 갔다.
+    const onPipeColumn = mod.cells.filter((c) => c.x === 3);
+    expect(onPipeColumn.every((c) => c.cell.entityType !== EntityType.Inserter)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 다중 유체 단계 A — **양 면이 동시에 유체 면**일 수 있다 (유체 입력 1 + 출력 1).
+//
+// 새 기하는 없다. 면 하나의 유체 기하를 그대로 쓰되, W 와 E 가 동시에 유체 면이 되는 것뿐이다.
+// 두 면 사이에는 머신이 통째로 들어 있어 **어떤 머신 크기에서도 트렁크끼리 인접하지 않는다.**
+// → docs/auto-layout/module/trunk-pipe.md §5
+// ─────────────────────────────────────────────────────────────────────────────
+describe("다중 유체 — 유체 입력(E) + 유체 출력(W) 동시", () => {
+  /** 황산 꼴: 물(유체 입력) + 철판(아이템 입력) → 황산(유체 출력). */
+  function bothFaces(count: number): ModuleInput {
+    return {
+      machine: { entityName: "chemical-plant", w: 3, h: 3 },
+      count,
+      lines: [inFluid("water"), inItem("iron-plate"), outFluid("sulfuric-acid")],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      longInserter: { entityName: "long-handed-inserter", reach: 2 },
+      fluidTrunk: {
+        direction: 4,
+        pipeEntityName: "pipe",
+        undergroundPipeEntityName: "pipe-to-ground",
+        pipeMaxUndergroundDistance: 10,
+        lines: [
+          { name: "water", role: "input", side: "E", fluidboxOffset: 0, rank: 0, boxIndex: 0 },
+          { name: "sulfuric-acid", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 },
+        ],
+      },
+    };
+  }
+
+  it("유체 포트가 둘 다 선다 — 입력은 E, 출력은 W, 끝은 둘 다 무한파이프", () => {
+    const mod = generateModule(bothFaces(3));
+    expect(mod.unroutedLines).toEqual([]);
+
+    const water = mod.inputPorts.find((p) => p.line.name === "water")!;
+    const acid = mod.outputPorts.find((p) => p.line.name === "sulfuric-acid")!;
+    expect(water.meta.side).toBe("E");
+    expect(acid.meta.side).toBe("W");
+    expect(water.chest.kind).toBe("infinity-pipe");
+    expect(acid.chest.kind).toBe("infinity-pipe");
+  });
+
+  it("두 유체 트렁크는 서로 **닿지 않는다** — 사이에 머신이 통째로 들어 있다", () => {
+    const mod = generateModule(bothFaces(3));
+    const at = (f: string) => mod.pipeCells.filter((c) => c.fluid === f);
+    const waterX = new Set(at("water").map((c) => c.x));
+    const acidX = new Set(at("sulfuric-acid").map((c) => c.x));
+    expect(waterX.size).toBeGreaterThan(0);
+    expect(acidX.size).toBeGreaterThan(0);
+    // 직교 인접이 하나도 없어야 한다(파이프는 닿기만 하면 한 관망이 된다).
+    const key = (x: number, y: number) => `${x},${y}`;
+    const acidSet = new Set(at("sulfuric-acid").map((c) => key(c.x, c.y)));
+    for (const c of at("water")) {
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        expect(acidSet.has(key(c.x + dx, c.y + dy))).toBe(false);
+      }
+    }
+  });
+
+  it("pipeCells 가 **셀마다** 유체를 답한다 — 모듈 단위로는 답이 없다", () => {
+    const mod = generateModule(bothFaces(2));
+    const fluids = new Set(mod.pipeCells.map((c) => c.fluid));
+    expect([...fluids].sort()).toEqual(["sulfuric-acid", "water"]);
+    // 같은 칸이 두 유체로 잡히면 안 된다(겹쳐 놓았다는 뜻).
+    const keys = mod.pipeCells.map((c) => `${c.x},${c.y}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("아이템 탭이 **자기 면의** 유체 상자 행만 건너뛴다 — 반대 면 행은 안 본다", () => {
+    // E 면(유체 입력 + 아이템 벨트)은 점프 모드라 상자 행 하나를 비운다.
+    const mod = generateModule(bothFaces(2));
+    const plate = mod.inputPorts.find((p) => p.line.name === "iron-plate")!;
+    expect(plate.meta.side).toBe("E");
+    expect(plate.chest.kind).toBe("infinity-chest");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 다중 유체 단계 B — **한 면에 유체 2줄 이상.** 유체 하나가 폭 2칸(탭 1 + 관 1)을 산다.
+//
+// 깊이는 한 공식에서 나온다: `base = max(그 면 벨트 최대 깊이, 1)` · 순번 r 의 관 `D_r =
+// base + 2 + 2r` · 탭 `D_r − 1` · 터널 좌표 차 `base + 2r`.
+// → docs/auto-layout/module/trunk-pipe.md §5.1
+// ─────────────────────────────────────────────────────────────────────────────
+describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
+  /**
+   * 경유 분해 꼴: 물 + 경유(둘 다 유체 입력, **같은 E 면**) → 경유(유체 출력, W).
+   * **아이템 줄이 하나도 없다** — 그 면에 벨트가 0줄이라 `base = 1` 로 승격된다.
+   */
+  function cracking(count: number): ModuleInput {
+    return {
+      machine: { entityName: "chemical-plant", w: 3, h: 3 },
+      count,
+      lines: [inFluid("water"), inFluid("heavy-oil"), outFluid("light-oil")],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      longInserter: { entityName: "long-handed-inserter", reach: 2 },
+      fluidTrunk: {
+        direction: 4,
+        pipeEntityName: "pipe",
+        undergroundPipeEntityName: "pipe-to-ground",
+        pipeMaxUndergroundDistance: 10,
+        lines: [
+          { name: "water", role: "input", side: "E", fluidboxOffset: 0, rank: 0, boxIndex: 0 },
+          { name: "heavy-oil", role: "input", side: "E", fluidboxOffset: 2, rank: 1, boxIndex: 1 },
+          { name: "light-oil", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 },
+        ],
+      },
+    };
+  }
+
+  it("세 줄이 다 선다 — 같은 면의 두 줄이 각자 무한파이프로 끝난다", () => {
+    const mod = generateModule(cracking(3));
+    expect(mod.unroutedLines).toEqual([]);
+    const inFluids = mod.inputPorts.filter((p) => p.line.kind === "pipe");
+    expect(inFluids.map((p) => p.line.name).sort()).toEqual(["heavy-oil", "water"]);
+    for (const p of inFluids) {
+      expect(p.meta.side).toBe("E");
+      expect(p.chest.kind).toBe("infinity-pipe");
+    }
+  });
+
+  it("깊이 공식 — 벨트가 없으면 base=1, 순번마다 관이 2칸씩 바깥으로", () => {
+    const mod = generateModule(cracking(3));
+    // 머신 x=0..2 → E 면 d1 = x3. base=1 이므로 D_0 = 1+2 = 3(x5) · D_1 = 5(x7).
+    const depthOf = (name: string) =>
+      mod.inputPorts.find((p) => p.line.name === name)!.meta.laneDepth;
+    expect(depthOf("water")).toBe(3);
+    expect(depthOf("heavy-oil")).toBe(5);
+  });
+
+  it("탭·유체 상자 칸이 지하파이프이고 **터널 좌표 차가 base + 2r**", () => {
+    const mod = generateModule(cracking(1));
+    const m = mod.machines[0];
+    // rank 0(water, 행 +0): 상자 칸 x3 · 탭 x4 → 좌표 차 1 = base(1) + 2·0.
+    // rank 1(heavy-oil, 행 +2): 상자 칸 x3 · 탭 x6 → 좌표 차 3 = base(1) + 2·1.
+    for (const [row, tapX] of [[m.origin.y + 0, 4], [m.origin.y + 2, 6]] as const) {
+      expect(cellAt(mod, 3, row)?.entityType).toBe(EntityType.PipeUnderground);
+      expect(cellAt(mod, tapX, row)?.entityType).toBe(EntityType.PipeUnderground);
+    }
+  });
+
+  it("**다른 유체의 지상 파이프가 직교로 이웃하지 않는다** — 이웃하는 건 지하파이프뿐", () => {
+    const mod = generateModule(cracking(3));
+    // 지하파이프는 표면에서 한 면으로만 이어지므로 이웃해도 안전하다(가드가 그걸 안다).
+    // 지상 파이프끼리는 닿기만 하면 한 관망이 되므로 **하나도 이웃하면 안 된다.**
+    const surface = mod.pipeCells.filter((c) => c.connectDir === undefined);
+    const key = (x: number, y: number) => `${x},${y}`;
+    const byCell = new Map(surface.map((c) => [key(c.x, c.y), c.fluid]));
+    for (const c of surface) {
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        const other = byCell.get(key(c.x + dx, c.y + dy));
+        if (other !== undefined) expect(other).toBe(c.fluid);
+      }
+    }
+  });
+
+  it("지하파이프 셀은 **방향까지** 실려 나간다 — 가드가 그 한 면만 막게", () => {
+    const mod = generateModule(cracking(2));
+    const underground = mod.pipeCells.filter((c) => c.connectDir !== undefined);
+    expect(underground.length).toBeGreaterThan(0);
+    // E 면이므로 상자 칸은 머신 쪽(W=12), 탭은 바깥(E=4)을 본다.
+    expect(new Set(underground.map((c) => c.connectDir))).toEqual(new Set([4, 12]));
+    // 지상 파이프는 방향이 없다 — 사방으로 이어지기 때문이다.
+    expect(mod.pipeCells.some((c) => c.connectDir === undefined)).toBe(true);
+  });
+
+  it("머신을 늘려도 유체 행이 겹치지 않는다 — 절대 행 = 머신 원점 + offset", () => {
+    const mod = generateModule(cracking(4));
+    const rowsOf = (fluid: string) =>
+      new Set(mod.pipeCells.filter((c) => c.connectDir !== undefined && c.fluid === fluid).map((c) => c.y));
+    const water = rowsOf("water");
+    const heavy = rowsOf("heavy-oil");
+    expect(water.size).toBe(4); // 머신 4대 × 자기 행 하나
+    expect(heavy.size).toBe(4);
+    for (const y of water) expect(heavy.has(y)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 기준 사례 — `se-space-coolant-hot` (사용자 지정 합격선)
+//
+// **이 레시피를 머신 여러 대로 배치할 수 있어야 다중 유체 지원이 된 것이다.**
+// 유체 입력 2(heavy-oil · se-chemical-gel) + 아이템 입력 3 + 유체 출력 1, 머신은
+// `se-space-biochemical-laboratory` 9×9. 회전 후 E 면 유체 상자 rows {2,4,6} 중 앞의 둘,
+// W 면 rows {2,4,6} 중 첫 것. → docs/auto-layout/module/trunk-pipe.md §5.1
+// ─────────────────────────────────────────────────────────────────────────────
+describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이템 3줄)", () => {
+  function coolantHot(count: number): ModuleInput {
+    return {
+      machine: { entityName: "se-space-biochemical-laboratory", w: 9, h: 9 },
+      count,
+      lines: [
+        inFluid("heavy-oil"), inFluid("se-chemical-gel"),
+        inItem("copper-plate"), inItem("iron-plate"), inItem("sulfur"),
+        outFluid("se-space-coolant-hot"),
+      ],
+      inserterEntityName: "inserter",
+      beltEntityName: "transport-belt",
+      longInserter: { entityName: "long-handed-inserter", reach: 2 },
+      fluidTrunk: {
+        direction: 4,
+        pipeEntityName: "pipe",
+        undergroundPipeEntityName: "pipe-to-ground",
+        pipeMaxUndergroundDistance: 10,
+        lines: [
+          { name: "heavy-oil", role: "input", side: "E", fluidboxOffset: 2, rank: 0, boxIndex: 1 },
+          { name: "se-chemical-gel", role: "input", side: "E", fluidboxOffset: 4, rank: 1, boxIndex: 3 },
+          { name: "se-space-coolant-hot", role: "output", side: "W", fluidboxOffset: 2, rank: 0, boxIndex: 6 },
+        ],
+        // 안 쓰고 남는 유체 상자 칸 — E 면 셋째 입력, W 면 나머지 출력 둘.
+        unusedFluidboxRows: { E: [6], W: [4, 6] },
+      },
+    };
+  }
+
+  it("여섯 줄이 전부 선다 — 유체 3 + 아이템 3, 못 놓은 줄이 없다", () => {
+    const mod = generateModule(coolantHot(4));
+    expect(mod.unroutedLines).toEqual([]);
+    const fluidPorts = [...mod.inputPorts, ...mod.outputPorts].filter((p) => p.line.kind === "pipe");
+    expect(fluidPorts).toHaveLength(3);
+    for (const p of fluidPorts) expect(p.chest.kind).toBe("infinity-pipe");
+  });
+
+  it("유체 줄이 자기 역할 면에 온다 — 입력 E(순번 0·1) · 출력 W", () => {
+    const mod = generateModule(coolantHot(4));
+    const sideOf = (name: string) =>
+      [...mod.inputPorts, ...mod.outputPorts].find((p) => p.line.name === name)!.meta.side;
+    expect(sideOf("heavy-oil")).toBe("E");
+    expect(sideOf("se-chemical-gel")).toBe("E");
+    expect(sideOf("se-space-coolant-hot")).toBe("W");
+  });
+
+  it("**머신을 1 → 4 대로 늘려도** 유체 행이 겹치지 않는다 — 절대 행 = 원점 + offset", () => {
+    for (const count of [1, 2, 4]) {
+      const mod = generateModule(coolantHot(count));
+      expect(mod.unroutedLines, `${count}대`).toEqual([]);
+      const rowsOf = (fluid: string) =>
+        mod.pipeCells.filter((c) => c.connectDir !== undefined && c.fluid === fluid).map((c) => c.y);
+      const heavy = new Set(rowsOf("heavy-oil"));
+      const gel = new Set(rowsOf("se-chemical-gel"));
+      expect(heavy.size, `${count}대 heavy-oil 행`).toBe(count);
+      expect(gel.size, `${count}대 gel 행`).toBe(count);
+      for (const y of heavy) expect(gel.has(y), `행 ${y} 충돌`).toBe(false);
+    }
+  });
+
+  it("**다른 유체의 지상 파이프가 직교로 이웃하지 않는다** — 4대에서도", () => {
+    const mod = generateModule(coolantHot(4));
+    const surface = mod.pipeCells.filter((c) => c.connectDir === undefined);
+    const key = (x: number, y: number) => `${x},${y}`;
+    const byCell = new Map(surface.map((c) => [key(c.x, c.y), c.fluid]));
+    for (const c of surface) {
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        const other = byCell.get(key(c.x + dx, c.y + dy));
+        if (other !== undefined) expect(other, `(${c.x},${c.y}) 옆`).toBe(c.fluid);
+      }
+    }
+  });
+
+  it("같은 칸을 두 번 쓰지 않는다 — 겹쳐 놓으면 한쪽이 조용히 사라진다", () => {
+    const mod = generateModule(coolantHot(4));
+    const keys = mod.cells.map((c) => `${c.x},${c.y}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("**합류 가드가 이 배치를 통과시킨다** — 방향 인식이 없으면 자기 자신을 거절한다", () => {
+    // [moduleWizard] 1b) 가 하는 일을 그대로 재현한다: 유체별로 지도를 만들고 그 유체의
+    // 셀만 검사한다. **가드의 방향 인식**이 한 면 다줄의 필수 선행이었던 이유가 이것이다 —
+    // 지하파이프의 네 이웃을 다 막던 시절엔 `T₁`(유체1 탭)이 옆의 `C₀`(유체0 ClusterPipe)
+    // 헤일로에 걸려, 우리가 방금 깐 배치를 우리가 hard 위반으로 거절했다.
+    const mod = generateModule(coolantHot(4));
+    for (const fluid of new Set(mod.pipeCells.map((c) => c.fluid))) {
+      const flow = collectPipeFlow({ fluidName: fluid, pipes: mod.pipeCells, machines: [] });
+      const own = mod.pipeCells.filter((c) => c.fluid === fluid);
+      expect(pipeFlowConflict(own, flow), `${fluid}`).toBeNull();
+    }
+  });
+
+  it("회귀 못 — **방향을 지우면** 같은 배치가 거절된다(가드가 실제로 그 정보를 쓴다)", () => {
+    // 테스트가 헛돌지 않는다는 증거다: `connectDir` 을 떼면 지상 파이프로 보여 옛 답이 나온다.
+    const mod = generateModule(coolantHot(4));
+    const flat = mod.pipeCells.map((c) => ({ x: c.x, y: c.y, fluid: c.fluid }));
+    const hits = [...new Set(flat.map((c) => c.fluid))].filter((fluid) => {
+      const flow = collectPipeFlow({ fluidName: fluid, pipes: flat, machines: [] });
+      return pipeFlowConflict(flat.filter((c) => c.fluid === fluid), flow) !== null;
+    });
+    expect(hits.length).toBeGreaterThan(0);
   });
 });

@@ -5,7 +5,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 
 # 유체 지하 횡단을 장부 안으로 — 설계 계획서 (방식 A)
 
-> **부모 문서:** [[fluid-hop-reservation]] §6 "잔여 결정" 의 (가) 안
+> **부모 문서:** [[fluid-delivery-reservation]] §6 "잔여 결정" 의 (가) 안
 > **관련:** [[channel-geometry-reservation]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 설계 계획 — 미구현.** 조사(§1)는 코드 실측 완료.
@@ -58,11 +58,11 @@ const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
 그런데 `GeneratedModule` 에 `corridors` 필드가 없고, `clusterModule` 은 corridor 를 한 번도
 만들지 않는다.
 
-`routeModuleHops` 의 corridor 목록은 **빈 배열에서 시작해 홉 경로 것만 쌓인다**
-([moduleHop.ts:208](../../../src/autoLayout/planner/moduleHop.ts#L208)).
+`routeDeliveryRoutes` 의 corridor 목록은 **빈 배열에서 시작해 납품 경로 경로 것만 쌓인다**
+([deliveryRoute.ts:208](../../../src/autoLayout/planner/deliveryRoute.ts#L208)).
 모듈 셀은 `base`(점유)에는 들어가지만 corridor 로는 안 들어간다.
 
-**즉 지금도 홉의 파이프 점프가 모듈 내부 지하파이프의 짝을 끊을 수 있다.** 이 결함은 이
+**즉 지금도 납품 경로의 파이프 점프가 모듈 내부 지하파이프의 짝을 끊을 수 있다.** 이 결함은 이
 기능과 독립이며, 이 기능을 넣으면 더 자주 드러난다.
 
 ### 1.4 장부는 벨트에 대해서도 페어링을 모델링한 적 없다
@@ -135,16 +135,20 @@ corridorLedger = [...ctx.existingCorridors] ++ (지금까지 계획한 점프에
 
 `packModuleTree` 가 그걸 모아 `PackResult.corridors` 로 올리고, 둘이 쓴다:
 - 장부 — `ctx.existingCorridors`
-- `routeModuleHops` — corridor 초기값(지금은 빈 배열, §1.3)
+- `routeDeliveryRoutes` — corridor 초기값(지금은 빈 배열, §1.3)
 
-### 2.5 halo 와 터널 입구 — 보수적으로 둔다
+### 2.5 halo 와 터널 입구 — 방향을 본다 (2026-08-05 정정)
 
 게임에서 지하파이프 입구는 **자기 축 한 쪽에만** 표면 연결이 있어, 건너뛴 파이프와 안 닿는다.
-그런데 `pipeFlow` 는 터널 입구도 일반 파이프로 보고 네 이웃을 다 막는다
-([pipeFlow.ts:65](../../../src/autoLayout/util/pipeFlow.ts#L65)).
+한때 `pipeFlow` 는 터널 입구도 일반 파이프로 보고 네 이웃을 다 막았고, 이 문서는 *"그
+보수성을 유지한다 — 대가로 얻는 건 몇 칸의 조밀함뿐"* 이라고 적었다. **그 판단이 틀렸다.**
 
-**이 보수성을 유지한다.** 넓게 뛰면 되고(파이프 점프 거리는 보통 10), 완화하려면 방향까지
-모델링해야 하는데 그 대가로 얻는 건 몇 칸의 조밀함뿐이다. 완화는 별도 작업(§6).
+얻는 것은 조밀함이 아니라 **한 면에 유체 두 줄을 세우는 능력 전체**였다 — 그 기하는 `T₁`(바깥
+유체의 탭)과 `C₀`(안쪽 유체의 ClusterPipe)가 가로로 이웃하는데, 네 이웃을 다 막으면 우리가
+깐 배치를 우리가 hard 위반으로 거절한다([[trunk-pipe]] §5.2).
+
+지금은 `PipeFlowPipe.connectDir` 로 방향을 실어 보내고, **지도와 검사 양쪽**이 방향을 본다
+(물리가 대칭이라 한쪽만 고치면 안 된다). 지상 파이프는 사방을 보므로 답이 전과 같다.
 
 ---
 
@@ -154,7 +158,7 @@ corridorLedger = [...ctx.existingCorridors] ++ (지금까지 계획한 점프에
 |---|---|---|
 | **A-0** | `isJumpAllowed` export + 단위 테스트로 규칙 고정 | 규칙이 문서 §1.1 과 일치함을 테스트가 보증 |
 | **A-1** | `GeneratedModule.corridors` + `emitTrunkPipe` 가 쌍마다 기록 | `pipeJumpMode` 켜진 모듈이 corridor 를 낸다 |
-| **A-2** | `PackResult.corridors` 로 올리고 `routeModuleHops` 초기값으로 사용 | 홉 점프가 모듈 내부 짝을 못 끊는다 (**§1.3 결함 수리, 단독 가치**) |
+| **A-2** | `PackResult.corridors` 로 올리고 `routeDeliveryRoutes` 초기값으로 사용 | 납품 경로 점프가 모듈 내부 짝을 못 끊는다 (**§1.3 결함 수리, 단독 가치**) |
 | **A-3** | `GeometryContext` 에 `trackX0`·`existingCorridors`·`maxJumpPipe` | tsc 통과. 호출자가 `tx(0)` 을 넘긴다 |
 | **A-4** | 장부의 corridor 원장 + 점프 후보 검증 | 같은 행에서 짝을 다투는 두 점프가 배정되지 않는 테스트 |
 | **A-5** | `placeWithJumps` 유체 지원(halo 막힘 + `maxJumpPipe` + 파이프 그룹), ③에서 유체 우선 | **서로 다른 유체 두 줄 교차가 계획된다** — `fluid-unplannable` 이 안 난다 |

@@ -75,15 +75,15 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
-| [machine-link](auto-layout/link/machine-link.md) | **[설계]** 자식→부모 연결 통일 — 논리(MachineLink) vs 기하 두 층. Hop=Link, 포트=링크 끝점, gap=부산물 |
-| [fluid-hop](auto-layout/link/fluid-hop.md) | **[동작]** 유체 홉 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). v1=모듈당 유체 1줄 |
+| [machine-link](auto-layout/link/machine-link.md) | **[설계]** 자식→부모 연결 통일 — 논리(MachineLink) vs 기하 두 층. Delivery=Link, 포트=링크 끝점, gap=부산물 |
+| [fluid-delivery](auto-layout/link/fluid-delivery.md) | **[동작]** 유체 납품 경로 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). v1=모듈당 유체 1줄 |
 
 #### `channel/` — 모듈 사이 통로 예약
 
 | 문서 | 주제 |
 |------|------|
 | [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 같은 쪽 판정 (구현 완료) |
-| [fluid-hop-reservation](auto-layout/channel/fluid-hop-reservation.md) | **[구현됨]** 유체 홉을 채널 기하 예약 안으로. 인접(합류) 규칙 + 유체 지상 우선권 |
+| [fluid-delivery-reservation](auto-layout/channel/fluid-delivery-reservation.md) | **[구현됨]** 유체 납품 경로를 채널 기하 예약 안으로. 인접(합류) 규칙 + 유체 지상 우선권 |
 | [fluid-underground-crossing](auto-layout/channel/fluid-underground-crossing.md) | **[계획]** 유체 지하 횡단을 장부 안으로 |
 | [s-layer-channel-reservation](auto-layout/channel/s-layer-channel-reservation.md) | **[역사]** S-LAYER 채널 예약 — 본체는 삭제됨. 남긴 이유 = "왜 채널을 비워 두는가" |
 
@@ -178,7 +178,7 @@ auto-layout-wizard.module-way-outs.md    →  auto-layout/perimeter/module-way-o
 | `#deferred` | 보류·폐기된 결정 |
 | `#glossary` | 용어 사전 |
 | `#moc` | 이 진입점 문서 · 용어 사전 |
-| `#module` `#hop` | auto-layout 하위 보조 태그 — 모듈 안쪽 · 홉 세부 |
+| `#module` `#delivery` | auto-layout 하위 보조 태그 — 모듈 안쪽 · 납품 경로 세부 |
 | `#planning` | 미구현 설계 계획서 |
 | `#tooling` | 계측기·개발 도구 |
 | `#visualization` | 배치 결과 검사·진단 표시 |

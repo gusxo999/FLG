@@ -10,7 +10,7 @@
  * ## 신원(`linkId`)의 단일 출처
  * [linkGroupId] 가 이 저장소에서 링크 신원을 **만드는 유일한 곳**이다. 모듈과 방출기는
  * 그것을 **복사만 하고 파싱하지 않는다** — 파싱하는 순간 모듈이 형제를 알게 된다.
- * 신원이 있으면 [pairHopPorts] 가 배열 위치가 아니라 **조회**로 짝을 찾는다.
+ * 신원이 있으면 [pairDeliveryPorts] 가 배열 위치가 아니라 **조회**로 짝을 찾는다.
  *
  * ## `modulePacking` 과의 관계
  * 타입(`NodeSpec`·`PackConfig`·`GeneratedModule`)은 `import type` 으로만 가져온다 —
@@ -24,26 +24,26 @@ import { allocateMachineLinks, type MachineLink } from "./allocateMachineLinks";
 import type { NodeSpec, PackConfig } from "../modulePacking";
 
 /**
- * **신원 없는(옛 탭/다이렉트, 교환 가능) 홉만을 위한** 위치 기반 키. **직접 부르지 않는다** —
- * 모든 소비처는 [hopMapKey] 를 쓴다. 밖으로 안 내보내는 이유: 이 함수만 부르면 `linkId` 를
- * 빠뜨린 채 `seq=0` 기본값으로 **엉뚱한 홉**을 조회하게 된다(2026-07-21, 바로 이 실수가
+ * **신원 없는(옛 탭/다이렉트, 교환 가능) 납품 경로만을 위한** 위치 기반 키. **직접 부르지 않는다** —
+ * 모든 소비처는 [deliveryKey] 를 쓴다. 밖으로 안 내보내는 이유: 이 함수만 부르면 `linkId` 를
+ * 빠뜨린 채 `seq=0` 기본값으로 **엉뚱한 납품 경로**을 조회하게 된다(2026-07-21, 바로 이 실수가
  * `channelGeometryPlanner.test.ts` 에 있었다 — count=1 픽스처라 우연히 안 터졌을 뿐이었다).
  *
  * 1:1 방출(트렁크 비활성)에서는 자식 출력 포트가 머신 수만큼, 부모 입력 포트도 머신 수만큼
- * 있으므로 같은 (from,to,item) 홉이 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다 —
+ * 있으므로 같은 (from,to,item) 납품 경로가 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다 —
  * 포트가 물리적으로 교환 가능해 위치가 곧 정직한 유일한 신원이기 때문이다.
  */
-function hopKey(fromId: string, toId: string, item: string, seq = 0): string {
+function dKey(fromId: string, toId: string, item: string, seq = 0): string {
   return `${fromId}→${toId}:${item}#${seq}`;
 }
 
 /**
- * `PackChannelGeometry.hops`/[reservationEmittable] 의 조회 키 — 소비처가 부를 **유일한**
- * 함수. 신원(`linkId`)이 있으면 그대로 쓰고, 없으면(교환 가능 포트) [hopKey] 로 위치 기반
+ * `PackChannelGeometry.deliveries`/[reservationEmittable] 의 조회 키 — 소비처가 부를 **유일한**
+ * 함수. 신원(`linkId`)이 있으면 그대로 쓰고, 없으면(교환 가능 포트) [dKey] 로 위치 기반
  * 키를 만든다.
  */
-export function hopMapKey(hop: { fromId: string; toId: string; item: string; seq: number; linkId?: string }): string {
-  return hop.linkId ?? hopKey(hop.fromId, hop.toId, hop.item, hop.seq);
+export function deliveryKey(delivery: { fromId: string; toId: string; item: string; seq: number; linkId?: string }): string {
+  return delivery.linkId ?? dKey(delivery.fromId, delivery.toId, delivery.item, delivery.seq);
 }
 
 /**
@@ -73,7 +73,7 @@ function linkGroupId(childId: string, parentId: string, item: string, groupIndex
  * `usedIn` 은 **같은 부모를 여러 자식이 먹일 때**(같은 품목을 두 노드가 생산) 부모 입력
  * 포트를 두 번 쓰지 않게 하는 장부다.
  */
-export function pairHopPorts(
+export function pairDeliveryPorts(
   childMod: GeneratedModule,
   parentMod: GeneratedModule,
   item: string,
@@ -167,11 +167,11 @@ export function edgeLinkGroups(
   // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
   // (물을 인서터로 옮길 수 없다), `linkedKeys` 에 실려 아이템 방출기
   // (emitOutputLinks/emitInputLinks)로 흘러가 트렁크 파이프 경로를 통째로 건너뛴다.
-  // 그러면 유체 포트가 안 생기고 → 홉도 안 생긴다(2026-07-26 브라우저 실측에서 발견).
+  // 그러면 유체 포트가 안 생기고 → 납품 경로도 안 생긴다(2026-07-26 브라우저 실측에서 발견).
   //
   // 링크를 안 만든다고 부모-자식 유체 연결이 끊기는 게 아니다 — [emitTrunkPipe] 가 같은
-  // 줄로 포트를 내고, [pairHopPorts] 가 이름으로 짝지어 **유체 홉**이 된다. 그게 설계다
-  // (docs/auto-layout-wizard.fluid-hop-reservation.md).
+  // 줄로 포트를 내고, [pairDeliveryPorts] 가 이름으로 짝지어 **유체 납품 경로**이 된다. 그게 설계다
+  // (docs/auto-layout-wizard.fluid-delivery-reservation.md).
   if (child.lines.find((l) => l.role === "output" && l.name === item)?.kind !== "belt") {
     return undefined;
   }

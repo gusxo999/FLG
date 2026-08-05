@@ -25,6 +25,7 @@ import {
   type InserterOverrideEntry,
 } from '../store/wizardStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
 
 type Step = WizardStep;
 const STEPS = WIZARD_STEPS;
@@ -272,6 +273,9 @@ export default function AutoLayoutSidebar() {
 
   function handleReset() {
     useWizardStore.getState().reset();
+    // 결과는 이제 위저드 단계 밖(store)에 살아 있다 — 설정을 지우면서 결과만 남겨 두면
+    // 화면에 "어떤 설정으로 만든 건지 알 수 없는 배치"가 남는다.
+    useAutoLayoutRunStore.getState().clear();
   }
 
   const internalRecipes = previewTree ? collectInternalRecipes(previewTree) : new Set<string>();

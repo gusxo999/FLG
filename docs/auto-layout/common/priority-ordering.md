@@ -41,8 +41,8 @@ tags: [auto-layout, placement, routing]
 | P5  | **멀티소스/싱크 우선 경로**           | item 초기 배치에서 후보 포트를 라우팅 출력으로 역전                     | **Q** | [routeFallback.ts:73](../../../src/autoLayout/manualEdit/routeFallback.ts#L73)                                                                                       |
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](placement-search.md)                                                                                                    |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](placement-search.md)                                                                                                   |
-| P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../../../src/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-hop-reservation §4.3](../channel/fluid-hop-reservation.md) |
-| P11 | **홉 방출 순서**                | 유체 홉 먼저, 그다음 아이템 홉                                | **C** | [moduleHop.ts](../../../src/autoLayout/planner/moduleHop.ts), [.fluid-hop-reservation §8.2](../channel/fluid-hop-reservation.md) |
+| P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../../../src/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-delivery-reservation §4.3](../channel/fluid-delivery-reservation.md) |
+| P11 | **납품 경로 방출 순서**                | 유체 납품 경로 먼저, 그다음 아이템 납품 경로                                | **C** | [deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts), [.fluid-delivery-reservation §8.2](../channel/fluid-delivery-reservation.md) |
 
 ### P10·P11 — "제약 센 것" 이 아니라 "실패하면 비싼 것" 먼저 (2026-07-25)
 
@@ -55,9 +55,9 @@ tags: [auto-layout, placement, routing]
 | 2 | 반출 | 상자가 로컬 ring 에 남는다 — 되돌릴 수 있는 손해 |
 | 3 | 아이템 납품 | 지하 횡단이 회수한다 — 사실상 손해 없음 |
 
-P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 홉이 막힐 때 도는 "예약 무시
+P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 납품 경로가 막힐 때 도는 "예약 무시
 재시도"가 남의 계획 칸을 밟는데, 그게 유체 자리였으면 유체는 물러설 데가 없다.
-유체가 먼저 칸을 실제로 차지하면(`hopBelts`) 그 재시도가 밟을 수 없다.
+유체가 먼저 칸을 실제로 차지하면(`deliveryBelts`) 그 재시도가 밟을 수 없다.
 
 ---
 

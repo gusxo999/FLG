@@ -9,8 +9,8 @@ import {
   type DeliveryInput,
   type ExportInput,
 } from "./channelGeometryPlanner";
-import { packModuleTree, hopMapKey, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { packModuleTree, deliveryKey, type NodeSpec, type PackConfig } from "./modulePacking";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
@@ -175,51 +175,51 @@ const specs: NodeSpec[] = [
 
 function runPipeline() {
   const pack = packModuleTree(specs, config);
-  const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-  const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+  const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+  const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
     beltEntityName: "transport-belt",
     inserterEntityName: "inserter",
   });
-  return { pack, hop, res };
+  return { pack, delivery, res };
 }
 
 describe("채널 기하 예약 — 파이프라인 불변식(§9)", () => {
-  it("(a) 셀 서로소 — 홉 belt 는 모듈 셀(strip 제외)·다른 홉과 겹치지 않는다", () => {
-    const { pack, hop } = runPipeline();
+  it("(a) 셀 서로소 — 납품 경로 belt 는 모듈 셀(strip 제외)·다른 납품 경로와 겹치지 않는다", () => {
+    const { pack, delivery } = runPipeline();
     const occ = new Set<string>();
     for (const pl of pack.placements) {
       for (const m of pl.module.machines)
         for (let dx = 0; dx < m.size.w; dx++)
           for (let dy = 0; dy < m.size.h; dy++) occ.add(cellKey(m.origin.x + dx, m.origin.y + dy));
       for (const c of pl.module.cells) {
-        if (hop.strippedCellKeys.has(cellKey(c.x, c.y))) continue;
+        if (delivery.strippedCellKeys.has(cellKey(c.x, c.y))) continue;
         occ.add(cellKey(c.x, c.y));
       }
     }
-    for (const c of hop.cells) {
+    for (const c of delivery.cells) {
       const k = cellKey(c.x, c.y);
-      expect(occ.has(k), `홉 셀 ${k} 가 다른 점유와 겹침`).toBe(false);
+      expect(occ.has(k), `납품 경로 셀 ${k} 가 다른 점유와 겹침`).toBe(false);
       occ.add(k);
     }
   });
 
-  it("(b) 판정-일치 — 계획된 홉(지상)은 corridor 없이, 홉 실패 0", () => {
-    const { pack, hop } = runPipeline();
-    expect(hop.failures).toBe(0);
+  it("(b) 판정-일치 — 계획된 납품 경로(지상)은 corridor 없이, 납품 경로 실패 0", () => {
+    const { pack, delivery } = runPipeline();
+    expect(delivery.failures).toBe(0);
     expect(pack.channelGeometry).toBeDefined();
-    for (const [i, hopSpec] of pack.hops.entries()) {
-      const g = pack.channelGeometry!.hops.get(hopMapKey(hopSpec));
+    for (const [i, deliverySpec] of pack.deliveries.entries()) {
+      const g = pack.channelGeometry!.deliveries.get(deliveryKey(deliverySpec));
       if (g && g.kind !== "undergroundCrossing") {
-        expect(hop.routes[i].corridors).toHaveLength(0); // 지상 계획 = 지상 방출
+        expect(delivery.routes[i].corridors).toHaveLength(0); // 지상 계획 = 지상 방출
       }
     }
   });
 
   it("(c) 결정성 — 두 번 실행해도 같은 결과", () => {
     const summarize = () => {
-      const { pack, hop, res } = runPipeline();
+      const { pack, delivery, res } = runPipeline();
       return JSON.stringify({
-        cells: hop.cells.map((c) => [c.x, c.y]),
+        cells: delivery.cells.map((c) => [c.x, c.y]),
         relocated: res.relocated,
         skipped: res.skipped,
         bbox: pack.bbox,

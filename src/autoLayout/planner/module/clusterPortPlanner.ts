@@ -21,9 +21,10 @@
  *
  * ## 유체(pipe) 줄
  * [트렁크 파이프](../../../../../docs/auto-layout/module/trunk-pipe.md) — 면을 **우리가 못 고른다**.
- * 머신 `fluid_box` 가 정하고, 호출자가 머신을 돌려 그 면을 W/E 로 맞춘 결과가 [PortPlannerInput.pipeSide]
+ * 머신 `fluid_box` 가 정하고, 호출자가 머신을 돌려 그 면을 W/E 로 맞춘 결과가 [PortPlannerInput.pipeFaces]
  * 다. clusterBeltDepth 는 늘 1(파이프는 팔이 없어 머신에 닿아야 한다). 그 면의 아이템 벨트는
- * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다. v1 은 유체 줄 1개까지.
+ * 케이스 B(좌석 2칸·벨트 `2+r`칸)로만 놓인다 — 단 **점프 모드면 좌석이 살아** 일반 면과 같다.
+ * 한 면에 유체 줄이 여럿일 수 있고(`fluidRows`), 그만큼 좌석 행이 빠진다.
  */
 
 import type { SpecBelt, SpecInserter } from "../../buildSpec";
@@ -56,8 +57,8 @@ export interface IoLine {
   amount?: number;
   /**
    * 외부 라인(트리 안 생산자 없음 → 무한상자로 살아남아 perimeter 로 나가야 함).
-   * true 인 입력만 노출 N/S 슬롯(`nsFaces`)을 쓸 수 있다 — 내부 간선(홉으로 대체될
-   * 라인)은 홉 기하 불변을 위해 W/E 에 남긴다. packModuleTree 가 childFed 판정으로
+   * true 인 입력만 노출 N/S 슬롯(`nsFaces`)을 쓸 수 있다 — 내부 간선(납품 경로로 대체될
+   * 라인)은 납품 경로 기하 불변을 위해 W/E 에 남긴다. packModuleTree 가 childFed 판정으로
    * 채운다. 미지정=내부 취급.
    */
   external?: boolean;
@@ -130,24 +131,13 @@ export interface PortPlannerInput {
    */
   nsFaces?: ("N" | "S")[];
   /**
-   * **면당 슬롯 수** — 그 면에 줄을 몇 개 세울 수 있나. 주면 아래 "탭 인서팅" 대신
-   * 이 수를 쓴다(용어: docs/용어사전.md §D).
+   * **면당 좌석 행 수**(그 면의 둘레 칸) — [insertingPlanner] 전용 입력이다. 여기서는
+   * 배정에 안 쓰고, 팔을 배정에 쪼갤 때의 상한(`rowsPerFace`)과 좌석 예산으로만 본다.
    *
-   * 두 모델이 있고, 세는 대상이 다르다:
-   *
-   *  - **탭 인서팅**(Tap Inserting, 미지정 = 기존 동작): 면을 belt 한 줄이 세로로 훑고
-   *    머신들이 그 belt 를 인서터로 탭한다. 그래서 한 면이 품는 줄 수 = **고른 인서터들의
-   *    서로 다른 reach 값 개수**(reach `r` → clusterBeltDepth `1+r`). `inserters` 에서 유도([laneSlots]).
-   *
-   *  - **다이렉트 인서팅**(Direct Inserting, 1:1, 트렁크 비활성): belt 가 없다. 머신
-   *    둘레 칸마다 `[인서터][상자]` 를 따로 세우므로 한 면이 품는 줄 수 = **그 면의
-   *    둘레 칸 수**(W/E=머신 높이, N/S=머신 폭) → 3×3 머신이면 3. depth 는 늘 2
-   *    (인서터 1 + 상자 1), 인서터는 늘 일반.
-   *
-   * 탭 인서팅을 1:1 에 그대로 쓰면 **면 용량을 3이 아니라 2로 세어** 세 번째 입력이
-   * 출력면(W)으로 넘친다. 그 포트는 부모 반대편에 태어나 홉이 모듈을 빙 돌아야 하고,
-   * 그 우회 belt 가 반출 레인을 가로질러 끊는다 — 채널 장부가 손도 못 대는 곳에서
-   * 파이프라인이 무너진다.
+   * 예전엔 이 값이 **두 번째 배정 모델**이기도 했다: 주면 [laneSlots](탭) 대신 "면 둘레 칸
+   * 수만큼 슬롯"(1:1)을 세는 rim 모드였다. 그 모드는 [emitDirectInserting] 과 짝이었고,
+   * 둘 다 2026-08-05 공급 모델 통합에서 **호출자가 0이 되어 삭제**됐다 — 기계별 포트는 이제
+   * 링크 배분기([allocateLinkFaces])가 맡는다. 그래서 `planClusterPorts` 는 **탭 하나만** 안다.
    */
   slotsPerFace?: { WE: number; NS: number };
   /**
@@ -155,26 +145,26 @@ export interface PortPlannerInput {
    * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
    * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
    *
-   * 이 면의 아이템 벨트가 어떻게 놓이는지는 [isJumpableToClusterPipe] 가 가른다:
+   * 이 면의 아이템 벨트가 어떻게 놓이는지는 `jumpable` 이 가른다:
    *
    *  - **점프 가능**(true): 파이프는 머신 유체 상자 칸 **하나만** 먹고
    *    [pipeJumpToClusterPipe](../../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
    *    [ClusterPipe] 로 나간다. 좌석 줄의 나머지 칸이 살아서 이 면은 **일반 면과 같은**
-   *    벨트를 세운다(상자 행만 좌석에서 빠진다 — 그 판정은 호출자가 이 불리언에 접었다).
+   *    벨트를 세운다(유체 상자 행만 좌석에서 빠진다 — 그 판정은 호출자가 이 불리언에 접었다).
    *
    *  - **점프 불가**(false/미지정, 옛 동작): clusterBeltDepth 1(좌석 줄) **전체가** 파이프
    *    스파인으로 채워진다 → 아이템 벨트는 [케이스 B](../../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)
    *    로만 놓인다 — reach `r` 인서터가 좌석을 2칸으로 밀어 앉아 파이프를 넘어 `2+r`칸에서
    *    집는다. reach 1 인서터는 1칸에 앉아야 하는데 그 자리가 파이프라 **못 쓴다** →
    *    이 면의 아이템 벨트는 **reach≥2 인서터만** 세울 수 있다.
+   *
+   * **면이 여럿일 수 있다** — 유체 입력(E)과 출력(W)이 동시에 있으면 양 면이 다 유체 면이다.
+   * 그래서 목록으로 받는다.
+   *
+   * `fluidRows` = 그 면의 유체 줄 수(줄마다 자기 행). 점프 모드에서 좌석 줄이 그만큼 빠진다.
+   * planner 는 지하파이프 역학을 모른다 — `jumpable` 이라는 답만 받아 슬롯 모양을 가른다.
    */
-  pipeSide?: PortSide;
-  /**
-   * **이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있는가** — 호출자(generateModule)가
-   * 계산해 넘긴다: 지하파이프 보유 + 점프 거리 충분 + (면 좌석 수 − 상자 행 1) ≥ 벨트 수.
-   * planner 는 지하파이프 역학을 모른다 — 이 불리언으로 [pipeSide] 의 슬롯 모양만 가른다.
-   */
-  isJumpableToClusterPipe?: boolean;
+  pipeFaces?: readonly { side: PortSide; fluidRows: number; jumpable: boolean }[];
   /**
    * 고를 수 있는 벨트들([BuildSpec.belts](../../buildSpec.ts)). [insertingPlanner] 가 이걸로
    * [determineBeltCount] 를 돌려 줄 수를 정한다. **미지정이면 줄 수를 안 늘린다**(옛 동작:
@@ -255,7 +245,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // (트렁크 미해결·다이렉트·다중 유체)의 판정도 그리로 옮겼다 — 셋 다 "통째로 정직히 실패"로
   // 같은 결과다(테스트: trunkPipe.test.ts "유체 관문").
   //
-  // 여기 남은 유체 관련 입력은 [PortPlannerInput.pipeSide] 하나뿐이고, 그건 **아이템** 배치용
+  // 여기 남은 유체 관련 입력은 [PortPlannerInput.pipeFaces] 하나뿐이고, 그건 **아이템** 배치용
   // 이다: 그 면의 좌석(d1)을 파이프가 먹으므로 아이템을 케이스 B(깊이)로 민다.
   //
   // 그래도 **조용히 무시하지는 않는다** — 유체 줄이 여기까지 왔다면 배선이 어긋난 것이고,
@@ -266,34 +256,27 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   }
 
   const lanes = laneSlots(inserters);
-  if (!input.slotsPerFace && lanes.length === 0) {
+  if (lanes.length === 0) {
     return { ok: false, complex: true, reason: "no-inserter" };
   }
 
-  // 면별 슬롯 풀. 탭 인서팅 = near→far([ClusterBelt] reach 종류당 1). 다이렉트 인서팅 = 그 면의
-  // 둘레 칸 수만큼 똑같은 슬롯(clusterBeltDepth 2 = 인서터 1 + 상자 1, reach 1) — 1:1 은
-  // 벨트가 없어 깊이가 안 자란다.
+  // 면별 슬롯 풀 — 탭 인서팅뿐이다: near→far([ClusterBelt] reach 종류당 1).
   const outputSide = input.outputSide;
+  /** 이 면이 유체 면인가 — 맞으면 그 면의 유체 행 수와 점프 여부. */
+  const pipeFaceOf = (side: PlannedSide) => input.pipeFaces?.find((f) => f.side === side);
   const inputSide: PortSide = outputSide === "W" ? "E" : "W";
   type Slot = { side: PlannedSide; clusterBeltDepth: number; reach: number };
-  const rim = input.slotsPerFace;
   const slotsOf = (side: PlannedSide): Slot[] => {
-    // 유체가 붙는 면 — [isJumpableToClusterPipe] 가 두 모양을 가른다.
-    //  - 점프 가능: 파이프가 상자 칸 하나만 먹고 지하로 벨트를 넘어 ClusterPipe 로 나간다
+    // 유체가 붙는 면 — `jumpable` 이 두 모양을 가른다.
+    //  - 점프 가능: 파이프가 유체 상자 칸 하나만 먹고 지하로 벨트를 넘어 ClusterPipe 로 나간다
     //    → 좌석이 살아 **일반 면과 같은** 벨트 목록(아래 lanes 폴스루).
     //  - 점프 불가(옛 스파인): 좌석 줄 전체가 파이프 → 케이스 B(reach≥2 만, 좌석 2칸·벨트 2+r칸).
-    if (side === input.pipeSide && !input.isJumpableToClusterPipe) {
+    if (pipeFaceOf(side) && !pipeFaceOf(side)!.jumpable) {
       return inserters
         .filter((i) => i.reach >= 2)
         .map((i) => ({ side, clusterBeltDepth: 2 + i.reach, reach: i.reach }));
     }
-    if (!rim) return lanes.map((lane) => ({ side, ...lane }));
-    const n = side === "W" || side === "E" ? rim.WE : rim.NS;
-    return Array.from({ length: Math.max(0, n) }, () => ({
-      side,
-      clusterBeltDepth: 2,
-      reach: 1,
-    }));
+    return lanes.map((lane) => ({ side, ...lane }));
   };
   const outPool = slotsOf(outputSide); // 출력 우선 면(부모 쪽)
   const inPool = slotsOf(inputSide); // 입력 우선 면(자식 쪽)
@@ -314,7 +297,27 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 벨트 줄을 이미 케이스 B(reach≥2만)로 깎았다(slotsOf).
   const slotsNeeded = beltLines.reduce((n, l) => n + beltCountOf(l), 0);
   if (slotsNeeded > outPool.length + inPool.length) {
-    return { ok: false, complex: true, reason: "belt-demand-exceeds-capacity" };
+    // **이 거절은 벨트 티어와 무관하다.** 한 면이 세울 수 있는 [ClusterBelt] 수 =
+    // **서로 다른 reach 값 개수**([laneSlots]) 라, 모자란 것은 처리량이 아니라 **레인**이다.
+    // 옛 이름(`belt-demand-exceeds-capacity`)은 화면의 처방을 4단계(벨트)로 보냈는데, 벨트를
+    // 바꿔서는 절대 안 풀린다 — 오히려 [determineBeltCount] 가 줄을 늘려 더 나빠질 수 있다.
+    // 실제 지렛대는 **긴팔 인서터(reach≥2)를 고르는 것**이다(면당 레인이 1 → 2로 는다).
+    //
+    // 유체 면은 한 번 더 깎인다: 점프 불가면 좌석 줄이 통째로 파이프라 케이스 B(reach≥2 전용)
+    // 가 되어, 긴팔이 없으면 그 면의 레인이 **0** 이다(slotsOf). 그래서 유체 레시피는 아이템
+    // 줄이 둘만 돼도 여기 걸린다 — 그리고 유체는 다이렉트 폴백이 없어(planModulePorts)
+    // 그 거절이 곧 모듈 실패다. 숫자를 문구에 담는 이유가 이것이다.
+    const faceOf = (side: PlannedSide, pool: Slot[]): string =>
+      `${side}${pool.length}${pipeFaceOf(side) && !pipeFaceOf(side)!.jumpable ? "(유체·reach≥2 전용)" : ""}`;
+    const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
+    return {
+      ok: false,
+      complex: true,
+      reason:
+        `lanes-exceed-capacity (벨트 ${slotsNeeded}줄 > 레인 ` +
+        `${faceOf(outputSide, outPool)}+${faceOf(inputSide, inPool)}` +
+        `; 고른 인서터 reach [${reaches.join(",")}])`,
+    };
   }
 
   /** 줄 → 그 줄의 배정들(줄 수만큼). 등장 순서 보존용. */
@@ -329,8 +332,9 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     const rows = input.seatRowsPerFace;
     if (!rows) return Infinity;
     const base = side === "W" || side === "E" ? rows.WE : rows.NS;
-    // 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell] 이 먹는다 → 좌석 한 줄 감소.
-    const afterPipe = side === input.pipeSide && input.isJumpableToClusterPipe ? base - 1 : base;
+    // 점프 유체 면은 유체 상자 행 하나를 [fluidboxPipeCell] 이 먹는다 → 좌석 한 줄 감소.
+    const pf = pipeFaceOf(side);
+    const afterPipe = pf?.jumpable ? base - pf.fluidRows : base;
     // 링크 방출이 먼저 먹은 행을 뺀다([seatRowsUsed]).
     return Math.max(0, afterPipe - (input.seatRowsUsed?.[side] ?? 0));
   };
@@ -341,7 +345,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
 
   // (B) 정책: 출력이 출력면을 **먼저 고르고**(차면 입력면으로 넘어간다), 입력은 입력면 우선.
   // 입력이 넘치면 E → (external 한정) 노출 N/S → 출력면 잔여(W) 순 — W-spill 을 최후로 미뤄
-  // 상자가 부모-홉이 붐비는 채널 쪽에 태어나는 것을 피한다(kr-glass 갇힘의 원인).
+  // 상자가 부모-납품 경로가 붐비는 채널 쪽에 태어나는 것을 피한다(kr-glass 갇힘의 원인).
   // 각 풀은 near→far 로 소비. 결과는 등장 순서를 보존해 낸다.
   //
   // 풀을 앞에서부터 훑되 **좌석이 남은 슬롯만** 집는다. 좌석이 모자라 건너뛴 슬롯은 풀에
@@ -386,11 +390,11 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 입력 처리 **순서**: 자식-공급(내부 간선) 먼저, external(raw) 나중.
   //
   // 왜 이 순서인가 — 넘칠 때 **누가 출력면(W)으로 밀려나느냐**가 갈리기 때문이다.
-  // 자식-공급 입력이 W(부모 반대편)로 밀려나면 그 줄의 **홉이 모듈을 빙 돌아** 반대편까지
+  // 자식-공급 입력이 W(부모 반대편)로 밀려나면 그 줄의 **납품 경로가 모듈을 빙 돌아** 반대편까지
   // 와야 하고, 그 우회 belt 가 W 쪽 다른 포트들의 **바깥 탈출로를 가로질러 끊는다**
-  // (2026-07-12 실측: n0 의 kr-components 가 W 로 밀려 홉이 모듈 위를 가로지르는 belt 한
+  // (2026-07-12 실측: n0 의 kr-components 가 W 로 밀려 납품 경로가 모듈 위를 가로지르는 belt 한
   // 줄을 만들고, 그게 n0 의 W 포트 두 개의 N 탈출로를 막아 반출 skip 3건이 났다).
-  // external 입력은 **홉이 없다** — 그냥 perimeter 로 나가면 그만이라 W 로 밀려도 안전하다.
+  // external 입력은 **납품 경로가 없다** — 그냥 perimeter 로 나가면 그만이라 W 로 밀려도 안전하다.
   // 그러니 밀려날 자격이 있는 건 external 쪽이다(제약 센 것에 좋은 자리를 먼저).
   const inputsChildFedFirst = [
     ...beltLines.filter((l) => l.role === "input" && !l.external),
@@ -439,7 +443,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // insertingPlanner — 탭 인서팅으로 합칠 수 있나, 아니면 다이렉트 인서팅으로 남기나
-// (docs/auto-layout-wizard.trunk-redesign.md §10, 용어: docs/용어사전.md §D — 2026-07-12
+// (docs/auto-layout/module/trunk-redesign.md §10, 용어: docs/용어사전.md §D — 2026-07-12
 // 사용자 명명. "레인 개수 검사"라는 별도 관문은 만들지 않는다 — 아래 참고.)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -665,13 +669,18 @@ export function insertingPlanner(
     }
   };
 
-  const direct = (reason: string): InsertingDecisionResult => {
-    // 다이렉트도 같은 배정 수를 쓴다 — 팔이 면 하나에 안 들어가면 면을 넘나드는 건
-    // 공급 방식과 무관하다(팔 개수가 물리량이므로).
-    const plan = planClusterPorts({ ...input, beltLines: placementMap });
-    armsOf(plan);
-    return { mode: "direct", reason, plan };
-  };
+  /**
+   * **탭이 안 된다** — 자리를 여기서 잡지 않는다.
+   *
+   * 예전엔 여기서 rim 모델로 1:1 배정을 함께 냈다. 지금은 기계별 포트를 링크 배분기
+   * ([allocateLinkFaces])가 맡으므로 이 함수가 답할 것은 **판정과 사유**뿐이고, 그래서
+   * `plan` 은 비어 있다. 배정을 두 곳이 내면 좌석 장부가 갈린다 — 그게 통합의 요점이다.
+   */
+  const direct = (reason: string): InsertingDecisionResult => ({
+    mode: "direct",
+    reason,
+    plan: { ok: true, lines: [] },
+  });
 
   // **벨트 줄 수** — 수요가 벨트 한 줄을 넘으면 [determineBeltCount] 가 줄을 늘린다(빠른
   // 것부터, 나머지는 그걸 감당하는 가장 싼 벨트로). 팔 개수와 **다른 축**이다: 벨트 상한은
@@ -775,13 +784,15 @@ export function insertingPlanner(
   // **좌석 예산 재검** — 이제 배분기가 좌석 장부를 들고 배정하므로(seatRowsPerFace) 여기서
   // 걸릴 일은 원칙적으로 없다. 그래도 남겨 둔다: 장부가 틀리면 **조용히 굶는 배치**가 나가는데,
   // 그건 이 설계가 없애려던 바로 그 실패다. 걸리면 다이렉트로 물러난다(정직한 실패).
-  // 점프 유체 면은 상자 행 하나를 [fluidboxPipeCell]이 먹으므로 −1.
-  const jumpBeltOnPipeSide =
-    !!input.isJumpableToClusterPipe &&
-    tapPlan.lines.some((p) => p.line.kind === "belt" && p.side === input.pipeSide);
+  // 점프 유체 면은 그 면의 유체 줄 수만큼 [fluidboxPipeCell] 이 좌석 행을 먹는다.
+  const pipeFaceOf = (side: PlannedSide) => input.pipeFaces?.find((f) => f.side === side);
+  const jumpBeltOnPipeSide = tapPlan.lines.some(
+    (p) => p.line.kind === "belt" && pipeFaceOf(p.side)?.jumpable,
+  );
   const rowsOf = (side: PlannedSide): number => {
     const base = side === "W" || side === "E" ? input.slotsPerFace.WE : input.slotsPerFace.NS;
-    return side === input.pipeSide && jumpBeltOnPipeSide ? base - 1 : base;
+    const pf = pipeFaceOf(side);
+    return pf?.jumpable && jumpBeltOnPipeSide ? base - pf.fluidRows : base;
   };
   const tapsOnFace = new Map<PlannedSide, number>();
   for (const p of tapPlan.lines) {

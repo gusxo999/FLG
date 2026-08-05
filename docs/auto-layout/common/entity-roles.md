@@ -92,7 +92,7 @@ placer 입력으로도 받지 않는다.
 - **pipe** (1×1): **방향이 없다**(0 고정). 직교로 닿으면 **무조건** 한 관망이 된다.
 - **처리량 무한**(우리 모델의 결정) → 유체판 `determineBeltCount` 가 없고, **같은 유체 합류는 무해**하다.
 - 파이프는 머신 벽 아무 데나가 아니라 **유체 상자의 연결 칸**에만 붙는다 → 유체 줄의 면은 우리가 고르는
-  게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseMachineDirection](../../../src/autoLayout/module/fluidPorts.ts)).
+  게 아니라 머신이 정한다. 그래서 **머신을 돌린다**([fluidPorts.chooseFluidTrunkPlan](../../../src/autoLayout/module/fluidPorts.ts)).
   그 칸이 어디인지는 좌표가 아니라 `PipeConnection.direction` 이 답한다 → [fluid-box-semantics](../../factorio/fluid-box-semantics.md).
 - **pipe-to-ground** (1×1 두 개): prototype 무관 **전부** 간섭(벨트와 다르다) → 단일 blockGroup.
 - **[[용어사전#pump (펌프)|pump]]** (1×2): **자동 배치 미사용**.

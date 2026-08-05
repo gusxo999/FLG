@@ -42,6 +42,7 @@ import {
 } from './pixi-renderer';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { moduleAtCell } from '../../autoLayout/moduleInspect';
+import { overlayView, useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
 import { isBeltLike } from '../../analysis/beltFlow';
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,14 @@ function handlePointerDown(e: PointerEvent) {
       return;
     }
 
+    // 연결선 클릭 → 연결 정보. **모드 무관**이며 셀 클릭보다 먼저 본다 —
+    // 실패 진단 선은 빈 그리드 위에 떠 있어 이 분기가 유일한 입구다.
+    const hitLine = hitTestRoutingLine(cx, cy);
+    if (hitLine) {
+      store.setSelectedRouting(hitLine);
+      return;
+    }
+
     // 빈손 모드에서 벨트류 셀 클릭 → 그 지점 흐름 정보 모달 (선택 드래그보다 우선)
     if (hitCell?.entityName && isBeltLike(hitCell.entityType)) {
       useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
@@ -194,7 +203,8 @@ function handlePointerMove(e: PointerEvent) {
     // 커서 pointer 도 해제(본체는 기본 커서). 아무 모듈도 아니면 강조 제거.
     const { viewport, tileSize } = useLayoutStore.getState();
     const { x: gx, y: gy } = canvasToGrid(cx, cy, viewport, tileSize);
-    const bodyKey = moduleAtCell(gx, gy)?.key ?? null;
+    // 성공·실패 공용 목록 — 실패 시엔 빈 그리드 위 스냅샷 사각형이 hover 대상이다.
+    const bodyKey = moduleAtCell(gx, gy, overlayView().modules)?.key ?? null;
     if (bodyKey !== hoveredModuleKey) {
       setHoveredModuleKey(bodyKey);
       pixiObjects.appCanvas!.style.cursor = '';
@@ -202,15 +212,17 @@ function handlePointerMove(e: PointerEvent) {
     }
   }
 
-  // 라우팅 수정 모드 (드래그 없음): 연결선 hover 감지
-  if (useLayoutStore.getState().routingEditMode) {
+  // 연결선 hover — **모드 무관**. 예전엔 `routingEditMode` 안에서만 봤는데 그 모드는
+  // 세션이 없어 켜지지 않는다(manualEdit 격리). 실패 진단 선도 같은 캐시를 쓰므로
+  // 여기서 함께 잡힌다.
+  if (!inputState.isDragging) {
     const hitRoutingId = hitTestRoutingLine(cx, cy);
     if (hitRoutingId !== hoveredRoutingId) {
       setHoveredRoutingId(hitRoutingId);
       pixiObjects.appCanvas!.style.cursor = hitRoutingId ? 'pointer' : '';
       renderGrid();
     }
-    return;
+    if (hitRoutingId) return;
   }
 
   // InfinityChest/InfinityPipe 이동 드래그 중
@@ -422,6 +434,8 @@ export async function initPixi(
   // zustand store 직접 구독 — React useEffect/useCallback 없음
   unsubFns.push(useLayoutStore.subscribe(() => renderAll()));
   unsubFns.push(useSettingsStore.subscribe(() => renderAll()));
+  // 오버레이 운반체 — 배치가 적용/폐기될 때 모듈 테두리·연결선이 따라 갱신되도록.
+  unsubFns.push(useAutoLayoutRunStore.subscribe(() => renderAll()));
   // gameData 가 늦게 로드돼도 파이프 네트워크 색/터널이 정확히 그려지도록 재렌더 트리거
   unsubFns.push(useGameDataStore.subscribe(() => renderAll()));
 

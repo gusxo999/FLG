@@ -12,7 +12,7 @@ tags: [auto-layout, placement, routing]
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
 >
-> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 모듈 파이프라인의 트렁크 파이프 + 유체 홉으로 처리된다 ([[fluid-hop]] · [[trunk-pipe]]).
+> **이력:** 과거 known-limits 는 폐기된 *둘레 슬롯 모델* / S-EXH(`containerWizard.ts`) 기준이었고 "fluid 미지원(P0)" 등은 현 코드와 맞지 않아 본 문서로 전면 재작성됨 (2026-06-09). fluid 는 현재 모듈 파이프라인의 트렁크 파이프 + 유체 납품 경로로 처리된다 ([[fluid-delivery]] · [[trunk-pipe]]).
 
 ---
 
@@ -22,7 +22,8 @@ tags: [auto-layout, placement, routing]
 
 **증상:**
 - 같은 레시피 N대([[용어사전#클러스터 (cluster)|클러스터]])가 **무조건 한 열에 세로로만** 쌓인다.
-- 입출력 포트가 많거나(재료 4종+ 등) **다중 fluid** 인 레시피(정유소 등)는 한 열에서 필요한 면을 다 확보하지 못해 트렁크 병합 실패·1:1 폴백·미관 저하가 발생.
+- 입출력 포트가 많은 레시피(재료 4종+ 등)는 한 열에서 필요한 면을 다 확보하지 못해 트렁크 병합 실패·1:1 폴백·미관 저하가 발생.
+- **아이템 줄의 상한은 면당 [[용어사전#ClusterBelt|ClusterBelt]] 수 = 인서터 reach 종류 수**(현재 2)다. 두 면이면 4줄이 상한이고, 유체가 그 면의 좌석 행을 먹으면 더 줄어든다. 유체는 여기서 안 걸린다 — 유체 줄은 깊이로 겹쳐 쌓이므로 면 수가 아니라 지하파이프 사거리가 상한이다([[trunk-pipe]] §5.1).
 
 **원인:**
 - [module/clusterLayout.ts](../../../src/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+레인 타일 등 다른 형태가 없다.
@@ -71,19 +72,19 @@ tags: [auto-layout, placement, routing]
 **우선순위: P2**
 
 **증상:**
-- **유체 머신은 회전한다**(2026-07-25) — `chooseMachineDirection` 이 유체 상자를 원하는 면(출력 W·입력 E)에 오게 하는 각도를 게임데이터에서 고른다. 못 맞추면 트리째 거절.
+- **유체 머신은 회전한다**(2026-07-25) — `chooseFluidTrunkPlan` 이 유체 상자를 원하는 면(출력 W·입력 E)에 오게 하는 각도를 게임데이터에서 고른다. 못 맞추면 트리째 거절.
 - 그러나 **아이템 전용 머신은 여전히 direction 0 고정**이다. 회전을 배치 품질(면 배분)의 자유도로 쓰지 않는다.
-- fluid 입출력은 prototype 의 `fluid_boxes` 가 정의한 **고정 면 셀** 에만 닿을 수 있어, 기둥 클러스터에서 다중 fluid 머신을 서빙하기 어렵다(§1 과 연동).
+- fluid 입출력은 prototype 의 `fluid_boxes` 가 정의한 **고정 면 셀** 에만 닿을 수 있다. 회전으로 W/E 에 모으는 것까지는 되지만, **어느 각도로도 W/E 에 다 못 모이는 머신**(유체 상자가 N/S 를 강제하는 배치)은 `no-rotation` 으로 거절된다 — 회전이 footprint 를 안 바꾼다는 전제(정사각형) 위에 서 있어서다.
 
 **원인:**
-- 유체 회전은 [module/fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) `chooseMachineDirection` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
+- 유체 회전은 [module/fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) `chooseFluidTrunkPlan` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
 - *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../../../src/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
 
 **해결 방향:**
-- 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseMachineDirection`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
+- 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseFluidTrunkPlan`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
 
 ---
 
@@ -186,7 +187,7 @@ tags: [auto-layout, placement, routing]
 옛 S-LAYER 경로가 Phase 3 에서 삭제되면서 무방비로 파이프를 깔던 자리가 없어졌다.
 유체는 이제 전부 모듈 파이프라인을 타며 `PipeFlow` 가드를 거친다. 계획 경로도 같은
 지도를 본다(`plannedChainClear` 의 `fluidBlocked` —
-[.fluid-hop-reservation §8.3](../channel/fluid-hop-reservation.md)).
+[.fluid-delivery-reservation §8.3](../channel/fluid-delivery-reservation.md)).
 
 > **2026-08-02 — 현재 노출 0, 그러나 결함은 보존돼 있다.** 드래그 재라우팅 코드는
 > `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이다(세션을 만드는 코드가 없어
@@ -203,13 +204,55 @@ tags: [auto-layout, placement, routing]
 
 ---
 
+## 10. 탭 레인 수 = 서로 다른 reach 개수 — 긴팔을 안 고르면 모듈이 커진다
+
+**우선순위: P3** (2026-08-05 공급 모델 통합으로 **치명성이 사라졌다** — 아래 이력)
+
+**증상:**
+- 긴팔 인서터(reach≥2)를 안 고르면 아이템 줄이 3개 이상인 레시피가 [[용어사전#탭 인서팅 (Tap Inserting)|탭]]에
+  못 서고 [[용어사전#기계별 포트 (구 "다이렉트 인서팅")|기계별 포트]]로 물러난다. 배치는 **나오지만**
+  포트가 품목당 1개에서 **머신 × 품목**으로 늘어 모듈이 넓어지고 반출 압력이 커진다.
+- 유체 레시피는 여기 더 자주 걸린다 — 머신 `fluid_box` 가 W/E 중 한 면을 가져가 아이템이
+  쓸 면이 하나뿐이기 때문이다.
+
+**원인:**
+- 한 면이 세울 수 있는 [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]] 수 = **서로 다른 reach 값 개수**
+  ([clusterPortPlanner.ts](../../../src/autoLayout/planner/module/clusterPortPlanner.ts) `laneSlots`).
+  같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 1레인**.
+  게임 물리라 코드로 넓힐 수 없다.
+- 유체 면은 거기서 한 번 더 깎인다. 지하파이프가 없어 점프 불가면 좌석 줄 전체가 파이프라
+  [[용어사전#케이스 B (파이프 넘김 레인)|케이스 B]](reach≥2 전용)가 되어 **그 면 레인이 0**.
+
+**해결 방향:**
+1. **처방은 위저드 선택이다** — 3단계에서 긴팔 인서터를 고르면 면당 레인이 2가 되고 유체 면도
+   케이스 B 로 1레인을 낸다. 화면이 그 처방을 가리킨다(`fixStep`).
+2. 근본은 §1 과 같다 — 면이 모자란 것이므로 형태 선택기가 들어오면 함께 풀린다.
+
+> **이력 ① (2026-08-04):** 이 거절의 옛 이름은 `belt-demand-exceeds-capacity` 였고 화면 처방이
+> **4단계(벨트)** 로 갔다. 벨트 티어는 이 축과 무관하다 — 오히려 `determineBeltCount` 가 줄을
+> 늘려 더 나빠질 수 있다. 이름을 `lanes-exceed-capacity` 로 바꾸고 처방을 3단계(인서터)로
+> 돌렸다. 같은 수정에서, **진짜** 벨트 처리량 부족(`belt: demand>beltCap`)이 옛 조건
+> `includes('belt-demand')` 에 안 걸려 처방이 **아예 없던** 것도 4단계로 붙였다.
+>
+> **이력 ② (2026-08-05) — 치명성 제거.** 당시 이 항목의 증상 첫 줄은 *"유체 레시피 대부분이
+> 통째로 미생성"* 이었다. 원인은 레인 수가 아니라 **물러설 곳이 없다는 것**이었다:
+> `planModulePorts` 의 `fluidNeedsTap` 이 *"유체가 있는데 1:1 로 떨어지면 실패"* 로 막고 있었고,
+> 그 근거는 파이프 방출이 tap 가지 **안에만** 있어서 물러나면 유체가 조용히 사라진다는 것이었다.
+> 방출을 갈래 밖으로 꺼내고([clusterModule](../../../src/autoLayout/module/clusterModule.ts)) 기계별
+> 포트를 링크 배분기에 태우자 그 관문의 근거가 없어졌다 → 삭제. `battery` 는 짧은 팔만으로
+> 선다(회귀: `clusterModule.test.ts` "공급 모델 통합 — 기계별 포트").
+> 같은 통합에서 **W/E 가 다 차면 위/아래(gap)로 넘어가는 길**도 열려 [[ns-face-relief]] 결정 4 의
+> 전제가 바뀌었다. → [[machine-link]]
+
+---
+
 ## 우선순위 별 정리
 
 | 우선순위 | 항목 |
 |----------|------|
 | **P1** | §1 클러스터 형태 기둥 고정 |
 | **P2** | §2 belt/pipe mixing · §3 아이템 머신 회전 미지원 · §9 Deprecated Dijkstra Guard(드래그) |
-| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 |
+| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 · §10 탭 레인 수(치명성 해소) |
 
 > **해소되어 삭제된 항목 (2026-07-25 감사):**
 > - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).

@@ -84,7 +84,7 @@ describe("planPerimeterLanes", () => {
     expect(planPerimeterLanes(top, ctx).assignments[0].host).toEqual({ kind: "self" });
   });
 
-  it("같은 채널의 lane 구간은 홉 구간과 합쳐 트랙 산정 가능(겹치면 트랙↑)", () => {
+  it("같은 채널의 lane 구간은 납품 경로 구간과 합쳐 트랙 산정 가능(겹치면 트랙↑)", () => {
     // 두 lane 이 같은 채널(depth 1) 로 겹치는 세로 구간 → 트랙 2.
     const ports: LanePortInput[] = [
       p({ id: "a", role: "input", depth: 1, side: "W", anchorY: 1 }), // N: [0,1]
@@ -92,9 +92,9 @@ describe("planPerimeterLanes", () => {
     ];
     const plan = planPerimeterLanes(ports, ctx3());
     const laneIvs = plan.channelLaneIntervals.get(1)!;
-    const hopIvs = [{ lo: 0, hi: 2 }]; // 가상 홉 구간
-    const combined = assignTracksLeftEdge([...hopIvs, ...laneIvs]);
-    expect(combined.trackCount).toBe(3); // 홉+2 lane 전부 [0,·] 겹침
+    const deliveryIvs = [{ lo: 0, hi: 2 }]; // 가상 납품 경로 구간
+    const combined = assignTracksLeftEdge([...deliveryIvs, ...laneIvs]);
+    expect(combined.trackCount).toBe(3); // 납품 경로+2 lane 전부 [0,·] 겹침
   });
 
   it("결정적 — id 순 안정", () => {

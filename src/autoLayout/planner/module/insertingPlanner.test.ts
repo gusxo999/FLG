@@ -1,6 +1,6 @@
 /**
  * insertingPlanner — **이 클러스터를 트렁크(탭 인서팅)로 합칠 수 있는가** 판정
- * (docs/auto-layout-wizard.trunk-redesign.md §10.2, 용어: docs/용어사전.md §D).
+ * (docs/auto-layout/module/trunk-redesign.md §10.2, 용어: docs/용어사전.md §D).
  *
  * 판정 순서: ① 간단한 레시피인가(기둥 클러스터로 표현 가능 — `planClusterPorts` 의
  * ok/complex 가 곧 이 판별이다, 별도 "레인 검사"를 새로 만들지 않는다) ② 벨트 한 줄이
@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { insertingPlanner, type IoLine, type SupplyCapacity } from "./clusterPortPlanner";
+import { externalLineGroups } from "../../module/machineLinkGroup";
 import type { SpecInserter } from "../../buildSpec";
 
 const inL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
@@ -165,33 +166,43 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
     lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 팔 4개
   };
 
-  it("좌석이 모자라 다이렉트로 떨어져도, 그 계획이 팔 4개를 알고 있다", () => {
+  // **다이렉트의 팔 개수는 이제 여기서 안 나온다** (2026-08-05 공급 모델 통합).
+  // 탭이 깨지면 기계별 포트가 링크 배분기를 타고, 그 팔 수는 [externalLineGroups] 가
+  // **같은 함수**([requiredInserterCount])로 낸다. 그래서 사실은 그대로이고 — 모드가 팔
+  // 개수를 바꾸지 않는다 — 그 사실을 지키는 자리만 옮겼다. 여기서는 **두 출처가 같은 수를
+  // 낸다**를 확인한다(수가 갈리면 좌석 예산과 실제로 앉는 팔이 어긋나 조용히 굶는다).
+  it("좌석이 모자라면 다이렉트로 떨어지고, 자리는 여기서 안 잡는다", () => {
     const d = insertingPlanner(base([inL("a"), outL("z")]), 3, cap);
     expect(d.mode).toBe("direct");
     expect(d.reason).toContain("seats");
-    // 굶는 배치의 근원 — 예전엔 여기가 undefined 라 다이렉트가 팔 하나만 놓았다.
-    expect(armsOf(d, "a"), "다이렉트 계획이 팔 개수를 모른다").toBe(4);
+    // 배정을 두 곳이 내면 장부가 갈린다 — 그래서 판정만 하고 계획은 비운다.
+    expect(d.plan.ok && d.plan.lines).toEqual([]);
   });
 
-  it("복잡한 레시피로 다이렉트가 돼도 팔 개수는 달려 나온다", () => {
+  it("복잡한 레시피도 다이렉트 — 사유가 그렇게 말한다", () => {
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
     const d = insertingPlanner(base(lines, false), 3, cap); // 긴팔 없음 → complex
     expect(d.mode).toBe("direct");
     expect(d.reason).toContain("complex");
-    expect(armsOf(d, "a")).toBe(4);
   });
 
-  it("탭과 다이렉트가 같은 줄에 대해 같은 수를 낸다", () => {
-    // 4줄 — 긴팔이 있으면 탭(면당 2레인 × 2면 = 4), 없으면 complex → 다이렉트.
+  it("탭 계획과 기계별 그룹이 **같은 팔 개수**를 낸다 — 모드가 물리량을 못 바꾼다", () => {
+    // 4줄 — 긴팔이 있으면 탭(면당 2레인 × 2면 = 4), 없으면 complex → 기계별 포트.
     // 갈리는 건 **모드뿐**이고 수요·머신 수·인서터 처리량은 같다.
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
     const rates = { ...cap, lineRates: new Map([["input:a", 30]]) }; // 30/3대 = 10, ceil(10/5) = 2
     const tap = insertingPlanner(base(lines), 3, rates);
-    const dir = insertingPlanner(base(lines, false), 3, rates);
     expect(tap.mode).toBe("tap");
-    expect(dir.mode).toBe("direct");
     expect(armsOf(tap, "a")).toBe(2);
-    expect(armsOf(dir, "a"), "모드가 팔 개수를 바꾸면 안 된다").toBe(armsOf(tap, "a"));
+
+    expect(insertingPlanner(base(lines, false), 3, rates).mode).toBe("direct");
+    // 기계별 그룹이 든 팔 수 — 머신 3대니까 그룹 3개, 각각 팔 2개.
+    const groups = externalLineGroups(lines, 3, rates, undefined, { perMachine: true })
+      .filter((g) => g.item === "a");
+    expect(groups).toHaveLength(3);
+    for (const g of groups) {
+      expect([...g.to.values()], "모드가 팔 개수를 바꾸면 안 된다").toEqual([armsOf(tap, "a")]);
+    }
   });
 });
 
@@ -259,7 +270,54 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
       lineRates: new Map([["input:a", 110]]), // 30×3 + 20 → 4줄
     });
     expect(d.mode).toBe("direct");
-    expect(d.reason).toContain("belt-demand-exceeds-capacity");
+    expect(d.reason).toContain("lanes-exceed-capacity");
+  });
+});
+
+/**
+ * ④-B **레인 부족은 벨트 문제가 아니다** — battery 실측(2026-08-05).
+ *
+ * battery = 아이템 2입력(iron-plate·copper-plate) + 1출력 + 유체 1(sulfuric-acid),
+ * 화학공장 3×3. 유체 면은 머신 `fluid_box` 가 강제하므로 W/E 중 한 면이 파이프에 넘어가고,
+ * 점프(지하파이프)가 없으면 그 면은 [케이스 B](reach≥2 전용)라 **긴팔이 없으면 레인 0** 이다.
+ * 남는 것은 반대 면의 1레인뿐 — 아이템 3줄이 들어갈 리가 없다.
+ *
+ * 여기서 못 박는 것은 **처방이 어느 축을 가리키나**다. 사유 문구가 "belt" 로 시작하던 시절
+ * 화면은 4단계(벨트)로 보냈는데, 벨트를 아무리 바꿔도 레인은 안 는다 — 늘려야 하는 것은
+ * **서로 다른 reach 값 개수**(= 긴팔 인서터 선택)다. 그리고 유체 레시피는 다이렉트 폴백이
+ * 없어([planModulePorts] `fluidNeedsTap`) 이 거절이 곧 "모듈 미생성"이다.
+ */
+describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () => {
+  const battery = [inL("iron-plate"), inL("copper-plate"), outL("battery")];
+  /** 유체 면 E — `jumpable` 은 지하파이프를 골랐는지에 갈린다. */
+  const run = (hasLong: boolean, jumpable: boolean) =>
+    insertingPlanner(
+      { ...base(battery, hasLong), pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable }] },
+      3,
+      {},
+    );
+
+  it("긴팔 없음 → 레인 부족. 사유가 **인서터 reach** 를 짚는다(벨트가 아니라)", () => {
+    for (const jumpable of [false, true]) {
+      const d = run(false, jumpable);
+      expect(d.mode, `jumpable=${jumpable}`).toBe("direct");
+      expect(d.reason).toContain("lanes-exceed-capacity");
+      expect(d.reason).toContain("고른 인서터 reach [1]");
+      // 옛 이름으로 되돌아가면 화면 처방이 다시 4단계(벨트)로 샌다.
+      expect(d.reason).not.toContain("belt-demand");
+    }
+  });
+
+  it("점프 불가 유체 면은 레인 0 — 문구가 그 면을 지목한다", () => {
+    expect(run(false, false).reason).toContain("E0(유체·reach≥2 전용)");
+  });
+
+  it("긴팔을 고르면 케이스 B 로 유체 면이 1레인을 내어 3줄이 앉는다 → tap", () => {
+    for (const jumpable of [false, true]) {
+      const d = run(true, jumpable);
+      expect(d.mode, `jumpable=${jumpable}`).toBe("tap");
+      expect(d.plan.ok).toBe(true);
+    }
   });
 });
 

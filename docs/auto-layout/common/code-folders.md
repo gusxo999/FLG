@@ -35,7 +35,7 @@ tags: [auto-layout, placement, routing]
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/moduleHop` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
+| `planner/deliveryRoute` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
 | `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 ## 축 2 — 관심사: 무엇에 대한 일인가
@@ -53,7 +53,7 @@ tags: [auto-layout, placement, routing]
 
 ```
 module/  →  planner/   :  거의 0     ← module 은 planner 를 (사실상) 모른다
-planner/ →  module/    :  다수       ← modulePacking · moduleWizard · moduleHop
+planner/ →  module/    :  다수       ← modulePacking · moduleWizard · deliveryRoute
 ```
 
 의존이 사실상 단방향이고 **진입점(`moduleWizard`)도 `planner/` 에 있다.**
@@ -85,7 +85,7 @@ autoLayout/
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
 │   ├ perimeterLanePlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
-│   ├ moduleHop.ts                 자식 출력 → 부모 입력 잇기
+│   ├ deliveryRoute.ts                 자식 출력 → 부모 입력 잇기
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
 ├ execution/                   실행 — 계획대로 셀을 놓는다
 │   ├ module/emitModule.ts         트렁크 · 링크 · 탭/다이렉트 인서터 · 유체
@@ -157,7 +157,7 @@ rg "^import" src/autoLayout/planner/link/allocateMachineLinks.ts
 | `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
 | `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
 | `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
-| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/moduleHop` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
+| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/deliveryRoute` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
 | 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
 **아직 안 가른 것 하나:** `modulePacking.materializeChannelGeometry` 는 납품(channel)과
@@ -185,7 +185,7 @@ npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0�
 npx vitest run
 ```
 
-기준선: **타입 에러 0 · 41파일 448테스트.** (`manualEdit/` 는 양쪽에서 제외돼 있다.)
+기준선: **타입 에러 0 · 44파일 518테스트.** (`manualEdit/` 는 양쪽에서 제외돼 있다.)
 
 > **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
 > 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가
@@ -195,7 +195,7 @@ npx vitest run
 
 폴더 이동 당시 `modulePerimeterPass` 는 남의 모듈 내부 셀을 직접 지우고 새로 깔았다
 (`mod.cells` filter+push, `port.cells`·`port.anchor`·`chest.origin` 뮤테이션). 이제
-`moduleHop` 과 같은 규약이다 — **모듈 그래프를 건드리지 않고 설명을 반환**한다:
+`deliveryRoute` 과 같은 규약이다 — **모듈 그래프를 건드리지 않고 설명을 반환**한다:
 
 - 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·

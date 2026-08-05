@@ -1,7 +1,7 @@
 /**
  * moduleWizard — 조각 5 (하이브리드 배선). 트리가 **전부 simple-item** 일 때만
- * generateModule+packModuleTree+routeModuleHops 자족 모듈 경로로 후보 1개를 만든다.
- * 유체·미탭(과용량)·홉 실패 중 하나라도 있으면 `null` 반환 → 호출자(layeredWizard)가
+ * generateModule+packModuleTree+routeDeliveryRoutes 자족 모듈 경로로 후보 1개를 만든다.
+ * 유체·미탭(과용량)·납품 경로 실패 중 하나라도 있으면 `null` 반환 → 호출자(layeredWizard)가
  * 옛 경로로 폴백한다(회귀 0).
  *
  * ## 왜 이게 "자식 == 루트" 를 실현하나
@@ -11,10 +11,10 @@
  *
  * ## 배치
  * v1 은 packModuleTree 의 preview 배치(depth 열 × 세로 stack)를 그대로 쓴다 — child==root
- * 는 배치와 무관(생성이 부모-무시)하므로 우선 검증 가능. tidy-tree 정렬·홉 단축은 후속.
+ * 는 배치와 무관(생성이 부모-무시)하므로 우선 검증 가능. tidy-tree 정렬·납품 경로 단축은 후속.
  *
- * 무상태·결정적. Routing 객체 emit(piece 7) — 홉=머신→머신(드래그 트리), raw/루트=상자↔머신
- * (IO 라벨). placed=홉 belt 셀(없으면 직선 폴백).
+ * 무상태·결정적. Routing 객체 emit(piece 7) — 납품 경로=머신→머신(드래그 트리), raw/루트=상자↔머신
+ * (IO 라벨). placed=납품 경로 belt 셀(없으면 직선 폴백).
  */
 
 import { useGameDataStore } from "../../UI/store/gameDataStore";
@@ -22,7 +22,7 @@ import { EntityType } from "../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { externalLineGroups } from "../module/machineLinkGroup";
-import { chooseMachineDirection } from "../module/fluidPorts";
+import { chooseFluidTrunkPlan, fluidJumpBlocker, type FluidLineSpec } from "../module/fluidPorts";
 import {
   collectPipeFlow,
   pipeFlowConflict,
@@ -31,8 +31,14 @@ import {
   type PipeFlowPipe,
 } from "../util/pipeFlow";
 import type { RecipeTreeNode } from "../types";
-import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { packModuleTree, edgeMachineLinks, deliveryKey, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
+import { routeDeliveryRoutes, type DeliveryResult } from "./deliveryRoute";
+import {
+  describeIssue,
+  type IssueScope,
+  type LayoutIssue,
+  type LayoutSnapshot,
+} from "../layoutIssue";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
@@ -62,51 +68,45 @@ export interface ModulePipelineArgs {
   makeId: (prefix: string) => string;
 }
 
-/** 신 경로 reject 사유 분류. */
-export type RejectReason =
-  | { kind: 'multi-fluid'; detail: string }
-  | { kind: 'non-square'; detail: string }
-  | { kind: 'stale-gamedata'; detail: string }
-  | { kind: 'no-pipe-entity'; detail: string }
-  | { kind: 'no-rotation'; detail: string }
-  | { kind: 'unrouted-lines'; detail: string }
-  | { kind: 'hop-failures'; detail: string }
-  /**
-   * 유체 홉이 채널 기하 장부에서 자리를 못 받았다 — 그래서 **깔지 않는다**.
-   *
-   * 아이템 홉과 달리 탐색 폴백이 없다(docs/…fluid-hop-reservation.md §4.6): 원칙이 "모든
-   * 배치는 처음에 계획할 수 있어야 한다"이므로, 계획 없이 탐색으로 때운 유체 경로를 남기지
-   * 않는다. 실질적으로 도달 가능한 원인은 하나 — 한 채널 안에서 **서로 다른 유체 두 줄의
-   * 끝점이 엇갈릴 때**. 둘 다 지상을 원하는데 파이프는 지하로 못 비킨다(결정 D2).
-   */
-  | { kind: 'fluid-unplannable'; detail: string }
-  | { kind: 'pipe-merge-conflict'; detail: string };
-
 /**
  * 모듈 경로의 결과 — 성공한 후보이거나, **왜 못 만들었는지**다.
  *
  * 옛 경로가 있던 시절엔 실패가 `null` 이어도 됐다 — 호출자가 옛 경로로 폴백했고 화면엔
  * 무언가 나왔으니까. 옛 경로가 사라진 지금은 **이 사유가 사용자가 받는 설명의 전부**다.
- * 그래서 `null` 로 삼키지 않고 사유를 들려 보낸다(그전엔 호출자가 "유체/회전/비정사각형 등"
- * 이라고 **찍어서** 보여 줬다 — 실제 원인과 무관할 수 있는 문장이었다).
+ *
+ * 사유는 예전엔 `RejectReason`(`[kind] detail` 한 줄)이었다. 사람은 읽을 수 있어도
+ * 화면이 그걸로 할 수 있는 게 없어서 — **어디가** 막혔는지, 사용자가 **무엇을 고쳐야**
+ * 하는지가 문장 안에 녹아 있었다 — [LayoutIssue] 로 흡수했다(2026-08-04).
+ *
+ * 실패해도 **부분 배치는 내지 않는다.** `snapshot` 은 그림일 뿐 `CandidateLeaf` 가 아니라
+ * 배치 경로로 흘러갈 수 없다.
  */
 export type ModulePipelineResult =
-  | { ok: true; leaf: CandidateLeaf }
-  | { ok: false; reason: RejectReason };
+  | { ok: true; leaf: CandidateLeaf; warnings: LayoutIssue[] }
+  | { ok: false; issues: LayoutIssue[]; snapshot?: LayoutSnapshot };
 
 /**
- * 사람이 읽을 한 줄 — 실패 후보 라벨·토스트에 그대로 쓴다.
+ * issue 하나 조립 — 카탈로그(개요 §5)의 한 줄에 대응한다.
  *
- * "자동배치 실패" 같은 머리말은 **붙이지 않는다** — 이 문자열을 받는 쪽
- * (`layeredWizard.failureResult`)이 이미 그 머리말을 단다. 두 군데서 달면 화면에
- * "자동배치 실패: 자동배치 실패 [multi-fluid] …" 로 겹친다(2026-07-25 브라우저 실측).
+ * `recoverable` 기본값이 `false` 인 이유: 여기 오는 것은 **이미 물러설 데가 없어서**
+ * 실패로 올라온 것들이다. 폴백을 거쳐 온 자리에서만 명시적으로 `true` 를 준다.
  */
-export function describeReject(reason: RejectReason): string {
-  return `[${reason.kind}] ${reason.detail}`;
+function fail(
+  code: string,
+  scope: IssueScope,
+  detail: string,
+  extra: Partial<Omit<LayoutIssue, "code" | "scope" | "detail">> = {},
+): LayoutIssue {
+  return { code, scope, severity: "error", recoverable: false, detail, ...extra };
+}
+
+/** 게임데이터가 낡았다 — 처방이 하나뿐이라(다시 import) 따로 둔다. */
+function gameDataIssue(detail: string, recipeName?: string): LayoutIssue {
+  return fail("stale-gamedata", "게임데이터", detail, { target: { recipeName } });
 }
 
 /**
- * 모듈 경로로 후보 leaf 생성. 적격(전부 item·미탭0·홉성공) 아니면 null.
+ * 모듈 경로로 후보 leaf 생성. 적격(전부 item·미탭0·납품 경로성공) 아니면 null.
  *
  * **진단 로그를 후보에 담는다.** 위저드가 계산 중 찍는 로그(`[팔·벨트 상한]`·
  * `[perimeterPass]`·`[channelGeometry]`·`모듈 경로 포기` …)를 콘솔에 바로 뱉지 않고
@@ -141,84 +141,120 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   const options = makeBuildSpec(input);
 
   /**
-   * 모듈 경로 포기 — **왜** 포기했는지 반드시 남긴다.
+   * 이 실행에서 모은 문제 전부 — **왜** 안 됐는지 반드시 남긴다.
    *
    * 옛 경로가 있던 시절엔 조용히 `null` 을 내면 화면에 "그냥 옛날 레이아웃"이 나와, 새
-   * 기능이 안 켜진 건지 안 만든 건지 구분이 안 됐다(2026-07-13: 유체 트리가 폴백했는데
-   * 사유를 몰라 추적 불가). 옛 경로가 사라진 지금은 더 단순하다 — **이 사유가 실패의 전부**다.
-   * 로그로 남기고, 호출자에게도 들려 보낸다.
+   * 기능이 안 켜진 건지 안 만든 건지 구분이 안 됐다(2026-07-13). 옛 경로가 사라진 지금은
+   * **이것이 사용자가 받는 설명의 전부**다.
+   *
+   * **첫 개에서 멈추지 않는다** — 노드 3개가 막혀 있으면 예전엔 세 번 고치고 세 번 다시
+   * 돌려야 전체를 알 수 있었다(2026-08-04 A-2 해소).
    */
-  const reject = (reason: RejectReason): ModulePipelineResult => {
-    console.info(`[autoLayout] 모듈 경로 포기 [${reason.kind}]: ${reason.detail}`);
-    return { ok: false, reason };
+  const issues: LayoutIssue[] = [];
+
+  /** 여기서 끝난다 — 모은 것 전부와, 있으면 그림을 함께 낸다. */
+  const abort = (snapshot?: LayoutSnapshot): ModulePipelineResult => {
+    for (const i of issues) console.info(`[autoLayout] 모듈 경로 포기 ${describeIssue(i)}`);
+    return { ok: false, issues, snapshot };
   };
 
   // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](../../../../docs/auto-layout/module/trunk-pipe.md)
   //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
   //    거절 사유가 다 다르므로 각각 이유를 남긴다(진단).
   const fluidTrunkOf = new Map<RecipeTreeNode, NodeSpec["fluidTrunk"]>();
-  /** 노드 → 그 모듈이 다루는 유체 이름. v1 은 노드당 최대 1개(외부 공급 입력). */
-  const fluidOf = new Map<RecipeTreeNode, string>();
+  /** 노드 → 그 모듈이 다루는 유체 이름들. 단계 A 는 면당 1줄이라 최대 2개(입력 E + 출력 W). */
+  const fluidsOf = new Map<RecipeTreeNode, string[]>();
   for (const node of order) {
-    const recipe = recipeMap.get(node.recipeName!);
-    if (!recipe) return reject({ kind: 'stale-gamedata', detail: `레시피 없음: ${node.recipeName}` });
-    const m = metas.get(node)!;
     const at = `${node.recipeName}`;
+    const recipe = recipeMap.get(node.recipeName!);
+    if (!recipe) { issues.push(gameDataIssue(`레시피 없음: ${node.recipeName}`, at)); continue; }
+    const m = metas.get(node)!;
 
-    // v1 유체 홉(docs/auto-layout-wizard.fluid-hop.md): **모듈당 유체 1줄**(입력 1 또는 출력 1).
-    // 다-유체 머신(정유·크래킹·황산 등)은 4면·회전이 얽혀 별개 문제 → 옛 경로 유지.
-    const fluidIn = recipe.ingredients.filter((i) => i.type === "fluid");
-    const fluidOut = recipe.products.filter((p) => p.type === "fluid");
-    if (fluidIn.length + fluidOut.length === 0) continue; // 아이템 전용 — 회전 없음.
-    if (fluidIn.length + fluidOut.length > 1) {
-      return reject({ kind: 'multi-fluid', detail: `${at}: 유체 입력 ${fluidIn.length} 출력 ${fluidOut.length}` });
-    }
+    // 유체 줄 전부를 **한 회전 안에** 앉힌다([chooseFluidTrunkPlan]). 면은 역할이 정하고
+    // (출력 W = 부모 쪽 · 입력 E = 자식 쪽), 회전은 머신 속성이라 모듈당 하나다.
+    // 면당 줄 수에 상한을 두지 않는다 — 한 면에 여러 줄이 서는 기하는 유체 하나당 폭 2칸
+    // (탭 1 + 관 1)으로 성립하고, 실제 상한은 **지하파이프 사거리**가 정한다(아래 게이트).
+    const fluidLines: FluidLineSpec[] = [
+      ...recipe.ingredients
+        .filter((i) => i.type === "fluid")
+        .map((i) => ({ name: i.name, role: "input" as const, fluidboxIndex: i.fluidbox_index })),
+      ...recipe.products
+        .filter((p) => p.type === "fluid")
+        .map((p) => ({ name: p.name, role: "output" as const, fluidboxIndex: p.fluidbox_index })),
+    ];
+    if (fluidLines.length === 0) continue; // 아이템 전용 — 회전 없음.
 
-    const isOutput = fluidOut.length === 1;
-    const fluid = isOutput ? fluidOut[0] : fluidIn[0];
-    const role: "input" | "output" = isOutput ? "output" : "input";
-    // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E) — generateModule 의 outputSide=W 와 정합.
-    // 자식-공급 유체 입력은 이제 **홉이 잇는다**(옛 거절 제거). 루트 유체 출력은 반출로 나간다.
-    const wantFace = isOutput ? "W" : "E";
     // 회전은 footprint 를 안 바꾼다는 전제 위에 있다 → 정사각형 머신만(§3).
-    if (m.w !== m.h) return reject({ kind: 'non-square', detail: `${m.entityName} ${m.w}×${m.h}` });
-    if (!options.pipeEntityName) return reject({ kind: 'no-pipe-entity', detail: "빌드 스펙에서 파이프를 선택하지 않음" });
+    if (m.w !== m.h) {
+      issues.push(fail('non-square', '모듈', `${at}: ${m.entityName} ${m.w}×${m.h} — 정사각형이 아니라 유체 회전 불가`,
+        { carrier: 'fluid', fixStep: 'machine', target: { recipeName: at } }));
+      continue;
+    }
+    if (!options.pipeEntityName) {
+      issues.push(fail('no-pipe-entity', '입력', '빌드 스펙에서 파이프를 선택하지 않음',
+        { carrier: 'fluid', fixStep: 'pipe', target: { recipeName: at } }));
+      continue;
+    }
 
     const entity = entityMap.get(m.entityName);
-    if (!entity) return reject({ kind: 'stale-gamedata', detail: `엔티티 게임데이터 없음: ${m.entityName}` });
-    // 유체 상자가 `wantFace` 를 보게 하는 회전을 데이터에서 고른다(§3).
-    const chosen = chooseMachineDirection(entity, { w: m.w, h: m.h }, fluid.name, wantFace, role);
-    if (!chosen) {
-      // 유체 상자의 면은 게임데이터의 `PipeConnection.direction` 에서만 나온다 — 좌표로는
-      // 못 정한다(모서리 칸이라 안 갈린다. → module/fluidPorts.ts 머리말). 그 필드가 없는
-      // **구버전 export** 면 어느 각도로 돌려도 슬롯이 하나도 안 나오므로, 두 실패를 구분해
-      // 알려준다. 안 그러면 "머신이 이상하다"로 오진한다.
-      const hasDirection = entity.fluid_boxes?.some((fb) =>
-        fb.connections.some((c) => c.direction !== undefined),
-      );
-      if (!hasDirection) {
-        return reject({
-          kind: 'stale-gamedata',
-          detail: `${m.entityName} 의 유체 연결에 direction 이 없다 (구 export). scripts/export-gamedata.lua 로 다시 뽑아야 함`,
-        });
+    if (!entity) { issues.push(gameDataIssue(`엔티티 게임데이터 없음: ${m.entityName}`, at)); continue; }
+    const plan = chooseFluidTrunkPlan(entity, { w: m.w, h: m.h }, fluidLines);
+    if (!plan.ok) {
+      // 사유를 그대로 흘린다 — 둘은 처방이 다르다. `no-rotation`(머신이 안 맞는다) ·
+      // `stale-gamedata`(게임데이터를 다시 뽑아야 한다).
+      if (plan.reason === 'stale-gamedata') {
+        issues.push(gameDataIssue(`${m.entityName}: ${plan.detail}`, at));
+      } else {
+        issues.push(fail('no-rotation', '모듈', `${at} ${m.entityName}: ${plan.detail}`,
+          { carrier: 'fluid', fixStep: 'machine', target: { recipeName: at } }));
       }
-      return reject({
-        kind: 'no-rotation',
-        detail: `${m.entityName}: 어느 각도로도 ${fluid.name} ${role} 유체 상자가 ${wantFace} 면에 안 옴 (fluid_boxes ${entity.fluid_boxes?.length ?? 0}개)`,
-      });
+      continue;
     }
 
-    fluidTrunkOf.set(node, {
-      direction: chosen.direction,
-      side: wantFace,
-      pipeEntityName: options.pipeEntityName,
-      // [pipeJumpToClusterPipe] 재료 — 상자 연결 칸의 면 위 위치 + 지하파이프 능력(BuildSpec).
-      // generateModule 이 이 셋으로 isJumpableToClusterPipe 를 판정한다(부족하면 옛 스파인).
-      fluidboxOffset: chosen.slot.offset,
+    // **한 면에 유체가 2줄 이상이면 점프가 필수다** — 옛 스파인(d1)은 기둥 전체를 먹어
+    // 둘째 줄의 유체 상자 칸을 막는다. 물러설 곳이 없으니 여기서 정직하게 거절한다.
+    // 판정은 [fluidJumpBlocker] 하나가 갖는다 — 계획([planModulePorts])이 같은 함수를 본다.
+    // 삼키면 스파인 둘이 같은 d1 을 다투다 한 줄이 끊겨(`unrouted-lines`) **원인에서 멀리
+    // 떨어진 곳**에 증상만 남는다.
+    const jumpBudget = {
       undergroundPipeEntityName: options.undergroundPipeEntityName,
       pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
+      seatRows: m.h,
+      beltLanes: Math.min(
+        options.longInserter ? 2 : 1,
+        recipe.ingredients.filter((i) => i.type !== 'fluid').length +
+          recipe.products.filter((p) => p.type !== 'fluid').length,
+      ),
+      maxInserterReach: options.longInserter?.reach ?? 1,
+    };
+    let crowded: LayoutIssue | undefined;
+    for (const side of ['W', 'E'] as const) {
+      const n = plan.lines.filter((l) => l.side === side).length;
+      if (n < 2) continue;
+      const blocked = fluidJumpBlocker(n, jumpBudget);
+      if (!blocked) continue;
+      // 처방이 갈린다: 파이프 단계로 돌아가라(지하파이프) vs 더 큰 머신을 골라라(좌석).
+      crowded = blocked.kind === 'seats-exhausted'
+        ? fail('fluid-face-seats-exhausted', '모듈', `${at} ${m.entityName} ${side} 면: ${blocked.detail}`,
+            { carrier: 'fluid', fixStep: 'machine', target: { recipeName: at } })
+        : fail('fluid-underground-too-short', '입력', `${at} ${m.entityName} ${side} 면: ${blocked.detail}`,
+            { carrier: 'fluid', fixStep: 'pipe', target: { recipeName: at } });
+      break;
+    }
+    if (crowded) { issues.push(crowded); continue; }
+
+    fluidTrunkOf.set(node, {
+      direction: plan.direction,
+      pipeEntityName: options.pipeEntityName,
+      // [pipeJumpToClusterPipe] 재료 — 지하파이프 능력(BuildSpec). 줄마다의 유체 상자 행은
+      // `lines` 안에 있다. generateModule 이 이 둘로 면별 점프 가능 여부를 판정한다.
+      undergroundPipeEntityName: options.undergroundPipeEntityName,
+      pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
+      lines: plan.lines,
+      // 이 레시피가 안 쓰는 유체 상자 칸 — 그 면은 스파인이 통째로 지나면 안 된다(점프 필수).
+      unusedFluidboxRows: plan.unusedFluidboxRows,
     });
-    fluidOf.set(node, fluid.name);
+    fluidsOf.set(node, plan.lines.map((l) => l.name));
   }
 
   // 1) NodeSpec — 트리에서 유도. id 는 노드별 결정적(order 인덱스 + 레시피).
@@ -303,7 +339,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     reservePerimeterLanes: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
     channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
-    // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeModuleHops 의
+    // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeDeliveryRoutes 의
     // maxJump 산식과 같아야 한다** — 지하벨트 prototype 이 없으면 방출기는 어차피 지상
     // 전용이므로, 장부도 0(지하 불가)으로 봐야 계획과 방출이 어긋나지 않는다.
     beltMaxUndergroundDistance: options.undergroundBeltEntityName
@@ -366,30 +402,59 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   }
 
   const pack = packModuleTree(specs, packConfig);
-  // 미탭(과용량 등) 있는 모듈 → 폴백.
-  for (const pl of pack.placements) {
-    if (pl.module.unroutedLines.length > 0) {
-      const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
-      return reject({
-        kind: 'unrouted-lines',
-        detail: `${pl.id}: [${names}] — ${pl.module.supply?.reason ?? "사유 없음"}`,
-      });
-    }
+
+  // **링크 신원 불일치**(A-3) — 여태 `pack.linkMismatches` 를 아무도 안 읽었다.
+  // 그 필드 주석이 "정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"
+  // 이라고 말하는데도 조용히 버려지고 있었다(2026-08-04 배선).
+  for (const mm of pack.linkMismatches) {
+    issues.push(fail('link-mismatch', '링크', `링크 신원 불일치: ${mm}`, { carrier: 'item' }));
   }
 
+  // 미탭(과용량 등) 있는 모듈.
+  for (const pl of pack.placements) {
+    if (pl.module.unroutedLines.length === 0) continue;
+    const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
+    // `supply.reason` 은 처방이 갈린다. **두 사유를 섞으면 안 된다** — 이름이 둘 다 "belt" 로
+    // 시작해서 예전엔 정확히 반대로 붙어 있었다(2026-08-04 실측):
+    //  - `lanes-exceed-capacity` — 면당 [ClusterBelt] 수(= 서로 다른 reach 개수)가 모자란다.
+    //    **벨트 티어와 무관**한데 4단계(벨트)로 보내고 있었다. 지렛대는 긴팔 인서터 → 3단계.
+    //  - `belt: demand>beltCap` — 진짜 벨트 처리량 부족. 4단계가 맞는데 옛 조건
+    //    (`includes('belt-demand')`)에 안 걸려 **처방이 아예 없었다**.
+    const why = pl.module.supply?.reason ?? "사유 없음";
+    const fixStep = why.includes('no-inserter') || why.includes('lanes-exceed-capacity')
+      ? 'inserter' as const
+      : why.includes('demand>beltCap') ? 'belt' as const
+      : undefined;
+    const scope: IssueScope = why.includes('no-inserter') ? '입력' : '모듈';
+    // **`supply.reason` 은 여기 오면 사인이 아니다.** 탭이 깨지는 것은 이제 실패가 아니라
+    // 기계별 포트로의 강등일 뿐이라(공급 모델 통합, 2026-08-05), 여기까지 왔다는 건 그 강등
+    // **뒤에도** 못 앉은 줄이 있다는 뜻이다 — 사유는 참고로 붙이고 처방은 그대로 둔다.
+    // (예전엔 *"유체 레시피는 1:1 폴백이 없다 → 모듈 전체 실패"* 를 덧붙였다. 그 폴백이
+    //  생겼으므로 그 문장은 삭제했다 — 남겨 두면 화면이 없는 원인을 가리킨다.)
+    const carrier = pl.module.unroutedLines.some((l) => l.kind === 'pipe')
+      ? ('fluid' as const)
+      : ('item' as const);
+    issues.push(fail('unrouted-lines', scope,
+      `${pl.id}: [${names}] — ${why}`,
+      { target: { moduleId: pl.id }, fixStep, carrier }));
+  }
+  if (issues.length > 0) return abort(snapshotOf(pack, issues));
+
   // 1b) [파이프 합류 가드](../util/pipeFlow.ts) — 파이프는 **방향이 없어서** 직교로 닿기만
-  //     하면 두 관망이 하나가 된다. 다른 유체끼리 이어지면 오염되고, 남의 머신 **출력** 유체
-  //     상자에 스치면 그 머신의 생산물이 내 관망으로 **조용히 샌다** — 화면상으론 멀쩡하고
+  //     하면 두 관망이 하나가 된다. 다른 유체끼리 이어지면 오염되고, 남의 머신
+  //     **유체 출력 상자**에 스치면 그 머신의 생산물이 내 관망으로 **조용히 샌다** — 화면상으론 멀쩡하고
   //     라우팅도 "성공"이라 보고한다. 그래서 파이프를 깔기 전에 금지 칸 지도를 만들어 둔다.
   //     유체마다 지도가 다르다 — **같은 유체는 닿아도 무해**하기 때문이다(처리량 무한).
-  const fluidOfPlacement = new Map<string, string>(); // spec id → 그 모듈의 유체 이름
-  for (const node of order) {
-    const f = fluidOf.get(node);
-    if (f) fluidOfPlacement.set(idOf.get(node)!, f);
-  }
+  //
+  //     **유체는 모듈이 아니라 셀마다 다르다.** 예전엔 "이 배치의 파이프 셀 = 그 모듈의 유일
+  //     유체" 로 태깅했는데, 모듈이 유체를 둘 다루는 순간 자기 파이프를 남의 유체로 오인해
+  //     오염을 못 잡거나 자기 자신을 거절한다. 그래서 **방출기가 놓으면서 적어 둔**
+  //     [GeneratedModule.pipeCells] 를 읽는다.
+  const allFluids = new Set<string>();
+  for (const node of order) for (const f of fluidsOf.get(node) ?? []) allFluids.add(f);
   const pipeFlowByFluid = new Map<string, PipeFlow>();
-  if (fluidOfPlacement.size > 0) {
-    // 유체 머신 — 프로토타입(`fluid_boxes`)이 상자의 **연결 칸**을, 레시피가 그 칸이 **받는
+  if (allFluids.size > 0) {
+    // 유체 머신 — 프로토타입(`fluid_boxes`)이 유체 상자의 **연결 칸**을, 레시피가 그 칸이 **받는
     // 유체 이름**을 정한다(→ docs/fluid-box-semantics.md). 유체 상자가 없는 머신(조립기)은 뺀다.
     const fluidRows = (rows: readonly { type: string; name: string; fluidbox_index?: number }[]) =>
       rows.filter((r) => r.type === "fluid").map((r) => ({ name: r.name, fluidbox_index: r.fluidbox_index }));
@@ -410,47 +475,35 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     // (fluidboxPipeCell·ClusterPipeTapCell — 끝 칸은 표면에 노출돼 접촉 합류가 생긴다.
     // 지하 통과 구간은 타일을 점유하지 않으므로 안 센다). 그 모듈의 유체를 나른다.
     const pipes: PipeFlowPipe[] = [];
-    for (const pl of pack.placements) {
-      const fluid = fluidOfPlacement.get(pl.id);
-      if (!fluid) continue;
-      for (const c of pl.module.cells)
-        if (
-          c.cell.entityType === EntityType.Pipe ||
-          c.cell.entityType === EntityType.InfinityPipe ||
-          c.cell.entityType === EntityType.PipeUnderground
-        )
-          pipes.push({ x: c.x, y: c.y, fluid });
-    }
-    for (const fluid of new Set(fluidOfPlacement.values()))
+    for (const pl of pack.placements) pipes.push(...pl.module.pipeCells);
+    for (const fluid of allFluids)
       pipeFlowByFluid.set(fluid, collectPipeFlow({ fluidName: fluid, pipes, machines }));
 
-    // 트렁크 검사 — 기둥은 자기 머신의 **입력** 상자를 지나가라고 깐 것이므로(같은 유체 →
-    // 안 막힘) 여기서 걸리는 건 진짜 사고다: 자기 머신의 출력 상자를 같이 스쳤거나, 옆
+    // 트렁크 검사 — 기둥은 자기 머신의 **유체 입력 상자**를 지나가라고 깐 것이므로(같은 유체 →
+    // 안 막힘) 여기서 걸리는 건 진짜 사고다: 자기 머신의 유체 출력 상자를 같이 스쳤거나, 옆
     // 모듈의 다른 유체 관망에 붙었거나. 거절은 **항상 안전하다** — 옛 경로로 폴백할 뿐이다.
+    //
+    //     **유체별로 나눠서 검사한다** — 한 모듈의 파이프를 통째로 한 유체의 지도에 대면,
+    //     유체가 둘일 때 서로를 "남의 파이프"로 보고 자기 자신을 거절한다.
     for (const pl of pack.placements) {
-      const fluid = fluidOfPlacement.get(pl.id);
-      if (!fluid) continue;
-      const ownPipes = pl.module.cells.filter(
-        (c) =>
-          c.cell.entityType === EntityType.Pipe ||
-          c.cell.entityType === EntityType.InfinityPipe ||
-          c.cell.entityType === EntityType.PipeUnderground,
-      );
-      const hit = pipeFlowConflict(ownPipes, pipeFlowByFluid.get(fluid)!);
-      if (hit)
-        return reject({
-          kind: 'pipe-merge-conflict',
-          detail: `${pl.id}: 트렁크 파이프(${fluid})가 (${hit.cell.x},${hit.cell.y}) 에서 ${hit.rule} 규칙 위반`,
-        });
+      for (const fluid of new Set(pl.module.pipeCells.map((c) => c.fluid))) {
+        const ownPipes = pl.module.pipeCells.filter((c) => c.fluid === fluid);
+        const hit = pipeFlowConflict(ownPipes, pipeFlowByFluid.get(fluid)!);
+        if (hit)
+          issues.push(fail('pipe-merge-conflict', '모듈',
+            `${pl.id}: 트렁크 파이프(${fluid})가 (${hit.cell.x},${hit.cell.y}) 에서 ${hit.rule} 규칙 위반`,
+            { carrier: 'fluid', target: { moduleId: pl.id }, cells: [{ ...hit.cell }] }));
+      }
     }
+    if (issues.length > 0) return abort(snapshotOf(pack, issues));
   }
 
-  // 유체 홉(pipe-to-pipe)이 **다른 유체**에 안 닿게 할 금지 칸 — 위 합류 가드가 낸 유체별
+  // 유체 납품 경로(pipe-to-pipe)이 **다른 유체**에 안 닿게 할 금지 칸 — 위 합류 가드가 낸 유체별
   // hard 지도를 그대로 넘긴다(같은 유체는 안 막아 공유 허용). 아이템 트리면 비어 있다.
   const fluidBlocked = new Map<string, ReadonlySet<string>>();
   for (const [fluid, pf] of pipeFlowByFluid) fluidBlocked.set(fluid, pf.blockedTilesHard);
 
-  const hopRes = routeModuleHops(pack, {
+  const deliveryRes = routeDeliveryRoutes(pack, {
     beltEntityName: options.beltEntityName,
     beltMaxUndergroundDistance: options.beltMaxUndergroundDistance,
     undergroundBeltEntityName: options.undergroundBeltEntityName,
@@ -459,19 +512,27 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
   });
-  if (hopRes.failures > 0) {
-    // 유체 실패는 따로 말한다 — 원인도 처방도 아이템과 다르다. 아이템 홉 실패는 라우팅이
-    // 어려웠다는 뜻이지만, 유체 실패는 **계획 자체가 불가능했다**는 뜻이다(§4.6).
-    const fluidFails = hopRes.routes.filter(
-      (r) => !r.ok && (r.reason === "fluid-unplannable" || r.reason === "fluid-planned-chain-blocked"),
-    );
-    if (fluidFails.length > 0) {
-      return reject({
-        kind: 'fluid-unplannable',
-        detail: `${fluidFails.map((r) => `${r.item}(${r.reason})`).join(", ")} — 한 채널에 다른 유체가 겹쳤을 가능성`,
-      });
+  if (deliveryRes.failures > 0) {
+    // **경로마다 하나씩** 낸다 — 예전엔 "3건" 이라는 숫자 하나였다. 어느 납품 경로가 왜
+    // 막혔는지는 `routes` 에 이미 있었는데 화면까지 못 갔다.
+    //
+    // 유체와 아이템을 가른다 — 원인도 처방도 다르다. 아이템 실패는 라우팅이 어려웠다는
+    // 뜻(dijkstra 폴백까지 갔다 = `recoverable`)이지만, 유체 실패는 **계획 자체가
+    // 불가능했다**는 뜻이다(§4.6, 폴백 없음 = `recoverable: false`).
+    for (const r of deliveryRes.routes) {
+      if (r.ok) continue;
+      const isFluidPlan = r.reason === "fluid-unplannable" || r.reason === "fluid-planned-chain-blocked";
+      if (isFluidPlan) {
+        issues.push(fail('fluid-unplannable', '채널',
+          `${r.item}(${r.reason}) — 한 채널에 다른 유체가 겹쳤을 가능성`,
+          { carrier: 'fluid', target: { deliveryKey: r.key } }));
+      } else {
+        issues.push(fail('delivery-failures', '납품경로',
+          `${r.item}: ${r.reason ?? "사유 없음"}`,
+          { carrier: 'item', recoverable: true, target: { deliveryKey: r.key } }));
+      }
     }
-    return reject({ kind: 'hop-failures', detail: `${hopRes.failures}건` });
+    return abort(snapshotOf(pack, issues, deliveryRes));
   }
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
@@ -479,20 +540,29 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   //     lane 안에 결정적 belt(직선 or ㄱ자)를 깔아 전역 외곽으로 옮긴다(탐색 없음). lane 이
   //     막히거나 미지원 배정(형제에 막힌 N/S 변→채널)인 상자만 건너뛰어 로컬 ring 에 남기고
   //     트리는 모듈 경로를 유지한다(회귀 0).
-  // rePathToPerimeter 는 moduleHop 처럼 **순수**하다(pack 미변형) — 무엇을 떼고
+  // rePathToPerimeter 는 deliveryRoute 처럼 **순수**하다(pack 미변형) — 무엇을 떼고
   // (droppedCellKeys) 무엇을 놓고(addedCells) 상자가 어디로 가는지(relocations)를 반환하고,
   // 적용은 아래 어댑터에서 Area 를 지을 때 한다.
   const perim = AUTO_LAYOUT_PERIMETER_PASS
-    ? rePathToPerimeter(pack, hopRes.strippedChestIds, hopRes.cells, {
+    ? rePathToPerimeter(pack, deliveryRes.strippedChestIds, deliveryRes.cells, {
         beltEntityName: options.beltEntityName,
         inserterEntityName: options.inserterEntityName,
         pipeEntityName: options.pipeEntityName, // 유체 포트는 파이프로 반출한다.
         pipeFlow: pipeFlowByFluid, // [파이프 합류 가드] — 반출 파이프가 밟으면 안 되는 칸.
       })
     : null;
+  // **반출 skip 경고**(A-4) — 여태 `skipped` 와 사유를 아무도 안 읽었다. 상자가 외곽으로
+  // 못 나가 로컬 ring 에 남아도 사용자는 알 길이 없었다. 물류 자체는 정상이므로(회귀 0
+  // 설계: 트렁크째 남아 여전히 이어진다) 실패가 아니라 **경고**다.
+  if (perim && perim.skipped > 0) {
+    issues.push({
+      code: 'perimeter-skip', scope: '반출경로', severity: 'warning', recoverable: true,
+      detail: `상자 ${perim.skipped}개가 외곽으로 못 나가 모듈 안에 남음${perim.reason ? ` — ${perim.reason}` : ''}`,
+    });
+  }
   const droppedKeys = perim?.droppedCellKeys ?? new Set<string>();
   const relocOrigin = new Map<string, { x: number; y: number }>();
-  const relocBelts = new Map<string, typeof hopRes.cells>();
+  const relocBelts = new Map<string, typeof deliveryRes.cells>();
   for (const r of perim?.relocations ?? []) {
     relocOrigin.set(r.chestId, r.origin);
     relocBelts.set(r.chestId, r.belts);
@@ -502,12 +572,12 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   //    - 머신 → internal.containers
   //    - belt/인서터 셀(strip 제외) → internal.placed
   //    - 유지되는 무한상자(raw 입력·루트 출력) → external.containers + ghost 셀 external.placed
-  //    - 홉 belt → internal.placed
+  //    - 납품 경로 belt → internal.placed
   //    strip(경계 chest+seat) 셀/상자는 제외.
   const internal = makeEmptyArea("internal");
   const external = makeEmptyArea("external");
-  const stripCells = hopRes.strippedCellKeys;
-  const stripChests = hopRes.strippedChestIds;
+  const stripCells = deliveryRes.strippedCellKeys;
+  const stripChests = deliveryRes.strippedChestIds;
 
   for (const pl of pack.placements) {
     const mod = pl.module;
@@ -522,7 +592,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     }
     for (const c of mod.cells) {
       const k = `${c.x},${c.y}`;
-      // stripCells=홉이 뗀 경계 chest/seat, droppedKeys=perimeter 이사한 상자의 옛 ghost/feeder.
+      // stripCells=납품 경로가 뗀 경계 chest/seat, droppedKeys=perimeter 이사한 상자의 옛 ghost/feeder.
       if (stripCells.has(k) || droppedKeys.has(k)) continue;
       if (c.cell.entityType === EntityType.InfinityChest) external.placed.push(c);
       else internal.placed.push(c);
@@ -534,37 +604,44 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       external.containers.push(origin ? { ...chest, origin } : chest);
     }
   }
-  for (const c of hopRes.cells) internal.placed.push(c);
+  for (const c of deliveryRes.cells) internal.placed.push(c);
   // perimeter 재배치가 새로 깐 셀(belt+feeder+이사한 chest) — mod.cells 순회와 같은 분류.
   for (const c of perim?.addedCells ?? []) {
     if (c.cell.entityType === EntityType.InfinityChest) external.placed.push(c);
     else internal.placed.push(c);
   }
-  // 홉 지하 corridor — Area 인덱스에 기록해 이후 라우팅(드래그 재라우팅 등)이 같은
+  // 납품 경로 지하 corridor — Area 인덱스에 기록해 이후 라우팅(드래그 재라우팅 등)이 같은
   // 직선 위 페어링 절단을 피하게 한다. placed 와 같은 직접-기록 규약(비-이중-commit:
   // 이 candidate 의 routings 는 commitRouting 을 타지 않는다).
-  internal.undergroundCorridors.push(...hopRes.corridors);
+  internal.undergroundCorridors.push(...deliveryRes.corridors);
 
   // 2b) Routing 객체 — 선/IO 라벨/드래그 그룹 복원(옛 routings=[] 한계 해소). 끝점은 실제
-  //    컨테이너 id(머신 = `${모듈id}-m0`, 유지된 상자). placed = 홉 belt 셀(직선 폴백 가능).
-  //    홉=머신→머신(부모-자식, 드래그 트리), raw 입력=상자→머신, 루트 출력=머신→상자.
+  //    컨테이너 id(머신 = `${모듈id}-m0`, 유지된 상자). placed = 납품 경로 belt 셀(직선 폴백 가능).
+  //    납품 경로=머신→머신(부모-자식, 드래그 트리), raw 입력=상자→머신, 루트 출력=머신→상자.
   const routings: Routing[] = [];
   const itemPort = (containerId: string, cell: { x: number; y: number }, face: PortFace): ContainerPort =>
     ({ containerId, cell, face, kind: "item" });
-  pack.hops.forEach((hop, i) => {
+  // **위치가 아니라 신원으로 짝짓는다.** `routeDeliveryRoutes` 는 유체를 먼저 깔려고
+  // `pack.deliveries` 를 재정렬해서 돌므로 결과 배열의 순서가 계획 순서와 다르다 —
+  // `routes[i]` 로 읽으면 유체와 아이템이 섞이는 순간 **다른 경로의 셀이 이 라우팅에 붙는다**
+  // (2026-08-04 수정. 안정 정렬이라 한 종류뿐이면 안 드러났고, 그 값을 쓰는 연결선 렌더까지
+  //  죽어 있어 화면에도 안 나왔다).
+  const routeByKey = new Map(deliveryRes.routes.map((r) => [r.key, r]));
+  pack.deliveries.forEach((delivery) => {
+    const route = routeByKey.get(deliveryKey(delivery));
     // belt-following: 자식 트렁크 spine + gap belt + 부모 트렁크 spine (boxless 라 연속).
-    const placed = [...hop.from.cells, ...(hopRes.routes[i]?.cells ?? []), ...hop.to.cells];
+    const placed = [...delivery.from.cells, ...(route?.cells ?? []), ...delivery.to.cells];
     routings.push({
       id: makeId("r"),
       kind: "item",
-      from: itemPort(`${hop.fromId}-m0`, hop.from.anchor, hop.from.face),
-      to: itemPort(`${hop.toId}-m0`, hop.to.anchor, hop.to.face),
+      from: itemPort(`${delivery.fromId}-m0`, delivery.from.anchor, delivery.from.face),
+      to: itemPort(`${delivery.toId}-m0`, delivery.to.anchor, delivery.to.face),
       placed,
-      // 이 홉이 깐 지하 corridor(표시·수정 모드 정리용 사본 — area 기록이 원본).
-      corridors: (hopRes.routes[i]?.corridors ?? []).map((c) => ({ ...c, range: [c.range[0], c.range[1]] as [number, number] })),
+      // 이 납품 경로가 깐 지하 corridor(표시·수정 모드 정리용 사본 — area 기록이 원본).
+      corridors: (route?.corridors ?? []).map((c) => ({ ...c, range: [c.range[0], c.range[1]] as [number, number] })),
       // 포트 산출 근거(표시용) — 자식 출력 포트 / 부모 입력 포트 각각.
-      fromPortMeta: hop.from.meta,
-      toPortMeta: hop.to.meta,
+      fromPortMeta: delivery.from.meta,
+      toPortMeta: delivery.to.meta,
     });
   });
   for (const pl of pack.placements) {
@@ -604,8 +681,49 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       routings,
       squarenessPenalty: bbox ? Math.abs(bbox.w - bbox.h) : 0,
       children: [],
-      label: `모듈 · ${order.length} 노드 · ${pack.hops.length} 홉 · raw ${pack.rawPorts.length}`,
+      label: `모듈 · ${order.length} 노드 · ${pack.deliveries.length} 납품 경로 · raw ${pack.rawPorts.length}`,
     },
+    // 성공한 배치에도 경고가 붙을 수 있다 — 반출 skip 이 그 유일한 예다.
+    warnings: issues,
+  };
+}
+
+/**
+ * 실패를 **짚기 위한 그림** — `pack` 에서 유도만 한다(재계산 금지).
+ *
+ * 같은 기하를 다시 계산하면 그것이 곧 "두 번째 렌더러"가 되고, 렌더러가 아니라
+ * **데이터 층에서** 어긋난다는 점에서 더 나쁘다.
+ */
+function snapshotOf(
+  pack: PackResult,
+  issues: readonly LayoutIssue[],
+  deliveryRes?: DeliveryResult,
+): LayoutSnapshot {
+  const problemModules = new Set(
+    issues.filter((i) => i.severity === 'error' && i.target?.moduleId).map((i) => i.target!.moduleId!),
+  );
+  const okByKey = new Map((deliveryRes?.routes ?? []).map((r) => [r.key, r.ok]));
+  return {
+    modules: pack.placements.map((pl) => ({
+      id: pl.id,
+      recipeName: undefined,
+      entityName: pl.module.machines[0]?.entityName ?? 'unknown',
+      machineCount: pl.module.machines.length,
+      bbox: { ...pl.module.bbox },
+      status: problemModules.has(pl.id) ? 'problem' : 'ok',
+    })),
+    deliveries: pack.deliveries.map((d) => {
+      const key = deliveryKey(d);
+      return {
+        key,
+        item: d.item,
+        from: { ...d.from.anchor },
+        to: { ...d.to.anchor },
+        // 라우팅까지 못 간 실패(층 2 등)면 결과가 없다 — 그건 "아직 안 깔림" 이지 실패가 아니다.
+        ok: okByKey.get(key) ?? true,
+      };
+    }),
+    bbox: { ...pack.bbox },
   };
 }
 

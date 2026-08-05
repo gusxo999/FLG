@@ -6,7 +6,7 @@
  *   - anchor: 블랙박스 테두리 위의 포트 셀
  *   - face:   바깥 방향(포트가 향한 면)
  *   - perimeter: seat(상자)가 앉을 전역 외곽 사각형(변 좌표)
- *   - obstacles: 점유 셀 집합(다른 블랙박스 footprint·홉 belt 등)
+ *   - obstacles: 점유 셀 집합(다른 블랙박스 footprint·납품 경로 belt 등)
  * 만 본다.
  *
  * ## 두 모드
@@ -39,7 +39,7 @@ export interface RouteHint {
   host: LaneHost;
   /**
    * 기하 예약(channelGeometryPlanner)이 확정한 세로 주행 열(절대 x) — channel host 에서
-   * 스캔 대신 이 트랙을 먼저 재생한다(예약 자리는 홉이 침범 못 하므로 비어 있어야 정상).
+   * 스캔 대신 이 트랙을 먼저 재생한다(예약 자리는 납품 경로가 침범 못 하므로 비어 있어야 정상).
    * 막혀 있으면(예약 밖 점유) 기존 스캔으로 폴백.
    */
   laneX?: number;

@@ -1,9 +1,9 @@
 ﻿/**
- * moduleHop — 모듈 간 홉 (조각 4, 순수·무상자 belt-to-belt).
+ * deliveryRoute — 모듈 간 납품 경로 (조각 4, 순수·무상자 belt-to-belt).
  *
  * 단일 출처: 본 설계안(모듈 출력 경계 / ⑤ 핸드오프 = 벨트-투-벨트 무상자).
  *
- * [modulePacking.packModuleTree] 가 낸 `HopSpec`(자식 출력 포트 → 부모 입력 포트)을
+ * [modulePacking.packModuleTree] 가 낸 `DeliverySpec`(자식 출력 포트 → 부모 입력 포트)을
  * 받아, 두 포트의 **경계 무한상자를 떼고**(+ 그 상자에 붙은 인서터가 belt→belt 피더면
  * 그것도 함께 떼고) 그 자리를 belt 로 메워 자식 출력 trunk 끝 → 부모 입력 trunk 머리를
  * **상자 없이 직접** 잇는다. 어느 인서터가 함께 떨어지는지는 [seatIsBeltFeeder] 참조.
@@ -25,7 +25,7 @@
  *
  * ## 경로탐색
  * 검증된 [containerRouting.dijkstraWithJumps] 를 그대로 재사용 — start=chest_from,
- * end=chest_to, blocked=전 모듈 occupancy(이 홉의 두 chest 만 제외).
+ * end=chest_to, blocked=전 모듈 occupancy(이 납품 경로의 두 chest 만 제외).
  *
  * ## 지하벨트 (조각 C)
  * emit 을 [containerRouting.emitItemPath] 로 통일(edge-aware, 단일 출처)해 점프 경로를
@@ -35,7 +35,7 @@
  *    남는 구멍은 양 끝 셀뿐이라 `requiredStartJump`(트렁크 유입 방향, half-lane side-load
  *    방지)·`requiredEndJump`(트렁크 유출 방향 — 어기면 출구가 seat 를 안 향해 물류 누수)
  *    로 막는다.
- *  - corridor 는 홉 간 누적 전달(같은 직선 위 페어링 절단 방지)하고 결과로 내보내
+ *  - corridor 는 납품 경로 간 누적 전달(같은 직선 위 페어링 절단 방지)하고 결과로 내보내
  *    호출자(moduleWizard)가 Area/Routing 에 기록한다.
  *  - 게이트: `undergroundBeltEntityName` 이 없거나 distance≤0 이면 지상 전용(기존 동작).
  *
@@ -53,62 +53,75 @@ import { dijkstraWithJumps, type DijkstraResult } from "./containerRouting";
 import { emitItemPath, emitFluidPath } from "../execution/emitPath";
 import { cellKey, faceVector, segment } from "../util/helper";
 import type { ModulePort } from "../module/clusterModule";
-import { hopMapKey, type HopGeometry, type HopSpec, type PackResult } from "./modulePacking";
+import { deliveryKey, type DeliveryGeometry, type DeliverySpec, type PackResult } from "./modulePacking";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 import { EntityType } from "../../types/layout";
 
-export interface HopConfig {
+export interface DeliveryConfig {
   beltEntityName: string;
   /** 지하벨트 점프 거리(>0 이면 underground 허용). v1 기본 0(지상 전용). */
   beltMaxUndergroundDistance?: number;
   /** 지하벨트 prototype(점프 blockGroup). */
   undergroundBeltEntityName?: string;
   /**
-   * 유체 홉(pipe-to-pipe, docs/auto-layout-wizard.fluid-hop.md) 재료. 없으면 유체 홉은
-   * 실패 처리(→ 트리 전체 옛 경로 폴백). 파이프는 인서터·방향이 없어 아이템 홉보다 단순하다.
+   * 유체 납품 경로(pipe-to-pipe, docs/auto-layout-wizard.fluid-delivery.md) 재료. 없으면 유체 납품 경로는
+   * 실패 처리(→ 트리 전체 옛 경로 폴백). 파이프는 인서터·방향이 없어 아이템 납품 경로보다 단순하다.
    */
   pipeEntityName?: string;
   pipeMaxUndergroundDistance?: number;
   undergroundPipeEntityName?: string;
   /**
-   * 유체별 **금지 칸**(합류 가드) — 홉이 **다른 유체**에 닿지 않게. 키=유체 이름,
+   * 유체별 **금지 칸**(합류 가드) — 납품 경로가 **다른 유체**에 닿지 않게. 키=유체 이름,
    * 값=cellKey 집합(그 유체의 `PipeFlow.blockedTilesHard`). 같은 유체는 안 막는다(공유 허용).
    */
   fluidBlocked?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
-/** 한 홉의 라우팅 결과. */
-export interface HopRoute {
+/** 한 납품 경로의 라우팅 결과. */
+export interface DeliveryRoute {
+  /**
+   * **이 경로 자체의 신원**([deliveryKey]) — 배열 위치가 아니다.
+   *
+   * 아래 루프는 유체를 먼저 깔려고 `pack.deliveries` 를 **재정렬**해서 돈다(§유체 우선).
+   * 그래서 이 배열의 순서는 `pack.deliveries` 의 순서와 다르다. 예전엔 호출자
+   * (`moduleWizard`)가 `routes[i]` 를 `pack.deliveries[i]` 의 결과로 읽어, 유체와 아이템이
+   * 섞이는 순간 **다른 경로의 셀을 엉뚱한 라우팅에 붙였다**(2026-08-04 발견).
+   *
+   * 안정 정렬이라 전부 아이템/전부 유체면 어긋나지 않아 여태 드러나지 않았고, 그 값을 쓰는
+   * 연결선 렌더까지 죽어 있어 화면에도 안 나왔다. 위치로 되찾는 대신 신원을 싣는다 —
+   * 이 저장소가 `seq` 에서 이미 배운 교훈이다([modulePacking] `linkId` 주석).
+   */
+  key: string;
   item: string;
   ok: boolean;
-  /** 홉 belt/지하벨트 셀들(경계 chest/seat 자리 포함). 실패 시 빈 배열. */
+  /** 납품 경로 belt/지하벨트 셀들(경계 chest/seat 자리 포함). 실패 시 빈 배열. */
   cells: PlacedCell[];
-  /** 이 홉이 깐 지하 corridor 들(점프 0 이면 빈 배열). */
+  /** 이 납품 경로가 깐 지하 corridor 들(점프 0 이면 빈 배열). */
   corridors: UndergroundCorridor[];
   reason?: string;
 }
 
-export interface ModuleHopResult {
-  /** 모든 홉 belt 셀(절대 좌표). */
+export interface DeliveryResult {
+  /** 모든 납품 경로 belt 셀(절대 좌표). */
   cells: PlacedCell[];
-  /** 모든 홉의 지하 corridor(절대 좌표) — Area.undergroundCorridors 로 기록 대상. */
+  /** 모든 납품 경로의 지하 corridor(절대 좌표) — Area.undergroundCorridors 로 기록 대상. */
   corridors: UndergroundCorridor[];
   /** 떼야 할 무한상자 컨테이너 id(자식 출력 싱크 + 부모 입력 소스). */
   strippedChestIds: Set<string>;
   /** 떼야 할 모듈 셀 좌표("x,y") — 경계 chest ghost + belt→belt 가 된 경계 인서터. */
   strippedCellKeys: Set<string>;
-  routes: HopRoute[];
-  /** 경로 못 찾은 홉 수. */
+  routes: DeliveryRoute[];
+  /** 경로 못 찾은 납품 경로 수. */
   failures: number;
   /**
-   * **예약(계획된 체인)으로 깐 홉 수** — 탐색이 없었던 홉.
+   * **예약(계획된 체인)으로 깐 납품 경로 수** — 탐색이 없었던 납품 경로.
    *
    * `failures === 0` 은 "길이 났다"만 말하고 **누가 냈는지는 안 말한다.** dijkstra 폴백도
    * 길을 내기 때문이다. 예약 철학이 지켜지는지 보려면 이 수를 봐야 한다
-   * (`planned + dijkstraFallback + failures = 아이템 홉 수`).
+   * (`planned + dijkstraFallback + failures = 아이템 납품 경로 수`).
    */
   planned: number;
-  /** 예약이 못 대서 dijkstra 로 넘어간 홉 수 — 0 이 아니면 예약에 구멍이 있다. */
+  /** 예약이 못 대서 dijkstra 로 넘어간 납품 경로 수 — 0 이 아니면 예약에 구멍이 있다. */
   dijkstraFallback: number;
 }
 
@@ -126,7 +139,7 @@ function portGeometry(port: ModulePort): {
 }
 
 /**
- * 이 포트의 seat(인서터)이 **벨트↔상자 피더**인가 — 즉 홉이 상자를 벨트로 바꾸면
+ * 이 포트의 seat(인서터)이 **벨트↔상자 피더**인가 — 즉 납품 경로가 상자를 벨트로 바꾸면
  * **쓸모가 없어지는가**.
  *
  * 포트에는 모양이 둘 있고, 좌석의 운명이 갈린다:
@@ -135,9 +148,9 @@ function portGeometry(port: ModulePort): {
  *    **유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔아도 픽업 셀은 그대로라
  *    인서터는 **남겨야** 한다. 모듈 안에 벨트가 없으므로 `port.cells` 가 비어 있다.
  *  - **링크/트렁크 벨트** — `[상자][인서터][벨트]`([emitOutputLinks]·[emitInputLinks]·
- *    [emitTapInserting] 공통 규약). 상자가 홉 belt 로 바뀌면 이 인서터는 **belt→belt**
+ *    [emitTapInserting] 공통 규약). 상자가 납품 경로 belt 로 바뀌면 이 인서터는 **belt→belt**
  *    가 되어, 하는 일은 없이 처리량만 인서터 속도로 깎는다. 떼고 그 자리도 belt 로 메워
- *    홉 벨트가 트렁크로 **곧장 흐르게** 해야 한다.
+ *    납품 경로 벨트가 트렁크로 **곧장 흐르게** 해야 한다.
  *
  * 판정은 기하에서 **유도**한다 — 포트가 깐 벨트 셀에 `trunkStart`(= anchor − 2·faceVec)
  * 가 있으면 좌석 건너편이 벨트다. 새 플래그를 심으면 방출기와 여기가 따로 놀 수 있다.
@@ -188,26 +201,26 @@ function buildOccupancy(pack: PackResult): Set<string> {
 }
 
 /**
- * 모든 홉을 라우팅. 결정적 순서(packResult.hops 순서)로 누적 occupancy 를 공유해
- * 뒤 홉이 앞 홉 belt 를 피한다.
+ * 모든 납품 경로를 라우팅. 결정적 순서(packResult.deliveries 순서)로 누적 occupancy 를 공유해
+ * 뒤 납품 경로가 앞 납품 경로 belt 를 피한다.
  */
-export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopResult {
+export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): DeliveryResult {
   const base = buildOccupancy(pack);
-  // 탐색 경계 — 전체 배치 bbox(반출 마진 포함). 홉은 배치 안에서 끝나므로 밖으로 나갈
+  // 탐색 경계 — 전체 배치 bbox(반출 마진 포함). 납품 경로는 배치 안에서 끝나므로 밖으로 나갈
   // 이유가 없고, 안 가두면 막힌 폴백이 무한 격자를 훑다 터진다.
   const bounds = {
     x0: pack.bbox.x, y0: pack.bbox.y,
     x1: pack.bbox.x + pack.bbox.w - 1, y1: pack.bbox.y + pack.bbox.h - 1,
   };
-  const hopBelts = new Set<string>(); // 이미 깐 홉 belt(지하 입/출구 포함)
+  const deliveryBelts = new Set<string>(); // 이미 깐 납품 경로 belt(지하 입/출구 포함)
   const cells: PlacedCell[] = [];
-  const corridors: UndergroundCorridor[] = []; // 홉 간 누적 — 같은 직선 위 페어링 절단 방지
+  const corridors: UndergroundCorridor[] = []; // 납품 경로 간 누적 — 같은 직선 위 페어링 절단 방지
   const strippedChestIds = new Set<string>();
   const strippedCellKeys = new Set<string>();
-  const routes: HopRoute[] = [];
+  const routes: DeliveryRoute[] = [];
   let failures = 0;
-  let planned = 0;        // 예약 체인으로 깐 홉(탐색 없음)
-  let dijkstraFallback = 0; // 예약이 못 대서 탐색으로 넘어간 홉
+  let planned = 0;        // 예약 체인으로 깐 납품 경로(탐색 없음)
+  let dijkstraFallback = 0; // 예약이 못 대서 탐색으로 넘어간 납품 경로
 
   // 지하벨트 게이트 — prototype 미지정(위저드에서 지하벨트 미선택)이면 지상 전용(기존
   // 동작). emit 은 emitItemPath(edge-aware)라 점프 경로가 지하벨트 입/출구로 정확히
@@ -217,152 +230,153 @@ export function routeModuleHops(pack: PackResult, config: HopConfig): ModuleHopR
     ? Math.max(0, config.beltMaxUndergroundDistance ?? 0)
     : 0;
   const blockGroup = config.undergroundBeltEntityName ?? config.beltEntityName;
-  // 유체 홉 점프 거리 — 지하파이프를 골랐을 때만. 아이템과 별개(pipe-to-ground blockGroup).
+  // 유체 납품 경로 점프 거리 — 지하파이프를 골랐을 때만. 아이템과 별개(pipe-to-ground blockGroup).
   const maxJumpPipe = config.undergroundPipeEntityName
     ? Math.max(0, config.pipeMaxUndergroundDistance ?? 0)
     : 0;
 
-  // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 홉은
+  // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 납품 경로는
   // 배정 좌표(계단꼴/열 갈아타기/지하 횡단)를 탐색 없이 체인으로 방출한다. dijkstra 는
-  // 최후 폴백으로만 남고, 예약 자리(반출 lane + 다른 계획 홉)를 침범하지 못한다 —
+  // 최후 폴백으로만 남고, 예약 자리(반출 lane + 다른 계획 납품 경로)를 침범하지 못한다 —
   // "먼저 깔린 경로가 나중 경로의 자리를 뺏는" 예약의 구멍을 여기서 봉인한다.
   const geo = pack.channelGeometry;
   const reservedExport = geo?.reservedExportCells ?? new Set<string>();
   const plannedChains = new Map<string, DijkstraResult>();
   if (geo) {
-    for (const hop of pack.hops) {
-      const k = hopMapKey(hop);
-      const g = geo.hops.get(k);
+    for (const delivery of pack.deliveries) {
+      const k = deliveryKey(delivery);
+      const g = geo.deliveries.get(k);
       if (!g) continue;
       if (g.kind === "undergroundCrossing" && maxJump < 2) continue; // 지하 미허용 — dijkstra 로
-      const chain = buildPlannedChain(hop, g);
+      const chain = buildPlannedChain(delivery, g);
       if (chain) plannedChains.set(k, chain);
     }
   }
-  const reservedHop = new Map<string, Set<string>>();
+  const reservedDelivery = new Map<string, Set<string>>();
   for (const [k, chain] of plannedChains)
-    reservedHop.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
+    reservedDelivery.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
 
-  // 유체 홉을 **먼저** 깐다. 순서가 실패 비용을 따른다(docs/…fluid-hop-reservation.md §4.3):
+  // 유체 납품 경로를 **먼저** 깐다. 순서가 실패 비용을 따른다(docs/…fluid-delivery-reservation.md §4.3):
   // 아이템의 "예약 무시 재시도"(아래)는 남의 계획 칸을 밟는데, 그게 유체의 자리였으면
   // 유체는 물러설 데가 없어 트리가 통째로 죽는다. 유체가 먼저 자리를 실제로 차지하면
-  // (hopBelts 에 올라가면) 그 재시도가 밟을 수 없다 — 순서 하나로 최악을 막는다.
-  const isFluidHop = (h: HopSpec) => h.from.chest.kind === "infinity-pipe";
-  const ordered = [...pack.hops].sort((a, b) => Number(isFluidHop(b)) - Number(isFluidHop(a)));
+  // (deliveryBelts 에 올라가면) 그 재시도가 밟을 수 없다 — 순서 하나로 최악을 막는다.
+  const isFluidDelivery = (h: DeliverySpec) => h.from.chest.kind === "infinity-pipe";
+  const ordered = [...pack.deliveries].sort((a, b) => Number(isFluidDelivery(b)) - Number(isFluidDelivery(a)));
 
-  for (const hop of ordered) {
-    const isFluid = isFluidHop(hop);
-    const k = hopMapKey(hop);
+  for (const delivery of ordered) {
+    const isFluid = isFluidDelivery(delivery);
+    const k = deliveryKey(delivery);
     const chain = plannedChains.get(k);
-    let route: HopRoute;
-    const mergeGuard = isFluid ? config.fluidBlocked?.get(hop.item) : undefined;
-    if (chain && plannedChainClear(chain, k, base, hopBelts, reservedExport, reservedHop, mergeGuard)) {
+    let route: Omit<DeliveryRoute, "key">;
+    const mergeGuard = isFluid ? config.fluidBlocked?.get(delivery.item) : undefined;
+    if (chain && plannedChainClear(chain, k, base, deliveryBelts, reservedExport, reservedDelivery, mergeGuard)) {
       // 계획 체인은 품목-무관하다([buildPlannedChain]) — 갈리는 곳은 방출 하나뿐이다.
-      route = isFluid ? finishFluidChain(hop, chain, config) : finishChain(hop, chain, config);
+      route = isFluid ? finishFluidChain(delivery, chain, config) : finishChain(delivery, chain, config);
       planned += 1;
     } else if (isFluid && geo) {
       // **유체엔 탐색 폴백이 없다**(결정 D3). 원칙이 "모든 배치는 처음에 계획할 수 있어야
       // 한다"이므로, 계획 없이 탐색으로 때운 경로를 유체에 남기지 않는다 — 그건 "성공했다는데
-      // 어디로 지나가는지 아무도 모르는" 배치다. 여기 오면 홉 실패 → 트리가 거절된다.
+      // 어디로 지나가는지 아무도 모르는" 배치다. 여기 오면 납품 경로 실패 → 트리가 거절된다.
       //
       // 유체는 장부에 **항상** 들어가므로(§1.1: wantFace 가 W/E 를 강제) 계획 자체가 없는
       // 경우는 장부가 자리를 못 준 것이다 — 사실상 한 채널 안 다른 유체끼리의 교차뿐이다.
       route = {
-        item: hop.item, ok: false, cells: [], corridors: [],
+        item: delivery.item, ok: false, cells: [], corridors: [],
         reason: chain ? "fluid-planned-chain-blocked" : "fluid-unplannable",
       };
     } else if (isFluid) {
       // 장부 자체가 꺼진 모드(AUTO_LAYOUT_CHANNEL_GEOMETRY off) — 아이템도 전부 탐색으로
       // 가는 "계획 없음" 모드다. 유체만 유별나게 실패시킬 이유가 없어 옛 탐색을 쓴다.
       route = config.pipeEntityName
-        ? routeOneFluidHop(hop, base, hopBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(hop.item))
-        : { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
+        ? routeOneFluidDelivery(delivery, base, deliveryBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(delivery.item))
+        : { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
     } else {
       dijkstraFallback += 1;
       if (chain && AUTO_LAYOUT_COORD_DUMP)
-        console.log("[moduleHop] planned chain blocked — dijkstra fallback", k);
-      // 다른 예약 자리(반출 lane + 다른 계획 홉)는 dijkstra 도 침범 금지.
+        console.log("[deliveryRoute] planned chain blocked — dijkstra fallback", k);
+      // 다른 예약 자리(반출 lane + 다른 계획 납품 경로)는 dijkstra 도 침범 금지.
       const extra = new Set<string>(reservedExport);
-      for (const [k2, cells] of reservedHop) if (k2 !== k) for (const c of cells) extra.add(c);
-      route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, bounds, extra);
+      for (const [k2, cells] of reservedDelivery) if (k2 !== k) for (const c of cells) extra.add(c);
+      route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds, extra);
       if (!route.ok && extra.size > 0) {
-        // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(홉 실패 = 트리 전체
+        // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(납품 경로 실패 = 트리 전체
         // 폴백이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
         //
         // **이 재시도는 남의 예약을 밟는다. 그 대가가 연쇄한다**(2026-07-22 조사):
         // 밟힌 계획은 다음 차례에 막혀 자기도 탐색으로 내려가고, 그 탐색이 또 예약을
-        // 밟을 수 있다. 관측된 사슬 — 계획 없던 홉 하나가 두 홉을 더 끌고 내려갔다.
-        // 그래도 **의도된 거래**다: 여기서 물러나면 홉 실패 → 트리 전체가 옛 경로로
+        // 밟을 수 있다. 관측된 사슬 — 계획 없던 납품 경로 하나가 두 납품 경로를 더 끌고 내려갔다.
+        // 그래도 **의도된 거래**다: 여기서 물러나면 납품 경로 실패 → 트리 전체가 옛 경로로
         // 떨어져 훨씬 크게 잃는다. 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
         // **최소한만 밟게** 해야 하는데, 그건 라우터 비용 모델을 바꾸는 별개 작업이다.
-        route = routeOneHop(hop, base, hopBelts, corridors, maxJump, blockGroup, config, bounds);
+        route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds);
         if (AUTO_LAYOUT_COORD_DUMP)
-          console.log("[moduleHop] 예약 무시 재시도 — 남의 계획을 밟는다(연쇄 가능)", k);
+          console.log("[deliveryRoute] 예약 무시 재시도 — 남의 계획을 밟는다(연쇄 가능)", k);
       }
     }
-    routes.push(route);
+    // 신원을 여기서 찍는다 — 이 루프만이 "이 결과가 어느 납품 경로의 것인지" 를 안다.
+    routes.push({ ...route, key: k });
     if (!route.ok) {
       failures += 1;
       continue;
     }
     for (const c of route.cells) {
       cells.push(c);
-      hopBelts.add(cellKey(c.x, c.y));
+      deliveryBelts.add(cellKey(c.x, c.y));
     }
     corridors.push(...route.corridors);
-    strippedChestIds.add(hop.from.chest.id);
-    strippedChestIds.add(hop.to.chest.id);
-    for (const sk of stripKeys(hop)) strippedCellKeys.add(sk);
+    strippedChestIds.add(delivery.from.chest.id);
+    strippedChestIds.add(delivery.to.chest.id);
+    for (const sk of stripKeys(delivery)) strippedCellKeys.add(sk);
   }
 
   return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback };
 }
 
 /**
- * 한 홉이 떼는 셀 좌표 — 양끝 chest(ghost) + **좌석이 belt→belt 피더인 끝의 인서터.**
+ * 한 납품 경로가 떼는 셀 좌표 — 양끝 chest(ghost) + **좌석이 belt→belt 피더인 끝의 인서터.**
  *
  * 포트 모양에 따라 좌석의 운명이 갈린다([seatIsBeltFeeder]): 링크/트렁크 포트의 좌석은
  * 상자가 belt 로 바뀌는 순간 belt→belt 가 되어 처리량만 깎으므로 떼고 그 자리도 belt 로
  * 메운다([finishChain] 이 체인을 좌석까지 늘린다). 1:1 다이렉트 인서팅의 좌석은 머신에
  * 재료를 넣는 유일한 물건이라 **남긴다** — 떼면 머신이 굶는다.
  *
- * 두 끝은 **따로** 판정한다. 한 모듈은 링크 벨트, 상대는 1:1 인 홉이 실제로 생긴다.
+ * 두 끝은 **따로** 판정한다. 한 모듈은 링크 벨트, 상대는 1:1 인 납품 경로가 실제로 생긴다.
  */
-function stripKeys(hop: HopSpec): string[] {
-  const g0 = portGeometry(hop.from);
-  const g1 = portGeometry(hop.to);
+function stripKeys(delivery: DeliverySpec): string[] {
+  const g0 = portGeometry(delivery.from);
+  const g1 = portGeometry(delivery.to);
   const keys = [cellKey(g0.chest.x, g0.chest.y), cellKey(g1.chest.x, g1.chest.y)];
-  if (seatIsBeltFeeder(hop.from)) keys.push(cellKey(g0.seat.x, g0.seat.y));
-  if (seatIsBeltFeeder(hop.to)) keys.push(cellKey(g1.seat.x, g1.seat.y));
+  if (seatIsBeltFeeder(delivery.from)) keys.push(cellKey(g0.seat.x, g0.seat.y));
+  if (seatIsBeltFeeder(delivery.to)) keys.push(cellKey(g1.seat.x, g1.seat.y));
   return keys;
 }
 
-function routeOneHop(
-  hop: HopSpec,
+function routeOneDelivery(
+  delivery: DeliverySpec,
   base: Set<string>,
-  hopBelts: Set<string>,
+  deliveryBelts: Set<string>,
   corridors: ReadonlyArray<UndergroundCorridor>,
   maxJump: number,
   blockGroup: string,
-  config: HopConfig,
+  config: DeliveryConfig,
   /**
    * 탐색 경계 = 전체 배치 bbox(마진 포함). **없으면 dijkstra 가 무한 격자로 새어나가
-   * 폭주한다** — 1:1 방출로 홉이 머신 수만큼 늘고 예약 셀이 길을 좁히면, 막힌 폴백이
+   * 폭주한다** — 1:1 방출로 납품 경로가 머신 수만큼 늘고 예약 셀이 길을 좁히면, 막힌 폴백이
    * 바깥으로 끝없이 우회하며 Map 이 터진다(실측: count 4/4/2 에서 46초 후 OOM).
-   * 홉은 정의상 배치 안에서 끝나므로 여기에 가둔다.
+   * 납품 경로는 정의상 배치 안에서 끝나므로 여기에 가둔다.
    */
   bounds: { x0: number; y0: number; x1: number; y1: number },
   extraBlocked?: ReadonlySet<string>,
-): HopRoute {
-  const from = portGeometry(hop.from); // 자식 출력(collect)
-  const to = portGeometry(hop.to); // 부모 입력(supply)
-  const fvFrom = faceVector(hop.from.face);
-  const fvTo = faceVector(hop.to.face);
+): Omit<DeliveryRoute, "key"> {
+  const from = portGeometry(delivery.from); // 자식 출력(collect)
+  const to = portGeometry(delivery.to); // 부모 입력(supply)
+  const fvFrom = faceVector(delivery.from.face);
+  const fvTo = faceVector(delivery.to.face);
 
-  // blocked = 전 모듈 + 이미 깐 홉 belt + 예약 자리(기하 예약) − 이 홉의 두 chest(start/end).
+  // blocked = 전 모듈 + 이미 깐 납품 경로 belt + 예약 자리(기하 예약) − 이 납품 경로의 두 chest(start/end).
   // seat 은 막은 채로 둬 경로가 클러스터 안쪽으로 새지 않게 한다.
   const blocked = new Set<string>(base);
-  for (const k of hopBelts) blocked.add(k);
+  for (const k of deliveryBelts) blocked.add(k);
   if (extraBlocked) for (const k of extraBlocked) blocked.add(k);
   blocked.delete(cellKey(from.chest.x, from.chest.y));
   blocked.delete(cellKey(to.chest.x, to.chest.y));
@@ -385,37 +399,37 @@ function routeOneHop(
     bounds,
   });
   if (!result) {
-    return { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-path" };
+    return { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-path" };
   }
 
-  return finishChain(hop, result, config);
+  return finishChain(delivery, result, config);
 }
 
 /**
- * 유체 홉 한 개 — **pipe-to-pipe**(docs/auto-layout-wizard.fluid-hop.md). 아이템 홉보다 단순:
+ * 유체 납품 경로 한 개 — **pipe-to-pipe**(docs/auto-layout-wizard.fluid-delivery.md). 아이템 납품 경로보다 단순:
  * 파이프는 인서터가 없어 seat 이음이 없고, 방향이 없어 인접만으로 이어진다. 두 무한파이프
  * (자식 출력 sink · 부모 입력 source)를 떼고 그 자리를 파이프로 메워 잇는다.
  *
  * `fluidBlocked` = **다른 유체** 금지 칸(합류 가드) — 같은 유체는 안 막아 공유 합류를 허용한다.
  * emit 은 검증된 [containerRouting.emitFluidPath] 재사용(지상 pipe + 지하파이프 입/출구).
  */
-function routeOneFluidHop(
-  hop: HopSpec,
+function routeOneFluidDelivery(
+  delivery: DeliverySpec,
   base: Set<string>,
-  hopBelts: Set<string>,
+  deliveryBelts: Set<string>,
   corridors: ReadonlyArray<UndergroundCorridor>,
   maxJump: number,
-  config: HopConfig,
+  config: DeliveryConfig,
   bounds: { x0: number; y0: number; x1: number; y1: number },
   fluidBlocked?: ReadonlySet<string>,
-): HopRoute {
-  const from = portGeometry(hop.from); // 자식 출력(collect)
-  const to = portGeometry(hop.to); // 부모 입력(supply)
-  const fvFrom = faceVector(hop.from.face);
-  const fvTo = faceVector(hop.to.face);
+): Omit<DeliveryRoute, "key"> {
+  const from = portGeometry(delivery.from); // 자식 출력(collect)
+  const to = portGeometry(delivery.to); // 부모 입력(supply)
+  const fvFrom = faceVector(delivery.from.face);
+  const fvTo = faceVector(delivery.to.face);
 
   const blocked = new Set<string>(base);
-  for (const k of hopBelts) blocked.add(k);
+  for (const k of deliveryBelts) blocked.add(k);
   if (fluidBlocked) for (const k of fluidBlocked) blocked.add(k);
   blocked.delete(cellKey(from.chest.x, from.chest.y));
   blocked.delete(cellKey(to.chest.x, to.chest.y));
@@ -434,32 +448,32 @@ function routeOneFluidHop(
     requiredEndJump: { dx: -fvTo.x, dy: -fvTo.y },
     bounds,
   });
-  if (!result) return { item: hop.item, ok: false, cells: [], corridors: [], reason: "no-path" };
+  if (!result) return { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-path" };
 
-  const pair = synthPair(hop.fromId, hop.toId);
+  const pair = synthPair(delivery.fromId, delivery.toId);
   const emitted = emitFluidPath(result, pair, {
     pipeEntityName: config.pipeEntityName!,
     undergroundPipeEntityName: config.undergroundPipeEntityName,
   });
-  return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
+  return { item: delivery.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
 }
 
 /**
  * 체인(chest_from..chest_to) 공통 마무리 — seat 이음, 연속성 불변식, emit.
  * dijkstra 결과와 기하 예약의 결정적 체인이 같은 꼬리를 탄다(단일 출처).
  */
-function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): HopRoute {
-  const fvTo = faceVector(hop.to.face);
+function finishChain(delivery: DeliverySpec, result: DijkstraResult, config: DeliveryConfig): Omit<DeliveryRoute, "key"> {
+  const fvTo = faceVector(delivery.to.face);
 
   // 체인의 몸통은 chest_from … chest_to. 양 끝은 **그 끝의 좌석이 무엇이냐**에 따라 갈린다
   // ([stripKeys]·[seatIsBeltFeeder] 와 같은 판정을 써야 한다 — 여기서 어긋나면 뗀 자리가
   // 빈 칸으로 남아 물건이 사라진다):
   //  - belt→belt 피더 좌석(링크/트렁크 포트) = 인서터를 뗐으니 그 자리를 belt 로 메워
-  //    홉 벨트가 트렁크로 곧장 흐르게 한다. seat↔chest 는 인접 1칸이라 edge 는 'surface'.
+  //    납품 경로 벨트가 트렁크로 곧장 흐르게 한다. seat↔chest 는 인접 1칸이라 edge 는 'surface'.
   //  - 1:1 다이렉트 인서팅 좌석 = 인서터가 그대로 남아 있으므로 덮지 않는다. 출력 인서터가
   //    chest_from 자리 belt 에 놓고, 입력 인서터가 chest_to 자리 belt 에서 집어 넣는다.
-  const headSeat = seatIsBeltFeeder(hop.from) ? portGeometry(hop.from).seat : null;
-  const tailSeat = seatIsBeltFeeder(hop.to) ? portGeometry(hop.to).seat : null;
+  const headSeat = seatIsBeltFeeder(delivery.from) ? portGeometry(delivery.from).seat : null;
+  const tailSeat = seatIsBeltFeeder(delivery.to) ? portGeometry(delivery.to).seat : null;
   const ext: DijkstraResult =
     headSeat || tailSeat
       ? {
@@ -478,10 +492,10 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
       : result;
 
   if (!isContinuous(ext)) {
-    return { item: hop.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
+    return { item: delivery.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
   }
 
-  const pair = synthPair(hop.from.chest.id, hop.to.chest.id);
+  const pair = synthPair(delivery.from.chest.id, delivery.to.chest.id);
   // 마지막 셀의 방향 = 모듈 안쪽 = −fv_to. emitItemPath 는 `-consumerOut` 방향으로
   // emit 하므로 consumerOut = +fv_to 를 넘긴다. 끝이 seat_to 든(피더를 뗀 경우) chest_to
   // 든(1:1, 인서터 잔류) 다음 칸은 −fv_to 쪽이라 **같은 값**이다.
@@ -494,13 +508,13 @@ function finishChain(hop: HopSpec, result: DijkstraResult, config: HopConfig): H
     },
     { x: fvTo.x, y: fvTo.y },
   );
-  return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
+  return { item: delivery.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
 }
 
 /**
  * INVARIANT: 체인은 텔레포트하지 않는다 — surface edge 는 인접 1칸, jump edge 는 축 정렬 +
  * 거리 k 여야 한다. emit 함수들은 edge 를 신뢰하므로, 어긋난 결과를 *조용히 내보내지 말고*
- * 홉 실패로 처리해야 한다(가짜 물류 방지). 벨트·파이프 방출이 이 판정을 공유한다.
+ * 납품 경로 실패로 처리해야 한다(가짜 물류 방지). 벨트·파이프 방출이 이 판정을 공유한다.
  */
 function isContinuous(r: DijkstraResult): boolean {
   for (let i = 0; i + 1 < r.cells.length; i++) {
@@ -527,15 +541,15 @@ function isContinuous(r: DijkstraResult): boolean {
  * 체인 자체는 [buildPlannedChain] 이 낸 것 그대로다 — 그 함수는 품목-무관이라 벨트·파이프가
  * 같은 계획을 공유한다. 갈리는 곳은 여기 방출 한 곳뿐이다.
  */
-function finishFluidChain(hop: HopSpec, chain: DijkstraResult, config: HopConfig): HopRoute {
+function finishFluidChain(delivery: DeliverySpec, chain: DijkstraResult, config: DeliveryConfig): Omit<DeliveryRoute, "key"> {
   if (!isContinuous(chain)) {
-    return { item: hop.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
+    return { item: delivery.item, ok: false, cells: [], corridors: [], reason: "discontinuous-chain" };
   }
-  const emitted = emitFluidPath(chain, synthPair(hop.fromId, hop.toId), {
+  const emitted = emitFluidPath(chain, synthPair(delivery.fromId, delivery.toId), {
     pipeEntityName: config.pipeEntityName!,
     undergroundPipeEntityName: config.undergroundPipeEntityName,
   });
-  return { item: hop.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
+  return { item: delivery.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
 }
 
 /**
@@ -544,9 +558,9 @@ function finishFluidChain(hop: HopSpec, chain: DijkstraResult, config: HopConfig
  * 지하 횡단 = 계단꼴 + 남의 셀 밑을 건너는 점프 여러 개.
  * 축 정렬이 깨진 지시(예: straight 인데 행이 다름)는 null — 호출자가 dijkstra 폴백.
  */
-function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null {
-  const s = portGeometry(hop.from).chest;
-  const e = portGeometry(hop.to).chest;
+function buildPlannedChain(delivery: DeliverySpec, g: DeliveryGeometry): DijkstraResult | null {
+  const s = portGeometry(delivery.from).chest;
+  const e = portGeometry(delivery.to).chest;
   const cells: { x: number; y: number }[] = [{ ...s }];
   const edges: DijkstraResult["edges"][number][] = [];
   const push = (to: { x: number; y: number }) => {
@@ -594,8 +608,8 @@ function buildPlannedChain(hop: HopSpec, g: HopGeometry): DijkstraResult | null 
           // [onSegment] 는 끝점을 포함하므로, 계단 **모서리에서 시작하는 점프**는 그 앞
           // 구간(수직)에서도 "구간 위"로 잡힌다. 그걸 먹으면 점프가 우리를 모서리 **너머로**
           // 데려가고, 코드는 여전히 원래 목표(모서리)로 걸어가려 해서 **왔던 길을 되돌아
-          // 간다** — 같은 칸을 세 번 지나며 지상 점유로 붙잡는다. 그 가짜 점유가 다른 홉의
-          // 정당한 트랙과 부딪히고, 상호 검사가 **둘 다** 폴백시킨다(관측: 홉 5개 중 2개).
+          // 간다** — 같은 칸을 세 번 지나며 지상 점유로 붙잡는다. 그 가짜 점유가 다른 납품 경로의
+          // 정당한 트랙과 부딪히고, 상호 검사가 **둘 다** 폴백시킨다(관측: 납품 경로 5개 중 2개).
           // 방향이 같은지만 보면 그 구간의 점프인지 아닌지가 갈린다.
           const sameDir =
             j !== undefined &&
@@ -642,24 +656,24 @@ function plannedChainClear(
   chain: DijkstraResult,
   ownKey: string,
   base: ReadonlySet<string>,
-  hopBelts: ReadonlySet<string>,
+  deliveryBelts: ReadonlySet<string>,
   reservedExport: ReadonlySet<string>,
-  reservedHop: ReadonlyMap<string, ReadonlySet<string>>,
+  reservedDelivery: ReadonlyMap<string, ReadonlySet<string>>,
   /**
-   * 유체 홉의 **합류 가드** — 이 유체가 닿으면 안 되는 칸(다른 유체의 hard 지도).
+   * 유체 납품 경로의 **합류 가드** — 이 유체가 닿으면 안 되는 칸(다른 유체의 hard 지도).
    *
    * 장부는 자기가 배정한 경로들 사이의 인접만 안다. 모듈 **안**에 이미 깔린 남의 유체
    * 트렁크는 장부 밖의 사실이라, 계획 체인이 그 옆을 지나가는 것을 장부가 못 막는다.
-   * 옛 탐색 경로([routeOneFluidHop])는 이걸 blocked 로 받아 피했다 — 계획 경로도 같은
+   * 옛 탐색 경로([routeOneFluidDelivery])는 이걸 blocked 로 받아 피했다 — 계획 경로도 같은
    * 지도를 봐야 두 유체가 한 통이 되는 사고를 막는다.
    */
   fluidBlocked?: ReadonlySet<string>,
 ): boolean {
   for (let i = 1; i + 1 < chain.cells.length; i++) {
     const k = cellKey(chain.cells[i].x, chain.cells[i].y);
-    if (base.has(k) || hopBelts.has(k) || reservedExport.has(k)) return false;
+    if (base.has(k) || deliveryBelts.has(k) || reservedExport.has(k)) return false;
     if (fluidBlocked?.has(k)) return false;
-    for (const [k2, cells] of reservedHop) if (k2 !== ownKey && cells.has(k)) return false;
+    for (const [k2, cells] of reservedDelivery) if (k2 !== ownKey && cells.has(k)) return false;
   }
   return true;
 }

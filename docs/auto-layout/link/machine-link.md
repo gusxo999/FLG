@@ -10,7 +10,7 @@ tags: [auto-layout, placement, routing]
 
 ## 한 줄 요약
 
-자식 머신의 산출을 부모 머신에게 잇는 일은 **"누가 누구에게 얼마"**(논리)와 **"그 벨트가 어디로 꺾여 가나"**(기하) 두 층으로 갈라진다. 논리는 배치 전략과 **무관**하고(`MachineLink`), 기하만 S-LAYER 가 실현한다. 이 분리가 되면 옛 `HopSpec`·`pairHopPorts`·`seq` 가 사라지고, **포트·gap 폭·짝짓기가 전부 `MachineLink` 목록에서 유도**된다.
+자식 머신의 산출을 부모 머신에게 잇는 일은 **"누가 누구에게 얼마"**(논리)와 **"그 벨트가 어디로 꺾여 가나"**(기하) 두 층으로 갈라진다. 논리는 배치 전략과 **무관**하고(`MachineLink`), 기하만 S-LAYER 가 실현한다. 이 분리가 되면 옛 `DeliverySpec`·`pairDeliveryPorts`·`seq` 가 사라지고, **포트·gap 폭·짝짓기가 전부 `MachineLink` 목록에서 유도**된다.
 
 ---
 
@@ -41,28 +41,28 @@ tags: [auto-layout, placement, routing]
         ▼
 기하 층 (S-LAYER)
 ──────────────────────────────────
-  각 MachineLink 를 끝점(포트) 두 개로 실현 → 통로에 트랙 배정 → HopGeometry
+  각 MachineLink 를 끝점(포트) 두 개로 실현 → 통로에 트랙 배정 → DeliveryGeometry
      어느 면·어느 트랙·교차 지하·gap 폭 (부산물은 전부 여기서)
 ```
 
-**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairHopPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateMachineLinks` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
+**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateMachineLinks` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
 
 ---
 
-## Hop 과 Link 는 같은 것이었다 — 통일
+## Delivery 과 Link 는 같은 것이었다 — 통일
 
 옛 코드는 같은 간선을 두 이름으로 불렀다:
 
 | 옛 이름 | 무엇 | 통일 후 |
 |---|---|---|
-| `HopSpec` | 모듈포트 ↔ 모듈포트 (클러스터 **사이**) | **하나의 `MachineLink`** — 짧으면 클러스터 안, 길면 채널을 탐. 거리 차이일 뿐 |
+| `DeliverySpec` | 모듈포트 ↔ 모듈포트 (클러스터 **사이**) | **하나의 `MachineLink`** — 짧으면 클러스터 안, 길면 채널을 탐. 거리 차이일 뿐 |
 | `MachineLink` | 머신 ↔ 머신 (클러스터 **안**) | ″ |
 
-**안/밖 구분이 사라진다.** 그래서 "클러스터 내부 링크 vs 모듈 간 홉"이라는 두 자료 구조가 **한 개념**으로 합쳐진다. 링크 이름은 `Link`(코드 심볼은 `MachineLink`)로 유지한다(사용자 지정).
+**안/밖 구분이 사라진다.** 그래서 "클러스터 내부 링크 vs 모듈 간 납품 경로"이라는 두 자료 구조가 **한 개념**으로 합쳐진다. 링크 이름은 `Link`(코드 심볼은 `MachineLink`)로 유지한다(사용자 지정).
 
 ### 가장 억지스럽던 부분 — `seq` 가 사라진다
 
-옛 `HopSpec` 의 신원은 `${자식노드}→${부모노드}:${품목}#${seq}` 였다. 노드-대-노드 신원으로는 그 사이 여러 벨트를 구분 못 해서, **배열 순번 `seq`** 를 억지로 붙였다. 이 `seq` 는:
+옛 `DeliverySpec` 의 신원은 `${자식노드}→${부모노드}:${품목}#${seq}` 였다. 노드-대-노드 신원으로는 그 사이 여러 벨트를 구분 못 해서, **배열 순번 `seq`** 를 억지로 붙였다. 이 `seq` 는:
 
 1. 의미가 없다(그냥 zip 배열 위치).
 2. 기하 계획과 라우팅 **두 곳이 같은 번호를 독립으로 재현**해야 한다 — 어긋나면 조용히 폴백.
@@ -105,7 +105,7 @@ tags: [auto-layout, placement, routing]
 
 한 링크가 통로 셋(자식 gap → 채널 → 부모 gap)을 지날 수 있다. 그래도 **통로마다 고정 포트(핸드오프)가 있어** 각 통로는 자기 트랙만 국소적으로 푼다. 통로가 늘어 계산량이 느는 건 **인스턴스가 많아서**(통로 수 × 통로당 링크 수)지 **구조가 연립으로 얽혀서가 아니다.** 이 성질을 지키는 불변식:
 
-> **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 홉이 "탐색 없이 순수"한 이유가 이 불변식이다.
+> **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 납품 경로가 "탐색 없이 순수"한 이유가 이 불변식이다.
 
 정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책([clusterPortPlanner](../../../src/autoLayout/planner/module/clusterPortPlanner.ts))의 재적용이다.
 
@@ -249,8 +249,8 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 | Phase 1 | **`edgeMachineLinks`**(modulePacking.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateMachineLinks. rate 미상이면 undefined(지어내지 않음) |
 | `459f63e` | 출력 링크를 `ModuleInput.outputLinks` 까지 전달 |
 | Phase 2 | **`emitOutputLinks`**(clusterModule.ts) — 링크당 [머신 k좌석 탭 + 세로 belt + W꺾음 포트]. 셀 생성자 재사용, 그 위 emit 은 새로(링크 필드=논리, 셀 입력=기하, 겹침 0이라 그렇게 갈림) |
-| Phase 3 | **`emitInputLinks`**(E면 거울) + `ModuleInput.inputLinks` — 부모가 링크마다 입력 포트. **pairHopPorts 는 안 고침**: 양쪽이 링크 순서로 포트를 내니 index-zip 이 곧 링크 짝짓기 |
-| 마지막 | 통합 테스트 2건 — linkHops(count=2 fan-out↔fan-in↔홉 2, `routeModuleHops` 실패 0) + **realTree(advanced-circuit 다-노드 트리, 실패 0)** |
+| Phase 3 | **`emitInputLinks`**(E면 거울) + `ModuleInput.inputLinks` — 부모가 링크마다 입력 포트. **pairDeliveryPorts 는 안 고침**: 양쪽이 링크 순서로 포트를 내니 index-zip 이 곧 링크 짝짓기 |
+| 마지막 | 통합 테스트 2건 — linkDeliveries(count=2 fan-out↔fan-in↔납품 경로 2, `routeDeliveryRoutes` 실패 0) + **realTree(advanced-circuit 다-노드 트리, 실패 0)** |
 
 ### 갈림 조건 (핵심 — 어느 경로가 도는가)
 
@@ -273,7 +273,7 @@ fan-out 이므로 "count=1 은 fan-out 없다"는 내 말은 틀렸다: fan-out 
 
 **증상이었던 것:** planner 가 링크를 모른 채 옛 셈으로 좌석을 세고, 링크 방출이 **tap 분기
 안에만** 있었다. 그래서 링크 없는 줄이 좌석을 넘겨 모듈이 direct 로 떨어지면 **링크 포트가
-통째로 사라졌다**(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샘).
+통째로 사라졌다**(자식 direct + 부모 tap → 포트 모양이 어긋나 납품 경로가 샘).
 
 **고친 방식 — 링크 줄을 판정에서 뺀다:**
 
@@ -319,7 +319,7 @@ E 로 넘긴 벨트는 채널 **반대쪽**에서 출발한다. `MODULE_ROW_GAP 
 
 gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90° 꺾이고, **그 꺾이는 칸이 곧
 평범한 W 포트**다([[#모서리 포트 (N/S 팔이 gap 을 지날 때)]]). 채널 장부가 새 모양을 배울
-필요가 없다 → 넘친 홉도 그대로 계획된다(**fallback 0**). 예약 철학이 지켜진다.
+필요가 없다 → 넘친 납품 경로도 그대로 계획된다(**fallback 0**). 예약 철학이 지켜진다.
 
 #### 순서가 뒤집힌다 — 면이 좌표보다 먼저
 
@@ -336,8 +336,42 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 - `layoutCluster` 가 이제 **gap 마다 다른 폭**을 받는다(`number | number[]`).
 - `placeLinkSeats` — 배정에 좌표를 입힌다. `t` 의 뜻은 `faceCell` 과 같다(W/E=행, N/S=열).
 
-포트의 `face`(나가는 방향)는 gap 좌석이어도 **W**(출력)/**E**(입력)이고, `meta.side` 도 그
-변을 따른다. 좌석이 앉은 면과 나가는 면이 다르다는 것이 모서리 포트의 전부다.
+포트의 `face`(나가는 방향)는 gap 좌석이면 **W**(출력)/**E**(입력)이고, W/E 좌석이면 **그 면
+자신**이다. `meta.side` 도 같은 값이다. 좌석이 앉은 면과 나가는 면이 다르다는 것이 모서리
+포트의 전부다.
+
+> 2026-08-05 전에는 `face` 가 **역할로 하드코딩**돼 있었다(출력=늘 W). 링크는 선호 면이 W 고
+> 넘치면 gap 으로만 가서 그게 늘 맞았는데, 아래 "원료 줄도 같은 배분기" 이후로는 출력이 E 에
+> 앉을 수 있다 — 그때 W 를 고집하면 포트 인서터가 **머신 쪽으로** 자라 좌석 줄과 부딪힌다.
+
+### 원료·완제품 줄도 같은 배분기를 탄다 (2026-08-05 공급 모델 통합)
+
+[[용어사전#탭 인서팅 (Tap Inserting)|탭]]이 안 되면 그 줄들은 **머신마다 하나씩 쪼개져**
+([externalLineGroups](../../../src/autoLayout/module/machineLinkGroup.ts) `perMachine`) 여기
+설명한 배분기·방출기를 **그대로** 탄다. 쪼개는 이유는 `tryLinkFace` 의 문턱 하나다:
+
+```ts
+if (arms.size !== 1) return undefined;   // 그룹 하나 = 머신 하나여야 앉힌다
+```
+
+기둥 축과 수직인 가로 벨트는 자기가 닿는 머신 한 대만 먹일 수 있어서 거는 조건인데,
+쪼갠 그룹은 애초에 한 대짜리라 걸릴 것이 없다. 그래서 **gap 스필이 공짜로 따라온다** —
+그전까지 원료 줄은 W/E 두 면만 보고, 차면 거기서 끝이었다.
+
+같이 지켜야 하는 것 셋:
+
+1. **신원(`linkId`)을 안 단다.** 원료·완제품은 상대가 모듈 밖이라 짝지을 대상이 없다.
+   달면 [pairDeliveryPorts](../../../src/autoLayout/planner/link/edgeLinks.ts) 가 조회로 짝을
+   찾다 못 찾고 **예약 불변식 위반**으로 보고한다(자식 `ext:output:X` ↔ 부모 `ext:input:X` 는
+   애초에 문자열이 다르고, 모듈은 형제를 몰라 맞출 수도 없다).
+2. **면 순서 = 선호 → 반대 면 → gap.** gap 은 모듈을 세로로 벌리므로 반대 면에 빈 행이
+   있는데 넘기면 순수한 손해다. 이 순서라서 *"오늘 W/E 에 앉던 줄은 그대로 W/E"* 가 지켜진다.
+3. **자식-공급 입력을 원료보다 **먼저** 앉힌다.** 밀려나는 쪽이 원료여야 한다 — 자식-공급이
+   반대 면(W)으로 밀리면 납품 경로가 모듈을 빙 돌아야 하고 실제로 길이 막힌다
+   (2026-08-05 실측: 이 순서를 빠뜨려 납품 1건이 실패했다). 원료는 perimeter 로 나가면 그만이다.
+
+유체 면은 이 배분기에서 **통째로 비켜 준다**(`LinkFaceContext.pipeSides`) — 그 면의 좌석 줄은
+트렁크 파이프 몫이다.
 
 > **남은 것:** gap 면당 그룹 **하나**(가로 벨트 한 줄)만 받는다 — 레인 둘째 줄(긴팔)은 후속.
 > 그리고 클러스터 **양 끝**(맨 위의 N, 맨 아래의 S)은 gap 이 아니라 모듈 바깥이라 아직 안 쓴다.
@@ -345,8 +379,8 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 
 ### 함정 (재개자가 밟기 쉬운 것)
 
-- `routeModuleHops(...).failures` 는 **숫자**다(배열 아님).
+- `routeDeliveryRoutes(...).failures` 는 **숫자**다(배열 아님).
 - `IoLine` 에 `beltEntityName` 없음 — 그건 `PlannedLine` 필드.
-- 새 emit 의 포트는 [moduleHop](../../../src/autoLayout/planner/moduleHop.ts) 계약
+- 새 emit 의 포트는 [deliveryRoute](../../../src/autoLayout/planner/deliveryRoute.ts) 계약
   (`chest=anchor, seat=anchor−fv, trunkStart=anchor−2fv`)과 **검증 완료**(W면: x0−4/−3/−2, E면 거울).
 - 옛 탭 emit 은 죽은 코드가 아니라 **rate 없을 때의 폴백** — 지우려면 골든 정렬(1번)이 먼저.

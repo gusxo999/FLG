@@ -46,7 +46,7 @@ export function planLanes(
   specs: NodeSpec[],
   oriented: Map<string, { module: GeneratedModule; orientation: Orientation }>,
   topY: Map<string, number>,
-  /** 홉으로 짝지어진 상자 id — 이 포트들은 belt 로 이어지므로 반출 대상이 아니다. */
+  /** 납품 경로로 짝지어진 상자 id — 이 포트들은 belt 로 이어지므로 반출 대상이 아니다. */
   pairedChestIds: ReadonlySet<string>,
   maxDepth: number,
   absPortY: (id: string, anchorY: number) => number,
@@ -67,7 +67,7 @@ export function planLanes(
     gyMin = Math.min(gyMin, top);
     gyMax = Math.max(gyMax, bottom);
     (bandsByDepth.get(s.depth) ?? bandsByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
-    // 반출 대상 = **홉으로 짝지어지지 않은 포트 전부**. 입력이면 외부 공급 무한상자,
+    // 반출 대상 = **납품 경로로 짝지어지지 않은 포트 전부**. 입력이면 외부 공급 무한상자,
     // 출력이면 무한 sink — 둘 다 perimeter 로 나가야 한다. (1:1 방출이라 자식 출력이
     // 부모 입력보다 많으면 남는 출력도 여기 들어온다.) wayOuts = 모듈이 답해준
     // "나갈 수 있는 방향들" — 배정이 못 쓰는 방향을 예약하지 않게 한다.

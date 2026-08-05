@@ -5,7 +5,7 @@
  * 단일 출처: docs/auto-layout-wizard.channel-geometry-reservation.md
  *
  * 한 채널을 지나는 두 종류 경로를 **한 장부에서** 같이 배정한다:
- *  - **납품 경로(deliveryRoute**, 현 코드 hop): 자식 출력(E벽) → 부모 입력(W벽).
+ *  - **납품 경로(deliveryRoute**, 현 코드 delivery): 자식 출력(E벽) → 부모 입력(W벽).
  *    양 끝 행은 포트가 정했고 자유는 세로 주행 트랙 하나 → 모양은 **계단꼴(staircase)**.
  *    출발 행 = 도착 행이면 일자 수평선(트랙 소비 0).
  *  - **반출 경로(exportRoute**, 현 코드 lane): 갇힌 외부상자(벽의 한 점) → 열린 N/S 변.
@@ -35,7 +35,7 @@ export type NsEdge = "N" | "S";
 
 /** 납품 경로 입력 — 자식 출력(E벽) 행 → 부모 입력(W벽) 행. */
 export interface DeliveryInput {
-  /** 홉 키 — 결과 맵의 키로 그대로 돌아온다. */
+  /** 납품 경로 키 — 결과 맵의 키로 그대로 돌아온다. */
   id: string;
   /** 출발 행 = 자식 출력 포트의 abs y (E벽 접점). */
   startY: number;
@@ -44,7 +44,7 @@ export interface DeliveryInput {
   /**
    * 유체 이름. `undefined` = 아이템(벨트).
    *
-   * 유체는 두 가지가 다르다(docs/auto-layout-wizard.fluid-hop-reservation.md):
+   * 유체는 두 가지가 다르다(docs/auto-layout-wizard.fluid-delivery-reservation.md):
    *  - **인접 금지** — 파이프는 닿기만 하면 이어진다. *다른* 유체와는 겹침뿐 아니라
    *    4-인접도 충돌이다. 같은 유체끼리는 닿아도 합법이라 겹침만 본다.
    *  - **지하로 못 도망간다** — 지하파이프 페어링 절단이 별개 제약이라 v1 에선 유체에
@@ -74,11 +74,11 @@ export interface GeometryContext {
    *
    * **납품 경로에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
    * 지하로 도망갈 수 없다 — 그래서 반출이 **제약이 센 쪽**이고, 배정에서 먼저 자리를
-   * 잡는다(제약 센 것부터). 납품은 [moduleHop] 이 지하벨트를 방출할 수 있어 막히면
+   * 잡는다(제약 센 것부터). 납품은 [deliveryRoute] 이 지하벨트를 방출할 수 있어 막히면
    * 밑으로 건널 수 있다.
    */
   maxJump?: number;
-  /** 폭만 예약할 잔여 세로 구간(부적격 홉·미지원 반출 등) — trackCount 에만 반영. */
+  /** 폭만 예약할 잔여 세로 구간(부적격 납품 경로·미지원 반출 등) — trackCount 에만 반영. */
   reserveIntervals?: Interval[];
   /**
    * 트랙 수 상한. 미지정이면 **경로 수**에서 유도한다(아래 planChannelGeometry).
@@ -477,7 +477,7 @@ export function planChannelGeometry(
   const deliveryPlans = new Map<string, DeliveryPlan>();
   const exportPlans = new Map<string, ExportPlan>();
 
-  // 실패 비용 순 — 이 순서가 아래 ①·②를 모두 지배한다(docs/…fluid-hop-reservation.md §4.3).
+  // 실패 비용 순 — 이 순서가 아래 ①·②를 모두 지배한다(docs/…fluid-delivery-reservation.md §4.3).
   //   1. 유체 납품 — 지하로 못 도망간다(§D2). 배정 실패 = **트리 전체 실패**.
   //   2. 반출     — 실패해도 상자가 로컬 ring 에 남는다. 되돌릴 수 있는 손해.
   //   3. 아이템 납품 — 실패하면 ③ 지하 횡단이 회수한다. 사실상 손해 없음.

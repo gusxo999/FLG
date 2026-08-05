@@ -180,7 +180,7 @@ function searchWithJumps(input: DijkstraInput): DijkstraResult | null {
     (x < bounds.x0 || x > bounds.x1 || y < bounds.y0 || y > bounds.y1);
 
   // 단일/다중 입력을 끝점 배열로 정규화. 단일 start/end 는 1-원소 배열로 흡수하므로
-  // 기존 호출부(routeItem/routeFluid/moduleHop/…)는 동작이 그대로 보존된다.
+  // 기존 호출부(routeItem/routeFluid/deliveryRoute/…)는 동작이 그대로 보존된다.
   const starts: ReadonlyArray<DijkstraEndpoint> =
     input.starts ??
     (input.start

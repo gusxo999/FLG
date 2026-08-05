@@ -87,6 +87,32 @@ export function seatKey(machineIndex: number, face: PortFace): string {
 }
 
 /**
+ * **한 모듈의 면 배정이 공유하는 것** — 장부 두 권 + 머신 모양 + 유체가 가져간 면.
+ *
+ * 예전엔 이 넷이 함수마다 낱개 인자로 늘어서 있었다. 배정에 참여하는 주체가 링크 하나뿐일
+ * 땐 견딜 만했는데, 원료·완제품 줄까지 같은 배분기를 타면 호출이 늘어 **인자 순서를 틀리기
+ * 쉬운 모양**이 된다. 장부는 호출들 사이에 이어져야 하는 상태라 한 덩어리로 다니는 게 맞다.
+ */
+export interface LinkFaceContext {
+  machine: { w: number; h: number };
+  count: number;
+  /** 좌석(팔) 장부 — `${머신index}:${면}` → 이미 쓴 칸 수. */
+  used: Map<string, number>;
+  /** 그룹 수 장부 — 막힌 면의 반출 줄 깊이 순번([LinkFacePlan.exitDepth]). */
+  faceGroups: Map<string, number>;
+  /**
+   * **트렁크 파이프가 가져간 면**(W/E). 그 면의 좌석 줄(d1)은 파이프 몫이라 **아무도 못 앉는다.**
+   *
+   * 왜 "점프 가능하면 유체 상자 행만 빼면 되지 않나"가 아닌가 — 그럴 수 있지만 그러려면
+   * [ClusterPipe] 깊이가 **이 면에 앉은 벨트까지** 세어야 한다. 그 깊이를 내는
+   * `buildTrunkContext.beltMaxOn` 은 지금 여기서 배정한 줄을 **안 본다**(탭 계획만 본다) →
+   * 파이프가 벨트 위로 지나가는 배치가 조용히 나온다. 면을 통째로 비켜 주는 쪽이 정직하고,
+   * 잃는 것도 적다: 갈 곳이 없으면 반대 면과 gap 이 받는다.
+   */
+  pipeSides?: ReadonlySet<PortFace>;
+}
+
+/**
  * 그룹이 머신마다 몇 팔을 쓰나. `side` 는 이 그룹을 **어느 쪽 관점**에서 보나다 —
  * "from"(출력, 자식 머신 하나 고정) 이면 항목이 하나뿐이고, "to"(입력, 부모 머신 여럿)
  * 이면 `taps` 를 그대로 목적지별로 편다.
@@ -120,14 +146,14 @@ const LINK_LANE_DEPTH = 2;
  *    N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
  */
 function tryLinkFace(
-  machine: { w: number; h: number },
-  count: number,
+  ctx: LinkFaceContext,
   group: MachineLinkGroup,
   side: "from" | "to",
   face: PortFace,
-  used: Map<string, number>,
-  faceGroups: Map<string, number>,
 ): LinkFaceCandidate | undefined {
+  const { machine, count, used, faceGroups } = ctx;
+  // 유체가 가져간 면은 좌석 줄이 통째로 파이프다 — 여기 앉히면 인서터가 파이프 칸에 선다.
+  if ((face === "W" || face === "E") && ctx.pipeSides?.has(face)) return undefined;
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
   // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
@@ -169,12 +195,11 @@ function tryLinkFace(
  * 나눠 두면 나중 단계가 같은 누적을 다시 세야 한다(옛 `placeLedger`).
  */
 function commitLinkFace(
-  machine: { w: number; h: number },
+  ctx: LinkFaceContext,
   cand: LinkFaceCandidate,
   side: "from" | "to",
-  used: Map<string, number>,
-  faceGroups: Map<string, number>,
 ): LinkFacePlan {
+  const { machine, used, faceGroups } = ctx;
   const isGap = cand.face === "N" || cand.face === "S";
   // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
   // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
@@ -215,42 +240,44 @@ function commitLinkFace(
  * 못 앉은 그룹은 `undefined` — 방출기가 정직하게 `unrouted` 로 낸다.
  */
 export function allocateLinkFaces(
-  machine: { w: number; h: number },
-  count: number,
+  ctx: LinkFaceContext,
   groups: MachineLinkGroup[],
   side: "from" | "to",
   prefer: PortFace,
-  used: Map<string, number>,
-  faceGroups: Map<string, number>,
 ): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   groups.forEach((g, i) => {
-    const cand = tryLinkFace(machine, count, g, side, prefer, used, faceGroups);
-    if (cand) plans[i] = commitLinkFace(machine, cand, side, used, faceGroups);
+    const cand = tryLinkFace(ctx, g, side, prefer);
+    if (cand) plans[i] = commitLinkFace(ctx, cand, side);
     else deferred.push(i);
   });
   return { plans, deferred };
 }
 
 /**
- * [allocateLinkFaces] 의 2단계 — 선호 면이 찬 그룹을 gap 으로 넘긴다.
- * 아래 gap(S)을 먼저 본다: 링크 수열이 위→아래 단조라 아래쪽이 뒤에 오는 목적지와 가깝다.
+ * [allocateLinkFaces] 의 2단계 — 선호 면이 찬 그룹을 **다른 면으로** 넘긴다.
+ *
+ * `faces` 는 시도 순서다. 기본(링크)은 gap 뿐이고, 아래 gap(S)을 먼저 본다: 링크 수열이
+ * 위→아래 단조라 아래쪽이 뒤에 오는 목적지와 가깝다.
+ *
+ * **원료·완제품 줄은 반대 면을 먼저 준다**(`["E"|"W", "S", "N"]`). gap 으로 넘기면 모듈이
+ * **세로로 벌어지는데**([gapRowsFromPlans]), 반대 면에 빈 행이 있으면 그건 순수한 손해다.
+ * 그래서 gap 은 **양 면이 다 찼을 때의 마지막 수단**이고, 그 순서가 곧 *"오늘 되는 배치는
+ * 한 칸도 안 움직인다"* 를 지켜 준다 — 지금 W/E 에 앉는 것은 그대로 W/E 에 앉는다.
  */
 export function spillLinkFacesToGap(
-  machine: { w: number; h: number },
-  count: number,
+  ctx: LinkFaceContext,
   groups: MachineLinkGroup[],
   side: "from" | "to",
-  used: Map<string, number>,
   out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
-  faceGroups: Map<string, number>,
+  faces: readonly PortFace[] = ["S", "N"],
 ): void {
   for (const i of out.deferred) {
-    for (const face of ["S", "N"] as const) {
-      const cand = tryLinkFace(machine, count, groups[i], side, face, used, faceGroups);
+    for (const face of faces) {
+      const cand = tryLinkFace(ctx, groups[i], side, face);
       if (!cand) continue;
-      out.plans[i] = commitLinkFace(machine, cand, side, used, faceGroups);
+      out.plans[i] = commitLinkFace(ctx, cand, side);
       break;
     }
   }
@@ -289,6 +316,38 @@ export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined
   const rows = new Array(Math.max(0, count - 1)).fill(0);
   for (const [key, d] of deepest) rows[Number(key.split(":")[0])] += d;
   return rows;
+}
+
+/**
+ * **gap 벨트가 어느 옆면으로 빠져나가나** — 그 면의 좌석 줄(d1)과 그 바깥 줄(d2)을 포트 끝
+ * (인서터·상자)이 먹는다는 뜻이다.
+ *
+ * 왜 이 값이 필요한가 — **트렁크 파이프와 자리를 다투기 때문이다.** 점프하지 않는 파이프는
+ * 좌석 줄을 기둥 전체로 훑는데(`emitTrunkPipe` 의 d1 직선), gap 벨트의 포트 끝이 그 줄의 gap
+ * 행에 앉으면 파이프가 **거기서 끊긴다.** 끊긴 아래쪽 머신들은 유체를 못 받는데, 겹침도
+ * 아니고 못 놓은 줄도 아니라 **아무도 알아채지 못한다**(2026-08-05 실측 — `emitTrunkPipe` 의
+ * `occupancy` 안전망이 조용히 건너뛰고 있었다).
+ *
+ * 방향은 방출기가 못 박아 둔 규약이다: gap 출력은 서쪽으로, gap 입력은 동쪽으로 나간다
+ * ([emitOutputLinks]·[emitInputLinks] 의 `portFace`).
+ *
+ * `gap` 이 `undefined` 인 것(맨 위 머신의 N, 맨 아래의 S — 클러스터 **밖**)도 센다. 그 행은
+ * 기둥 범위 밖이지만 파이프의 **포트 끝**(줄 끝에서 두 칸)이 거기까지 나오므로 같은 사고가
+ * 난다. 판정을 좁혀 두 칸을 아끼는 것보다 안전한 쪽이 낫다 — 이 값이 참일 때 치르는 값은
+ * 파이프가 점프해서 생기는 폭 2칸뿐이고, 그것도 **그 면에 유체가 있을 때만**이다.
+ */
+export function gapExitSidesFromPlans(
+  outPlans: (LinkFacePlan | undefined)[][],
+  inPlans: (LinkFacePlan | undefined)[][],
+): Set<PortFace> {
+  const sides = new Set<PortFace>();
+  const scan = (lists: (LinkFacePlan | undefined)[][], exit: PortFace) => {
+    for (const list of lists)
+      for (const p of list) if (p && (p.face === "N" || p.face === "S")) sides.add(exit);
+  };
+  scan(outPlans, "W");
+  scan(inPlans, "E");
+  return sides;
 }
 
 /**

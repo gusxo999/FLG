@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
-import { routeModuleHops } from "./moduleHop";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "./module/clusterPortPlanner";
 
 // 실제 트리(advanced-circuit, count=1)가 링크 기반 새 경로로 라우팅되는지 — 토이 2노드가
@@ -51,9 +51,9 @@ const specs: NodeSpec[] = [
 describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 라우팅", () => {
   const pack = packModuleTree(specs, config);
 
-  it("내부 간선 품목이 홉으로 이어진다 (kr-ec, ec 각 1)", () => {
-    expect(pack.hops.filter((h) => h.item === "kr-electronic-components")).toHaveLength(1);
-    expect(pack.hops.filter((h) => h.item === "electronic-circuit")).toHaveLength(1);
+  it("내부 간선 품목이 납품 경로로 이어진다 (kr-ec, ec 각 1)", () => {
+    expect(pack.deliveries.filter((h) => h.item === "kr-electronic-components")).toHaveLength(1);
+    expect(pack.deliveries.filter((h) => h.item === "electronic-circuit")).toHaveLength(1);
   });
 
   // linkId 짝짓기가 자식·부모 양쪽에서 독립으로 재현되는지 — 실측 트리로 확인.
@@ -61,15 +61,15 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
     expect(pack.linkMismatches).toEqual([]);
   });
 
-  it("moduleHop 이 충돌 없이 잇는다 (실패 0)", () => {
-    const hop = routeModuleHops(pack, {
+  it("deliveryRoute 이 충돌 없이 잇는다 (실패 0)", () => {
+    const delivery = routeDeliveryRoutes(pack, {
       beltEntityName: "transport-belt",
       undergroundBeltEntityName: "underground-belt",
       beltMaxUndergroundDistance: 4,
     });
-    expect(hop.failures).toBe(0);
+    expect(delivery.failures).toBe(0);
     // 길이 났다는 것만으로는 부족하다 — **누가 냈는지**를 본다. dijkstra 폴백도 길은 낸다.
-    expect(hop.dijkstraFallback).toBe(0);
-    expect(hop.planned).toBeGreaterThan(0);
+    expect(delivery.dijkstraFallback).toBe(0);
+    expect(delivery.planned).toBeGreaterThan(0);
   });
 });

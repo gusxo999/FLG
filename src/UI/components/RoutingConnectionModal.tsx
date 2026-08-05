@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
-import type { RoutingSessionRouting } from '../store/layoutStore';
+import { overlaySource } from '../store/autoLayoutRunStore';
+import { summarizeRoutings, type RoutingSummary } from '../../autoLayout/moduleInspect';
 import type { Container } from '../../autoLayout/containerModel';
 
 interface Props {
@@ -14,14 +15,14 @@ function kindLabel(kind: Container['kind']): string {
   return '무한 파이프';
 }
 
-function portKindLabel(portKind: RoutingSessionRouting['portKind']): string {
+function portKindLabel(portKind: RoutingSummary['portKind']): string {
   if (portKind === 'item') return '아이템 (벨트)';
   if (typeof portKind === 'object' && 'fluid' in portKind) return `유체 — ${portKind.fluid}`;
   return String(portKind);
 }
 
 function ioRole(
-  routing: RoutingSessionRouting,
+  routing: RoutingSummary,
   container: Container,
   extIds: Set<string>,
 ): string | null {
@@ -87,8 +88,8 @@ function ContainerCard({
 }
 
 export default function RoutingConnectionModal({ open, onClose }: Props) {
-  const session = useLayoutStore((s) => s.routingEditSession);
   const selectedRoutingId = useLayoutStore((s) => s.selectedRoutingId);
+  const src = overlaySource();
 
   useEffect(() => {
     if (!open) return;
@@ -97,17 +98,17 @@ export default function RoutingConnectionModal({ open, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  if (!open || !session || !selectedRoutingId) return null;
+  if (!open || !src || !selectedRoutingId) return null;
 
-  const routing = session.routings.find((r) => r.id === selectedRoutingId);
+  const routing = summarizeRoutings(src.routings).find((r) => r.id === selectedRoutingId);
   if (!routing) return null;
 
-  const containerMap = new Map(session.containers.map((c) => [c.id, c]));
+  const containerMap = new Map(src.containers.map((c) => [c.id, c]));
   const fromC = containerMap.get(routing.fromContainerId);
   const toC   = containerMap.get(routing.toContainerId);
   if (!fromC || !toC) return null;
 
-  const extIds = new Set(session.containers.filter((c) => c.kind !== 'machine').map((c) => c.id));
+  const extIds = new Set(src.containers.filter((c) => c.kind !== 'machine').map((c) => c.id));
   const fromRole = ioRole(routing, fromC, extIds);
   const toRole   = ioRole(routing, toC,   extIds);
 

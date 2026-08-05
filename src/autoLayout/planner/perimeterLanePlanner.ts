@@ -15,9 +15,9 @@
  * 인접한가"에서 나온다. N/S 우세는 가로 타일링의 *결과*지 가정이 아니다.
  *
  * ## (A) 폭만 예약 — 트랙 index 는 못박지 않음
- * 채널로 들어가는 lane 은 자기 **세로 점유 구간**만 내놓고, packModuleTree 가 이를 홉
+ * 채널로 들어가는 lane 은 자기 **세로 점유 구간**만 내놓고, packModuleTree 가 이를 납품 경로
  * 구간과 **합쳐** [channelPlanner.assignTracksLeftEdge] 로 트랙 수(=폭)만 산정한다. 실제
- * 몇 번째 트랙에 깔릴지는 검증된 라우터가 정한다(홉과 동일 관행).
+ * 몇 번째 트랙에 깔릴지는 검증된 라우터가 정한다(납품 경로와 동일 관행).
  *
  * ## host 판정 규칙 (포트 *변* + depth 위치)
  * - **N/S 변**: 자기 열 직진(self) → N/S 마진 행에 상자 seat. 같은 열 위/아래 형제에
@@ -26,7 +26,7 @@
  * - **E 변**: 최우 열(maxDepth)이면 바깥 E 마진으로 직출. 아니면 오른쪽 채널로 우회 → 가까운 N/S.
  *
  * 좌표 주의: colX 확정 *전* 에 불린다(채널 폭이 colX 를 정하므로). 그래서 X 는 안 쓰고
- * abs **y** 와 depth 만으로 판정한다(홉 구간 산정과 동일 관행).
+ * abs **y** 와 depth 만으로 판정한다(납품 경로 구간 산정과 동일 관행).
  */
 
 import type { Interval } from "./channelPlanner";
@@ -125,7 +125,7 @@ export interface LaneAssignment {
 
 export interface LanePlan {
   assignments: LaneAssignment[];
-  /** 채널 depth → 그 채널에 더할 lane 세로 구간들(홉 구간과 합쳐 폭 산정). */
+  /** 채널 depth → 그 채널에 더할 lane 세로 구간들(납품 경로 구간과 합쳐 폭 산정). */
   channelLaneIntervals: Map<number, Interval[]>;
   /** 바깥/변 마진 수요. N/S = 상자 seat 행 필요 여부, W/E = 마진 열 필요 여부. */
   marginNeeds: { N: boolean; S: boolean; W: boolean; E: boolean };

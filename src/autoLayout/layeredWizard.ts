@@ -36,7 +36,8 @@ import {
   expandRecipeTree,
 } from "./recipeTree";
 import { makeMachinePicker, makeMachineParamsLookup } from "./wizardUtils";
-import { tryRunModulePipeline, describeReject } from "./planner/moduleWizard";
+import { tryRunModulePipeline } from "./planner/moduleWizard";
+import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "./layoutIssue";
 import { makeBuildSpec } from "./buildSpec";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +109,13 @@ export const runLayeredWizard: RunContainerWizard = async (
         );
 
   if (!tree.recipeName) {
-    return failureResult("타깃 레시피를 찾을 수 없습니다");
+    return failureResult([
+      {
+        code: "no-target-recipe", scope: "입력", severity: "error", recoverable: false,
+        detail: `타깃 레시피를 찾을 수 없습니다: ${input.targetRecipe}`,
+        fixStep: "recipe",
+      },
+    ]);
   }
 
   const pickMachine = makeMachinePicker(input);
@@ -118,18 +125,30 @@ export const runLayeredWizard: RunContainerWizard = async (
   const parentOf = new Map<RecipeTreeNode, RecipeTreeNode | null>();
   const order: RecipeTreeNode[] = []; // DFS pre-order — 레이어 내 안정 정렬에 사용
   let maxDepth = 0;
-  let failure: string | null = null;
+  /**
+   * **첫 개에서 멈추지 않는다**(A-2). 예전엔 `failure ??=` 로 첫 실패만 남겨서, 노드 3개가
+   * 막혀 있으면 사용자가 **세 번 고치고 세 번 다시 돌려야** 전체를 알 수 있었다.
+   */
+  const issues: LayoutIssue[] = [];
 
   const collect = (node: RecipeTreeNode, depth: number, parent: RecipeTreeNode | null): void => {
     if (node.external || !node.recipeName) return;
     const ent = pickMachine(node.recipeName);
     if (!ent) {
-      failure ??= `${node.recipeName} 카테고리 머신 없음`;
+      issues.push({
+        code: "no-machine-for-category", scope: "입력", severity: "error", recoverable: false,
+        detail: `${node.recipeName}: 카테고리를 처리할 머신이 선택되지 않았습니다`,
+        target: { recipeName: node.recipeName }, fixStep: "machine",
+      });
       return;
     }
     const entity = entityMap.get(ent.name);
     if (!entity) {
-      failure ??= `머신 엔티티 없음: ${ent.name}`;
+      issues.push({
+        code: "stale-gamedata", scope: "게임데이터", severity: "error", recoverable: false,
+        detail: `머신 엔티티 없음: ${ent.name}`,
+        target: { recipeName: node.recipeName },
+      });
       return;
     }
     metas.set(node, {
@@ -146,15 +165,21 @@ export const runLayeredWizard: RunContainerWizard = async (
   };
   collect(tree, 0, null);
 
-  if (!metas.has(tree) || failure) {
-    return failureResult(failure ?? "루트 머신 배치 불가");
+  if (issues.length > 0 || !metas.has(tree)) {
+    if (issues.length === 0) {
+      issues.push({
+        code: "root-unplaceable", scope: "입력", severity: "error", recoverable: false,
+        detail: "루트 머신을 앉힐 수 없습니다", fixStep: "machine",
+      });
+    }
+    return failureResult(issues);
   }
 
   // 3. 배치 — 모듈 파이프라인이 후보를 만든다(generateModule 자족 경로: 루트·자식을 같은
   //    방식으로 생성해 "자식 == 루트" 를 실현). 실패하면 **사유 그대로** 실패를 반환한다.
   //    폴백할 다른 경로는 없다 — 옛 S-LAYER 는 삭제됐다(2026-07-25, Phase 3).
   const res = tryRunModulePipeline({ input, metas, parentOf, order, makeId: nextId });
-  if (!res.ok) return failureResult(describeReject(res.reason));
+  if (!res.ok) return failureResult(res.issues, res.snapshot);
 
   const leaf = res.leaf;
   await emit("완료");
@@ -175,7 +200,8 @@ export const runLayeredWizard: RunContainerWizard = async (
     aborted: hooks?.signal?.aborted ?? false,
     stats: { candidatesGenerated: 1, failuresGenerated: 0, deepestDepth: maxDepth },
   };
-  return { ok: true, tree: candidateTree, partial: candidateTree.aborted };
+  // 성공해도 경고는 있을 수 있다(반출 skip).
+  return { ok: true, tree: candidateTree, partial: candidateTree.aborted, issues: res.warnings };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,7 +243,14 @@ function makeEmitter(
   };
 }
 
-function failureResult(detail: string): ContainerWizardResult {
+/**
+ * 실패 결과 — **모은 문제 전부**와, 있으면 그 문제를 짚을 그림을 낸다.
+ *
+ * `snapshot` 은 `CandidateLeaf` 가 **아니다**(타입이 다르다) — 그래서 `unifyAreas` ·
+ * `applyPlacedCells` · 블루프린트 export 로 흘러갈 수 없다. 부분 배치를 만들지 않겠다는
+ * 결정을 런타임 검사가 아니라 **타입으로** 지킨다.
+ */
+function failureResult(issues: LayoutIssue[], snapshot?: LayoutSnapshot): ContainerWizardResult {
   const dummy: Container = {
     id: "m-layered-failure",
     kind: "machine",
@@ -225,20 +258,20 @@ function failureResult(detail: string): ContainerWizardResult {
     origin: { x: 0, y: 0 },
     size: { w: 1, h: 1 },
   };
+  const errors = issues.filter((i) => i.severity === "error");
   const root: MachineNode = {
     id: nextId("root"),
     kind: "machine",
     machine: dummy,
     routings: [],
-    children: [
-      {
-        id: nextId("f"),
-        kind: "failure",
-        reason: "no-machine-match",
-        children: [],
-        label: `자동배치 실패: ${detail}`,
-      },
-    ],
+    // 문제 하나에 실패 노드 하나 — 예전엔 첫 사유 한 줄뿐이었다.
+    children: errors.map((i) => ({
+      id: nextId("f"),
+      kind: "failure" as const,
+      reason: "no-machine-match" as const,
+      children: [],
+      label: describeIssue(i),
+    })),
     label: "자동배치 (실패)",
   };
   return {
@@ -247,8 +280,10 @@ function failureResult(detail: string): ContainerWizardResult {
       root,
       candidates: [],
       aborted: false,
-      stats: { candidatesGenerated: 0, failuresGenerated: 1, deepestDepth: 0 },
+      stats: { candidatesGenerated: 0, failuresGenerated: errors.length, deepestDepth: 0 },
     },
     partial: false,
+    issues,
+    snapshot,
   };
 }

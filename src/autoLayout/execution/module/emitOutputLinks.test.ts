@@ -91,7 +91,7 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
 
   // 순서 우선(문서 체크리스트 "(나)") — 정렬(부모 Y순 재배치)은 안 한다. 그룹 배열 순서가
   // 곧 좌석 행 순서다(allocateLinkFaces 가 groups.forEach 로 위→아래 누적). 채널을 가로질러
-  // 교차하는 홉이 생겨도 channelGeometryPlanner 가 지하로 안전히 우회시키므로(정확성 문제
+  // 교차하는 납품 경로가 생겨도 channelGeometryPlanner 가 지하로 안전히 우회시키므로(정확성 문제
   // 아님), 이 배열 순서를 재정렬할 필요가 없다는 게 사용자 결정이다 — 그 불변식을 못 박는다.
   it("그룹 배열 순서 = 좌석 행 순서 — 정렬 없이 그대로", () => {
     const rows = mod.outputPorts.map((p) => p.anchor.y);
@@ -131,7 +131,7 @@ describe("emitOutputLinks — 출력 fan-out (그룹=벨트)", () => {
 
 // 2026-07-19 등재했던 갭의 회귀 테스트 — 링크 방출이 tap 분기 안에만 있어서, 링크 없는 줄이
 // 좌석을 넘겨 모듈이 direct 로 떨어지면 **링크 포트가 통째로 사라졌다**(자식 direct + 부모 tap
-// → 포트 모양이 어긋나 홉이 샘). 이제 링크 방출은 모드 판정 **이전에, 무관하게** 돈다.
+// → 포트 모양이 어긋나 납품 경로가 샘). 이제 링크 방출은 모드 판정 **이전에, 무관하게** 돈다.
 describe("링크 방출은 tap/direct 판정과 무관하다", () => {
   const mod = generateModule({
     machine: M,

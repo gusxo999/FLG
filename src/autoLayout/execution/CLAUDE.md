@@ -12,7 +12,7 @@
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/moduleHop` | 벨트를 놓는다 | 방출을 `emitPath` 에 **위임** → 계획 |
+| `planner/deliveryRoute` | 벨트를 놓는다 | 방출을 `emitPath` 에 **위임** → 계획 |
 | `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 **경계선의 적용 대상은 *파이프라인 단계*다.** 아래 셋은 대상이 아니다 —

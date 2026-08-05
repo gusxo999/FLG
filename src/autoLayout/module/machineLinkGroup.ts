@@ -98,7 +98,7 @@ export function makeLink(
  *  - `to` 에 머신 → **input**(밖에서 받는다 = 원료).
  *  - `from` 에 머신 → **output**(밖으로 낸다 = 완제품).
  *
- * `find…` 가 아니다 — 다른 링크를 **찾는** 건 [pairHopPorts] 의 일이고, 이건 이 그룹 자신의
+ * `find…` 가 아니다 — 다른 링크를 **찾는** 건 [pairDeliveryPorts] 의 일이고, 이건 이 그룹 자신의
  * **속성**을 읽을 뿐이다.
  */
 export function readLinkRole(group: MachineLinkGroup): "input" | "output" {
@@ -125,13 +125,28 @@ export function readLinkRole(group: MachineLinkGroup): "input" | "output" {
  * 고친 버그들의 공통 원인이었다(tapCapacity 세 출처·배정 수 두 출처). 쪼개기를 여기로
  * 옮긴다면 저쪽에서 **빼면서** 옮겨야 한다.
  *
+ * ## 묶은 그룹 ↔ 쪼갠 그룹 — **공급 방식이 곧 이 선택이다** (2026-08-05)
+ *
+ * 같은 줄을 두 모양으로 낼 수 있고, 그 둘이 정확히 두 공급 방식이다:
+ *
+ * | | 그룹 | 벨트 | 한 면에 몇 줄 | 포트 |
+ * |---|---|---|---|---|
+ * | **묶은 것**(기본) | 줄 하나 = 그룹 하나, 담당 = 전 머신 | 여러 머신이 **나눠 집는** 한 줄 | 팔 길이 종류 수 | 품목당 1 |
+ * | **쪼갠 것**(`perMachine`) | 줄 하나 = 그룹 **n개**, 담당 = 머신 하나씩 | 머신마다 **자기 벨트** | 그 면의 둘레 칸 수 | 머신 × 품목 |
+ *
+ * 쪼개면 [tryLinkFace] 의 *"그룹 하나 = 머신 하나"* 문턱을 통과한다 — 그래서 **위/아래(gap)로
+ * 넘기는 능력이 따라온다.** 기둥 축과 수직인 가로 벨트는 자기가 닿는 머신 한 대만 먹일 수
+ * 있는데, 쪼갠 그룹은 애초에 한 대짜리라 그 제약에 걸릴 것이 없기 때문이다.
+ *
  * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
+ * @param opts.perMachine 머신마다 그룹 하나씩 낸다(기본 false = 전 머신 한 그룹).
  */
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
   machineCount: number,
   cap: SupplyCapacity,
   linkedKeys?: ReadonlySet<string>,
+  opts?: { perMachine?: boolean },
 ): MachineLinkGroup[] {
   const n = Math.max(1, machineCount);
   const groups: MachineLinkGroup[] = [];
@@ -140,8 +155,24 @@ export function externalLineGroups(
     if (line.kind !== "belt") continue;
     const key = `${line.role}:${line.name}`;
     if (linkedKeys?.has(key)) continue;
-    const arms = requiredInserterCount(line, n, cap);
-    if (arms === undefined) continue; // 수량 미상 — 그룹으로 안 만든다(옛 경로가 맡는다).
+    const known = requiredInserterCount(line, n, cap);
+    // 수량 미상일 때 갈리는 이유:
+    //  - **묶은 그룹**은 벨트 한 줄에 실릴 부하를 뜻하므로, 모르는 채로 만들면 그 순간 부하
+    //    계산이 거짓말을 시작한다 → 안 만든다(옛 경로가 맡는다).
+    //  - **쪼갠 그룹**은 머신 하나의 팔 개수일 뿐이고, 이 경우의 관례는 이미 **"판정 보류 = 1"**
+    //    이다([PlannedLine.requiredInserterCount] 소비처가 전부 그렇게 읽는다). 지어낸 수가
+    //    아니라 **기존 관례를 그대로 따르는 것**이라 여기서만 1로 채운다 — 안 그러면 수량 모르는
+    //    줄만 그룹이 없어 배분기 밖으로 떨어지고, 그 줄을 다른 방출기가 맡으면 좌석 장부가 갈린다.
+    const arms = known ?? (opts?.perMachine ? 1 : undefined);
+    if (arms === undefined) continue;
+    if (opts?.perMachine) {
+      // **신원(id)을 안 단다** — 원료·완제품은 상대가 모듈 밖이라 짝지을 대상이 없다.
+      // 신원이 있으면 [pairDeliveryPorts] 가 조회로 짝을 찾다 못 찾고 불변식 위반으로 보고한다.
+      for (let i = 0; i < n; i++) {
+        groups.push(makeLink(line.name, line.role, new Map([[i, arms]])));
+      }
+      continue;
+    }
     const mine = new Map<number, number>();
     for (let i = 0; i < n; i++) mine.set(i, arms);
     // "빈 쪽 = 밖" 규약은 [makeLink] 한 곳에만 — 여기선 신원(id)만 얹는다.

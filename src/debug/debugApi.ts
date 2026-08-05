@@ -4,23 +4,28 @@
  * UI 픽셀 드래그 없이 드래그/배치/삭제/undo/redo 등을 재현하기 위한 개발용 도구.
  * `installLayoutDebugApi()` 를 진입점에서 한 번 호출하면 `window.flg` 가 생긴다.
  *
- * 후보(자동배치) 적용은 패널이 마운트된 동안 `registerAutoLayoutDebug` 로
+ * 자동배치 결과의 재적용은 패널이 마운트된 동안 `registerAutoLayoutDebug` 로
  * 등록한 핸들러를 통해 동작한다 (패널 미마운트 시 안내 메시지).
  */
 
 import { useLayoutStore } from '../UI/store/layoutStore';
 import type { CandidateLeaf } from '../autoLayout/containerModel';
 
-type ApplyCandidateFn = (leaf: CandidateLeaf) => void;
-
+/**
+ * 자동배치 결과 = **배치 하나**.
+ *
+ * 예전엔 `getCandidates(): CandidateLeaf[]` + `apply(index)` 였다. 위저드가 후보를 언제나
+ * 한 개만 내므로(`layeredWizard`) 그 배열은 길이가 0 아니면 1 이었고, index 인자는 항상 0
+ * 이었다. 화면에서 후보 선택을 없앨 때(2026-08-04) 콘솔 API 도 같이 접었다.
+ */
 interface AutoLayoutRegistry {
-  getCandidates: () => CandidateLeaf[];
-  applyCandidate: ApplyCandidateFn;
+  getLayout: () => CandidateLeaf | null;
+  applyLayout: (leaf: CandidateLeaf) => void;
 }
 
 let autoLayoutRegistry: AutoLayoutRegistry | null = null;
 
-/** AutoLayoutContainerPanel 이 마운트 동안 현재 후보 목록 + 적용 핸들러를 등록. */
+/** AutoLayoutContainerPanel 이 마운트 동안 현재 결과 + 적용 핸들러를 등록. */
 export function registerAutoLayoutDebug(reg: AutoLayoutRegistry | null): void {
   autoLayoutRegistry = reg;
 }
@@ -76,9 +81,9 @@ const help = `flg — 콘솔 디버그 API
   flg.entities()                  그리드 origin 셀 목록 (id/타입/그리드·레이아웃 좌표)
   flg.session()                   routingEditSession 요약
 
-  배치(자동배치 후보)
-  flg.candidates()                적용 가능한 후보 목록 (패널 마운트 시)
-  flg.apply(i=0)                  후보 i번 그리드에 적용
+  배치(자동배치 결과 — 배치는 언제나 한 개다)
+  flg.layout()                    현재 배치 결과 요약 (패널 마운트 시)
+  flg.apply()                     그 배치를 그리드에 다시 적용
 
   라우팅 편집
   flg.routingEdit(on=true)        라우팅 편집 모드 토글
@@ -110,8 +115,8 @@ export interface FlgApi {
   state(): unknown;
   entities(): ReturnType<typeof listEntities>;
   session(): unknown;
-  candidates(): unknown;
-  apply(index?: number): boolean;
+  layout(): unknown;
+  apply(): boolean;
   routingEdit(on?: boolean): void;
   move(id: string, gridX: number, gridY: number): boolean;
   drag(id: string, layoutX: number, layoutY: number): boolean;
@@ -168,35 +173,37 @@ export function installLayoutDebugApi(): void {
       return s;
     },
 
-    candidates() {
+    layout() {
       if (!autoLayoutRegistry) {
-        console.warn('[flg] 후보 없음 — 자동배치 패널(검토 및 실행 단계)이 열려 있어야 합니다.');
-        return [];
+        console.warn('[flg] 결과 없음 — 자동배치 패널(검토 및 실행 단계)이 열려 있어야 합니다.');
+        return null;
       }
-      const cs = autoLayoutRegistry.getCandidates();
-      const brief = cs.map((c, i) => ({
-        index: i,
-        machines: c.internal.containers.filter((x) => x.kind === 'machine').length,
-        externals: c.external.containers.length,
-        routings: c.routings.length,
-      }));
+      const leaf = autoLayoutRegistry.getLayout();
+      if (!leaf) {
+        console.warn('[flg] 배치 결과 없음 — "레이아웃 생성" 을 먼저 실행하세요.');
+        return null;
+      }
+      const brief = {
+        machines: leaf.internal.containers.filter((x) => x.kind === 'machine').length,
+        externals: leaf.external.containers.length,
+        routings: leaf.routings.length,
+      };
       console.table?.(brief);
       return brief;
     },
 
-    apply(index = 0) {
+    apply() {
       if (!autoLayoutRegistry) {
         console.warn('[flg] 적용 불가 — 자동배치 패널이 열려 있어야 합니다.');
         return false;
       }
-      const cs = autoLayoutRegistry.getCandidates();
-      const leaf = cs[index];
+      const leaf = autoLayoutRegistry.getLayout();
       if (!leaf) {
-        console.warn(`[flg] 후보 ${index} 없음 (총 ${cs.length}개).`);
+        console.warn('[flg] 배치 결과 없음 — "레이아웃 생성" 을 먼저 실행하세요.');
         return false;
       }
-      autoLayoutRegistry.applyCandidate(leaf);
-      console.log(`[flg] 후보 ${index} 적용.`);
+      autoLayoutRegistry.applyLayout(leaf);
+      console.log('[flg] 배치 재적용.');
       return true;
     },
 

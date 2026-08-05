@@ -121,7 +121,7 @@ tags: [auto-layout, placement, routing]
 - ✅ 레시피 트리 펼치기 (`expandRecipeTree`)
 - ✅ 최소 / 처리량 모드 머신 수 계산
 - ✅ 인서터 처리량 사용자 override (`inserterThroughput`)
-- ✅ 배치·라우팅 — 모듈 파이프라인 (`tryRunModulePipeline`): 모듈 생성 + 채널 기하 예약 + 홉 라우팅 + 외부 perimeter 반출
+- ✅ 배치·라우팅 — 모듈 파이프라인 (`tryRunModulePipeline`): 모듈 생성 + 채널 기하 예약 + 납품 경로 라우팅 + 외부 perimeter 반출
 - ✅ fluid 라우팅 (파이프/지하파이프, 1:1)
 
 ### 구현 위치

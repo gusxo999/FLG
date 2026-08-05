@@ -69,7 +69,7 @@ export function fillModuleWayOuts(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 탭 인서팅 방출 — 트렁크 belt 한 줄 + 머신마다 탭 인서터 1개
-// (docs/auto-layout-wizard.trunk-redesign.md §10.2)
+// (docs/auto-layout/module/trunk-redesign.md §10.2)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

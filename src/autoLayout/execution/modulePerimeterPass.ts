@@ -39,7 +39,7 @@ import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
 import { moduleExtent, type PackResult } from "../planner/modulePacking";
-import { seatIsBeltFeeder } from "../planner/moduleHop";
+import { seatIsBeltFeeder } from "../planner/deliveryRoute";
 import type { LaneAssignment } from "../planner/perimeterLanePlanner";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
@@ -60,7 +60,10 @@ export interface PerimeterPassConfig {
 }
 
 /** 지도가 안 넘어왔을 때(유체 없는 트리·옛 테스트) — 아무 칸도 안 막는다. */
-const EMPTY_PIPE_FLOW: PipeFlow = { blockedTilesHard: new Set(), blockedTilesSoft: new Set() };
+const EMPTY_PIPE_FLOW: PipeFlow = {
+  blockedTilesHard: new Set(), blockedTilesSoft: new Set(),
+  hardDirs: new Map(), softDirs: new Map(),
+};
 
 /** 상자 하나의 이사 결과 — moduleWizard 가 Area/routing 에 반영한다. */
 export interface ChestRelocation {
@@ -157,8 +160,8 @@ function pairFor(chestId: string): PortPair {
   return { producer: port(chestId), consumer: port(`${chestId}#perimeter`) };
 }
 
-/** 전 모듈 footprint + placed 셀 + 홉 belt 의 점유 집합. */
-function buildOccupancy(pack: PackResult, hopCells: PlacedCell[]): Set<string> {
+/** 전 모듈 footprint + placed 셀 + 납품 경로 belt 의 점유 집합. */
+function buildOccupancy(pack: PackResult, deliveryCells: PlacedCell[]): Set<string> {
   const occ = new Set<string>();
   for (const pl of pack.placements) {
     for (const m of pl.module.machines)
@@ -167,7 +170,7 @@ function buildOccupancy(pack: PackResult, hopCells: PlacedCell[]): Set<string> {
           occ.add(cellKey(m.origin.x + dx, m.origin.y + dy));
     for (const c of pl.module.cells) occ.add(cellKey(c.x, c.y));
   }
-  for (const c of hopCells) occ.add(cellKey(c.x, c.y));
+  for (const c of deliveryCells) occ.add(cellKey(c.x, c.y));
   return occ;
 }
 
@@ -190,7 +193,7 @@ function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number
 
 /**
  * 살아남은 외부상자(stripped 아님)를 ⑥A lanePlan 배정대로 전역 perimeter 로 재배치할
- * **계획을 산정**한다. moduleHop 과 같은 규약: 모듈 그래프(mod.cells·port·chest)를 **건드리지
+ * **계획을 산정**한다. deliveryRoute 과 같은 규약: 모듈 그래프(mod.cells·port·chest)를 **건드리지
  * 않고**, 무엇을 떼고(droppedCellKeys) 무엇을 놓고(addedCells) 상자가 어디로 가는지
  * (relocations)를 **설명으로 반환**한다 — 적용은 호출자(moduleWizard)가 Area 를 지을 때 한다.
  * 실패한 상자만 skip(로컬 ring 유지) — 항상 ok:true.
@@ -198,10 +201,10 @@ function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number
 export function rePathToPerimeter(
   pack: PackResult,
   strippedChestIds: Set<string>,
-  hopCells: PlacedCell[],
+  deliveryCells: PlacedCell[],
   config: PerimeterPassConfig,
 ): PerimeterPassResult {
-  const occ = buildOccupancy(pack, hopCells);
+  const occ = buildOccupancy(pack, deliveryCells);
   const u = unionBounds(pack);
   const perimeter = perimeterOf(u);
   const asgById = new Map<string, LaneAssignment>();
@@ -268,7 +271,7 @@ export function rePathToPerimeter(
     // **유체는 이 제약이 없다** — feeder 가 아예 없어서 경로 전체가 파이프다(길이 1도 유효).
     if (!isFluid && res.path.length < 2) { fail(port.chest.id, `perimeter too close (${res.path.length})`); continue; }
 
-    // **좌석의 운명은 포트 종류가 가른다**([seatIsBeltFeeder], moduleHop 과 같은 판정).
+    // **좌석의 운명은 포트 종류가 가른다**([seatIsBeltFeeder], deliveryRoute 과 같은 판정).
     //  - **belt→상자 피더**(링크/탭 방출): 좌석은 트렁크 belt 에서 집어 상자로 넣던 것인데,
     //    상자가 멀리 이사하면 좌석 뒤에도 belt(이사 경로)가 붙어 **belt→belt** 가 된다 — 하는
     //    일 없이 처리량만 인서터 속도로 깎는다(실측: kr-glass 20/s 가 좌석+feeder 2개 직렬로

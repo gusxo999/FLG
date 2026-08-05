@@ -39,17 +39,42 @@ import {
   insertingPlanner,
   type IoLine,
   type PlannedLine,
+  type PortSide,
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { SpecInserter } from "../../buildSpec";
 import type { ModuleInput } from "../../module/clusterModule";
+import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide } from "../../module/fluidPorts";
+import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "../../module/machineLinkGroup";
 import {
   allocateLinkFaces,
   spillLinkFacesToGap,
   gapRowsFromPlans,
+  gapExitSidesFromPlans,
   seatRowsByFace,
+  type LinkFaceContext,
   type LinkFacePlan,
 } from "./linkPlanner";
+import type { PortFace } from "../../containerModel";
+
+/**
+ * `ModuleInput` 의 이진 인서터 필드(reach 1 기본 + 긴팔 하나)를 배분기가 먹는 **reach 목록**으로.
+ * 탭 배분기는 서로 다른 reach 하나당 [ClusterBelt] 한 줄을 세운다 — 지금은 최대 2종(1·긴팔)이라
+ * 옛 동작과 같지만, 이 목록이 늘면 벨트 줄도 는다.
+ * (`BuildSpec.inserters` 를 `ModuleInput` 까지 직접 통과시키는 일은 후속.)
+ */
+function toPlannerInserters(input: ModulePortPlannerInput): SpecInserter[] {
+  return [
+    { entityName: input.inserterEntityName, reach: 1, throughput: input.throughput?.normal ?? 0 },
+    ...(input.longInserter
+      ? [{
+          entityName: input.longInserter.entityName,
+          reach: input.longInserter.reach,
+          throughput: input.throughput?.long ?? 0,
+        }]
+      : []),
+  ];
+}
 
 /**
  * 계획에 필요한 [ModuleInput] 조각 — **좌표·id 접두사·방출 취향은 안 본다.**
@@ -77,14 +102,28 @@ export interface ModulePortPlan {
     out: (LinkFacePlan | undefined)[];
     in: (LinkFacePlan | undefined)[];
   };
+  /**
+   * **(나) 기계별 포트의 면 배정** — 링크와 **같은 자료**다(그래서 같은 방출기가 놓는다).
+   * 탭으로 성립한 모듈에는 없다(`undefined`). 그룹은 여기서 만든 것이라 함께 들고 나간다 —
+   * 방출기가 `plans[i]` 를 그룹 순서로 읽기 때문이다.
+   */
+  restLinks?: {
+    out: { groups: MachineLinkGroup[]; plans: (LinkFacePlan | undefined)[] };
+    in: { groups: MachineLinkGroup[]; plans: (LinkFacePlan | undefined)[] };
+  };
   /** 머신 i 와 i+1 사이를 몇 칸 벌릴까 — ①의 부산물. `layoutCluster` 로 그대로 간다. */
   rowGaps: number[];
   /** 나머지 줄의 tap/direct 판정 + 줄별 슬롯. */
   supply: InsertingDecisionResult;
   /** 유체 줄의 배정 — 면은 머신이 강제하므로 planner 를 안 거치고 여기서 찍는다. */
   pipePlanned: PlannedLine[];
-  /** 유체 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나. 방출 기하가 이 값에 갈린다. */
-  isJumpableToClusterPipe: boolean;
+  /** 면마다 — 파이프가 좌석을 비우고 밖으로 점프할 수 있나. 방출 기하가 이 값에 갈린다. */
+  isJumpableToClusterPipe: (side: PortSide) => boolean;
+  /**
+   * gap 벨트의 포트 끝이 좌석 줄(d1)을 먹는 옆면 — [gapExitSidesFromPlans].
+   * 파이프가 그 면에서 **점프해야 하는** 이유가 된다([buildTrunkContext]).
+   */
+  gapExitSides: ReadonlySet<PortFace>;
   /** 링크가 맡은 줄의 열쇠 `${role}:${name}` — 방출기가 "이 줄은 내 몫이 아니다"를 판정한다. */
   linkedKeys: Set<string>;
   /**
@@ -108,6 +147,36 @@ export function planModulePorts(
   input: ModulePortPlannerInput,
   count: number,
 ): ModulePortPlan {
+  // ── ⓪ 유체 면 — **모든 배정보다 먼저** ──────────────────────────────────────
+  // 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
+  // 스도쿠 원칙). 그리고 ①도 이 답을 알아야 한다: 유체가 가져간 면에 링크를 앉히면 인서터가
+  // 파이프 칸에 선다. 예전엔 ①이 ② 앞에 있어 그 사실을 **모른 채** 배정했다.
+  const plannerInserters = toPlannerInserters(input);
+  const ft = input.fluidTrunk;
+  const maxReach = plannerInserters.reduce((a, i) => Math.max(a, i.reach), 0);
+  // [isJumpableToClusterPipe] — "이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
+  // **면마다 따로 판정한다** — 면마다 유체 줄 수가 다르고, 그 수가 아래 ②③을 둘 다 바꾼다.
+  // 판정 자체는 [fluidJumpBlocker] 가 단독으로 갖는다 — [moduleWizard] 가 `n ≥ 2` 인 면을
+  // **거절**할 때 같은 공식을 봐야 하기 때문이다(둘로 갈리면 계획과 사유가 어긋난다).
+  // 유체 한 줄이면 못 넘어도 옛 스파인으로 **연속적 저하**이고, 두 줄이면 거절이다.
+  const jumpBudget = {
+    undergroundPipeEntityName: ft?.undergroundPipeEntityName,
+    pipeMaxUndergroundDistance: ft?.pipeMaxUndergroundDistance,
+    seatRows: input.machine.h,
+    beltLanes: Math.min(plannerInserters.length, input.lines.filter((l) => l.kind !== "pipe").length),
+    maxInserterReach: maxReach,
+  };
+  const isJumpableToClusterPipe = (side: PortSide): boolean => {
+    const n = fluidLinesOnSide(ft, side).length;
+    if (n === 0) return false; // 유체가 없는 면은 점프할 것도 없다.
+    return fluidJumpBlocker(n, jumpBudget) === null;
+  };
+  /** ③ 이 보는 면별 요약 — 유체 행 수와 점프 여부. 없는 면은 목록에 안 넣는다. */
+  const pipeFaces = (["W", "E"] as const)
+    .map((side) => ({ side, fluidRows: fluidLinesOnSide(ft, side).length, jumpable: isJumpableToClusterPipe(side) }))
+    .filter((f) => f.fluidRows > 0);
+  const pipeSides = new Set<PortFace>(pipeFaces.map((f) => f.side));
+
   // ── ① 링크 면 배정 ─────────────────────────────────────────────────────────
   // 이 단계는 팔 **수**만 본다(좌표 없음). gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고,
   // **gap 폭 = 그 gap 을 지나는 가로 벨트 수**다 — 그 폭이 다시 머신 좌표를 정하므로
@@ -118,17 +187,20 @@ export function planModulePorts(
   // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
   // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
   const faceGroupLedger = new Map<string, number>();
-  const outFaces = allocateLinkFaces(input.machine, count, outLinkGroups, "from", "W", faceLedger, faceGroupLedger);
-  const inFaces = allocateLinkFaces(input.machine, count, inLinkGroups, "to", "E", faceLedger, faceGroupLedger);
+  const faceCtx: LinkFaceContext = {
+    machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeSides,
+  };
+  const outFaces = allocateLinkFaces(faceCtx, outLinkGroups, "from", "W");
+  const inFaces = allocateLinkFaces(faceCtx, inLinkGroups, "to", "E");
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(input.machine, count, outLinkGroups, "from", faceLedger, outFaces, faceGroupLedger);
-  spillLinkFacesToGap(input.machine, count, inLinkGroups, "to", faceLedger, inFaces, faceGroupLedger);
+  spillLinkFacesToGap(faceCtx, outLinkGroups, "from", outFaces);
+  spillLinkFacesToGap(faceCtx, inLinkGroups, "to", inFaces);
 
   // 링크가 맡은 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
   // ③의 tap/direct 판정 대상이 아니다. ③ 입력에서 빼되, 그 줄이 먹은 좌석은 ①의 장부에
   // 남아 있어 ③이 정확한 예산을 본다. 빼지 않으면 두 문제가 생긴다:
   //  ① 링크 줄이 좌석을 넘겨 ③이 direct 로 떨어지면, 링크 방출이 안 불려 포트가 통째로
-  //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 홉이 샌다 — 2026-07-19 실측).
+  //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 납품 경로가 샌다 — 2026-07-19 실측).
   //  ② ③이 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
   const linkedKeys = new Set([
     ...outLinkGroups.map((g) => `output:${g.item}`),
@@ -136,52 +208,22 @@ export function planModulePorts(
   ]);
 
   // ── ② 유체(pipe) 줄 — 면을 우리가 못 고른다 ────────────────────────────────
-  // 머신 fluid_box 가 강제하고 [ModuleInput.fluidTrunk].side 로 온다. 그래서 ③에 안 보내고
-  // 여기서 [PlannedLine] 을 만든다([planClusterPorts] 가 하던 stamping 을 옮김:
-  // side=fluidTrunk.side, depth=1, reach 없음). ③의 **케이스 B 아이템 예약은 그대로**다 —
-  // fluidTrunk.side 를 pipeSide 로 따로 받아 그 면 아이템을 깊이로 밀 뿐, 유체 **줄**은 안 본다.
+  // 머신 fluid_box 가 강제하고 [FluidTrunkInput.lines] 로 **줄마다** 온다(면·행·순번). 그래서
+  // ③에 안 보내고 여기서 [PlannedLine] 을 만든다(depth=1, reach 없음). ③의 **케이스 B 아이템
+  // 예약은 그대로**다 — 아래 `pipeFaces` 로 그 면 아이템을 깊이로 밀 뿐, 유체 **줄**은 안 본다.
   const pipeLines = input.lines.filter((l) => l.kind === "pipe");
-  const pipePlanned: PlannedLine[] = input.fluidTrunk
-    ? pipeLines.map((line) => ({
-        line,
-        side: input.fluidTrunk!.side,
-        clusterBeltDepth: 1,
-        reach: undefined,
-      }))
-    : [];
-  // 유체는 트렁크(tap)로만 성립한다 — 자리가 아예 없으면(트렁크 미해결·다중 유체 v1 밖)
-  // 통째로 정직히 실패한다(현행 보존: 예전엔 planner 가 complex→다이렉트→!plan.ok 로
-  // 전부 unrouted 였다).
-  const fluidCannotPlace = pipeLines.length > 0 && (!input.fluidTrunk || pipeLines.length > 1);
-
-  // ModuleInput 의 이진 인서터 필드(reach 1 기본 + 긴팔 하나)를 ③이 먹는 reach 목록으로
-  // 번역한다. ③은 서로 다른 reach 하나당 [ClusterBelt] 한 줄을 세운다 — 지금은 최대 2종
-  // (1·긴팔)이라 옛 동작과 동일하지만, 여기 목록이 늘면 벨트 줄도 는다.
-  // (BuildSpec.inserters 를 ModuleInput 까지 직접 통과시키는 일은 후속.)
-  const plannerInserters: SpecInserter[] = [
-    { entityName: input.inserterEntityName, reach: 1, throughput: input.throughput?.normal ?? 0 },
-    ...(input.longInserter
-      ? [{
-          entityName: input.longInserter.entityName,
-          reach: input.longInserter.reach,
-          throughput: input.throughput?.long ?? 0,
-        }]
-      : []),
-  ];
-  // [isJumpableToClusterPipe] — "유체 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
-  // 셋 다 성립해야 true (하나라도 어긋나면 옛 스파인 = 케이스 B 로 **연속적 저하**):
-  //  ① 상자 칸 위치를 안다(fluidboxOffset) + 지하파이프를 골랐다.
-  //  ② 점프 거리가 최악 폭을 감당한다 — 입구 d1 → 출구 d(2+최대reach), 좌표 차 = 최대reach+1.
-  //     (실제 폭은 그 면에 배정된 벨트로 정해져 더 좁을 수 있다 — 여기선 보수적으로 최악.)
-  //  ③ 좌석 줄에서 상자 행 1개를 빼고도 벨트 좌석이 남는다: 벨트 수 ≤ 면 좌석 − 1.
-  const ft = input.fluidTrunk;
-  const maxReach = plannerInserters.reduce((a, i) => Math.max(a, i.reach), 0);
-  const isJumpableToClusterPipe =
-    !!ft &&
-    ft.fluidboxOffset !== undefined &&
-    !!ft.undergroundPipeEntityName &&
-    (ft.pipeMaxUndergroundDistance ?? 0) >= maxReach + 1 &&
-    plannerInserters.length <= input.machine.h - 1;
+  const pipePlanned: PlannedLine[] = [];
+  // 유체는 트렁크(tap)로만 성립한다 — 배정을 못 받은 유체 줄이 하나라도 있으면 통째로
+  // 정직히 실패한다. 반만 놓으면 유체를 못 받는 머신이 **조용히 굶는다.**
+  let fluidCannotPlace = false;
+  for (const line of pipeLines) {
+    const assigned = fluidLineOf(input.fluidTrunk, line);
+    if (!assigned) {
+      fluidCannotPlace = true;
+      continue;
+    }
+    pipePlanned.push({ line, side: assigned.side, clusterBeltDepth: 1, reach: undefined });
+  }
 
   // ── ③ 나머지 줄 배정 — ①이 남긴 예산 안에서 ──────────────────────────────
   // 보장된 columnTapCapacity 슬롯을 줄마다 1:1 못박는다(natural-divergence 대체).
@@ -198,39 +240,101 @@ export function planModulePorts(
   // 장부 낟알이 다르기 때문에 Map 을 그대로 넘기지는 못한다 — ①은 (머신,면)마다 세고
   // ③은 면마다 센다(모든 머신이 같은 행을 쓰는 것이 ③의 모델이다). [seatRowsByFace] 가
   // 머신 축을 max 로 접어 그 낟알 차이를 흡수한다.
+  const restLines = input.lines.filter(
+    (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
+  );
   const supply: InsertingDecisionResult = insertingPlanner(
     {
-      lines: input.lines.filter(
-        (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
-      ),
+      lines: restLines,
       inserters: plannerInserters,
       outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
       nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
       slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
       seatRowsUsed: seatRowsByFace(faceLedger), // ①이 먼저 먹은 행
-      pipeSide: input.fluidTrunk?.side, // 유체가 붙는 면.
-      isJumpableToClusterPipe, // true=좌석 살림(일반 면), false=옛 스파인(케이스 B).
+      pipeFaces, // 유체가 붙는 면들 + 그 면의 유체 행 수·점프 여부.
       belts: input.belts,
     },
     count,
     input.supplyCapacity,
   );
 
-  // 유체는 트렁크(tap)로만 성립하므로, 자리가 없거나(fluidCannotPlace) 아이템이 다이렉트로
-  // 떨어지면(유체는 다이렉트 불가) 나머지 줄이 통째로 실패한다 — 유체 재료 하나가 안 되면
-  // 그 모듈은 옛 경로로 넘어가야 하기 때문(예전엔 planner 가 complex 로 같은 결과를 냈다).
-  const fluidNeedsTap = pipeLines.length > 0 && (fluidCannotPlace || supply.mode === "direct");
+  // ── ③′ (나) 기계별 포트 — **링크와 같은 배분기로** ────────────────────────────
+  //
+  // 탭이 안 되면 예전엔 `insertingPlanner` 가 자기 rim 모델로 자리를 잡았다. 그 모델은 W/E
+  // 두 면만 봤고, 그래서 두 면이 차면 **거기서 끝**이었다. 같은 일을 하는 링크 배분기는
+  // 이미 위/아래(gap)로 넘길 줄 아는데(가로 벨트 + gap 벌리기), 원료 줄이 *"이 벨트는 전
+  // 머신 담당"* 이라고 적혀 나와 [tryLinkFace] 의 문턱(`arms.size !== 1`)에 걸렸을 뿐이다.
+  //
+  // **머신마다 하나씩 쪼개면 그대로 통과한다** — 그리고 쪼갠 그룹이 곧 "기계별 포트" 다.
+  // 두 개념이 아니라 같은 것의 두 이름이라, 여기서 하나로 만난다.
+  //
+  // 면 순서: 선호 면 → **반대 면** → gap. gap 은 모듈을 세로로 벌리므로([gapRowsFromPlans])
+  // 반대 면에 빈 행이 있는데 넘기면 순수한 손해다. 이 순서라서 *"오늘 W/E 에 앉는 것은
+  // 그대로 W/E 에 앉는다"* 가 지켜진다.
+  const restLinks = supply.mode === "direct"
+    ? (() => {
+        const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, undefined, {
+          perMachine: true,
+        });
+        const lineOfKey = new Map(restLines.map((l) => [`${l.role}:${l.name}`, l]));
+        const isExternal = (g: MachineLinkGroup): boolean =>
+          lineOfKey.get(`${readLinkRole(g)}:${g.item}`)?.external ?? false;
+        const out = groups.filter((g) => readLinkRole(g) === "output");
+        // **입력 처리 순서: 자식-공급(내부 간선) 먼저, external(원료) 나중.**
+        // 넘칠 때 **누가 반대 면으로 밀려나느냐**가 갈리기 때문이다. 자식-공급 입력이 W(부모
+        // 반대편)로 밀려나면 그 줄의 납품 경로가 모듈을 **빙 돌아야** 하고, 실제로 길이 막힌다
+        // (2026-08-05 실측: 통합 직후 이 순서를 빠뜨려 x 입력이 W 로 밀렸고 납품 1건이 실패했다).
+        // external 입력은 납품 경로가 없다 — perimeter 로 나가면 그만이라 어느 면이든 안전하다.
+        // 그래서 밀려날 자격이 있는 건 external 쪽이다(제약 센 것에 좋은 자리를 먼저).
+        const inFed = groups.filter((g) => readLinkRole(g) === "input" && !isExternal(g));
+        const inRaw = groups.filter((g) => readLinkRole(g) === "input" && isExternal(g));
+        const outPlans = allocateLinkFaces(faceCtx, out, "from", "W");
+        const fedPlans = allocateLinkFaces(faceCtx, inFed, "to", "E");
+        const rawPlans = allocateLinkFaces(faceCtx, inRaw, "to", "E");
+        // 넘치면 **반대 면 → gap** 순. 옛 rim 배분기가 쓰던 순서 그대로이고(출력 W→E,
+        // 입력 E→W), gap 만 **새 마지막 수단**으로 붙였다 — 그래서 오늘 W/E 에 앉던 줄은
+        // 그대로 W/E 에 앉고, 예전 같으면 자리가 없어 실패하던 것만 gap 으로 간다.
+        // (반대 면이 나쁜 자리인 것은 맞지만 그 완화는 **순서**가 한다: 위에서 자식-공급을
+        //  먼저 앉혀 밀려나는 쪽이 원료가 되게 했다. 금지하면 gap 이 아무 때나 벌어진다.)
+        spillLinkFacesToGap(faceCtx, out, "from", outPlans, ["E", "S", "N"]);
+        spillLinkFacesToGap(faceCtx, inFed, "to", fedPlans, ["W", "S", "N"]);
+        spillLinkFacesToGap(faceCtx, inRaw, "to", rawPlans, ["W", "S", "N"]);
+        return {
+          out: { groups: out, plans: outPlans.plans },
+          in: { groups: [...inFed, ...inRaw], plans: [...fedPlans.plans, ...rawPlans.plans] },
+        };
+      })()
+    : undefined;
+
+  // 유체 줄이 자리를 못 잡으면 나머지 줄이 통째로 실패한다 — 반만 놓으면 유체를 못 받는
+  // 머신이 **조용히 굶는다**. 예전엔 여기 `supply.mode === "direct"` 도 함께 있었다: 파이프
+  // 방출이 tap 가지 안에만 있어서 1:1 로 물러나면 유체가 사라졌기 때문이다. 방출을 갈래 밖으로
+  // 꺼낸 지금([generateModule]) 그 근거가 없다 — 파이프는 두 방식에서 똑같이 깔린다.
+  const fluidUnplaceable = pipeLines.length > 0 && fluidCannotPlace;
 
   return {
     linkFaces: { out: outFaces.plans, in: inFaces.plans },
-    // ── ④ gap 폭 — ①의 부산물. 우리가 고르는 값이 아니다.
-    rowGaps: gapRowsFromPlans(count, [outFaces.plans, inFaces.plans]),
+    restLinks,
+    // ── ④ gap 폭 — ①③′의 부산물. 우리가 고르는 값이 아니다.
+    rowGaps: gapRowsFromPlans(count, [
+      outFaces.plans, inFaces.plans,
+      ...(restLinks ? [restLinks.out.plans, restLinks.in.plans] : []),
+    ]),
     supply,
     pipePlanned,
     isJumpableToClusterPipe,
+    gapExitSides: gapExitSidesFromPlans(
+      [outFaces.plans, ...(restLinks ? [restLinks.out.plans] : [])],
+      [inFaces.plans, ...(restLinks ? [restLinks.in.plans] : [])],
+    ),
     linkedKeys,
-    rest:
-      supply.plan.ok && !fluidNeedsTap
+    // (나)로 갔으면 [ClusterBelt] 가 하나도 없다 — 줄들은 `restLinks` 가 들고 있고, 못 앉은
+    // 그룹의 실패는 링크와 똑같이 **자기 방출에서** 갈린다(그래서 `unplaced` 가 아니다).
+    rest: restLinks
+      ? (fluidUnplaceable
+          ? { ok: false, unplaced: restLines }
+          : { ok: true, lines: [] })
+      : supply.plan.ok && !fluidUnplaceable
         ? { ok: true, lines: supply.plan.lines }
         : {
             ok: false,

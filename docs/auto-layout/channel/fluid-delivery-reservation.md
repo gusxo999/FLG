@@ -1,21 +1,21 @@
 ---
 tags: [auto-layout, fluid, routing, placement, planning]
-aliases: [유체홉예약, fluid-hop-reservation]
+aliases: [유체납품 경로예약, fluid-delivery-reservation]
 ---
 
-# 유체 홉을 채널 기하 예약 안으로 — 설계 계획서
+# 유체 납품 경로를 채널 기하 예약 안으로 — 설계 계획서
 
 > **부모 문서:** [[channel-geometry-reservation]] — 통합 장부(같은 쪽 판정)의 원 설계
-> **관련:** [[fluid-hop]] · [[trunk-pipe]] · [[pipe-semantics]]
+> **관련:** [[fluid-delivery]] · [[trunk-pipe]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 구현 완료.** 리팩토링 Phase 4-B(P4-4 · P4-5).
-> 검증 = `planner/fluidHopReservation.test.ts`(11개) + 전체 521 테스트.
+> 검증 = `planner/fluidDeliveryReservation.test.ts`(11개) + 전체 521 테스트.
 > 구현 중 설계가 두 군데 바뀌었다 — §8 참조.
 
 ## 0. 한 줄 요약
 
-원칙은 **"모든 배치는 처음에 계획할 수 있어야 한다"** 이다. 지금 유체 홉만 이 원칙 밖에 있다 —
-장부가 유체 홉의 트랙을 **이미 잡아 두는데도** 라우터가 그 계획을 버리고 탐색으로 길을 낸다.
+원칙은 **"모든 배치는 처음에 계획할 수 있어야 한다"** 이다. 지금 유체 납품 경로만 이 원칙 밖에 있다 —
+장부가 유체 납품 경로의 트랙을 **이미 잡아 두는데도** 라우터가 그 계획을 버리고 탐색으로 길을 낸다.
 
 고치는 방법 셋:
 1. 계획을 **살려 쓴다** — `buildPlannedChain` 은 이미 품목-무관하다. 방출 꼬리 하나만 새로 만든다(§3).
@@ -30,16 +30,16 @@ aliases: [유체홉예약, fluid-hop-reservation]
 
 문제는 "유체가 계획에서 빠져 있다" 가 아니다. 그보다 나쁘다.
 
-### 1.1 유체 홉은 이미 장부에 들어가 있다
+### 1.1 유체 납품 경로는 이미 장부에 들어가 있다
 
-홉 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
+납품 경로 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
 
 - `productOf(s)` = 출력 라인 이름 ([modulePacking.ts:338](../../../src/autoLayout/planner/modulePacking.ts#L338)).
   라인의 `kind`(belt/pipe)를 안 본다 → 유체 출력 노드도 그대로 통과.
-- `pairHopPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
+- `pairDeliveryPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
   ([modulePacking.ts:205](../../../src/autoLayout/planner/modulePacking.ts#L205)).
   유체 포트는 `linkId` 가 없어 ②번 위치-zip 으로 짝이 된다(v1 모듈당 유체 1포트 → 자명).
-- 그 짝이 그대로 홉 입력에 쌓인다
+- 그 짝이 그대로 납품 경로 입력에 쌓인다
   ([modulePacking.ts:521](../../../src/autoLayout/planner/modulePacking.ts#L521)).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
@@ -47,7 +47,7 @@ aliases: [유체홉예약, fluid-hop-reservation]
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
   ([modulePacking.ts:558-561](../../../src/autoLayout/planner/modulePacking.ts#L558-L561)).
 
-**즉 유체 상자가 W/E 변에 오면 그 홉은 계단꼴 계획을 받고 트랙을 하나 차지한다.**
+**즉 유체 상자가 W/E 변에 오면 그 납품 경로는 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 
 그리고 **유체는 항상 W/E 변에 온다** — 선택이 아니라 강제다
 ([moduleWizard.ts:149](../../../src/autoLayout/planner/moduleWizard.ts#L149)):
@@ -55,45 +55,45 @@ aliases: [유체홉예약, fluid-hop-reservation]
 ```ts
 // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E)
 const wantFace = isOutput ? "W" : "E";
-const chosen = chooseMachineDirection(entity, ..., wantFace, role);
+const chosen = chooseFluidTrunkPlan(entity, ..., wantFace, role);
 if (!chosen) return reject({ kind: 'no-rotation', ... });  // ← 트리 자체가 안 만들어진다
 ```
 
 이 조건은 `eligible` 판정(`out.meta.side === "W" && inp.meta.side === "E"`)과 **정확히 같다**.
-따라서 **모든 유체 홉은 예외 없이 장부에 들어간다.** 아이템에는 있는 N/S 스필 홉이 유체엔 없다.
+따라서 **모든 유체 납품 경로는 예외 없이 장부에 들어간다.** 아이템에는 있는 N/S 스필 납품 경로가 유체엔 없다.
 
 > 이게 중요한 이유: "유체가 계획을 못 받는 경우"는 **장부가 배정에 실패한 경우 하나뿐**이다.
 > 입구가 막힌 게 아니라 자리가 없어서 못 앉는 것이라면, 자리를 먼저 주면 된다(§4.3).
 
 ### 1.2 그런데 라우터가 그 계획을 버린다
 
-`routeModuleHops` 의 루프 첫 줄이 유체를 먼저 걷어낸다
-([moduleHop.ts:253](../../../src/autoLayout/planner/moduleHop.ts#L253)):
+`routeDeliveryRoutes` 의 루프 첫 줄이 유체를 먼저 걷어낸다
+([deliveryRoute.ts:253](../../../src/autoLayout/planner/deliveryRoute.ts#L253)):
 
 ```ts
-if (hop.from.chest.kind === "infinity-pipe") {
-  const route = routeOneFluidHop(...);   // ← plannedChains 조회 없음. dijkstra 직행
+if (delivery.from.chest.kind === "infinity-pipe") {
+  const route = routeOneFluidDelivery(...);   // ← plannedChains 조회 없음. dijkstra 직행
   ...
   continue;                              // ← 아래 계획 경로 분기에 도달하지 않는다
 }
 ```
 
-계획 체인(`plannedChains`)은 이 홉 것도 만들어져 있지만 조회되지 않는다.
+계획 체인(`plannedChains`)은 이 납품 경로 것도 만들어져 있지만 조회되지 않는다.
 
 ### 1.3 그 dijkstra 는 남의 예약도 안 본다
 
-`routeOneFluidHop` 의 금지 집합은 `base + hopBelts + fluidBlocked` 뿐이다
-([moduleHop.ts:411-415](../../../src/autoLayout/planner/moduleHop.ts#L411-L415)).
-아이템 쪽이 쓰는 `reservedExport`(반출 레인)·`reservedHop`(다른 홉의 계획 칸)이 빠져 있다.
+`routeOneFluidDelivery` 의 금지 집합은 `base + deliveryBelts + fluidBlocked` 뿐이다
+([deliveryRoute.ts:411-415](../../../src/autoLayout/planner/deliveryRoute.ts#L411-L415)).
+아이템 쪽이 쓰는 `reservedExport`(반출 레인)·`reservedDelivery`(다른 납품 경로의 계획 칸)이 빠져 있다.
 
 ### 1.4 결론 — 손해가 두 번 난다
 
 | | 지금 |
 |---|---|
-| 장부 | 유체 홉 몫으로 트랙을 **잡는다** |
+| 장부 | 유체 납품 경로 몫으로 트랙을 **잡는다** |
 | 라우터 | 그 트랙을 **안 쓴다**(탐색으로 딴 길) |
 | 그 탐색 | 아이템의 예약 칸을 **밟을 수 있다** |
-| 밟힌 아이템 홉 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([moduleHop.ts:286](../../../src/autoLayout/planner/moduleHop.ts#L286) 주석의 그 연쇄) |
+| 밟힌 아이템 납품 경로 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([deliveryRoute.ts:286](../../../src/autoLayout/planner/deliveryRoute.ts#L286) 주석의 그 연쇄) |
 
 채널은 유체 몫만큼 넓어졌는데 그 자리는 비어 있고, 유체는 아이템 자리를 밟는다.
 **"계획할 수 없어서" 가 아니라 "계획해 놓고 안 써서" 생긴 손해다.**
@@ -130,8 +130,8 @@ if (hop.from.chest.kind === "infinity-pipe") {
 조사에서 가장 반가운 사실:
 
 **`buildPlannedChain` 은 이미 품목-무관하다**
-([moduleHop.ts:514](../../../src/autoLayout/planner/moduleHop.ts#L514)).
-상자 좌표 두 개와 기하 지시(straight/staircase/columnSwitch/undergroundCrossing)를 받아
+([deliveryRoute.ts:514](../../../src/autoLayout/planner/deliveryRoute.ts#L514)).
+포트 끝 컨테이너 좌표 두 개와 기하 지시(straight/staircase/columnSwitch/undergroundCrossing)를 받아
 칸 순서열로 펴는 순수 함수다. 벨트라서 되는 게 하나도 없다.
 
 품목에 묶인 곳은 **꼬리(방출) 하나뿐**이다:
@@ -141,11 +141,11 @@ if (hop.from.chest.kind === "infinity-pipe") {
 | `buildPlannedChain` | 기하 → 칸 순서열 | **그대로 됨** |
 | `plannedChainClear` | 계획 칸이 비었나 | 그대로 됨(+ 인접 검사 추가) |
 | `finishChain` | 좌석 이음 + `emitItemPath` | ✗ 벨트 전용 |
-| `routeOneFluidHop` | dijkstra + `emitFluidPath` | 폴백으로 유지 |
+| `routeOneFluidDelivery` | dijkstra + `emitFluidPath` | 폴백으로 유지 |
 
 그래서 새로 만들 것은 **`finishFluidChain`(계획 체인 → 파이프 방출)** 하나다.
 좌석 이음이 없어 `finishChain` 보다 짧다 — 파이프 포트는 인서터가 없고, 좌석 자리의 파이프는
-떼지 않고 그대로 이음에 쓴다([moduleHop.ts:263](../../../src/autoLayout/planner/moduleHop.ts#L263)).
+떼지 않고 그대로 이음에 쓴다([deliveryRoute.ts:263](../../../src/autoLayout/planner/deliveryRoute.ts#L263)).
 
 ---
 
@@ -163,7 +163,7 @@ export interface DeliveryInput {
 }
 ```
 
-`hopSeeds` 에도 같은 필드를 실어 보낸다(포트의 `line.kind === "pipe"` 로 판정).
+`deliverySeeds` 에도 같은 필드를 실어 보낸다(포트의 `line.kind === "pipe"` 로 판정).
 
 ### 4.2 충돌 판정을 품목-인식으로
 
@@ -182,7 +182,7 @@ v1 은 모듈당 유체 1줄이라 유체 경로 수가 적다 — 비용이 실
 | 순위 | 경로 | 배정 실패하면 |
 |---|---|---|
 | 1 | **유체 납품** | 지하로 못 도망감 → **트리 전체가 실패** |
-| 2 | 반출 | 상자가 로컬 ring 에 남음 — 되돌릴 수 있는 손해 |
+| 2 | 반출 | 포트 끝 컨테이너가 로컬 ring 에 남음 — 되돌릴 수 있는 손해 |
 | 3 | 아이템 납품 | ③ 지하 횡단이 회수 — 사실상 손해 없음 |
 
 그래서 `items` 배열 순서를 **유체 납품 → 반출 → 아이템 납품**으로 바꾼다
@@ -206,17 +206,17 @@ v1 은 모듈당 유체 1줄이라 유체 경로 수가 적다 — 비용이 실
 ### 4.5 라우터 — 유체도 계획 체인을 탄다
 
 ```
-for (const hop of pack.hops) {
+for (const delivery of pack.deliveries) {
   const chain = plannedChains.get(k);
   if (chain && plannedChainClear(...)) {
-    route = isFluid(hop) ? finishFluidChain(hop, chain, config)   // ← 신규
-                         : finishChain(hop, chain, config);
+    route = isFluid(delivery) ? finishFluidChain(delivery, chain, config)   // ← 신규
+                         : finishChain(delivery, chain, config);
     planned += 1;
-  } else if (isFluid(hop)) {
+  } else if (isFluid(delivery)) {
     return reject({ kind: 'fluid-unplannable', ... });            // ← §4.6
   } else {
     dijkstraFallback += 1;
-    route = routeOneHop(...);
+    route = routeOneDelivery(...);
   }
 }
 ```
@@ -226,10 +226,10 @@ for (const hop of pack.hops) {
 ### 4.6 유체에 dijkstra 폴백은 없다 (결정 D3)
 
 원칙이 **"모든 배치는 처음에 계획할 수 있어야 한다"** 이므로, 계획 없이 탐색으로 길을 내는
-경로를 유체에 남겨 두지 않는다. 계획을 못 받은 유체 홉은 **탐색으로 때우지 않고 거절한다** —
+경로를 유체에 남겨 두지 않는다. 계획을 못 받은 유체 납품 경로는 **탐색으로 때우지 않고 거절한다** —
 새 사유 `RejectReason.kind = 'fluid-unplannable'`.
 
-**따라서 `routeOneFluidHop` 은 삭제된다.**
+**따라서 `routeOneFluidDelivery` 은 삭제된다.**
 (`emitFluidPath` 는 `finishFluidChain` 이 계속 쓴다 — 방출은 그대로다.)
 
 거절은 "계획 실패를 조용히 덮지 않는다"는 뜻이지 품질 포기가 아니다. §4.3 이 유체에 지상
@@ -245,20 +245,20 @@ P4-4a 계측이 그 빈도를 먼저 재고, 예상보다 크면 §6 의 잔여 
 
 | 단계 | 내용 | 완료 판정 |
 |---|---|---|
-| **P4-4a** | 계측 — 유체 홉이 계획을 받는지/버려지는지, 거절로 갈 빈도는 얼마인지 | 유체 홉의 `계획 있음/버림` 카운트 로그. §1·§2.5 확증 또는 반증 |
-| **P4-4b** | `DeliveryInput.fluid` + 홉 입력에 종류 싣기 | tsc 통과. 장부 입력에 유체 표시가 도달(단위 테스트 1개) |
+| **P4-4a** | 계측 — 유체 납품 경로가 계획을 받는지/버려지는지, 거절로 갈 빈도는 얼마인지 | 유체 납품 경로의 `계획 있음/버림` 카운트 로그. §1·§2.5 확증 또는 반증 |
+| **P4-4b** | `DeliveryInput.fluid` + 납품 경로 입력에 종류 싣기 | tsc 통과. 장부 입력에 유체 표시가 도달(단위 테스트 1개) |
 | **P4-4c** | 충돌 판정 품목-인식(halo) | 다른 유체 두 경로가 인접 배정되지 않는 단위 테스트. 기존 채널 테스트 전부 유지 |
 | **P4-4d** | 배정 우선순위 재정렬(유체 → 반출 → 아이템) | 유체·아이템이 교차하는 트리에서 유체가 지상, 아이템이 지하로 가는 단위 테스트 |
-| **P4-5a** | `finishFluidChain` — 계획 체인을 파이프로 방출 | 계획받은 유체 홉이 `emitFluidPath` 로 깔림. 셀이 pipe |
-| **P4-5b** | 라우터 분기 통합 + `routeOneFluidHop` 삭제 + `fluid-unplannable` 사유 추가 | 유체가 `planned` 로 집계됨. 유체 dijkstra 호출 0 |
-| **P4-5c** | 회귀 확인 | `wood ← water`(유체 홉) 실패 0 유지. 510 테스트 유지 |
+| **P4-5a** | `finishFluidChain` — 계획 체인을 파이프로 방출 | 계획받은 유체 납품 경로가 `emitFluidPath` 로 깔림. 셀이 pipe |
+| **P4-5b** | 라우터 분기 통합 + `routeOneFluidDelivery` 삭제 + `fluid-unplannable` 사유 추가 | 유체가 `planned` 로 집계됨. 유체 dijkstra 호출 0 |
+| **P4-5c** | 회귀 확인 | `wood ← water`(유체 납품 경로) 실패 0 유지. 510 테스트 유지 |
 
 **커밋 경계:** P4-4a 는 단독(계측만). P4-4b+c+d 는 장부 변경 한 덩어리. P4-5a+b 는 라우터
 변경 한 덩어리. 섞으면 회귀가 났을 때 어느 쪽인지 못 가른다.
 
 ### 명칭 정리 (마지막, 선택)
 
-`hopSeeds` 의 "Seed" 는 부적절하다 — 난수 생성을 연상시키는데 실제로는 **미리 정한 경로 입력**이다.
+`deliverySeeds` 의 "Seed" 는 부적절하다 — 난수 생성을 연상시키는데 실제로는 **미리 정한 경로 입력**이다.
 `hopPlanInputs` 또는 `deliveryInputs`(장부 용어와 일치)로 바꾼다.
 기능 변경이 끝난 뒤 별도 커밋으로 — 섞으면 diff 가 읽히지 않는다.
 
@@ -270,7 +270,7 @@ P4-4a 계측이 그 빈도를 먼저 재고, 예상보다 크면 §6 의 잔여 
 |---|---|---|
 | **D1** | 인접 금지 구현 | **halo 확장** — 유체 도형의 칸 + 4-이웃을 후보별 1회 캐시. 유체 전용 트랙 대역은 채널을 무조건 넓혀 v1 에 과하다 |
 | **D2** | 유체 지하 횡단 계획 | **v1 제외** — pipe-to-ground 페어링은 성질이 다른 세 번째 제약. §4.3 우선순위가 이 제외를 감당한다 |
-| **D3** | 유체 dijkstra 폴백 | **없앤다** — 유체는 계획을 못 받을 수 없어야 한다. 못 받으면 탐색이 아니라 **거절**. `routeOneFluidHop` 삭제 |
+| **D3** | 유체 dijkstra 폴백 | **없앤다** — 유체는 계획을 못 받을 수 없어야 한다. 못 받으면 탐색이 아니라 **거절**. `routeOneFluidDelivery` 삭제 |
 
 D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 유체가 지하로 못 가는 대신
 지상을 먼저 갖고, 아이템이 밑으로 지나간다.
@@ -286,7 +286,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 - **(나) 채널 밖 우회** — 유체 한 줄을 채널이 아니라 모듈 위/아래(N/S 마진)로 돌린다. 장부에 네 번째 경로 종류가 생긴다.
 
 > **정정(2026-07-25):** D2 를 권고할 때 "폴백 품질은 지금과 동일"이라고 적었는데 **틀렸다**.
-> 옛 `routeOneFluidHop` 의 dijkstra 는 `fluidBlocked` 를 피해 넓게 점프하면 이 교차를 풀 수
+> 옛 `routeOneFluidDelivery` 의 dijkstra 는 `fluidBlocked` 를 피해 넓게 점프하면 이 교차를 풀 수
 > 있었다. 따라서 지금의 거절은 옛 경로 대비 **실제 회귀**다 — (가)를 넣어 되찾아야 한다.
 
 ---
@@ -305,7 +305,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 
 계획서를 그대로 따르지 않은 두 곳. 둘 다 구현하며 드러난 사실 때문이다.
 
-### 8.1 `routeOneFluidHop` 을 지우지 않았다 — 장부-off 모드가 남는다
+### 8.1 `routeOneFluidDelivery` 을 지우지 않았다 — 장부-off 모드가 남는다
 
 §4.6 은 삭제를 적었다. 그런데 `AUTO_LAYOUT_CHANNEL_GEOMETRY` 를 끄면 **아이템도 전부** 탐색으로
 간다 — 그건 "계획 없음" 모드다. 그 모드에서 유체만 유별나게 실패시킬 이유가 없다.
@@ -317,11 +317,11 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 
 §4.3 은 *배정* 순서만 다뤘다. 그런데 방출 루프에도 같은 문제가 있었다:
 
-아이템 홉이 막히면 "예약 무시 재시도"로 **남의 계획 칸을 밟는다**
-([moduleHop.ts](../../../src/autoLayout/planner/moduleHop.ts) 의 그 거래). 밟힌 게
+아이템 납품 경로가 막히면 "예약 무시 재시도"로 **남의 계획 칸을 밟는다**
+([deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts) 의 그 거래). 밟힌 게
 유체의 자리였으면 유체는 물러설 데가 없어 트리가 통째로 죽는다.
 
-→ `routeModuleHops` 가 **유체 홉을 먼저 깐다**. 유체가 실제로 칸을 차지한 뒤(`hopBelts`)라야
+→ `routeDeliveryRoutes` 가 **유체 납품 경로를 먼저 깐다**. 유체가 실제로 칸을 차지한 뒤(`deliveryBelts`)라야
 그 재시도가 밟을 수 없다. 순서 한 줄로 최악을 막는다.
 
 ### 8.3 계획 경로에 합류 가드를 다시 붙였다

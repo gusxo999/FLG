@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "../planner/modulePacking";
-import { routeModuleHops } from "../planner/moduleHop";
+import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";
-import { seatIsBeltFeeder } from "../planner/moduleHop";
+import { seatIsBeltFeeder } from "../planner/deliveryRoute";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
 
@@ -64,16 +64,16 @@ describe("rePathToPerimeter", () => {
   it("순수 — pack 미변형(chest.origin·mod.cells 그대로), 이사 결과는 relocations 로 반환", () => {
     // 예약 on — 채널이 lane 만큼 넓어져야 channel-host 상자도 통로가 난다.
     const pack = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
-    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-    expect(hop.failures).toBe(0);
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+    expect(delivery.failures).toBe(0);
 
     const u = moduleUnion(pack);
-    const survBefore = survivingChests(pack, hop.strippedChestIds);
+    const survBefore = survivingChests(pack, delivery.strippedChestIds);
     // 재배치 전: 적어도 하나는 내부(전역 외곽이 아님).
     expect(survBefore.some((c) => !onEdge(c.origin, u))).toBe(true);
     const cellsBefore = JSON.stringify(pack.placements.map((pl) => pl.module.cells.length));
 
-    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -83,7 +83,7 @@ describe("rePathToPerimeter", () => {
     expect(res.relocations.length).toBe(res.relocated);
 
     // 순수성: pack 은 한 셀도 바뀌지 않았다(chest.origin·mod.cells 길이 불변).
-    expect(survivingChests(pack, hop.strippedChestIds)).toEqual(survBefore);
+    expect(survivingChests(pack, delivery.strippedChestIds)).toEqual(survBefore);
     expect(JSON.stringify(pack.placements.map((pl) => pl.module.cells.length))).toBe(cellsBefore);
 
     // 이사한 상자의 새 origin(relocations)은 전역 외곽에서 [PERIMETER_MARGIN] 칸 바깥 변에
@@ -100,8 +100,8 @@ describe("rePathToPerimeter", () => {
 
   it("유효 셀 겹침 0 — 적용(drop+add) 후에도 좌표 고유", () => {
     const pack = packModuleTree(specs, config);
-    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -115,9 +115,9 @@ describe("rePathToPerimeter", () => {
 
   it("이사 상자 — addedCells 에 새 origin InfinityChest, 옛 chest 자리는 droppedCellKeys", () => {
     const pack = packModuleTree(specs, config);
-    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-    const survBefore = new Map(survivingChests(pack, hop.strippedChestIds).map((c) => [c.id, c.origin]));
-    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+    const survBefore = new Map(survivingChests(pack, delivery.strippedChestIds).map((c) => [c.id, c.origin]));
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -146,7 +146,7 @@ describe("rePathToPerimeter", () => {
   // 포트는 `트렁크벨트 — 좌석(인서터) — 상자` 다. 상자를 외곽으로 이사하면 좌석 뒤에도
   // belt(이사 경로)가 붙어 좌석이 **belt→belt** 가 된다 — 하는 일 없이 처리량만 인서터
   // 속도로 깎는다(실측: kr-glass 20/s 가 좌석+feeder 2개 직렬로 10/s 병목). 그래서 좌석도
-  // 떼고 그 자리를 belt 로 메워야 한다. moduleHop 이 모듈↔모듈 홉에서 이미 하는 것과 같은
+  // 떼고 그 자리를 belt 로 메워야 한다. deliveryRoute 이 모듈↔모듈 납품 경로에서 이미 하는 것과 같은
   // 판정([seatIsBeltFeeder])을 이사 pass 도 써야 한다.
   //
   // 되돌려 확인: modulePerimeterPass 의 `stripSeat` 를 지우면 seat 이 droppedCellKeys 에서
@@ -154,13 +154,13 @@ describe("rePathToPerimeter", () => {
   // ───────────────────────────────────────────────────────────────────────────
   it("belt→상자 피더 좌석을 belt 로 대체한다 — 인서터 2개 직렬 병목 제거", () => {
     const pack = packModuleTree(specs, config);
-    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
 
     // 이사 전: 살아남는 상자마다 그 포트의 좌석 좌표와 피더 여부를 기록한다.
     const seatOf = new Map<string, { x: number; y: number; feeder: boolean }>();
     for (const pl of pack.placements)
       for (const port of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
-        if (hop.strippedChestIds.has(port.chest.id)) continue;
+        if (delivery.strippedChestIds.has(port.chest.id)) continue;
         const fv = faceVector(port.face);
         seatOf.set(port.chest.id, {
           x: port.anchor.x - fv.x,
@@ -169,7 +169,7 @@ describe("rePathToPerimeter", () => {
         });
       }
 
-    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });
@@ -197,8 +197,8 @@ describe("rePathToPerimeter", () => {
   it("결정적 — 같은 입력 → 같은 relocations", () => {
     const run = () => {
       const pack = packModuleTree(specs, config);
-      const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-      const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+      const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+      const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
         beltEntityName: "transport-belt",
         inserterEntityName: "inserter",
       });
@@ -222,9 +222,9 @@ describe("rePathToPerimeter", () => {
       { id: "n2", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("copper-cable", 3), bin("stone-tablet", 1), bout("electronic-circuit", 2)] },
     ];
     const pack = packModuleTree(branch, { ...config, reservePerimeterLanes: true, channelGeometry: true });
-    const hop = routeModuleHops(pack, { beltEntityName: "transport-belt" });
-    expect(hop.failures).toBe(0);
-    const res = rePathToPerimeter(pack, hop.strippedChestIds, hop.cells, {
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+    expect(delivery.failures).toBe(0);
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {
       beltEntityName: "transport-belt",
       inserterEntityName: "inserter",
     });

@@ -66,21 +66,21 @@ describe("packModuleTree", () => {
     expect(side(parent.outputPorts[0].anchor, parent.bbox)).toBe("W");
     expect(side(child.outputPorts[0].anchor, child.bbox)).toBe("W");
     expect(side(parent.inputPorts.find((p) => p.line.name === "gear")!.anchor, parent.bbox)).toBe("E");
-    // 미탭/라우팅 실패 없음 + 홉 1개(gear).
+    // 미탭/라우팅 실패 없음 + 납품 경로 1개(gear).
     for (const pl of res.placements) expect(pl.module.unroutedLines).toHaveLength(0);
-    expect(res.hops).toHaveLength(1);
-    expect(res.hops[0].item).toBe("gear");
+    expect(res.deliveries).toHaveLength(1);
+    expect(res.deliveries[0].item).toBe("gear");
   });
 
-  it("홉 페어링 = 품목 매칭, 개수 = 자식 수", () => {
+  it("납품 경로 페어링 = 품목 매칭, 개수 = 자식 수", () => {
     const res = packModuleTree(specs, config);
-    expect(res.hops).toHaveLength(1);
-    expect(res.hops[0].item).toBe("copper-cable");
-    expect(res.hops[0].from.line.role).toBe("output");
-    expect(res.hops[0].to.line.role).toBe("input");
-    expect(res.hops[0].to.line.name).toBe("copper-cable");
+    expect(res.deliveries).toHaveLength(1);
+    expect(res.deliveries[0].item).toBe("copper-cable");
+    expect(res.deliveries[0].from.line.role).toBe("output");
+    expect(res.deliveries[0].to.line.role).toBe("input");
+    expect(res.deliveries[0].to.line.name).toBe("copper-cable");
     // rate 미상(옛 탭/다이렉트 경로) — 포트가 교환 가능해 linkId 가 없다. seq(위치)가 유일한 구분.
-    expect(res.hops[0].linkId).toBeUndefined();
+    expect(res.deliveries[0].linkId).toBeUndefined();
     expect(res.linkMismatches).toEqual([]);
   });
 

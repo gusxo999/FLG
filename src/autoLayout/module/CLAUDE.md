@@ -35,7 +35,11 @@ emit*(...)                                      ← execution/module/emitModule
 ## 이 폴더는 셀을 만들지 않는다
 
 `makeContainerCell`·`makeInserterCell` 을 부르는 코드가 **0 이다**. 방출은 전부
-`execution/module/emitModule` 소관이다(다이렉트 인서팅 1:1 방출까지 포함).
+`execution/module/emitModule` 소관이다.
+
+**방출기는 이제 링크·원료를 안 가린다**(2026-08-05 공급 모델 통합): 탭이 깨지면 그 줄들도
+머신마다 쪼개져 `emitOutputLinks`/`emitInputLinks` 를 탄다. 전용 방출기였던
+`emitDirectInserting` 은 호출자가 0이 되어 삭제됐다. → `docs/auto-layout/link/machine-link.md`
 여기서 셀을 만들고 싶어지면 계층이 새는 것이다.
 
 ## 읽을 문서
@@ -47,4 +51,4 @@ emit*(...)                                      ← execution/module/emitModule
 ## 게임데이터를 안 본다
 
 `module/` 은 순수하다 — store 를 안 본다. 유체 면·머신 회전처럼 prototype 이 정하는 값은
-**호출자가 계산해 `ModuleInput.fluidTrunk` 로 넘긴다**(계산은 `fluidPorts.chooseMachineDirection`).
+**호출자가 계산해 `ModuleInput.fluidTrunk` 로 넘긴다**(계산은 `fluidPorts.chooseFluidTrunkPlan` — 회전 하나 + 유체 줄 N개).

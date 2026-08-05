@@ -28,6 +28,7 @@ import {
   type InsertingDecisionResult,
 } from "../planner/module/clusterPortPlanner";
 import type { SpecBelt } from "../buildSpec";
+import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
 import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "./machineLinkGroup";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
@@ -36,15 +37,14 @@ import type { LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
 import type { Container, ModulePortMeta, PlacedCell, PortFace } from "../containerModel";
-import type { Direction } from "../../types/layout";
 import { cellKey, enumeratePerimeterCells } from "../util/helper";
+import type { PipeFlowPipe } from "../util/pipeFlow";
 // 방출 — 계획이 끝난 배정을 셀로 놓는다(배치 실행 계층).
 import {
   emitOutputLinks,
   emitInputLinks,
   emitTapInserting,
   emitTrunkPipe,
-  emitDirectInserting,
 } from "../execution/module/emitModule";
 
 /**
@@ -87,7 +87,7 @@ export interface ModulePort {
    * 좌표 무관: 모듈-로컬로 계산해도 방향은 평행이동에 불변이라 절대좌표에서도 그대로 유효.
    */
   moduleWayOuts: PortFace[];
-  /** anchor 에 놓인 무한상자(루트 가정의 외부 소스/싱크). 합성 시 벨트 홉으로 교체. */
+  /** anchor 에 놓인 무한상자(루트 가정의 외부 소스/싱크). 합성 시 벨트 납품 경로로 교체. */
   chest: Container;
   /** 이 포트의 트렁크 belt 셀(spine). Routing.placed 로 써서 선이 벨트를 따라가게 한다. */
   cells: PlacedCell[];
@@ -97,7 +97,7 @@ export interface ModulePort {
    * **링크 그룹 신원** — `${childId}→${parentId}:${item}#${groupIndex}`([linkGroupId]).
    * [MachineLinkGroup]에서 난 포트만 갖는다 — 옛 탭/다이렉트 포트는 없다(undefined). 자식·
    * 부모 양쪽 모듈이 packModuleTree 가 간선당 한 번만 계산해 캐시한 **같은 그룹 객체**를
-   * 참조하므로 이 값이 항상 일치한다 — [pairHopPorts] 가 배열 위치 대신 이 값으로 조회한다
+   * 참조하므로 이 값이 항상 일치한다 — [pairDeliveryPorts] 가 배열 위치 대신 이 값으로 조회한다
    * (2026-07-21, 옛 `seq` 위치-zip 이 방출 실패 시 조용히 밀리던 문제의 근치).
    */
   linkId?: string;
@@ -126,6 +126,19 @@ export interface GeneratedModule {
   supply?: InsertingDecisionResult;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
+  /**
+   * **이 모듈이 깐 파이프류 셀 하나하나가 어느 유체를 나르나** — 트렁크·포트·점프 셀 전부.
+   *
+   * 왜 필요한가: [합류 가드](../util/pipeFlow.ts)는 "이 칸의 파이프가 **무슨 유체**냐"를 알아야
+   * 하는데, 모듈이 유체를 여럿 다루면 **모듈 단위로는 답할 수 없다.** 예전엔 호출자가
+   * "이 배치의 파이프 셀 = 그 모듈의 유일 유체" 로 태깅했고, 유체가 둘이 되는 순간 자기
+   * 파이프를 남의 유체로 오인해 **오염을 못 잡거나 자기 자신을 거절**한다. 그래서 방출한
+   * 쪽이 직접 답한다.
+   *
+   * 지하파이프 셀은 `connectDir`(지상 연결 방향)도 싣는다 — 가드가 **향한 한 면만** 막게
+   * 하려면 그 정보가 여기까지 와야 한다. 가드의 입력 자료형을 그대로 쓰는 것이 요점이다.
+   */
+  pipeCells: PipeFlowPipe[];
 }
 
 export interface ModuleInput {
@@ -189,27 +202,9 @@ export interface ModuleInput {
    * [트렁크 파이프](../../../../docs/auto-layout/module/trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
    * 프로토타입의 `fluid_boxes` 가 정하므로, **게임데이터를 보는 호출자**가 계산해 넘긴다
-   * (module/ 는 순수 — store 를 안 본다). 계산은 [fluidPorts.chooseMachineDirection].
+   * (module/ 는 순수 — store 를 안 본다). 계산은 [fluidPorts.chooseFluidTrunkPlan].
    */
-  fluidTrunk?: {
-    /** 이 각도라야 유체 입구가 `side` 면을 본다. 머신 Container.direction 으로 내려간다. */
-    direction: Direction;
-    /** 파이프가 붙는 면(W 또는 E). 점프 가능하면 상자 칸만, 불가면 depth 1 을 통째로 먹는다. */
-    side: PortSide;
-    /** 파이프 prototype(예: "pipe"). */
-    pipeEntityName: string;
-    /**
-     * **머신 유체 상자 연결 칸의 footprint 내 위치** — `side` 면 위에서 몇 번째 행/열인가
-     * (W/E 면이면 dy, N/S 면이면 dx. = [FluidPortSlot.offset], `chooseMachineDirection` 이
-     * 고른 slot 에서 나온다). [pipeJumpToClusterPipe] 는 이 행에서만 점프한다 — 머신마다
-     * 자기 행이라 corridor 끼리 안 부딪힌다. 미지정이면 점프 불가(옛 스파인 폴백).
-     */
-    fluidboxOffset?: number;
-    /** 지하파이프 prototype(예: "pipe-to-ground"). 미지정이면 점프 불가(옛 스파인 폴백). */
-    undergroundPipeEntityName?: string;
-    /** 지하파이프 입출구 좌표 차이 한계([BuildSpec] 동명 필드). 0/미지정 = 점프 불가. */
-    pipeMaxUndergroundDistance?: number;
-  };
+  fluidTrunk?: FluidTrunkInput;
 }
 
 /**
@@ -261,6 +256,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       for (let dy = 0; dy < m.size.h; dy++) occupancy.add(cellKey(m.origin.x + dx, m.origin.y + dy));
   const cells: PlacedCell[] = [];
   const chests: Container[] = [];
+  // 파이프 셀의 유체 — 방출기가 놓는 자리에서 채운다([GeneratedModule.pipeCells]).
+  const pipeCells: PipeFlowPipe[] = [];
   const inputPorts: ModulePort[] = [];
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
@@ -293,7 +290,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -304,19 +301,22 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   //  - **다이렉트 인서팅**(1:1): 머신마다 자기 상자+인서터. 포트 = 머신 × 품목.
   //
   // 어느 쪽이든 **탐색이 없다** — 자리는 planner 가 이미 못박았고 방출기는 깔기만 한다.
+  // 나머지 줄(유체·링크 없는 줄)만 — 링크 줄은 위에서 이미 놓았고 plan 에도 없다.
+  // [탭 인서팅]([emitTapInserting])과 [트렁크 파이프]([emitTrunkPipe])는 용어사전이 이미
+  // "나란한 유체판"으로 갈라놓은 두 개념이다 — 둘 다 같은 [buildTrunkContext](기둥 extent·
+  // stagger 기준)를 보고, 같은 seqRef 로 chestId 순번을 이어 쓰되, 서로의 줄을 건드리지
+  // 않는다(item ↔ pipe 는 line.kind 로 배타적).
+  // 아이템 plan(planner)과 유체 배정(pipePlanned, generateModule 이 직접 조립)을 합쳐 트렁크
+  // 기하를 **함께** 본다 — stagger 와 pipeJumpMode 는 아이템·유체를 한 번에 훑어야 어긋나지
+  // 않는다([buildTrunkContext]). 유체 PlannedLine 은 옛 planner 가 찍던 것과 값이 같아
+  // (side=fluidTrunk.side·depth=1) 기하·수치 불변이다.
+  const trunkPlan = { ok: true as const, lines: [...plan.rest.lines, ...plan.pipePlanned] };
+  const ctx = buildTrunkContext(
+    trunkPlan, machines, input, plan.isJumpableToClusterPipe, plan.gapExitSides,
+  );
+  const seqRef = { n: 0 };
+
   if (supply.mode === "tap") {
-    // 나머지 줄(유체·링크 없는 줄)만 — 링크 줄은 위에서 이미 놓았고 plan 에도 없다.
-    // [탭 인서팅]([emitTapInserting])과 [트렁크 파이프]([emitTrunkPipe])는 용어사전이 이미
-    // "나란한 유체판"으로 갈라놓은 두 개념이다 — 둘 다 같은 [buildTrunkContext](기둥 extent·
-    // stagger 기준)를 보고, 같은 seqRef 로 chestId 순번을 이어 쓰되, 서로의 줄을 건드리지
-    // 않는다(item ↔ pipe 는 line.kind 로 배타적).
-    // 아이템 plan(planner)과 유체 배정(pipePlanned, generateModule 이 직접 조립)을 합쳐 트렁크
-    // 기하를 **함께** 본다 — stagger 와 pipeJumpMode 는 아이템·유체를 한 번에 훑어야 어긋나지
-    // 않는다([buildTrunkContext]). 유체 PlannedLine 은 옛 planner 가 찍던 것과 값이 같아
-    // (side=fluidTrunk.side·depth=1) 기하·수치 불변이다.
-    const trunkPlan = { ok: true as const, lines: [...plan.rest.lines, ...plan.pipePlanned] };
-    const ctx = buildTrunkContext(trunkPlan, machines, input, plan.isJumpableToClusterPipe);
-    const seqRef = { n: 0 };
     // **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 — 방출기가 링크와 같은 자료구조를 본다.**
     // 링크 방출([emitOutputLinks])이 이미 group 을 주 자료로 보므로, 탭 방출도 여기 맞춘다
     // (자료구조 통일 1단계). 팔 수는 [requiredInserterCount] 에서 오므로 planner 값과 **같다** →
@@ -330,18 +330,34 @@ export function generateModule(input: ModuleInput): GeneratedModule {
       cells, chests, inputPorts, outputPorts, unroutedLines,
       ctx, seqRef, groupOf,
     });
-    emitTrunkPipe({
-      plan: trunkPlan, machines, input, prefix, occupancy,
-      cells, chests, inputPorts, outputPorts, unroutedLines,
-      ctx, seqRef,
-    });
-    fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply };
+  } else {
+    // ── (나) 기계별 포트 — **링크와 같은 방출기** ────────────────────────────────
+    // 배정이 링크와 같은 자료([LinkFacePlan])로 왔으므로 놓는 것도 같은 코드다. 그래서
+    // gap(위/아래)에 앉은 그룹도 **새 코드 없이** 가로 벨트로 나간다 — 이 통합의 실질이다.
+    // 상자 id 는 방출기가 품목 이름으로 만드는데, 링크가 맡은 줄과 여기 줄은 `linkedKeys` 로
+    // 배타적이라 이름이 겹칠 수 없다.
+    const rest = plan.restLinks!; // (나) 면 배정은 mode==="direct" 와 함께 온다([planModulePorts]).
+    const restOutSeats = placeLinkSeats(machines, rest.out.plans);
+    const restInSeats = placeLinkSeats(machines, rest.in.plans);
+    const restLineOf = new Map(input.lines.map((l) => [l.name, l]));
+    emitOutputLinks({ groups: rest.out.groups, seats: restOutSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    emitInputLinks({ groups: rest.in.groups, seats: restInSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
   }
 
-  emitDirectInserting({
-    lines: plan.rest.lines, machines, input, prefix, occupancy,
+  // ── [트렁크 파이프] — **아이템 공급 방식 밖에서 한 번** ─────────────────────────
+  // 파이프 기하는 아이템을 어떻게 나르는지와 무관하다: 면은 머신 `fluid_boxes` 가 강제하고,
+  // 파이프는 팔이 없어 그 칸에 직접 닿아야 하므로 탭이든 1:1 이든 같은 줄을 같은 깊이로 지난다.
+  // 예전엔 이 호출이 tap 가지 **안에** 있었다 — 그래서 아이템이 1:1 로 물러나는 순간 유체가
+  // 조용히 사라졌고, 그 조용한 실패를 막으려고 [planModulePorts] 가 유체 모듈을 통째로
+  // 거절해야 했다(`fluidNeedsTap`). 방출을 갈래 밖으로 꺼내면 그 거절의 근거가 없어진다.
+  //
+  // **지금은 1:1 가지에서 여기 도달할 수 없다** — 위 `fluidNeedsTap` 이 앞에서 막아
+  // `plan.rest.ok === false` 로 일찍 돌아간다. 관문은 배분기 통합(계획서 단계 3)에서 열리고,
+  // 그때까지 이 분리의 기하는 방출기 단위 테스트가 지킨다.
+  emitTrunkPipe({
+    plan: trunkPlan, machines, input, prefix, occupancy,
     cells, chests, inputPorts, outputPorts, unroutedLines,
+    ctx, seqRef, pipeCells,
   });
 
   // 전 포트 emit 완료 → 모듈 몸통이 확정됐으니 각 포트의 moduleWayOuts 를 채운다.
@@ -357,6 +373,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     bbox,
     unroutedLines,
     supply,
+    pipeCells,
   };
 }
 /**
@@ -405,11 +422,11 @@ function placeLinkSeats(
  */
 export interface TrunkContext {
   ext: { x0: number; y0: number; x1: number; y1: number };
-  /** [pipeJumpToClusterPipe] 가 실제로 켜졌는가(가능 판정 + 그 면에 벨트가 있음). */
-  pipeJumpMode: boolean;
-  /** ClusterPipe 깊이 = 그 면 벨트 최대 깊이 + 2. */
-  clusterPipeDepth: number;
-  /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 ClusterPipe 깊이, 아니면 계획값 그대로. */
+  /** **면별** [pipeJumpToClusterPipe] 가 실제로 켜졌는가. 면마다 벨트 수·유체 줄 수가 달라 갈린다. */
+  pipeJumpMode: (side: PortSide) => boolean;
+  /** 순번 `rank` 유체 줄의 ClusterPipe 깊이 — `base + 2 + 2·rank`(trunk-pipe §5.1). 탭은 그 −1. */
+  clusterPipeDepth: (side: PortSide, rank: number) => number;
+  /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 자기 순번의 ClusterPipe 깊이, 아니면 계획값. */
   emitDepthOf: (p: PlannedLine) => number;
   /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준. */
   maxDepthAtEnd: Map<string, number>;
@@ -438,7 +455,8 @@ function buildTrunkContext(
   plan: { ok: true; lines: PlannedLine[] },
   machines: Container[],
   input: ModuleInput,
-  isJumpableToClusterPipe: boolean,
+  isJumpableToClusterPipe: (side: PortSide) => boolean,
+  gapExitSides: ReadonlySet<PortFace>,
 ): TrunkContext {
   const ext = {
     x0: Math.min(...machines.map((m) => m.origin.x)),
@@ -447,17 +465,41 @@ function buildTrunkContext(
     y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
   };
 
-  const pipeFaceBeltMax = plan.lines.reduce(
-    (a, p) =>
-      p.line.kind === "belt" && p.side === input.fluidTrunk?.side
-        ? Math.max(a, p.clusterBeltDepth)
-        : a,
-    0,
-  );
-  const pipeJumpMode = isJumpableToClusterPipe && pipeFaceBeltMax > 0;
-  const clusterPipeDepth = pipeFaceBeltMax + 2;
-  const emitDepthOf = (p: PlannedLine): number =>
-    p.line.kind === "pipe" && pipeJumpMode ? clusterPipeDepth : p.clusterBeltDepth;
+  // ── 면별 값 — trunk-pipe §5.1 공식 한 곳 ────────────────────────────────────────────────
+  //   base = max(그 면 벨트 최대 깊이, 1) · D_r = base + 2 + 2r · 탭 = D_r − 1
+  // `n=1, beltMax>0` 을 넣으면 `beltMax + 2` — **현행과 같은 수**다(회귀 0).
+  const beltMaxOn = (side: PortSide): number =>
+    plan.lines.reduce((a, p) => (p.line.kind === "belt" && p.side === side ? Math.max(a, p.clusterBeltDepth) : a), 0);
+  const baseOn = (side: PortSide): number => Math.max(beltMaxOn(side), 1);
+
+  // 점프 게이트 — 좌석 줄(d1)을 통째로 먹는 옛 스파인이 **무언가를 밟을 때** 점프한다:
+  //  ① 넘을 벨트가 있다(옛 조건).
+  //  ② 유체가 둘 이상 — 스파인이 둘째 유체의 상자 칸을 막는다(trunk-pipe §5.1).
+  //  ③ **이 레시피가 안 쓰는 유체 상자 칸이 그 면에 있다**(2026-08-05 추가). 화학공장은 입력
+  //     상자가 E 면에 둘인데 battery 는 하나만 쓴다 — 스파인이 안 쓰는 칸까지 지나 거기 붙고,
+  //     합류 가드가 hard 위반으로 모듈을 거절한다. 넘을 벨트가 없어도 **비켜 가야 한다.**
+  //     (실측 전에는 아이템이 늘 그 면에 있어 ①이 우연히 가려 주고 있었다.)
+  //  ④ **gap 벨트가 이 면으로 빠져나간다**(2026-08-05 추가 — [gapExitSidesFromPlans]).
+  //     ①이 못 보는 자리다: gap 벨트는 `plan.lines` 가 아니라 링크 배정에서 나오므로
+  //     `beltMaxOn` 이 0 을 답한다. 그 벨트의 포트 끝(인서터 d1 · 상자 d2)이 gap 행에서
+  //     좌석 줄을 먹고, 스파인은 거기서 **끊긴다** — 아래쪽 머신이 유체를 못 받는데 겹침도
+  //     미배치도 아니라 아무도 모른다. 점프하면 파이프가 d3 으로 물러나 d1·d2 를 비운다.
+  const unusedBoxRowsOn = (side: PortSide): number =>
+    (input.fluidTrunk?.unusedFluidboxRows?.[side] ?? []).length;
+  const pipeJumpMode = (side: PortSide): boolean =>
+    isJumpableToClusterPipe(side) &&
+    (beltMaxOn(side) > 0 ||
+      fluidLinesOnSide(input.fluidTrunk, side).length >= 2 ||
+      unusedBoxRowsOn(side) > 0 ||
+      gapExitSides.has(side));
+  const clusterPipeDepth = (side: PortSide, rank: number): number => baseOn(side) + 2 + 2 * rank;
+
+  const emitDepthOf = (p: PlannedLine): number => {
+    if (p.line.kind !== "pipe") return p.clusterBeltDepth;
+    const side = p.side as PortSide;
+    if (!pipeJumpMode(side)) return p.clusterBeltDepth; // 옛 스파인 — d1 로 기둥 전체.
+    return clusterPipeDepth(side, fluidLineOf(input.fluidTrunk, p.line)?.rank ?? 0);
+  };
 
   const maxDepthAtEnd = new Map<string, number>();
   for (const p of plan.lines) {

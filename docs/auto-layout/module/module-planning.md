@@ -124,15 +124,40 @@ Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않
 > `planModulePorts` 안으로 들어와, 계층을 건너는 **통보**가 아니라 한 함수 안의
 > ①→③ **전달**이 됐다. 순서 버그가 날 자리는 그것만으로 사라진다.
 
+### 배분기를 완전히 합치지 않은 이유 (2026-08-05)
+
+2026-08-05 의 공급 모델 통합은 **원료·완제품 줄을 기계별 그룹으로 쪼개** 링크 배분기
+(`allocateLinkFaces`)에 태웠다. 그 덕에 gap 스필·`emitOutputLinks`·`emitInputLinks` 를 그대로
+물려받았고, 전용 방출기 `emitDirectInserting` 은 호출자가 0이 되어 사라졌다.
+
+**남은 절반 — [[용어사전#탭 인서팅 (Tap Inserting)|탭 인서팅]](공유 벨트)은 아직 자기 배분기를
+쓴다.** 착수해 보니 두 배분기가 다른 것은 그룹 개수만이 아니었다:
+
+| | 링크 배분기 | 탭 배분기 |
+|---|---|---|
+| 벨트 깊이 | 상수 `LINK_LANE_DEPTH = 2` | reach 로 유도(`1+r`, [[용어사전#케이스 B (파이프 넘김 레인)\|케이스 B]]는 `2+r`) |
+| 한 면의 줄 수 | 좌석 칸 수(그룹마다 자기 행) | **reach 종류 수** |
+| 같은 면 둘째 줄 | `exitDepth` 로 한 칸 더 깊게([[용어사전#ParallelBelt\|ParallelBelt]]) | 수요 순 depth 재배정 |
+| 유체 면 | 통째로 비켜 준다(`pipeSides`) | 케이스 B 로 깎아서 쓴다 |
+| stagger·ClusterPipe 깊이 | 개념 없음 | `buildTrunkContext` 가 함께 본다 |
+
+즉 남은 통합은 **링크 배분기에 탭 모델 전체를 가르치는 일**이고, 합격 기준이 *"공유 벨트
+트리의 좌표가 한 칸도 안 바뀐다"* 라 **관측 가능한 이득 0 · 회귀 위험 전부**다. 통합의 실질
+(같은 자료·같은 방출기·gap 스필)은 이미 얻었고 남은 것은 형식이므로 **하지 않았다.**
+
+다음 중 하나가 생기면 그때가 착수 시점이다:
+- 탭 경로에도 gap 이 필요해질 때(= 공유 벨트가 W/E 를 다 쓰는 레시피가 실물로 나올 때),
+- 링크 벨트가 긴팔 레인(d3)을 써야 할 때 — 그때 `LINK_LANE_DEPTH` 상수가 어차피 깨진다.
+
 ## 6. 구현 위치
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
 | 진입점 | `planner/module/planModulePorts.ts` | `planModulePorts` · `ModulePortPlan` |
-| ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `commitLinkFace` · `gapRowsFromPlans` |
+| ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `commitLinkFace` · `gapRowsFromPlans` · `gapExitSidesFromPlans` |
 | ③ 나머지 줄 | `planner/module/clusterPortPlanner.ts` | `insertingPlanner` · `planClusterPorts` |
 | 좌표 입히기 | `module/clusterModule.ts` | `placeLinkSeats` (덧셈만) |
-| 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTapInserting` · `emitTrunkPipe` · `emitDirectInserting` |
+| 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTapInserting` · `emitTrunkPipe` |
 
 ## 7. 함정
 
@@ -143,6 +168,11 @@ Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않
 **팔 개수는 협상 대상이 아니다.** 레시피·머신·인서터가 정하는 물리량이라, 자리가 모자란다고
 줄여 놓으면 **머신이 조용히 굶는다**(2026-07-16 실측: 초당 8개를 먹는 머신에 0.667개짜리
 인서터 하나). 못 놓는다고 말하는 쪽이 맞다.
+
+**gap 스필은 유체 면과 자리를 다툰다.** gap 벨트는 옆면으로 빠져나가고(출력=서, 입력=동),
+그 포트 끝이 d1·d2 를 먹는다 — 그 면에 유체가 있으면 파이프가 **점프해야** 한다
+([[용어사전#pipeJumpMode|pipeJumpMode]] ④). 두 배정이 서로를 안 보고 자란 자리라
+`beltMaxOn` 같은 "그 면에 벨트가 있나" 식 대리 신호는 여기서 늘 0을 답한다.
 
 **테스트가 통과해도 그 분기를 안 지났을 수 있다.** `packModuleTree` 경로는 rate 조건이 안
 맞으면 링크를 **아예 안 만든다**(포트의 `linkId` 가 전부 비어 있으면 그 신호다). 링크 배정을

@@ -75,6 +75,67 @@ describe("collectPipeFlow — 남의 파이프", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 지하파이프는 표면에서 `direction` **한 면으로만** 연결된다 — 옆면은 벽이다.
+// 이 사실을 가드가 몰라 네 이웃을 다 막던 시절엔 물리보다 보수적이라, 한 면에 유체 두 줄이
+// 서는 배치를 전부 거절했다. 물리가 대칭이라 **양쪽 다** 방향을 봐야 한다.
+// → docs/auto-layout/module/trunk-pipe.md §5.2
+// ─────────────────────────────────────────────────────────────────────────────
+describe("collectPipeFlow — 지하파이프는 향한 한 면만 막는다", () => {
+  /** E(4)를 보는 지하파이프 하나. 표면 연결은 (6,5) 쪽뿐이다. */
+  const undergroundE = { x: 5, y: 5, fluid: "petroleum-gas", connectDir: 4 as const };
+
+  it("지도 쪽 — 향한 칸만 hard, 옆면 두 칸과 등 뒤는 안 막는다", () => {
+    const flow = collectPipeFlow({ fluidName: "water", pipes: [undergroundE], machines: [] });
+    expect(flow.blockedTilesHard.has(key(5, 5))).toBe(true); // 셀 자신 — 겹칠 수 없다.
+    expect(flow.blockedTilesHard.has(key(6, 5))).toBe(true); // 향한 면.
+    for (const k of [key(5, 4), key(5, 6), key(4, 5)])
+      expect(flow.blockedTilesHard.has(k), k).toBe(false); // 옆면·등 뒤 — 벽이다.
+  });
+
+  it("깔리는 쪽 — 지상 파이프의 헤일로 안이어도 **등지고 있으면** 안 걸린다", () => {
+    // trunk-pipe.md §5.1 의 `T₁`(유체1 탭) 과 `C₀`(유체0 ClusterPipe) 가 이 모양이다: 가로로
+    // 이웃하지만 `T₁` 의 표면은 반대쪽만 본다. 지도만 고치고 여기를 안 고치면 여전히 거절된다.
+    const flow = collectPipeFlow({
+      fluidName: "water",
+      pipes: [{ x: 5, y: 5, fluid: "petroleum-gas" }], // 지상 — 네 이웃이 헤일로.
+      machines: [],
+    });
+    // (6,5) 는 헤일로 안이다. 지상 파이프를 놓으면 걸린다.
+    expect(pipeFlowConflict([{ x: 6, y: 5 }], flow)).not.toBeNull();
+    // 같은 칸에 **E 를 보는** 지하파이프를 놓으면 안 걸린다 — 등을 지고 있다.
+    expect(pipeFlowConflict([{ x: 6, y: 5, connectDir: 4 }], flow)).toBeNull();
+    // **W 를 보는** 지하파이프는 걸린다 — 그쪽이 남의 관망이다.
+    expect(pipeFlowConflict([{ x: 6, y: 5, connectDir: 12 }], flow)).not.toBeNull();
+  });
+
+  it("양쪽 다 지하파이프라도 서로를 보면 걸린다 — 푸는 것은 방향이지 종류가 아니다", () => {
+    const flow = collectPipeFlow({ fluidName: "water", pipes: [undergroundE], machines: [] });
+    // (6,5) 에서 W(12)를 보면 (5,5) 의 표면과 마주본다 → 이어진다.
+    expect(pipeFlowConflict([{ x: 6, y: 5, connectDir: 12 }], flow)).not.toBeNull();
+    // 같은 칸에서 E(4)를 보면 등을 진다.
+    expect(pipeFlowConflict([{ x: 6, y: 5, connectDir: 4 }], flow)).toBeNull();
+  });
+
+  it("**trunk-pipe §5.2 의 두 자리**가 실제로 열린다 — u₁∥u₀ 세로 이웃, T₁∥C₀ 가로 이웃", () => {
+    // u₀ = 유체0 의 유체 상자 칸(E 면 d1, 행 3). 표면은 머신 쪽(W=12)만 본다.
+    // C₀ = 유체0 의 ClusterPipe(지상, 세로줄).
+    const flow = collectPipeFlow({
+      fluidName: "heavy-oil",
+      pipes: [
+        { x: 3, y: 3, fluid: "water", connectDir: 12 }, // u₀
+        { x: 5, y: 2, fluid: "water" }, // C₀ — 지상, 유체1 탭 옆
+        { x: 5, y: 3, fluid: "water" },
+      ],
+      machines: [],
+    });
+    // u₁ — 유체1 의 상자 칸(d1, 행 2). u₀ 바로 위인데 둘 다 머신 쪽만 본다.
+    expect(pipeFlowConflict([{ x: 3, y: 2, connectDir: 12 }], flow)).toBeNull();
+    // T₁ — 유체1 의 탭(d3+, 행 2). C₀(x5) 바로 옆인데 바깥(E=4)만 본다.
+    expect(pipeFlowConflict([{ x: 6, y: 2, connectDir: 4 }], flow)).toBeNull();
+  });
+});
+
 describe("collectPipeFlow — 남의 머신 유체 상자", () => {
   it("이 유체를 **안 내는** 출력 상자의 연결 칸은 hard 다 — 남의 생산물이 내 관망으로 샌다", () => {
     // direction 4(시계 90°) → 입력(dir 0)은 E 면, 출력(dir 8)은 W 면.
@@ -91,7 +152,7 @@ describe("collectPipeFlow — 남의 머신 유체 상자", () => {
     const m = plasticBarMachine({ x: 0, y: 0 }, 4);
     m.recipeFluids = { ingredients: [], products: [{ name: "petroleum-gas" }] };
     const flow = collectPipeFlow({ fluidName: "petroleum-gas", pipes: [], machines: [m] });
-    // W 면 출력 상자(x=-1)가 **hard 가 아니다** — 유체 출력/홉이 여기서 걷어간다.
+    // W 면 출력 상자(x=-1)가 **hard 가 아니다** — 유체 출력/납품 경로가 여기서 걷어간다.
     expect(flow.blockedTilesHard.has(key(-1, 0))).toBe(false);
     expect(flow.blockedTilesHard.has(key(-1, 2))).toBe(false);
     // 단, **다른** 유체(water)를 깔 땐 이 석유 가스 출력 상자가 여전히 hard(생산물 유출).
