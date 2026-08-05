@@ -16,9 +16,12 @@
  * 모듈 테두리·이름표·포트 강조·연결선이 프로덕션에서 **한 번도 그려지지 않았고**,
  * 이름표 클릭이 유일한 입구인 `ModuleInfoPanel` 은 **열릴 방법이 없었다.**
  *
- * 이제 운반체를 [ModuleSource] 로 받는다. 실행 결과(`CandidateLeaf` + `unifyAreas` 의
- * offset)가 세션이 나르던 것을 그대로 갖고 있어서, 원천만 갈아 끼우면 위가 전부 살아난다.
- * 이 파일은 store 의존이 0 인 순수 함수 모음이 됐다.
+ * 이제 운반체를 [ModuleSource] 로 받는다. `unifyLeaf` 가 그리드 좌표로 넘겨 준
+ * `CandidateLeaf` 가 세션이 나르던 것을 그대로 갖고 있어서, 원천만 갈아 끼우면 위가 전부
+ * 살아난다. 이 파일은 store 의존이 0 인 순수 함수 모음이 됐다.
+ *
+ * **여기에는 좌표 변환이 없다.** 들어오는 것이 이미 그리드 좌표다 — 오프셋을 받아 더하던
+ * 시절엔 그 덧셈을 잊은 곳이 생겼다(→ `docs/용어사전.md` §B 좌표 프레임).
  */
 
 import type {
@@ -36,12 +39,10 @@ import type { LayoutIssue, LayoutSnapshot } from "./layoutIssue";
  * mutate 되는 `liveArea`)을 날랐다. 그쪽은 manualEdit 격리 구역이라 되살리지 않는다.
  */
 export interface ModuleSource {
-  /** 머신 + 외부 상자/파이프. 좌표는 레이아웃 좌표계. */
+  /** 머신 + 외부 상자/파이프. **이미 그리드 좌표**다(`unifyLeaf` 가 넘겨 놓는다). */
   containers: readonly Container[];
-  /** 이 배치의 라우팅 전부(`placed` 셀 경로 포함). */
+  /** 이 배치의 라우팅 전부(`placed` 셀 경로 포함). 역시 그리드 좌표. */
   routings: readonly Routing[];
-  /** 레이아웃 좌표 → 그리드 좌표. `unifyAreas(...).offset` 이 단일 진실. */
-  offset: { x: number; y: number };
 }
 
 /**
@@ -115,9 +116,6 @@ export function collectModules(src: ModuleSource | null): ModuleInfo[] {
   if (!src) return [];
   if (src === memoKey) return memoVal;
 
-  const coox = src.offset.x;
-  const cooy = src.offset.y;
-
   const byKey = new Map<string, ModuleInfo>();
   const machineKey = new Map<string, string>();
 
@@ -134,8 +132,8 @@ export function collectModules(src: ModuleSource | null): ModuleInfo[] {
     const key = c.id.replace(/-m\d+$/, "");
     machineKey.set(c.id, key);
 
-    const gx = c.origin.x + coox;
-    const gy = c.origin.y + cooy;
+    const gx = c.origin.x;
+    const gy = c.origin.y;
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, {
@@ -164,10 +162,8 @@ export function collectModules(src: ModuleSource | null): ModuleInfo[] {
   ) => {
     const m = byKey.get(key);
     if (!m) return;
-    const gx = cell.x + coox;
-    const gy = cell.y + cooy;
-    m.ports.push({ x: gx, y: gy, role, peer: { x: peer.x + coox, y: peer.y + cooy }, peerId, meta });
-    expandBbox(m, gx, gy, 1, 1);
+    m.ports.push({ x: cell.x, y: cell.y, role, peer: { x: peer.x, y: peer.y }, peerId, meta });
+    expandBbox(m, cell.x, cell.y, 1, 1);
   };
   for (const r of src.routings) {
     const toKey = machineKey.get(r.to.containerId);
@@ -210,19 +206,21 @@ function issuesForModule(id: string, issues: readonly LayoutIssue[]): LayoutIssu
 
 /**
  * **실패 스냅샷 → 오버레이 모듈.** 포트는 없다(라우팅까지 못 갔으므로) — `ports: []`.
- * 좌표는 스냅샷이 절대(레이아웃) 좌표라 offset 을 더해 그리드 좌표로 옮긴다.
+ *
+ * 좌표는 **이미 그리드 좌표**다 — `translateFailureFrame` 이 스냅샷과 issue 를 함께
+ * 넘겨 놓는다. 예전엔 여기서 offset 을 더했는데, 같은 프레임에 있는 `issue.cells` 는
+ * 그 자리에 없어서 안 옮겨졌다.
  */
 export function overlayFromSnapshot(
   snapshot: LayoutSnapshot,
   issues: readonly LayoutIssue[],
-  offset: { x: number; y: number },
 ): { modules: OverlayModule[]; lines: OverlayLine[] } {
   const modules = snapshot.modules.map((m) => ({
     key: m.id,
     recipe: m.recipeName ?? null,
     machineEntityName: m.entityName,
     machineCount: m.machineCount,
-    bbox: { x: m.bbox.x + offset.x, y: m.bbox.y + offset.y, w: m.bbox.w, h: m.bbox.h },
+    bbox: { x: m.bbox.x, y: m.bbox.y, w: m.bbox.w, h: m.bbox.h },
     ports: [],
     status: m.status,
     issues: issuesForModule(m.id, issues),
@@ -230,8 +228,8 @@ export function overlayFromSnapshot(
   const lines = snapshot.deliveries.map((d) => ({
     id: d.key,
     ok: d.ok,
-    from: { x: d.from.x + offset.x, y: d.from.y + offset.y },
-    to: { x: d.to.x + offset.x, y: d.to.y + offset.y },
+    from: { x: d.from.x, y: d.from.y },
+    to: { x: d.to.x, y: d.to.y },
     item: d.item,
   }));
   return { modules, lines };

@@ -20,10 +20,6 @@ import { getEntitySizeRotated } from '../../factorio/entitySize';
 import { useToastStore } from './toastStore';
 import { t } from '../i18n';
 import { nanoid } from './nanoid';
-import type { Container, Area, PortKind, Routing } from '../../autoLayout/containerModel';
-// 타입만 남았다 — 드래그 재라우팅 구현은 manualEdit/ 으로 격리됐다(Phase 5).
-// RoutingEditSession 은 자료구조로만 남아 있고 세션을 만드는 코드가 없어 항상 null 이다.
-import type { RouteOptions } from '../../autoLayout/manualEdit/routeFallback';
 
 /**
  * 같은 카테고리의 엔티티는 정보 모달 없이 덮어쓰기 허용.
@@ -37,67 +33,23 @@ function canOverwrite(selected: EntityType, existing: EntityType): boolean {
   return false;
 }
 
-export interface RoutingSessionRouting {
-  id: string;
-  portKind: PortKind;
-  fromContainerId: string;
-  toContainerId: string;
-}
-
-export interface RoutingEditSession {
-  containers: Container[];
-  routings: RoutingSessionRouting[];
-  machineParent: Record<string, string | null>;
-  machineChildren: Record<string, string[]>;
-  routeOptions: RouteOptions;
-  /** container.origin + containerOriginOffset = 실제 그리드 좌표 */
-  containerOriginOffset: { x: number; y: number };
-  /**
-   * apply 시점의 Area 모델 — chest 드래그 재라우팅에 사용.
-   * dragExternalContainer 가 직접 mutate 하므로 항상 최신 상태.
-   * apply 없이 직접 그리드에 배치한 경우 undefined.
-   */
-  liveArea?: { internal: Area; external: Area; routings: Routing[] };
-}
-
 const DEFAULT_GRID_WIDTH = 256;
 const DEFAULT_GRID_HEIGHT = 256;
 const DEFAULT_TILE_SIZE = 32; // pixels per tile at zoom=1
 
-// ─── 음수 좌표 정규화 헬퍼 ────────────────────────────────────────────────────
+// ─── 음수 좌표는 존재하지 않는다 ──────────────────────────────────────────────
+//
+// 예전엔 음수 좌표에 놓으면 **그리드 전체를 밀어** 공간을 만들고, 밀린 양을 `gridOriginX/Y`
+// 로 누적해 표시 좌표를 되돌렸다. 그 누적이 네 번째 좌표 프레임이었다 —
+// *표시 좌표 = 내부 좌표 + gridOrigin*. 밀기는 **범위 밖으로 나간 셀을 조용히 버리기도** 했다.
+//
+// 이제 음수 좌표는 **거절한다**(사용자 결정, 2026-08-05). 밀 일이 없으니 누적도 없고,
+// 프레임이 셋(모듈-로컬 · 레이아웃 · 그리드)으로 준다. 자동배치 결과는 `unifyLeaf` 가
+// 모든 좌표를 ≥ 1 로 보장하므로 애초에 음수가 오지 않는다.
 
-/** 모든 그리드 셀을 (dx, dy) 만큼 평행이동. 범위 밖으로 밀린 셀은 손실. */
-function shiftGridCells(grid: LayoutGrid, dx: number, dy: number): LayoutGrid {
-  const newCells = grid.cells.map(() => createEmptyCell());
-  for (let y = 0; y < grid.height; y++) {
-    for (let x = 0; x < grid.width; x++) {
-      const src = grid.cells[y * grid.width + x];
-      if (!src.entityId) continue;
-      const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && nx < grid.width && ny >= 0 && ny < grid.height) {
-        newCells[ny * grid.width + nx] = src;
-      }
-    }
-  }
-  return { ...grid, cells: newCells };
-}
-
-/** 그리드 shift 후 화면이 흔들리지 않도록 viewport offset 보정. */
-function shiftViewport(vp: ViewportState, dx: number, dy: number, tileSize: number): ViewportState {
-  return {
-    ...vp,
-    offsetX: vp.offsetX - dx * tileSize * vp.zoom,
-    offsetY: vp.offsetY - dy * tileSize * vp.zoom,
-  };
-}
-
-/** bbox 좌표를 (dx, dy) 이동. */
-function shiftBbox(
-  bbox: { x: number; y: number; w: number; h: number } | null,
-  dx: number, dy: number,
-): { x: number; y: number; w: number; h: number } | null {
-  if (!bbox) return null;
-  return { ...bbox, x: bbox.x + dx, y: bbox.y + dy };
+/** 배치·이동의 좌상단이 그리드 안인가. 음수면 거절한다(밀지 않는다). */
+function inGrid(grid: LayoutGrid, x: number, y: number, w: number, h: number): boolean {
+  return x >= 0 && y >= 0 && x + w <= grid.width && y + h <= grid.height;
 }
 
 interface HistoryEntry {
@@ -128,11 +80,7 @@ interface LayoutState {
   externalAreaBbox: { x: number; y: number; w: number; h: number } | null;
   /** 전체 캔버스 bbox (ghost cell 포함). 렌더러가 이 범위의 외부 영역을 초록으로 칠한다. */
   autoLayoutCanvasBbox: { x: number; y: number; w: number; h: number } | null;
-  /** 가상 좌표계 원점 오프셋. 표시 좌표 = 내부좌표 + gridOriginX/Y. shift 누적으로 음수가 됨. */
-  gridOriginX: number;
-  gridOriginY: number;
-  routingEditMode: boolean;
-  routingEditSession: RoutingEditSession | null;
+  /** 클릭한 연결선(오버레이) — `RoutingConnectionModal` 이 이걸로 열린다. 편집과 무관하다. */
   selectedRoutingId: string | null;
 
   // Grid actions
@@ -153,13 +101,9 @@ interface LayoutState {
   setAutoLayoutRunning: (v: boolean) => void;
   setExternalAreaBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
   setAutoLayoutCanvasBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
-  setRoutingEditMode: (v: boolean) => void;
-  setRoutingEditSession: (session: RoutingEditSession | null) => void;
   setSelectedRouting: (id: string | null) => void;
   /** InfinityChest/InfinityPipe 를 새 위치로 이동. 성공 여부 반환. */
   moveEntityById: (entityId: string, toX: number, toY: number) => boolean;
-  /** 라우팅 수정 모드: 조립기계 그룹(부모+자손)을 (dx,dy) 이동. 성공 여부 반환. */
-  moveAssemblerGroup: (containerId: string, dx: number, dy: number) => boolean;
 
   // Multi-selection (drag rectangle)
   selectEntitiesInRect: (x1: number, y1: number, x2: number, y2: number) => void;
@@ -210,11 +154,8 @@ type PersistedLayout = Pick<
   LayoutState,
   | 'grid'
   | 'viewport'
-  | 'gridOriginX'
-  | 'gridOriginY'
   | 'externalAreaBbox'
   | 'autoLayoutCanvasBbox'
-  | 'routingEditSession'
 >;
 
 const compressedGridStorage = {
@@ -282,10 +223,6 @@ export const useLayoutStore = create<LayoutState>()(
     autoLayoutRunning: false,
     externalAreaBbox: null,
     autoLayoutCanvasBbox: null,
-    gridOriginX: 0,
-    gridOriginY: 0,
-    routingEditMode: false,
-    routingEditSession: null,
     selectedRoutingId: null,
 
     resizeGrid: (width, height) => {
@@ -300,10 +237,6 @@ export const useLayoutStore = create<LayoutState>()(
         grid: createEmptyGrid(grid.width, grid.height),
         externalAreaBbox: null,
         autoLayoutCanvasBbox: null,
-        gridOriginX: 0,
-        gridOriginY: 0,
-        routingEditSession: null,
-        routingEditMode: false,
         selectedRoutingId: null,
       });
     },
@@ -318,12 +251,7 @@ export const useLayoutStore = create<LayoutState>()(
     },
 
     placeEntity: (x, y) => {
-      const {
-        grid, viewport, tileSize,
-        selectedEntityType, selectedEntityName, selectedDirection,
-        externalAreaBbox, autoLayoutCanvasBbox,
-        gridOriginX, gridOriginY,
-      } = get();
+      const { grid, selectedEntityType, selectedEntityName, selectedDirection } = get();
 
       if (selectedEntityType === EntityType.Empty) {
         get().removeEntity(x, y);
@@ -332,13 +260,8 @@ export const useLayoutStore = create<LayoutState>()(
 
       const size = getEntitySizeRotated(selectedEntityType, selectedEntityName, selectedDirection);
 
-      // 음수 좌표: 기존 셀 전체를 평행이동해 공간 확보
-      const sx = Math.max(0, -x);
-      const sy = Math.max(0, -y);
-      const workGrid = sx > 0 || sy > 0 ? shiftGridCells(grid, sx, sy) : grid;
-      const ax = x + sx, ay = y + sy;
-
-      if (ax + size.width > workGrid.width || ay + size.height > workGrid.height) {
+      // 그리드 밖(음수 포함)은 **거절**한다 — 예전엔 음수면 전체를 밀어 받아들였다.
+      if (!inGrid(grid, x, y, size.width, size.height)) {
         useToastStore.getState().show(t('toasts.outOfBounds'), 'warning');
         return false;
       }
@@ -347,7 +270,7 @@ export const useLayoutStore = create<LayoutState>()(
       const overwriteIds = new Set<string>();
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const cell = getCell(workGrid, ax + dx, ay + dy);
+          const cell = getCell(grid, x + dx, y + dy);
           if (cell && cell.entityId !== null) {
             if (canOverwrite(selectedEntityType, cell.entityType)) {
               overwriteIds.add(cell.entityId!);
@@ -362,14 +285,14 @@ export const useLayoutStore = create<LayoutState>()(
       get().pushHistory('placeEntity');
       const entityId = nanoid();
       const newCells = overwriteIds.size > 0
-        ? workGrid.cells.map((c) =>
+        ? grid.cells.map((c) =>
             c.entityId && overwriteIds.has(c.entityId) ? createEmptyCell() : c,
           )
-        : [...workGrid.cells];
+        : [...grid.cells];
 
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const idx = cellIndex(workGrid, ax + dx, ay + dy);
+          const idx = cellIndex(grid, x + dx, y + dy);
           const isOrigin = dx === 0 && dy === 0;
           newCells[idx] = {
             entityId,
@@ -382,44 +305,25 @@ export const useLayoutStore = create<LayoutState>()(
         }
       }
 
-      set({
-        grid: { ...workGrid, cells: newCells },
-        ...(sx > 0 || sy > 0 ? {
-          viewport: shiftViewport(viewport, sx, sy, tileSize),
-          externalAreaBbox: shiftBbox(externalAreaBbox, sx, sy),
-          autoLayoutCanvasBbox: shiftBbox(autoLayoutCanvasBbox, sx, sy),
-          gridOriginX: gridOriginX - sx,
-          gridOriginY: gridOriginY - sy,
-        } : {}),
-      });
+      set({ grid: { ...grid, cells: newCells } });
       return true;
     },
 
     /** Drag-place 전용: 실패 시 toast 없이 무시. history도 매 호출마다 push하지 않고 한 번만(첫 성공 시) push. */
     placeEntitySilent: (x, y) => {
-      const {
-        grid, viewport, tileSize,
-        selectedEntityType, selectedEntityName, selectedDirection,
-        externalAreaBbox, autoLayoutCanvasBbox,
-        gridOriginX, gridOriginY,
-      } = get();
+      const { grid, selectedEntityType, selectedEntityName, selectedDirection } = get();
 
       if (selectedEntityType === EntityType.Empty) return;
 
       const size = getEntitySizeRotated(selectedEntityType, selectedEntityName, selectedDirection);
 
-      // 음수 좌표: 기존 셀 전체를 평행이동해 공간 확보
-      const sx = Math.max(0, -x);
-      const sy = Math.max(0, -y);
-      const workGrid = sx > 0 || sy > 0 ? shiftGridCells(grid, sx, sy) : grid;
-      const ax = x + sx, ay = y + sy;
-
-      if (ax + size.width > workGrid.width || ay + size.height > workGrid.height) return;
+      // 그리드 밖(음수 포함)은 조용히 무시 — 드래그가 경계를 스쳐도 배치가 안 밀린다.
+      if (!inGrid(grid, x, y, size.width, size.height)) return;
 
       const overwriteIds = new Set<string>();
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const cell = getCell(workGrid, ax + dx, ay + dy);
+          const cell = getCell(grid, x + dx, y + dy);
           if (cell && cell.entityId !== null) {
             if (canOverwrite(selectedEntityType, cell.entityType)) {
               overwriteIds.add(cell.entityId!);
@@ -432,14 +336,14 @@ export const useLayoutStore = create<LayoutState>()(
 
       const entityId = nanoid();
       const newCells = overwriteIds.size > 0
-        ? workGrid.cells.map((c) =>
+        ? grid.cells.map((c) =>
             c.entityId && overwriteIds.has(c.entityId) ? createEmptyCell() : c,
           )
-        : [...workGrid.cells];
+        : [...grid.cells];
 
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const idx = cellIndex(workGrid, ax + dx, ay + dy);
+          const idx = cellIndex(grid, x + dx, y + dy);
           const isOrigin = dx === 0 && dy === 0;
           newCells[idx] = {
             entityId,
@@ -452,16 +356,7 @@ export const useLayoutStore = create<LayoutState>()(
         }
       }
 
-      set({
-        grid: { ...workGrid, cells: newCells },
-        ...(sx > 0 || sy > 0 ? {
-          viewport: shiftViewport(viewport, sx, sy, tileSize),
-          externalAreaBbox: shiftBbox(externalAreaBbox, sx, sy),
-          autoLayoutCanvasBbox: shiftBbox(autoLayoutCanvasBbox, sx, sy),
-          gridOriginX: gridOriginX - sx,
-          gridOriginY: gridOriginY - sy,
-        } : {}),
-      });
+      set({ grid: { ...grid, cells: newCells } });
     },
 
     removeEntity: (x, y) => {
@@ -483,34 +378,27 @@ export const useLayoutStore = create<LayoutState>()(
 
     applyPlacedCells: (placed) => {
       if (placed.length === 0) return;
-      const { grid, viewport, tileSize, externalAreaBbox, autoLayoutCanvasBbox, gridOriginX, gridOriginY } = get();
+      const { grid } = get();
 
-      // 음수 좌표가 있으면 전체 평행이동으로 정규화
-      let minX = 0, minY = 0;
-      for (const { x, y } of placed) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
+      // 여기 오는 좌표는 **이미 그리드 좌표**다 — `unifyLeaf` 가 모든 좌표를 ≥ 1 로 옮겨 놓는다.
+      // 예전엔 이 자리에서 음수를 보고 그리드 전체를 밀었는데, 그것이 네 번째 좌표 프레임의
+      // 출처였다. 음수가 온다면 정규화 실패이므로 **조용히 자르지 않고 드러낸다** — 잘라 버리면
+      // "성공했다는데 셀이 몇 개 사라진" 배치가 된다.
+      const out = placed.filter(({ x, y }) => x < 0 || y < 0);
+      if (out.length > 0) {
+        console.error(
+          `[layout] 음수 좌표 셀 ${out.length}개 — unifyLeaf 정규화가 깨졌다.`,
+          out.slice(0, 5),
+        );
       }
-      const sx = -minX, sy = -minY; // sx/sy >= 0
-      const workGrid = sx > 0 || sy > 0 ? shiftGridCells(grid, sx, sy) : grid;
 
       get().pushHistory('applyPlacedCells');
-      const newCells = [...workGrid.cells];
+      const newCells = [...grid.cells];
       for (const { x, y, cell } of placed) {
-        const ax = x + sx, ay = y + sy;
-        if (ax < 0 || ay < 0 || ax >= workGrid.width || ay >= workGrid.height) continue;
-        newCells[cellIndex(workGrid, ax, ay)] = cell;
+        if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) continue;
+        newCells[cellIndex(grid, x, y)] = cell;
       }
-      set({
-        grid: { ...workGrid, cells: newCells },
-            ...(sx > 0 || sy > 0 ? {
-          viewport: shiftViewport(viewport, sx, sy, tileSize),
-          externalAreaBbox: shiftBbox(externalAreaBbox, sx, sy),
-          autoLayoutCanvasBbox: shiftBbox(autoLayoutCanvasBbox, sx, sy),
-          gridOriginX: gridOriginX - sx,
-          gridOriginY: gridOriginY - sy,
-        } : {}),
-      });
+      set({ grid: { ...grid, cells: newCells } });
     },
 
     setAutoLayoutRunning: (v) => set({ autoLayoutRunning: v }),
@@ -518,19 +406,10 @@ export const useLayoutStore = create<LayoutState>()(
     setExternalAreaBbox: (bbox) => set({ externalAreaBbox: bbox }),
     setAutoLayoutCanvasBbox: (bbox) => set({ autoLayoutCanvasBbox: bbox }),
 
-    setRoutingEditMode: (v) => set({ routingEditMode: v }),
-    setRoutingEditSession: (session) => set({ routingEditSession: session }),
     setSelectedRouting: (id) => set({ selectedRoutingId: id }),
 
-    /**
-     * 조립기 그룹 이동 — **비활성**(수동 편집 격리, Phase 5).
-     * 본체는 `manualEdit/storeActions.ts` 에 원본 그대로 보존돼 있다.
-     * `setRoutingEditSession` 이 제거돼 세션이 항상 null 이므로 원래도 이 자리에서 false 였다.
-     */
-    moveAssemblerGroup: () => false,
-
     moveEntityById: (entityId, toX, toY) => {
-      const { grid, viewport, tileSize, routingEditSession, externalAreaBbox, autoLayoutCanvasBbox, gridOriginX, gridOriginY } = get();
+      const { grid } = get();
 
       // Find origin cell
       let originX = -1, originY = -1;
@@ -557,62 +436,31 @@ export const useLayoutStore = create<LayoutState>()(
 
       const size = getEntitySizeRotated(entityType, entityName ?? '', direction);
 
-      // 음수 좌표: 전체 평행이동으로 공간 확보
-      const sx = Math.max(0, -toX);
-      const sy = Math.max(0, -toY);
-      const workGrid = sx > 0 || sy > 0 ? shiftGridCells(grid, sx, sy) : grid;
-      const wOriginX = originX + sx, wOriginY = originY + sy;
-      const wToX = toX + sx, wToY = toY + sy;
+      // 그리드 밖(음수 포함)으로는 못 옮긴다 — 예전엔 음수면 전체를 밀어 받아들였다.
+      if (!inGrid(grid, toX, toY, size.width, size.height)) return false;
 
-      // Bounds check
-      if (wToX + size.width > workGrid.width || wToY + size.height > workGrid.height) return false;
-
-      // Find connected routings (if routing session is active)
-      const connectedRoutings = routingEditSession
-        ? routingEditSession.routings.filter(r => r.fromContainerId === entityId || r.toContainerId === entityId)
-        : [];
-      const connectedRoutingIdSet = new Set(connectedRoutings.map(r => r.id));
-
-      // Collect routing cell indices to clear (from workGrid)
-      const routingClearIndices = new Set<number>();
-      for (let i = 0; i < workGrid.cells.length; i++) {
-        const cell = workGrid.cells[i];
-        if (cell.entityId && connectedRoutingIdSet.has(cell.entityId)) {
-          routingClearIndices.add(i);
-        }
-      }
-
-      // Collision check (excluding current entity cells and routing cells that will be cleared)
+      // Collision check (자기 자신이 지금 차지한 칸은 뺀다 — 겹쳐 이동하는 경우)
       const currentKeys = new Set<string>();
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          currentKeys.add(`${wOriginX + dx},${wOriginY + dy}`);
+          currentKeys.add(`${originX + dx},${originY + dy}`);
         }
-      }
-      const routingClearKeys = new Set<string>();
-      for (const i of routingClearIndices) {
-        routingClearKeys.add(`${i % workGrid.width},${Math.floor(i / workGrid.width)}`);
       }
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const tx = wToX + dx, ty = wToY + dy;
+          const tx = toX + dx, ty = toY + dy;
           if (currentKeys.has(`${tx},${ty}`)) continue;
-          if (routingClearKeys.has(`${tx},${ty}`)) continue;
-          const cell = getCell(workGrid, tx, ty);
+          const cell = getCell(grid, tx, ty);
           if (cell?.entityId !== null) return false;
         }
       }
 
-      get().pushHistory('moveEntityById');
-      const newCells = [...workGrid.cells];
-
-      // Clear connected routing cells
-      for (const idx of routingClearIndices) newCells[idx] = createEmptyCell();
+      const newCells = [...grid.cells];
 
       // Clear old entity position
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const idx = cellIndex(workGrid, wOriginX + dx, wOriginY + dy);
+          const idx = cellIndex(grid, originX + dx, originY + dy);
           if (idx >= 0 && idx < newCells.length) newCells[idx] = createEmptyCell();
         }
       }
@@ -620,7 +468,7 @@ export const useLayoutStore = create<LayoutState>()(
       // Place at new position
       for (let dy = 0; dy < size.height; dy++) {
         for (let dx = 0; dx < size.width; dx++) {
-          const idx = cellIndex(workGrid, wToX + dx, wToY + dy);
+          const idx = cellIndex(grid, toX + dx, toY + dy);
           if (idx >= 0 && idx < newCells.length) {
             newCells[idx] = {
               entityId,
@@ -635,19 +483,9 @@ export const useLayoutStore = create<LayoutState>()(
         }
       }
 
-      const shiftExtra = sx > 0 || sy > 0 ? {
-        viewport: shiftViewport(viewport, sx, sy, tileSize),
-        externalAreaBbox: shiftBbox(externalAreaBbox, sx, sy),
-        autoLayoutCanvasBbox: shiftBbox(autoLayoutCanvasBbox, sx, sy),
-        gridOriginX: gridOriginX - sx,
-        gridOriginY: gridOriginY - sy,
-      } : {};
-
-      // pushHistory 는 실제로 상태를 바꾸는 경로에서만 호출 (각 set() 직전).
-      // Re-route connected routings if session is active
-
+      // pushHistory 는 실제로 상태를 바꾸는 경로에서만 호출 (set() 직전).
       get().pushHistory('moveEntityById');
-      set({ grid: { ...workGrid, cells: newCells }, ...shiftExtra });
+      set({ grid: { ...grid, cells: newCells } });
       return true;
     },
 
@@ -817,11 +655,8 @@ export const useLayoutStore = create<LayoutState>()(
     partialize: (state): PersistedLayout => ({
       grid: state.grid,
       viewport: state.viewport,
-      gridOriginX: state.gridOriginX,
-      gridOriginY: state.gridOriginY,
       externalAreaBbox: state.externalAreaBbox,
       autoLayoutCanvasBbox: state.autoLayoutCanvasBbox,
-      routingEditSession: state.routingEditSession,
     }),
     /**
      * v0 → v1: 내부 Direction 을 Factorio 1.x (0/2/4/6) 에서 2.0 (0/4/8/12) 로 ×2 마이그레이션.

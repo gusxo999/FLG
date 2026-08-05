@@ -36,7 +36,7 @@ import {
   type OverlayLine,
   type OverlayModule,
 } from '../../autoLayout/moduleInspect';
-import type { LayoutIssue, LayoutSnapshot } from '../../autoLayout/layoutIssue';
+import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from '../../autoLayout/layoutIssue';
 
 /**
  * 진행 스냅샷 — `ProgressReporter` 가 넘기는 것과 같은 모양.
@@ -92,17 +92,19 @@ interface AutoLayoutRunState {
    * `layoutStore.routingEditSession` 이 날랐는데 그것을 **만드는 코드가 사라져** 오버레이가
    * 통째로 죽어 있었다 — 이제 여기가 그 자리다.
    *
-   * `offset` 은 `unifyAreas` 가 낸 값(레이아웃 좌표 → 그리드 좌표). 적용할 때만 정해지므로
-   * leaf 와 한 쌍으로 묶어 둔다.
+   * **좌표는 이미 그리드 좌표다** — `unifyLeaf` 가 leaf 전체를 넘겨서 준다. 예전엔 leaf 를
+   * 레이아웃 좌표로 둔 채 `offset` 을 옆에 실었고, 읽는 쪽마다 더하는 것을 기억해야 했다.
    */
-  appliedLayout: { leaf: CandidateLeaf; offset: { x: number; y: number } } | null;
+  appliedLayout: CandidateLeaf | null;
 
   /**
    * **왜 안 됐나(또는 무엇이 아쉬운가).** 실패면 `error` 들, 성공이어도 `warning` 이 있을 수 있다
    * (반출 skip). 단일 출처는 `autoLayout/layoutIssue`.
+   *
+   * `cells` 좌표는 **그리드 좌표**다 — [run] 이 `snapshot` 과 **함께** 넘겨 놓는다.
    */
   issues: LayoutIssue[];
-  /** 실패를 짚기 위한 그림 — 배치가 아니다. `pack` 까지 갔던 실패에만 있다. */
+  /** 실패를 짚기 위한 그림(그리드 좌표) — 배치가 아니다. `pack` 까지 갔던 실패에만 있다. */
   snapshot: LayoutSnapshot | null;
 
   /** 실행 1회. 이미 돌고 있으면 아무것도 안 한다(중복 실행 방지). */
@@ -111,8 +113,8 @@ interface AutoLayoutRunState {
   cancel: () => void;
   /** 그리드 적용 완료 표시 — 같은 결과를 두 번 적용하지 않게. */
   markApplied: () => void;
-  /** 오버레이가 그릴 배치 등록. `applyPlacedCells` **앞에서** 불러야 첫 렌더부터 반영된다. */
-  setAppliedLayout: (v: { leaf: CandidateLeaf; offset: { x: number; y: number } }) => void;
+  /** 오버레이가 그릴 배치 등록(그리드 좌표). `applyPlacedCells` **앞에서** 불러야 첫 렌더부터 반영된다. */
+  setAppliedLayout: (v: CandidateLeaf) => void;
   /** 결과 폐기 — 위저드 초기화와 함께 불린다. */
   clear: () => void;
 }
@@ -136,9 +138,8 @@ export function overlaySource(): ModuleSource | null {
   overlayMemoVal = applied
     ? {
         // 머신(모듈 유도)과 외부 상자/파이프(연결선 끝점·I/O 색)를 함께 넘긴다.
-        containers: [...applied.leaf.internal.containers, ...applied.leaf.external.containers],
-        routings: applied.leaf.routings,
-        offset: applied.offset,
+        containers: [...applied.internal.containers, ...applied.external.containers],
+        routings: applied.routings,
       }
     : null;
   return overlayMemoVal;
@@ -151,18 +152,16 @@ export function overlaySource(): ModuleSource | null {
  * 직접 그린다 — 실제 셀을 알기 때문).
  * 실패: 스냅샷에서 같은 모양을 만든다(선은 양끝만 아는 직선).
  *
- * 실패 스냅샷은 **레이아웃 좌표**다. 그리드가 비어 있어 `unifyAreas` 의 offset 이 없으므로
- * bbox 좌상단이 (1,1) 에 오도록 옮긴다 — 성공 배치의 정규화와 같은 여백 규칙이다.
+ * 두 경로 다 **그리드 좌표로 넘긴 뒤에** 그린다 — 성공은 `unifyLeaf`, 실패는
+ * `translateFailureFrame`. 실패 쪽은 스냅샷과 issue 를 **함께** 넘겨야 한다: 문제 칸
+ * 좌표는 `issues[].cells` 에 있어서, 스냅샷만 옮기면 마커가 모듈에서 떨어져 찍힌다.
  */
 export function overlayView(): { modules: OverlayModule[]; lines: OverlayLine[] } {
   const s = useAutoLayoutRunStore.getState();
   if (s.appliedLayout) {
     return { modules: overlayFromLayout(collectModules(overlaySource()), s.issues), lines: [] };
   }
-  if (s.snapshot) {
-    const off = { x: 1 - s.snapshot.bbox.x, y: 1 - s.snapshot.bbox.y };
-    return overlayFromSnapshot(s.snapshot, s.issues, off);
-  }
+  if (s.snapshot) return overlayFromSnapshot(s.snapshot, s.issues);
   return { modules: [], lines: [] };
 }
 
@@ -244,7 +243,16 @@ export const useAutoLayoutRunStore = create<AutoLayoutRunState>()((set, get) => 
         signal: ctrl.signal,
         onProgress: (snap) => set({ progress: snap }),
       });
-      set({ status: 'done', result: r, issues: r.issues ?? [], snapshot: r.snapshot ?? null });
+      // **좌표 프레임을 여기서 한 번 넘긴다.** 실패 그림은 레이아웃 좌표로 오는데,
+      // 그 좌표가 두 자료구조(`snapshot` · `issues[].cells`)에 나뉘어 있어 함께 옮겨야
+      // 한다. 넘긴 뒤로는 store 안의 모든 좌표가 그리드 좌표다 — 읽는 쪽이 더할 것이 없다.
+      //
+      // 성공 결과에는 스냅샷이 없고, `cells` 를 다는 issue 는 **전부 pack 단계 가드**라
+      // 반드시 abort → 스냅샷과 함께 온다. 그래서 성공 경로에 안 옮긴 좌표는 남지 않는다.
+      const framed = r.snapshot
+        ? translateFailureFrame({ snapshot: r.snapshot, issues: r.issues ?? [] })
+        : { snapshot: null, issues: r.issues ?? [] };
+      set({ status: 'done', result: r, issues: framed.issues, snapshot: framed.snapshot });
     } catch (e) {
       set({ status: 'error', error: e instanceof Error ? e.message : String(e) });
     } finally {

@@ -18,7 +18,9 @@ tags: [visualization, factorio-data]
 
 ### 1. 그리드 기반 정적 분석 (라우팅 세션 기반 기각)
 
-대안: `routingEditSession.liveArea.routings` 의 `placed` 셀 → 라우팅 매핑으로 품목/흐름을 유도.
+대안: 라우팅 세션이 나르던 `placed` 셀 → 라우팅 매핑으로 품목/흐름을 유도.
+(그 세션(`RoutingEditSession`)은 2026-08-05 에 삭제됐다. 아래 기각 이유는 세션이 있었어도
+성립한다 — 그래서 이 결정은 그대로 유효하다.)
 
 기각 이유:
 

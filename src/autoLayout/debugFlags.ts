@@ -8,10 +8,7 @@
  * setAutoLayoutCoordDump(true) 로 직접 켤 수도 있음.
  *
  * true 일 때 dump 출력 시점:
- *  - handleApplyCandidate          : 컨테이너·라우팅·정규화 좌표
- *  - dragExternalContainer         : 외부상자 드래그 시도·결과·드래그 후 그리드 상태
- *  - dragAssemblerGroup            : 조립기계 그룹 드래그 시도·결과·새 perimeter ring + 그리드 상태
- *  - moveAssemblerGroup            : Area 모델 경로로 갈 수 없어 grid fallback 으로 빠진 경우 한 줄
+ *  - handleApplyCandidate          : 컨테이너·라우팅(레이아웃 좌표) + `unifyLeaf` 후 그리드 좌표
  *  - runModuleWizard              : `[팔·벨트 상한]` — 줄마다 팔 개수·그릇·면 좌석을 나란히.
  *                                   벨트가 포화된 배치를 봤을 때 **어느 상한이 물렸는지** 가른다.
  */

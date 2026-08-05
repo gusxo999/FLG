@@ -498,22 +498,22 @@ export interface ContainerWizardResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 한 후보의 영역 통합 결과.
+ * 한 후보의 영역 통합 결과 — **레이아웃 좌표(F1) → 그리드 좌표(F2) 경계를 넘은 것**.
  *
- * `placed` = 정규화 오프셋이 적용된 단일 좌표계 셀 배열 (실제 그리드 적용 입력).
- * `internalBbox` = 정규화 후 Blueprint 영역 경계 — 렌더러가 이 bbox 바깥을
- * 초록(외부) 영역으로 표시하는 데 사용한다. bbox 가 없으면 undefined.
+ * 여기 담긴 것은 전부 **이미 그리드 좌표**다. 예전엔 `offset` 을 함께 실어 보내
+ * *읽는 쪽이 매번 더하게* 했는데, 세 소비자 중 하나가 잊으면 그 하나만 조용히
+ * 어긋났다(`LayoutIssue.cells` 가 실제로 그랬다 — 2026-08-05). 오프셋을 안 실으면
+ * 더하는 것을 잊을 자리가 없다.
  */
 export interface UnifyResult {
-  /** 정규화된 PlacedCell 배열 (export · 그리드 적용 입력) */
+  /** 그리드 좌표로 옮겨진 leaf 전체 — 오버레이·정보 모달이 읽는다. */
+  leaf: CandidateLeaf;
+  /** 그리드 적용·블루프린트 export 입력. `leaf` 의 두 영역 placed 를 합친 것과 같다. */
   placed: PlacedCell[];
   /** Blueprint(내부) 영역 bbox — 머신+라우팅 셀만 포함. 렌더러의 내부/외부 경계선. */
   internalBbox: { x: number; y: number; w: number; h: number } | undefined;
   /** 전체 캔버스 bbox — ghost cell(외부 컨테이너) 포함 모든 placed cell 의 bbox.
    *  렌더러가 이 범위에서 internalBbox 바깥을 초록 외부 영역으로 칠한다. */
   canvasBbox: { x: number; y: number; w: number; h: number } | undefined;
-  /** leaf(layout) 좌표 → 정규화(그리드) 좌표 변환에 실제로 적용한 오프셋.
-   *  `grid = leaf + offset`. containerOriginOffset 의 단일 진실(라우팅 선/드래그 변환). */
-  offset: { x: number; y: number };
 }
 

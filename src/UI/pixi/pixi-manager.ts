@@ -26,7 +26,6 @@ import {
   placementDrag,
   selectionDrag,
   infinityDrag,
-  routingEditDrag,
   unsubFns,
   getCanvasCoords,
   renderGrid,
@@ -91,44 +90,6 @@ function handlePointerDown(e: PointerEvent) {
       return;
     }
 
-    // 라우팅 수정 모드: 조립기계 드래그 (최우선)
-    if (store.routingEditMode && store.routingEditSession) {
-      const machineIds = new Set(
-        store.routingEditSession.containers.filter(c => c.kind === 'machine').map(c => c.id),
-      );
-      if (hitCell?.entityId && machineIds.has(hitCell.entityId)) {
-        routingEditDrag.active      = true;
-        routingEditDrag.containerId = hitCell.entityId;
-        routingEditDrag.anchorGrid  = { x: gx, y: gy };
-        routingEditDrag.currentGrid = { x: gx, y: gy };
-        renderGrid(); // 클릭 즉시 원래 위치 엔티티 숨기기
-      } else if (
-        hitCell?.entityId &&
-        (hitCell.entityType === EntityType.InfinityChest || hitCell.entityType === EntityType.InfinityPipe)
-      ) {
-        // 외부상자 드래그 — 라우팅 편집 모드에서도 허용
-        infinityDrag.active     = true;
-        infinityDrag.entityId   = hitCell.entityId;
-        infinityDrag.entityType = hitCell.entityType;
-        infinityDrag.entityName = hitCell.entityName;
-        infinityDrag.entityDir  = hitCell.direction;
-        infinityDrag.originCell = {
-          x: gx - hitCell.tileOffset.x,
-          y: gy - hitCell.tileOffset.y,
-        };
-      } else {
-        // 연결선 클릭 여부 확인
-        const hitRoutingId = hitTestRoutingLine(cx, cy);
-        if (hitRoutingId) {
-          store.setSelectedRouting(hitRoutingId);
-        } else if (hitCell?.entityName && isBeltLike(hitCell.entityType)) {
-          // 벨트류 셀 클릭 → 흐름 정보 포함 엔티티 정보 모달
-          useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
-        }
-      }
-      return; // 라우팅 수정 모드에서는 좌클릭 기본 동작 차단
-    }
-
     // 엔티티 선택 모드
     if (selectedEntityType !== EntityType.Empty) {
       const isOverwrite =
@@ -175,15 +136,6 @@ function handlePointerDown(e: PointerEvent) {
 function handlePointerMove(e: PointerEvent) {
   const { cx, cy } = getCanvasCoords(e);
   inputState.lastCanvasPos = { cx, cy };
-
-  // 라우팅 수정 모드 드래그 중
-  if (routingEditDrag.active) {
-    const { viewport, tileSize } = useLayoutStore.getState();
-    const { x: gx, y: gy } = canvasToGrid(cx, cy, viewport, tileSize);
-    routingEditDrag.currentGrid = { x: gx, y: gy };
-    renderAll(); // renderGrid(원래 위치 숨김) + renderHoverPreview(새 위치 bbox)
-    return;
-  }
 
   // 모듈 hover (모드 무관, 팬 중 제외) — 이름표 위든 모듈 본체 위든 같은 모듈 키를
   // active 로 잡아 강조(테두리+포트)를 통일한다. 이름표 위에서만 커서 pointer + 다른
@@ -287,23 +239,6 @@ function handlePointerMove(e: PointerEvent) {
 function handlePointerUp() {
   inputState.isDragging = false;
 
-  // 라우팅 수정 모드 드래그 완료
-  if (routingEditDrag.active) {
-    if (routingEditDrag.containerId && routingEditDrag.anchorGrid && routingEditDrag.currentGrid) {
-      const dx = routingEditDrag.currentGrid.x - routingEditDrag.anchorGrid.x;
-      const dy = routingEditDrag.currentGrid.y - routingEditDrag.anchorGrid.y;
-      if (dx !== 0 || dy !== 0) {
-        useLayoutStore.getState().moveAssemblerGroup(routingEditDrag.containerId, dx, dy);
-      }
-    }
-    routingEditDrag.active      = false;
-    routingEditDrag.containerId = null;
-    routingEditDrag.anchorGrid  = null;
-    routingEditDrag.currentGrid = null;
-    renderAll();
-    return;
-  }
-
   // InfinityChest/InfinityPipe 이동 드래그 완료
   if (infinityDrag.active) {
     if (inputState.lastCanvasPos && infinityDrag.entityId && infinityDrag.originCell) {
@@ -369,12 +304,6 @@ function handlePointerLeave() {
     infinityDrag.entityType = EntityType.Empty;
     infinityDrag.entityName = null;
     infinityDrag.originCell = null;
-  }
-  if (routingEditDrag.active) {
-    routingEditDrag.active      = false;
-    routingEditDrag.containerId = null;
-    routingEditDrag.anchorGrid  = null;
-    routingEditDrag.currentGrid = null;
   }
   clearHoverPreview();
 }
@@ -491,9 +420,4 @@ export function destroyPixi() {
   infinityDrag.entityType = EntityType.Empty;
   infinityDrag.entityName = null;
   infinityDrag.originCell = null;
-
-  routingEditDrag.active      = false;
-  routingEditDrag.containerId = null;
-  routingEditDrag.anchorGrid  = null;
-  routingEditDrag.currentGrid = null;
 }

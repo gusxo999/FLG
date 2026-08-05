@@ -30,68 +30,44 @@ export function registerAutoLayoutDebug(reg: AutoLayoutRegistry | null): void {
   autoLayoutRegistry = reg;
 }
 
-function layoutOffset(): { x: number; y: number } {
-  const s = useLayoutStore.getState();
-  return s.routingEditSession?.containerOriginOffset ?? { x: 0, y: 0 };
-}
-
-/** 그리드의 origin 셀 목록 — id/타입/좌표(그리드·레이아웃) 참조용. */
+/**
+ * 그리드의 origin 셀 목록 — id/타입/좌표 참조용.
+ *
+ * 예전엔 `layout` 열(= 그리드 좌표 − `containerOriginOffset`)도 냈다. 그 오프셋을 나르던
+ * `routingEditSession` 이 영구 null 이라 **항상 (0,0) 으로 읽혔고**, 그리드 좌표를 레이아웃
+ * 좌표인 척 내보내고 있었다. 좌표 프레임이 하나로 합쳐진 지금은 그 열 자체가 없다.
+ */
 function listEntities() {
-  const { grid, routingEditSession } = useLayoutStore.getState();
-  const off = routingEditSession?.containerOriginOffset ?? { x: 0, y: 0 };
+  const { grid } = useLayoutStore.getState();
   const out: Array<{
     id: string; type: string; name: string | null;
-    grid: { x: number; y: number }; layout: { x: number; y: number }; dir: number;
+    grid: { x: number; y: number }; dir: number;
   }> = [];
   for (let i = 0; i < grid.cells.length; i++) {
     const c = grid.cells[i];
     if (!c.entityId || !c.isOrigin) continue;
-    const x = i % grid.width;
-    const y = Math.floor(i / grid.width);
     out.push({
       id: c.entityId,
       type: String(c.entityType),
       name: c.entityName,
-      grid: { x, y },
-      layout: { x: x - off.x, y: y - off.y },
+      grid: { x: i % grid.width, y: Math.floor(i / grid.width) },
       dir: c.direction,
     });
   }
   return out;
 }
 
-function summarizeSession() {
-  const s = useLayoutStore.getState().routingEditSession;
-  if (!s) return null;
-  return {
-    containerOriginOffset: s.containerOriginOffset,
-    hasLiveArea: !!s.liveArea,
-    containers: s.containers.map((c) => ({
-      id: c.id, kind: c.kind, origin: c.origin, size: c.size,
-    })),
-    routings: s.routings.map((r) => ({
-      id: r.id, from: r.fromContainerId, to: r.toContainerId, kind: r.portKind,
-    })),
-  };
-}
-
 const help = `flg — 콘솔 디버그 API
   flg.help()                      이 도움말
   flg.state()                     주요 상태 스냅샷
-  flg.entities()                  그리드 origin 셀 목록 (id/타입/그리드·레이아웃 좌표)
-  flg.session()                   routingEditSession 요약
+  flg.entities()                  그리드 origin 셀 목록 (id/타입/그리드 좌표)
 
   배치(자동배치 결과 — 배치는 언제나 한 개다)
   flg.layout()                    현재 배치 결과 요약 (패널 마운트 시)
   flg.apply()                     그 배치를 그리드에 다시 적용
 
-  라우팅 편집
-  flg.routingEdit(on=true)        라우팅 편집 모드 토글
-
-  드래그/이동
+  이동
   flg.move(id, gridX, gridY)      엔티티를 그리드 좌표로 이동 (moveEntityById)
-  flg.drag(id, layoutX, layoutY)  레이아웃 좌표로 이동 (offset 자동 변환 후 move)
-  flg.moveGroup(containerId, dx, dy)  머신 그룹 상대 이동 (moveAssemblerGroup)
 
   선택/삭제
   flg.select(...ids)              엔티티 선택
@@ -114,13 +90,9 @@ export interface FlgApi {
   help(): void;
   state(): unknown;
   entities(): ReturnType<typeof listEntities>;
-  session(): unknown;
   layout(): unknown;
   apply(): boolean;
-  routingEdit(on?: boolean): void;
   move(id: string, gridX: number, gridY: number): boolean;
-  drag(id: string, layoutX: number, layoutY: number): boolean;
-  moveGroup(containerId: string, dx: number, dy: number): boolean;
   select(...ids: string[]): void;
   selectRect(x1: number, y1: number, x2: number, y2: number): void;
   clearSelection(): void;
@@ -143,12 +115,9 @@ export function installLayoutDebugApi(): void {
     state() {
       const s = useLayoutStore.getState();
       const snap = {
-        routingEditMode: s.routingEditMode,
-        hasSession: !!s.routingEditSession,
-        containerOriginOffset: s.routingEditSession?.containerOriginOffset ?? null,
         selected: [...s.selectedEntityIds],
         selectedEntityName: s.selectedEntityName,
-        gridOrigin: { x: s.gridOriginX, y: s.gridOriginY },
+        selectedRoutingId: s.selectedRoutingId,
         externalAreaBbox: s.externalAreaBbox,
         autoLayoutCanvasBbox: s.autoLayoutCanvasBbox,
         undo: s.undoStack.length,
@@ -162,15 +131,9 @@ export function installLayoutDebugApi(): void {
     entities() {
       const e = listEntities();
       console.table?.(e.map((x) => ({
-        id: x.id, type: x.type, gx: x.grid.x, gy: x.grid.y, lx: x.layout.x, ly: x.layout.y, dir: x.dir,
+        id: x.id, type: x.type, gx: x.grid.x, gy: x.grid.y, dir: x.dir,
       })));
       return e;
-    },
-
-    session() {
-      const s = summarizeSession();
-      console.log(s);
-      return s;
     },
 
     layout() {
@@ -207,29 +170,9 @@ export function installLayoutDebugApi(): void {
       return true;
     },
 
-    routingEdit(on = true) {
-      useLayoutStore.getState().setRoutingEditMode(on);
-      console.log(`[flg] routingEditMode = ${on}`);
-    },
-
     move(id, gridX, gridY) {
       const ok = useLayoutStore.getState().moveEntityById(id, gridX, gridY);
       console.log(`[flg] move(${id}, ${gridX}, ${gridY}) → ${ok}`);
-      return ok;
-    },
-
-    drag(id, layoutX, layoutY) {
-      const off = layoutOffset();
-      const gx = layoutX + off.x;
-      const gy = layoutY + off.y;
-      const ok = useLayoutStore.getState().moveEntityById(id, gx, gy);
-      console.log(`[flg] drag(${id}, layout(${layoutX},${layoutY}) = grid(${gx},${gy})) → ${ok}`);
-      return ok;
-    },
-
-    moveGroup(containerId, dx, dy) {
-      const ok = useLayoutStore.getState().moveAssemblerGroup(containerId, dx, dy);
-      console.log(`[flg] moveGroup(${containerId}, ${dx}, ${dy}) → ${ok}`);
       return ok;
     },
 

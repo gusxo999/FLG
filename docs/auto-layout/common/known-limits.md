@@ -190,8 +190,9 @@ tags: [auto-layout, placement, routing]
 [.fluid-delivery-reservation §8.3](../channel/fluid-delivery-reservation.md)).
 
 > **2026-08-02 — 현재 노출 0, 그러나 결함은 보존돼 있다.** 드래그 재라우팅 코드는
-> `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이다(세션을 만드는 코드가 없어
-> `routingEditSession` 이 항상 `null`). 그래서 지금 이 결함을 밟을 방법이 없다.
+> `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이다. 그래서 지금 이 결함을 밟을
+> 방법이 없다. (2026-08-05: 그 격리를 지탱하던 `RoutingEditSession` 자료구조 자체가
+> 삭제됐다 — 재구현은 세션을 새로 설계한다.)
 >
 > **항목을 지우지 않는 이유:** 수동 편집은 재구현 예정이고, 재구현이 이 가드를 안 넣으면
 > 결함이 그대로 돌아온다. `manualEdit/README.md` 가 *"재구현 시 반드시 넣어야 하는 것"*

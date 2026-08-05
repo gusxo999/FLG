@@ -29,9 +29,7 @@ import { useToastStore } from '../store/toastStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useWizardStore } from '../store/wizardStore';
 import { useAutoLayoutRunStore, signatureOf } from '../store/autoLayoutRunStore';
-import {
-  unifyAreas,
-} from '../../autoLayout/areaUnification';
+import { unifyLeaf } from '../../autoLayout/areaUnification';
 import { AUTO_LAYOUT_COORD_DUMP } from '../../autoLayout/debugFlags';
 import { registerAutoLayoutDebug } from '../../debug/debugApi';
 import type {
@@ -228,8 +226,10 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     store.setAutoLayoutCanvasBbox(canvasBbox ?? null);
   }
 
-  function handleApplyCandidate(leaf: CandidateLeaf) {
-    const { placed, internalBbox, canvasBbox, offset } = unifyAreas(leaf.internal, leaf.external);
+  function handleApplyCandidate(rawLeaf: CandidateLeaf) {
+    // **좌표 프레임을 여기서 넘긴다** — 레이아웃 좌표 → 그리드 좌표. 넘긴 뒤로는
+    // `leaf` 안의 모든 좌표가 그리드 좌표이고, 오프셋이라는 것은 존재하지 않는다.
+    const { leaf, placed, internalBbox, canvasBbox } = unifyLeaf(rawLeaf);
 
     if (AUTO_LAYOUT_COORD_DUMP) {
       // 레이아웃 좌표를 dump 하기 전에 그 레이아웃이 생성된 *런타임 환경* 을 먼저 출력한다.
@@ -316,8 +316,8 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
             entityId: p.cell.entityId, entityType: p.cell.entityType, direction: p.cell.direction,
           })),
         })),
-        'unifyAreas': { internalBbox, canvasBbox },
-        'placed.normalized': placed.map((p) => ({
+        'unifyLeaf': { internalBbox, canvasBbox },
+        'placed.grid': placed.map((p) => ({
           x: p.x, y: p.y,
           entityId: p.cell.entityId, entityType: p.cell.entityType,
         })),
@@ -331,14 +331,9 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     }
     // 오버레이(모듈 테두리·이름표·연결선)의 출처 등록 — **applyPlacedCells 앞에서.**
     // 그리드 변경이 렌더를 트리거하므로, 뒤에 두면 첫 프레임에 오버레이가 빠진다.
-    useAutoLayoutRunStore.getState().setAppliedLayout({ leaf, offset });
+    useAutoLayoutRunStore.getState().setAppliedLayout(leaf);
     applyPlacedCells(cells);
     applyLayoutBboxes(internalBbox, canvasBbox);
-    // 수동 편집(드래그 재라우팅) 비활성 — 세션을 만들지 않는다.
-    // 코드는 autoLayout/manualEdit/ 에 격리돼 있고 호출자가 0 이다.
-    // 세션이 항상 null 이라 드래그는 "이동만" 되고 벨트가 따라오지 않는다.
-    // 재구현 계획: manualEdit/README.md
-    useLayoutStore.getState().setRoutingEditMode(false);
     resetViewport();
     showToast(`컨테이너 모델 후보 적용됨 (${cells.length} 셀)`, 'success');
     // 위저드 설정 초기화하지 않음 — 사용자가 계속 설정을 유지할 수 있도록

@@ -192,9 +192,13 @@ tags: [auto-layout, placement, routing]
 | 2026-07-27 | 그 테스트의 fixture 를 손으로 재작성해 의존을 끊고 삭제. `ringGateway.test.ts`(죽은 함수만 테스트)도 함께 |
 
 > **주의:** `areaUnification.ts` 는 지금도 살아 있다. 남은 것은 반출과 무관한
-> `unifyAreas`(화면용 평탄화)·`dragExternalContainer`/`dragAssemblerGroup`(사용자 드래그
-> 재라우팅)이다. 드래그 경로는 여전히 `routeWithFallback` 탐색을 쓴다 — **배치 경로가 아니라
-> 수동 편집 경로**이기 때문이다.
+> `unifyLeaf` — **레이아웃 좌표 → 그리드 좌표 경계를 넘는 문**이다(→ [[용어사전#좌표 프레임 (coordinate frame)]]).
+> 드래그 재라우팅(`dragExternalContainer`/`dragAssemblerGroup`)은 `manualEdit/` 으로 갔다.
+>
+> **반출은 이 문에 영향을 준다.** 반출된 상자는 `internal.placed` 바깥
+> [PERIMETER_MARGIN]=2 칸에 앉으므로, `unifyLeaf` 는 정규화 기준을 `internal` 이 아니라
+> **그리드에 쓸 셀 전부**로 잡는다. internal 만 보면 반출 상자가 음수로 밀려나고,
+> 음수 좌표가 금지된 지금은 그 셀이 **유실**된다(2026-08-05).
 
 ---
 

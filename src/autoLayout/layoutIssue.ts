@@ -10,8 +10,9 @@
  * ## 부분 배치는 만들지 않는다
  *
  * 이 파일에는 [LayoutSnapshot] 이 있지만 그것은 **배치가 아니라 그림**이다.
- * `CandidateLeaf` 와 **타입이 달라** `unifyAreas`·`applyPlacedCells`·블루프린트 export 로
- * 흘러갈 수 없다 — 런타임 검사가 아니라 **구조적 보장**이다.
+ * `CandidateLeaf` 와 **타입이 달라** `unifyLeaf`·`applyPlacedCells`·블루프린트 export 로
+ * 흘러갈 수 없다 — 런타임 검사가 아니라 **구조적 보장**이다. 그림도 좌표 프레임을 넘겨야
+ * 화면에 맞는데, 그 문은 [translateFailureFrame] 으로 따로 있다(배치 경로와 안 만난다).
  *
  * 그 이유(2026-08-04 결정): *부분 성공의 존재 이유는 **어느 부분이 막혔는지 알아내기
  * 위한 것**이지, 부분 배치를 갖다 쓰기 위한 것이 아니다.* 구멍 난 배치를 내보내면 그것은
@@ -130,4 +131,55 @@ export interface LayoutSnapshot {
   modules: SnapshotModule[];
   deliveries: SnapshotDelivery[];
   bbox: SnapshotRect;
+}
+
+/**
+ * 실패 그림을 **레이아웃 좌표(F1) → 그리드 좌표(F2)** 로 넘긴다.
+ *
+ * **스냅샷과 issue 를 한 인자로 묶어 받는 것이 요점이다.** 좌표는 두 자료구조에 나뉘어
+ * 있다 — 모듈 bbox·납품선은 `snapshot` 에, 문제 칸은 `issues[].cells` 에. 따로 옮기면
+ * 한쪽을 잊는다. 실제로 잊었고, 그래서 `pipe-merge-conflict` 의 문제 칸 마커가 모듈에서
+ * 오프셋만큼 떨어진 자리에 찍혔다(2026-08-05 화면에서 관측).
+ *
+ * 성공 배치의 정규화(`unifyLeaf`)와 같은 규칙이다 — bbox 좌상단을 (1,1) 로. 그래서
+ * 성공/실패가 화면에서 같은 여백을 갖고, 좌표는 언제나 ≥ 1 이다.
+ */
+export function translateFailureFrame(input: {
+  snapshot: LayoutSnapshot;
+  issues: readonly LayoutIssue[];
+}): { snapshot: LayoutSnapshot; issues: LayoutIssue[] } {
+  const { snapshot, issues } = input;
+  const dx = 1 - snapshot.bbox.x;
+  const dy = 1 - snapshot.bbox.y;
+  return {
+    snapshot: {
+      modules: snapshot.modules.map((m) => ({
+        id: m.id,
+        recipeName: m.recipeName,
+        entityName: m.entityName,
+        machineCount: m.machineCount,
+        bbox: { x: m.bbox.x + dx, y: m.bbox.y + dy, w: m.bbox.w, h: m.bbox.h },
+        status: m.status,
+      })),
+      deliveries: snapshot.deliveries.map((d) => ({
+        key: d.key,
+        item: d.item,
+        from: { x: d.from.x + dx, y: d.from.y + dy },
+        to: { x: d.to.x + dx, y: d.to.y + dy },
+        ok: d.ok,
+      })),
+      bbox: { x: snapshot.bbox.x + dx, y: snapshot.bbox.y + dy, w: snapshot.bbox.w, h: snapshot.bbox.h },
+    },
+    issues: issues.map((i) => ({
+      code: i.code,
+      scope: i.scope,
+      severity: i.severity,
+      carrier: i.carrier,
+      recoverable: i.recoverable,
+      detail: i.detail,
+      target: i.target,
+      cells: i.cells?.map((c) => ({ x: c.x + dx, y: c.y + dy })),
+      fixStep: i.fixStep,
+    })),
+  };
 }

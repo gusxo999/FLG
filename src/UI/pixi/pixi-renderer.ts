@@ -38,10 +38,8 @@ export const BG_COLOR    = 0x1a1a2e;
 const EMPTY_CELL_COLOR   = 0x12121f;
 const EXTERNAL_AREA_BG   = 0x0d1f10;
 const EXTERNAL_AREA_EDGE = 0x2a5c30;
-const ROUTING_EDIT_BOX_COLOR = 0x44aaff;
 const EXTERNAL_INPUT_COLOR   = 0x2266ff;  // 외부 입력 컨테이너 — 파란색
 const EXTERNAL_OUTPUT_COLOR  = 0xff3333;  // 외부 출력 컨테이너 — 빨간색
-const ROUTING_EDIT_MACHINE_GLOW = 0x44ffcc;  // 라우팅 편집 모드 조립기계 하이라이트
 const MODULE_BORDER_COLOR    = 0xffb020;  // 모듈 식별 테두리 — 앰버
 const MODULE_LABEL_COLOR     = 0xffd98a;  // 모듈 레시피 라벨
 const MODULE_PROBLEM_COLOR   = 0xff4444;  // 문제 있는 모듈 — 빨강(색만으로 안 가르고 채움+✗ 병행)
@@ -89,14 +87,6 @@ export const infinityDrag = {
   entityName: null as string | null,
   entityDir:  0 as Direction,
   originCell: null as { x: number; y: number } | null,
-};
-
-/** 라우팅 수정 모드 조립기계 그룹 드래그 */
-export const routingEditDrag = {
-  active:      false,
-  containerId: null as string | null,
-  anchorGrid:  null as { x: number; y: number } | null,
-  currentGrid: null as { x: number; y: number } | null,
 };
 
 /** store subscription 해제 함수 목록 */
@@ -245,52 +235,6 @@ export function drawModulePortHighlights(
 // 라우팅 수정 모드 — 그룹 bbox 렌더
 // ---------------------------------------------------------------------------
 
-function renderRoutingEditGroupBbox(
-  containerId: string,
-  offsetDx: number,
-  offsetDy: number,
-  scaledTile: number,
-  offsetX: number,
-  offsetY: number,
-) {
-  if (!pixiObjects.hoverGfx) return;
-  const { grid, routingEditSession } = useLayoutStore.getState();
-  if (!routingEditSession) return;
-
-  // BFS: containerId + 모든 자손 machine
-  const groupIds = new Set<string>([containerId]);
-  const queue: string[] = [containerId];
-  while (queue.length > 0) {
-    const curr = queue.shift()!;
-    for (const child of (routingEditSession.machineChildren[curr] ?? [])) {
-      if (!groupIds.has(child)) { groupIds.add(child); queue.push(child); }
-    }
-  }
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (let i = 0; i < grid.cells.length; i++) {
-    const cell = grid.cells[i];
-    if (!cell.entityId || !groupIds.has(cell.entityId)) continue;
-    const x = i % grid.width;
-    const y = Math.floor(i / grid.width);
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
-  }
-  if (minX > maxX) return;
-
-  const bx = (minX + offsetDx) * scaledTile + offsetX;
-  const by = (minY + offsetDy) * scaledTile + offsetY;
-  const bw = (maxX - minX + 1) * scaledTile;
-  const bh = (maxY - minY + 1) * scaledTile;
-
-  pixiObjects.hoverGfx
-    .rect(bx, by, bw, bh)
-    .fill({ color: ROUTING_EDIT_BOX_COLOR, alpha: 0.1 })
-    .stroke({ width: 2, color: ROUTING_EDIT_BOX_COLOR, alpha: 0.9 });
-}
-
 // ---------------------------------------------------------------------------
 // 그리드 렌더
 // ---------------------------------------------------------------------------
@@ -302,33 +246,13 @@ export function renderGrid() {
   gridContainer.removeChildren();
 
   const {
-    grid, viewport, tileSize, selectedEntityIds, selection, routingEditSession, routingEditMode,
+    grid, viewport, tileSize, selectedEntityIds, selection,
   } = useLayoutStore.getState();
   const { gridOverlay, showChunkBoundaries } = useSettingsStore.getState();
 
   const scaledTile          = tileSize * viewport.zoom;
   const { offsetX, offsetY } = viewport;
   const { width, height, cells } = grid;
-
-  // 라우팅 수정 드래그 중: 드래그 그룹의 셀을 원래 위치에서 숨기기
-  let draggingSkipIds: Set<string> | null = null;
-  if (routingEditDrag.active && routingEditDrag.containerId && routingEditSession) {
-    draggingSkipIds = new Set();
-    const groupIds = new Set<string>([routingEditDrag.containerId]);
-    const bfsQ: string[] = [routingEditDrag.containerId];
-    while (bfsQ.length > 0) {
-      const curr = bfsQ.shift()!;
-      for (const child of (routingEditSession.machineChildren[curr] ?? [])) {
-        if (!groupIds.has(child)) { groupIds.add(child); bfsQ.push(child); }
-      }
-    }
-    for (const id of groupIds) draggingSkipIds.add(id);
-    for (const r of routingEditSession.routings) {
-      if (groupIds.has(r.fromContainerId) || groupIds.has(r.toContainerId)) {
-        draggingSkipIds.add(r.id);
-      }
-    }
-  }
 
   const startX = Math.max(0, Math.floor(-offsetX / scaledTile));
   const startY = Math.max(0, Math.floor(-offsetY / scaledTile));
@@ -356,10 +280,6 @@ export function renderGrid() {
       if (extIds.has(r.toContainerId))   externalIOMap.set(r.toContainerId, 'output');
     }
   }
-  const routingMachineIds = overlay
-    ? new Set(overlay.containers.filter(c => c.kind === 'machine').map(c => c.id))
-    : null;
-
   // 외부 영역 배경 — canvasBbox 내에서 internalBbox(Blueprint) 바깥 전체를 초록으로 칠함
   const { externalAreaBbox, autoLayoutCanvasBbox } = useLayoutStore.getState();
   if (externalAreaBbox && autoLayoutCanvasBbox) {
@@ -398,14 +318,6 @@ export function renderGrid() {
       const px   = x * scaledTile + offsetX;
       const py   = y * scaledTile + offsetY;
       const cell = cells[y * width + x];
-
-      // 드래그 중인 그룹은 원래 위치에 렌더하지 않음
-      if (draggingSkipIds && cell?.entityId && draggingSkipIds.has(cell.entityId)) {
-        const inExt = externalAreaBbox !== null && autoLayoutCanvasBbox !== null &&
-          isInExternalArea(x, y, autoLayoutCanvasBbox, externalAreaBbox);
-        if (!inExt) gfx.rect(px, py, scaledTile, scaledTile).fill({ color: EMPTY_CELL_COLOR });
-        continue;
-      }
 
       if (!cell || cell.entityType === EntityType.Empty || !cell.isOrigin) {
         if (!cell || cell.entityType === EntityType.Empty) {
@@ -472,7 +384,7 @@ export function renderGrid() {
   }
 
   // 오버레이 패스: 연결선 + I/O glow + 기계 하이라이트 + I/O 텍스트
-  if (externalIOMap.size > 0 || (routingEditMode && routingMachineIds)) {
+  if (externalIOMap.size > 0) {
     // ── 연결선: 라우팅이 깐 셀 경로를 따라가는 선(없으면 컨테이너 중심 직선) ──────
     if (overlay && overlay.routings.length > 0) {
       const lineGfx = new PIXI.Graphics();
@@ -480,43 +392,19 @@ export function renderGrid() {
 
       const containerMap = new Map(overlay.containers.map(c => [c.id, c]));
 
-      // 드래그 중인 그룹 및 오프셋 — **불활성 경로**다. 그룹 트리(`machineChildren`)를 아는
-      // 것은 `routingEditSession` 뿐인데 그 세션을 만드는 코드가 없어(manualEdit 격리)
-      // 항상 null 이고, 애초에 `routingEditDrag.active` 가 세팅되려면 그 세션이 있어야 한다.
-      // 오버레이 운반체는 표시용이라 그룹 트리를 안 나른다 — 수동 편집 재구현 때 함께 살린다.
-      let dragGroupIds: Set<string> | null = null;
-      let dragDx = 0;
-      let dragDy = 0;
-      if (routingEditSession && routingEditDrag.active && routingEditDrag.containerId
-          && routingEditDrag.anchorGrid && routingEditDrag.currentGrid) {
-        dragDx = routingEditDrag.currentGrid.x - routingEditDrag.anchorGrid.x;
-        dragDy = routingEditDrag.currentGrid.y - routingEditDrag.anchorGrid.y;
-        dragGroupIds = new Set([routingEditDrag.containerId]);
-        const bq: string[] = [routingEditDrag.containerId];
-        while (bq.length > 0) {
-          const curr = bq.shift()!;
-          for (const child of routingEditSession.machineChildren[curr] ?? []) {
-            if (!dragGroupIds.has(child)) { dragGroupIds.add(child); bq.push(child); }
-          }
-        }
-      }
-
-      // 매 렌더마다 라인 캐시 갱신 (드래그 오프셋 반영)
       routingLineCache = [];
-
-      // container.origin은 layout 좌표계 → 그리드 좌표로 변환하는 상수 오프셋
-      const coox = overlay.offset.x;
-      const cooy = overlay.offset.y;
 
       // 예전엔 요약(session.routings)과 경로(liveArea.routings)가 **다른 두 배열**이라
       // id 로 맞춰 봐야 했다. 운반체가 하나가 되면서 그 대응이 사라졌다 — 요약과 경로가
       // 같은 객체다.
       const liveRoutingMap = new Map<string, Routing>(overlay.routings.map((r) => [r.id, r]));
 
-      // 그리드 셀 (x,y) 중심 → 픽셀. drag delta 는 호출부에서 셀 좌표에 미리 더함.
+      // 그리드 셀 (x,y) 중심 → 픽셀. **오버레이 좌표는 이미 그리드 좌표다** — 예전엔
+      // 여기서 `overlay.offset` 을 더했는데, 같은 오프셋을 더해야 할 곳이 셋이었고
+      // 하나(문제 칸 마커)가 잊혀 있었다. 지금은 더할 것이 없다.
       const cellCenterPx = (x: number, y: number) => ({
-        x: (x + 0.5 + coox) * scaledTile + offsetX,
-        y: (y + 0.5 + cooy) * scaledTile + offsetY,
+        x: (x + 0.5) * scaledTile + offsetX,
+        y: (y + 0.5) * scaledTile + offsetY,
       });
 
       for (const routing of overlayRoutings) {
@@ -524,26 +412,17 @@ export function renderGrid() {
         const toC   = containerMap.get(routing.toContainerId);
         if (!fromC || !toC) continue;
 
-        const fdx = dragGroupIds?.has(routing.fromContainerId) ? dragDx : 0;
-        const fdy = dragGroupIds?.has(routing.fromContainerId) ? dragDy : 0;
-        const tdx = dragGroupIds?.has(routing.toContainerId)   ? dragDx : 0;
-        const tdy = dragGroupIds?.has(routing.toContainerId)   ? dragDy : 0;
-
-        // 드래그 중이면 경로 셀이 아직 재라우팅되지 않았으므로 직선 fallback.
-        const isDraggingThis = dragGroupIds !== null && (
-          dragGroupIds.has(routing.fromContainerId) || dragGroupIds.has(routing.toContainerId)
-        );
         const liveR = liveRoutingMap.get(routing.id);
 
         // 선분 집합 (배열 순서 폴리라인 ✗ → 그리드 인접 셀쌍 ✓).
-        //  - liveArea 의 placed[] 셀들 중 맨해튼 거리 1 인 쌍만 잇는다.
+        //  - 라우팅의 placed[] 셀들 중 맨해튼 거리 1 인 쌍만 잇는다.
         //    단순 라우팅(정렬된 체인)은 그대로 경로가 되고, cluster-trunk 처럼
         //    [벨트들…, 말미 인서터들] 비정렬 트리도 실제 모양대로 그려진다.
-        //  - liveArea 없거나 드래그 중이면 컨테이너 중심끼리 직선 1개.
+        //  - 깐 셀이 없으면 컨테이너 중심끼리 직선 1개.
         const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
         const endpoints: { x: number; y: number }[] = [];
 
-        if (liveR && !isDraggingThis && liveR.placed.length > 0) {
+        if (liveR && liveR.placed.length > 0) {
           const pts = liveR.placed.map(pc => cellCenterPx(pc.x, pc.y));
           const degree = new Array(liveR.placed.length).fill(0);
           for (let a = 0; a < liveR.placed.length; a++) {
@@ -562,12 +441,12 @@ export function renderGrid() {
           }
         } else {
           const a = {
-            x: (fromC.origin.x + coox + fdx + fromC.size.w / 2) * scaledTile + offsetX,
-            y: (fromC.origin.y + cooy + fdy + fromC.size.h / 2) * scaledTile + offsetY,
+            x: (fromC.origin.x + fromC.size.w / 2) * scaledTile + offsetX,
+            y: (fromC.origin.y + fromC.size.h / 2) * scaledTile + offsetY,
           };
           const b = {
-            x: (toC.origin.x + coox + tdx + toC.size.w / 2) * scaledTile + offsetX,
-            y: (toC.origin.y + cooy + tdy + toC.size.h / 2) * scaledTile + offsetY,
+            x: (toC.origin.x + toC.size.w / 2) * scaledTile + offsetX,
+            y: (toC.origin.y + toC.size.h / 2) * scaledTile + offsetY,
           };
           segments.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
           endpoints.push(a, b);
@@ -629,29 +508,11 @@ export function renderGrid() {
       for (let ox = startX; ox < endX; ox++) {
         const ocell = cells[oy * width + ox];
         if (!ocell?.entityId || !ocell.isOrigin) continue;
-        if (draggingSkipIds?.has(ocell.entityId)) continue;
 
         const opx = ox * scaledTile + offsetX;
         const opy = oy * scaledTile + offsetY;
-        const osize = getEntitySizeRotated(ocell.entityType, ocell.entityName, ocell.direction);
-        const ofw = osize.width  * scaledTile - 2;
-        const ofh = osize.height * scaledTile - 2;
 
         const isExt = ocell.entityType === EntityType.InfinityChest || ocell.entityType === EntityType.InfinityPipe;
-
-        // 외부상자 glow (I/O 색상) — 라우팅 편집 모드에서만
-        if (isExt && routingEditMode) {
-          const io = externalIOMap.get(ocell.entityId);
-          if (io) {
-            const glowColor = io === 'input' ? EXTERNAL_INPUT_COLOR : EXTERNAL_OUTPUT_COLOR;
-            highlightGfx
-              .rect(opx - 3, opy - 3, ofw + 8, ofh + 8)
-              .stroke({ width: 4, color: glowColor, alpha: 0.18 });
-            highlightGfx
-              .rect(opx + 1, opy + 1, ofw, ofh)
-              .stroke({ width: 2, color: glowColor, alpha: 0.9 });
-          }
-        }
 
         // I/O 텍스트 레이블
         if (isExt && scaledTile >= 18) {
@@ -672,15 +533,6 @@ export function renderGrid() {
           }
         }
 
-        // 조립기계 hglow (라우팅 편집 모드 — 드래그 가능 표시)
-        if (routingEditMode && routingMachineIds?.has(ocell.entityId)) {
-          highlightGfx
-            .rect(opx - 3, opy - 3, ofw + 8, ofh + 8)
-            .stroke({ width: 5, color: ROUTING_EDIT_MACHINE_GLOW, alpha: 0.2 });
-          highlightGfx
-            .rect(opx + 1, opy + 1, ofw, ofh)
-            .stroke({ width: 2, color: ROUTING_EDIT_MACHINE_GLOW, alpha: 0.85 });
-        }
       }
     }
 
@@ -906,39 +758,15 @@ export function renderHoverPreview(
   const {
     grid, viewport, tileSize,
     selectedEntityType, selectedEntityName, selectedDirection,
-    routingEditMode, routingEditSession,
-    gridOriginX, gridOriginY,
   } = useLayoutStore.getState();
   const { x: hx, y: hy } = canvasToGrid(cx, cy, viewport, tileSize);
   const scaledTile = tileSize * viewport.zoom;
 
   if (pixiObjects.coordsEl) {
-    pixiObjects.coordsEl.textContent = `${hx + gridOriginX}, ${hy + gridOriginY}`;
+    // 좌표계가 하나다 — 예전엔 `gridOriginX/Y` 를 더해 "표시 좌표"를 따로 냈다.
+    // 음수 좌표를 금지하면서 그 누적이 사라졌다(사용자 결정, 2026-08-05).
+    pixiObjects.coordsEl.textContent = `${hx}, ${hy}`;
     (pixiObjects.coordsEl as HTMLElement).style.display = '';
-  }
-
-  // 라우팅 수정 모드: 그룹 bbox 표시 (일반 배치 미리보기 대체)
-  if (routingEditMode && routingEditSession) {
-    let displayId: string | null = null;
-    if (routingEditDrag.active && routingEditDrag.containerId) {
-      displayId = routingEditDrag.containerId;
-    } else {
-      const hitCell = getCell(grid, hx, hy);
-      if (hitCell?.entityId) {
-        const machineIds = new Set(
-          routingEditSession.containers.filter(c => c.kind === 'machine').map(c => c.id),
-        );
-        if (machineIds.has(hitCell.entityId)) displayId = hitCell.entityId;
-      }
-    }
-    if (displayId) {
-      const odx = routingEditDrag.active && routingEditDrag.anchorGrid
-        ? hx - routingEditDrag.anchorGrid.x : 0;
-      const ody = routingEditDrag.active && routingEditDrag.anchorGrid
-        ? hy - routingEditDrag.anchorGrid.y : 0;
-      renderRoutingEditGroupBbox(displayId, odx, ody, scaledTile, viewport.offsetX, viewport.offsetY);
-    }
-    return;
   }
 
   // 모듈 포트 강조는 renderGrid 가 active 모듈(이름표/본체 hover·선택) 기준으로 그린다

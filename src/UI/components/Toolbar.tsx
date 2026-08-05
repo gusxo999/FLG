@@ -21,9 +21,7 @@ export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gameDataFileRef = useRef<HTMLInputElement>(null);
   const grid = useLayoutStore((s) => s.grid);
-  const routingEditMode = useLayoutStore((s) => s.routingEditMode);
-  const routingEditSession = useLayoutStore((s) => s.routingEditSession);
-  const { fillGridFromCells, clearGrid, undo, redo, setRoutingEditMode } = useLayoutStore.getState();
+  const { fillGridFromCells, clearGrid, undo, redo } = useLayoutStore.getState();
   const gameDataLoaded = useGameDataStore((s) => s.loaded);
   const gameDataRecipeCount = useGameDataStore((s) => s.recipes.length);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -527,22 +525,6 @@ export default function Toolbar() {
           className="toolbar-btn text-red-400 hover:text-red-300"
         >
           {t('toolbar.clear')}
-        </button>
-        <button
-          onClick={() => routingEditSession && setRoutingEditMode(!routingEditMode)}
-          disabled={!routingEditSession}
-          title={routingEditSession
-            ? '라우팅 수정 모드 — 조립기계를 드래그해 이동. 부모 머신 드래그 시 자손 전체 이동 + 경계 라우팅 재계산.'
-            : '자동 레이아웃을 먼저 적용해야 사용할 수 있습니다.'}
-          className={`toolbar-btn transition-colors ${
-            !routingEditSession
-              ? 'opacity-30 cursor-not-allowed'
-              : routingEditMode
-                ? 'bg-blue-600 text-white border border-blue-400'
-                : 'text-blue-300 hover:text-blue-200'
-          }`}
-        >
-          {routingEditMode ? '라우팅편집중' : '라우팅편집'}
         </button>
       </div>
 

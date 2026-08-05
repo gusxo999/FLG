@@ -19,16 +19,24 @@
 
 ## 어떻게 꺼져 있나
 
-```
-AutoLayoutContainerPanel  →  setRoutingEditSession({...})   ← 이 호출을 제거했다
-                                     ↓
-layoutStore.routingEditSession  =  항상 null
-                                     ↓
-드래그 재라우팅 분기가 한 번도 실행되지 않음
-```
+1단계(2026-08-02) — `AutoLayoutContainerPanel` 이 `setRoutingEditSession({...})` 을 부르지
+않게 했다. 세션이 영구히 `null` 이라 드래그 재라우팅 분기가 한 번도 실행되지 않았다.
+
+2단계(2026-08-05) — **`RoutingEditSession` 자료구조 자체를 삭제했다.** 그 껍데기가 나르던
+`containerOriginOffset`(= 컨테이너 좌표 → 그리드 좌표 오프셋)이 살아 있는 코드에서
+**항상 `(0,0)` 으로 읽히면서**, 콘솔 API 가 그리드 좌표를 레이아웃 좌표인 척 내보내고
+있었기 때문이다. 함께 사라진 것: `routingEditMode` · `moveAssemblerGroup` ·
+`liveArea` · 툴바의 "라우팅편집" 버튼 · 렌더러/매니저의 드래그 분기 전부.
 
 **드래그 자체는 죽지 않았다** — 엔티티는 여전히 움직인다. **벨트가 따라오지 않을 뿐**이다.
 (`moveEntityById` 의 단순 이동 경로는 `layoutStore` 에 살아 있다.)
+
+> **재구현 시: `RoutingEditSession` 은 없다. 세션을 새로 설계한다.**
+> 옛 세션은 표시용 정보(컨테이너·라우팅)와 편집용 정보(`machineChildren`·`routeOptions`·
+> mutate 되는 `liveArea`)와 **좌표 오프셋**을 한 자루에 담고 있었다. 표시용은 이미
+> `autoLayoutRunStore.appliedLayout` 이 맡고 있고, 좌표 오프셋은 **존재하지 않는다** —
+> 배치가 그리드 좌표로 넘어온 뒤에는 더할 것이 없다(→ `docs/용어사전.md` §B 좌표 프레임).
+> 새 세션이 날라야 하는 것은 **편집용 정보뿐**이다.
 
 ## 파일
 

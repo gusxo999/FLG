@@ -14,9 +14,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
 import { runLayeredWizard } from './layeredWizard';
-import { unifyAreas } from './areaUnification';
+import { unifyLeaf } from './areaUnification';
 import { collectModules, moduleAtCell, overlayFromLayout, overlayFromSnapshot, summarizeRoutings, type ModuleSource } from './moduleInspect';
-import type { LayoutIssue, LayoutSnapshot } from './layoutIssue';
+import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from './layoutIssue';
 import type { CandidateLeaf, ContainerWizardInput } from './containerModel';
 
 const item = (name: string, amount = 1) => ({ name, amount, type: 'item' as const });
@@ -65,12 +65,11 @@ const INPUT: ContainerWizardInput = {
 };
 
 /** 패널의 `handleApplyCandidate` 와 **같은 방식**으로 운반체를 짓는다. */
-function sourceOf(leaf: CandidateLeaf): ModuleSource {
-  const { offset } = unifyAreas(leaf.internal, leaf.external);
+function sourceOf(raw: CandidateLeaf): ModuleSource {
+  const { leaf } = unifyLeaf(raw);
   return {
     containers: [...leaf.internal.containers, ...leaf.external.containers],
     routings: leaf.routings,
-    offset,
   };
 }
 
@@ -149,6 +148,40 @@ describe('moduleInspect — 실행 결과가 모듈로 풀린다', () => {
     expect(collectModules(null)).toEqual([]);
   });
 
+  it('**unifyLeaf 산출물의 모든 좌표가 ≥ 1** — 음수 좌표는 존재하지 않는다', () => {
+    // `applyPlacedCells` 는 더 이상 그리드를 밀지 않는다(사용자 결정, 2026-08-05).
+    // 여기서 음수가 새면 그 셀은 그리드에 안 써지고 **조용히 사라진다**.
+    const { leaf: grid, placed, internalBbox, canvasBbox } = unifyLeaf(leaf);
+
+    expect(placed.length).toBeGreaterThan(0);
+    for (const p of placed) {
+      expect(p.x, `placed x`).toBeGreaterThanOrEqual(1);
+      expect(p.y, `placed y`).toBeGreaterThanOrEqual(1);
+    }
+    for (const c of [...grid.internal.containers, ...grid.external.containers]) {
+      expect(c.origin.x, `${c.id} origin x`).toBeGreaterThanOrEqual(0);
+      expect(c.origin.y, `${c.id} origin y`).toBeGreaterThanOrEqual(0);
+    }
+    for (const r of grid.routings) {
+      for (const p of r.placed) {
+        expect(p.x).toBeGreaterThanOrEqual(1);
+        expect(p.y).toBeGreaterThanOrEqual(1);
+      }
+      for (const e of [r.from, r.to]) {
+        expect(e.cell.x).toBeGreaterThanOrEqual(0);
+        expect(e.cell.y).toBeGreaterThanOrEqual(0);
+      }
+    }
+    expect(internalBbox!.x).toBeGreaterThanOrEqual(1);
+    expect(internalBbox!.y).toBeGreaterThanOrEqual(1);
+    expect(canvasBbox!.x).toBeGreaterThanOrEqual(0);
+    expect(canvasBbox!.y).toBeGreaterThanOrEqual(0);
+
+    // 원본은 안 건드린다 — 같은 leaf 를 두 번 넘겨도 같은 답이 나와야 한다.
+    expect(unifyLeaf(leaf).placed.map((p) => `${p.x},${p.y}`))
+      .toEqual(placed.map((p) => `${p.x},${p.y}`));
+  });
+
   it('같은 운반체면 같은 결과 객체 — 마우스 이동마다 재계산하지 않는다', () => {
     const src = sourceOf(leaf);
     expect(collectModules(src)).toBe(collectModules(src));
@@ -189,7 +222,7 @@ describe('오버레이 정규화 — 성공과 실패가 같은 모양', () => {
     expect(mods[0].issues.length).toBe(1);
   });
 
-  it('실패 스냅샷도 같은 모양 — 좌표는 offset 이 옮긴다', () => {
+  it('실패 스냅샷도 같은 모양 — 좌표는 translateFailureFrame 이 옮긴다', () => {
     const snapshot: LayoutSnapshot = {
       modules: [{
         id: 'n0-x', entityName: 'assembler', machineCount: 2,
@@ -198,9 +231,10 @@ describe('오버레이 정규화 — 성공과 실패가 같은 모양', () => {
       deliveries: [{ key: 'k1', item: 'iron', from: { x: 5, y: 7 }, to: { x: 9, y: 7 }, ok: false }],
       bbox: { x: 5, y: 7, w: 8, h: 3 },
     };
-    const { modules, lines } = overlayFromSnapshot(
-      snapshot, [issue({ target: { moduleId: 'n0-x' } })], { x: -4, y: -6 },
-    );
+    const framed = translateFailureFrame({
+      snapshot, issues: [issue({ target: { moduleId: 'n0-x' } })],
+    });
+    const { modules, lines } = overlayFromSnapshot(framed.snapshot, framed.issues);
     expect(modules[0].bbox).toEqual({ x: 1, y: 1, w: 3, h: 3 });
     expect(modules[0].status).toBe('problem');
     expect(modules[0].issues.length).toBe(1);
@@ -218,8 +252,36 @@ describe('오버레이 정규화 — 성공과 실패가 같은 모양', () => {
       deliveries: [],
       bbox: { x: 0, y: 0, w: 3, h: 3 },
     };
-    const { modules } = overlayFromSnapshot(snapshot, [], { x: 1, y: 1 });
+    const framed = translateFailureFrame({ snapshot, issues: [] });
+    const { modules } = overlayFromSnapshot(framed.snapshot, framed.issues);
     expect(moduleAtCell(2, 2, modules)?.key).toBe('n0-x');
     expect(moduleAtCell(99, 99, modules)).toBeNull();
+  });
+
+  it('**문제 칸이 그 모듈 안에 찍힌다** — 스냅샷과 issue 가 함께 옮겨져야 한다', () => {
+    // 2026-08-05 실측 결함: 모듈 bbox·납품선은 옮기면서 `issues[].cells` 는 안 옮겨,
+    // `pipe-merge-conflict` 마커가 모듈에서 offset 만큼 떨어진 자리에 찍혔다.
+    // 좌표가 **두 자료구조에 나뉘어** 있는 것이 원인이라, 함께 받는 함수가 답이다.
+    const snapshot: LayoutSnapshot = {
+      modules: [{
+        id: 'n0-x', entityName: 'assembler', machineCount: 1,
+        bbox: { x: 20, y: 30, w: 4, h: 4 }, status: 'problem',
+      }],
+      deliveries: [],
+      bbox: { x: 20, y: 30, w: 4, h: 4 },
+    };
+    // 충돌 칸은 모듈 안(레이아웃 좌표계)에 있다.
+    const raw = issue({ target: { moduleId: 'n0-x' }, cells: [{ x: 22, y: 31 }] });
+    const framed = translateFailureFrame({ snapshot, issues: [raw] });
+
+    const cell = framed.issues[0].cells![0];
+    const box = framed.snapshot.modules[0].bbox;
+    expect(cell).toEqual({ x: 3, y: 2 });   // (22,31) + (−19,−29)
+    expect(box).toEqual({ x: 1, y: 1, w: 4, h: 4 });
+    // 진짜로 묻는 것 — 옮긴 뒤에도 칸이 그 모듈 **안**인가.
+    expect(cell.x >= box.x && cell.x < box.x + box.w).toBe(true);
+    expect(cell.y >= box.y && cell.y < box.y + box.h).toBe(true);
+    // 원본은 건드리지 않는다(순수).
+    expect(raw.cells![0]).toEqual({ x: 22, y: 31 });
   });
 });

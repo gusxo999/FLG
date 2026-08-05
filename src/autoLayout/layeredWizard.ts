@@ -246,7 +246,7 @@ function makeEmitter(
 /**
  * 실패 결과 — **모은 문제 전부**와, 있으면 그 문제를 짚을 그림을 낸다.
  *
- * `snapshot` 은 `CandidateLeaf` 가 **아니다**(타입이 다르다) — 그래서 `unifyAreas` ·
+ * `snapshot` 은 `CandidateLeaf` 가 **아니다**(타입이 다르다) — 그래서 `unifyLeaf` ·
  * `applyPlacedCells` · 블루프린트 export 로 흘러갈 수 없다. 부분 배치를 만들지 않겠다는
  * 결정을 런타임 검사가 아니라 **타입으로** 지킨다.
  */

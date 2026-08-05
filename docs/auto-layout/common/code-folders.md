@@ -115,8 +115,9 @@ autoLayout/
 > `manualEdit/README.md` 에 있다.
 
 > **`areaUnification.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
-> **배치 결과를 화면 좌표로 평탄화하는 표시 경로**(`unifyAreas`)다. 드래그 부분은
-> `manualEdit/dragArea.ts` 로 갔다.
+> **레이아웃 좌표 → 그리드 좌표 경계를 넘는 문**(`unifyLeaf`)이다. 드래그 부분은
+> `manualEdit/dragArea.ts` 로 갔다. 좌표 프레임이 셋이라는 것과 그 경계를 넘는 규칙은
+> [[용어사전#좌표 프레임 (coordinate frame)]] 이 단일 출처다.
 
 ## 두 축이 실제로 지켜지는가 — 기계적으로 확인할 수 있다
 
