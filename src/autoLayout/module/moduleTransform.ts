@@ -21,6 +21,7 @@ import { EntityType } from "../../types/layout";
 import type { Direction } from "../../types/layout";
 import type { GeneratedModule, ModulePort } from "./clusterModule";
 import type { Container, PlacedCell, PortFace } from "../containerModel";
+import type { PipeFlowPipe } from "../util/pipeFlow";
 import { faceVector, vectorToDirection } from "../util/helper";
 
 export type Rotation = 0 | 90 | 180 | 270;
@@ -96,88 +97,84 @@ const DIRECTIONAL = new Set<EntityType>([
 /**
  * 모듈을 회전/반사. 머신 bbox 좌상단을 (0,0)으로 재정규화한 새 모듈을 반환한다.
  * entityId 는 보존(고유성만 필요; 합성 단계가 재-id) — 좌표 접미사는 stale 해질 수 있음.
+ *
+ * **호출자가 0 이다**(2026-08-05 확인) — `packModuleTree` 는 모든 모듈에 `IDENTITY` 를 준다.
+ * 그래도 총 변환으로 유지한다: 방위 정렬을 되살리는 날 여기가 조용히 틀려 있으면 안 된다.
  */
 export function transformModule(mod: GeneratedModule, o: Orientation): GeneratedModule {
-  // 1) 회전/반사만 적용(정규화 전).
-  const machines: Container[] = mod.machines.map((m) => {
+  // 1) 재정규화량 — 회전 후 머신 bbox 좌상단이 (0,0) 이 되게. 좌표를 두 번 만들지 않도록
+  //    footprint 만 먼저 돌려 min 을 구한다.
+  let minX = Infinity, minY = Infinity;
+  for (const m of mod.machines) {
     const fp = footprintXf(m.origin, m.size, o);
-    return { ...m, origin: fp.origin, size: fp.size };
-  });
+    minX = Math.min(minX, fp.origin.x);
+    minY = Math.min(minY, fp.origin.y);
+  }
+  const dx = -minX, dy = -minY;
 
-  const chestById = new Map<string, Container>();
-  const chests: Container[] = mod.chests.map((c) => {
-    const fp = footprintXf(c.origin, c.size, o);
-    const next = { ...c, origin: fp.origin, size: fp.size };
-    chestById.set(next.id, next);
-    return next;
-  });
-
-  const cells: PlacedCell[] = mod.cells.map((p) => {
+  // 2) 이 함수의 **유일한 좌표 변환** — 회전/반사 + 재정규화를 한 번에. 아래는 전부 이것만 쓴다.
+  const pt = (p: { x: number; y: number }): { x: number; y: number } => {
     const t = tileXf(p.x, p.y, o);
+    return { x: t.x + dx, y: t.y + dy };
+  };
+  const ctn = (c: Container): Container => {
+    const fp = footprintXf(c.origin, c.size, o);
+    return { ...c, origin: { x: fp.origin.x + dx, y: fp.origin.y + dy }, size: fp.size };
+  };
+  const cel = (p: PlacedCell): PlacedCell => {
+    const t = pt(p);
     const cell = DIRECTIONAL.has(p.cell.entityType)
       ? { ...p.cell, direction: dirXf(p.cell.direction, o) }
       : { ...p.cell };
     return { x: t.x, y: t.y, cell };
-  });
+  };
 
-  const ring = mod.ring.map((c) => tileXf(c.x, c.y, o));
+  const machines = mod.machines.map(ctn);
+  const chestById = new Map<string, Container>();
+  const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
 
-  // 포트도 **펴서 덮어쓴다** — 필드별 재구성은 `tapAnchor`·`meta`·`linkId` 처럼 좌표와 무관한
-  // 신원/계약 필드를 조용히 떨어뜨린다(아래 `shiftPort` 도 같다).
-  const xfPort = (port: ModulePort): ModulePort => ({
-    ...port,
-    anchor: tileXf(port.anchor.x, port.anchor.y, o),
-    face: faceXf(port.face, o),
-    chest: chestById.get(port.chest.id) ?? port.chest,
-  });
-  const inputPorts = mod.inputPorts.map(xfPort);
-  const outputPorts = mod.outputPorts.map(xfPort);
-
-  // 2) 머신 bbox 좌상단 → (0,0) 재정규화 (ring/cells 음수 상대좌표는 유지).
-  let minX = Infinity, minY = Infinity;
-  for (const m of machines) {
-    minX = Math.min(minX, m.origin.x);
-    minY = Math.min(minY, m.origin.y);
-  }
-  const dx = -minX, dy = -minY;
-  const shiftPt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
-  const shiftContainer = (c: Container): Container => ({ ...c, origin: shiftPt(c.origin) });
-
-  const sMachines = machines.map(shiftContainer);
-  const sChestById = new Map<string, Container>();
-  const sChests = chests.map((c) => {
-    const s = shiftContainer(c);
-    sChestById.set(s.id, s);
-    return s;
-  });
-  const sCells = cells.map((p) => ({ x: p.x + dx, y: p.y + dy, cell: p.cell }));
-  const sRing = ring.map(shiftPt);
-  const shiftPort = (port: ModulePort): ModulePort => ({
-    ...port,
-    anchor: shiftPt(port.anchor),
-    chest: sChestById.get(port.chest.id) ?? shiftContainer(port.chest),
+  // **스프레드를 쓰지 않는다 — 좌표 필드를 전부 명시한다.**
+  // 예전엔 `...port` 로 폈다. 그러면 좌표와 무관한 필드(`meta`·`linkId`)는 지켜지지만
+  // **좌표 필드를 빠뜨려도 타입이 통과한다** — 사라지는 대신 **낡은 값으로 살아남기**
+  // 때문이다. 실제로 `tapAnchor`·`cells`·`moduleWayOuts`(면이라 회전해야 한다) 셋이
+  // 안 돌아가고 있었다(2026-08-05). 명시하면 필드가 늘 때 **누락 필드 타입 에러**가 난다.
+  const port = (p: ModulePort): ModulePort => ({
+    line: p.line,
+    anchor: pt(p.anchor),
+    tapAnchor: pt(p.tapAnchor),
+    face: faceXf(p.face, o),
+    moduleWayOuts: p.moduleWayOuts.map((f) => faceXf(f, o)),
+    chest: chestById.get(p.chest.id) ?? ctn(p.chest),
+    cells: p.cells.map(cel),
+    meta: p.meta,
+    linkId: p.linkId,
   });
 
   // 3) 새 머신 bbox (정규화 후 min=0).
   let w = 0, h = 0;
-  for (const m of sMachines) {
+  for (const m of machines) {
     w = Math.max(w, m.origin.x + m.size.w);
     h = Math.max(h, m.origin.y + m.size.h);
   }
 
-  // **`...mod` 를 먼저 편다** — 이 함수는 좌표를 옮기는 일만 하는데, 예전엔 필드를 하나씩
-  // 적어 재구성해서 **좌표와 무관한 필드가 조용히 사라졌다**(`supply` 가 그래서 계속
-  // undefined 였고, 폴백 사유가 "사유 없음"으로 찍혔다. 2026-07-24 `beltMerges` 를 추가하다
-  // 발견). 옮길 것만 아래에서 덮어쓰면, 나중에 필드가 늘어도 여기서 안 잃는다.
   return {
-    ...mod,
-    machines: sMachines,
-    chests: sChests,
-    cells: sCells,
-    ring: sRing,
-    inputPorts: inputPorts.map(shiftPort),
-    outputPorts: outputPorts.map(shiftPort),
+    machines,
+    chests,
+    cells: mod.cells.map(cel),
+    ring: mod.ring.map(pt),
+    inputPorts: mod.inputPorts.map(port),
+    outputPorts: mod.outputPorts.map(port),
     bbox: { x: 0, y: 0, w, h },
+    supply: mod.supply,
+    unroutedLines: mod.unroutedLines,
+    // 지하파이프의 `connectDir` 은 **면**이므로 같이 돌아야 한다. 안 돌리면 합류 가드가
+    // 엉뚱한 면 하나만 막고 나머지 셋을 뚫어 준다.
+    pipeCells: mod.pipeCells.map((c): PipeFlowPipe => {
+      const t = pt(c);
+      return c.connectDir === undefined
+        ? { x: t.x, y: t.y, fluid: c.fluid }
+        : { x: t.x, y: t.y, fluid: c.fluid, connectDir: dirXf(c.connectDir, o) };
+    }),
   };
 }
 
@@ -223,7 +220,13 @@ function faceFromVec(x: number, y: number): PortFace {
 // 다루는 것이라 여기가 맞다(2026-08-02 이관).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 모듈이 차지하는 실제 범위 = 머신 footprint ∪ 모든 placed 셀(튀어나온 포트 상자 포함). */
+/**
+ * 모듈이 차지하는 실제 범위 = 머신 footprint ∪ 모든 placed 셀(튀어나온 포트 상자 포함).
+ *
+ * `pipeCells` 를 안 보는 것은 **의도대로다** — 그 배열은 `cells` 의 파이프류 셀에 유체
+ * 이름을 덧붙인 사본이라([emitTrunkPipe] 가 같은 자리에서 둘 다 채운다) 범위에 이미 들어 있다.
+ * 여기에 더하면 같은 칸을 두 번 세는 것뿐이다.
+ */
 export function moduleExtent(mod: GeneratedModule): { x: number; y: number; w: number; h: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const mk = (x: number, y: number) => {
@@ -238,30 +241,50 @@ export function moduleExtent(mod: GeneratedModule): { x: number; y: number; w: n
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
+/**
+ * 모듈 하나를 통째로 평행이동한다 — **모듈-로컬(F0) → 레이아웃(F1) 경계를 넘는 유일한 문**.
+ *
+ * **스프레드를 쓰지 않는다 — 전 필드를 명시한다.** 예전엔 `...mod` / `...p` 로 폈다.
+ * 그 스프레드는 *"필드를 하나씩 적어 재구성하면 좌표와 무관한 필드가 조용히 사라진다"* 는
+ * 사고(2026-07-24 `beltMerges`·`supply`)를 막으려던 것인데, **좌표 필드에는 정반대로**
+ * 작동한다: 빠뜨려도 사라지지 않고 **낡은 좌표로 살아남는다.** 타입도 테스트도 통과한다.
+ *
+ * 실제로 `pipeCells` 가 그렇게 F0 에 남아, 모든 모듈의 파이프 셀이 원점 근처로 겹쳐 쌓였다.
+ * 합류 가드가 남남 모듈의 다른 유체 파이프를 같은 칸에서 보고 **서로를 hard 위반으로
+ * 거절**해 배치가 통째로 실패했다(2026-08-05 `battery` 트리).
+ *
+ * 명시하면 `GeneratedModule` 에 필드가 늘 때 **누락 필드 타입 에러**가 난다 — 잃는 쪽은
+ * 타입이 잡아 주지만, 잊는 쪽은 아무도 안 잡아 준다.
+ */
 export function shiftModule(mod: GeneratedModule, dx: number, dy: number): GeneratedModule {
   const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
   const ctn = (c: Container): Container => ({ ...c, origin: pt(c.origin) });
+  const cel = (c: PlacedCell): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell });
   const chestById = new Map<string, Container>();
   const chests = mod.chests.map((c) => { const s = ctn(c); chestById.set(s.id, s); return s; });
-  // **`...p` / `...mod` 를 먼저 편다.** 이 함수는 평행이동만 하는데, 예전엔 필드를 하나씩 적어
-  // 재구성해서 **좌표와 무관한 필드가 새로 생길 때마다 여기서 조용히 사라졌다** — 옮길 것만
-  // 덮어쓰면 그 실수가 구조적으로 불가능해진다(2026-07-24 `beltMerges` 가 여기서 증발했다.
-  // 같은 모양의 재구성이 moduleTransform 에도 있었고 거기서도 `supply` 를 잃고 있었다).
   const port = (p: ModulePort): ModulePort => ({
-    ...p,
+    line: p.line,
     anchor: pt(p.anchor),
     tapAnchor: pt(p.tapAnchor),
+    // 면·역할은 평행이동에 불변이다(방향은 안 바뀐다).
+    face: p.face,
+    moduleWayOuts: p.moduleWayOuts,
     chest: chestById.get(p.chest.id) ?? ctn(p.chest),
-    cells: p.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+    cells: p.cells.map(cel),
+    meta: p.meta,
+    linkId: p.linkId,
   });
   return {
-    ...mod,
     machines: mod.machines.map(ctn),
     chests,
-    cells: mod.cells.map((c): PlacedCell => ({ x: c.x + dx, y: c.y + dy, cell: c.cell })),
+    cells: mod.cells.map(cel),
     ring: mod.ring.map(pt),
     inputPorts: mod.inputPorts.map(port),
     outputPorts: mod.outputPorts.map(port),
     bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
+    supply: mod.supply,
+    unroutedLines: mod.unroutedLines,
+    // `connectDir` 은 면이라 평행이동에 불변 — 좌표만 옮긴다.
+    pipeCells: mod.pipeCells.map((c): PipeFlowPipe => ({ ...c, x: c.x + dx, y: c.y + dy })),
   };
 }
