@@ -420,7 +420,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     //    **벨트 티어와 무관**한데 4단계(벨트)로 보내고 있었다. 지렛대는 긴팔 인서터 → 3단계.
     //  - `belt: demand>beltCap` — 진짜 벨트 처리량 부족. 4단계가 맞는데 옛 조건
     //    (`includes('belt-demand')`)에 안 걸려 **처방이 아예 없었다**.
-    const why = pl.module.supply?.reason ?? "사유 없음";
+    const why = pl.module.supply?.mode === "direct" ? pl.module.supply.reason : "사유 없음";
     const fixStep = why.includes('no-inserter') || why.includes('lanes-exceed-capacity')
       ? 'inserter' as const
       : why.includes('demand>beltCap') ? 'belt' as const

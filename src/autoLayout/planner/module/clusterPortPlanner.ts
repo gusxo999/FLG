@@ -131,16 +131,6 @@ export interface PortPlannerInput {
    */
   nsFaces?: ("N" | "S")[];
   /**
-   * **면당 좌석 행 수**(그 면의 둘레 칸) — [insertingPlanner] 전용 입력이다. 여기서는
-   * 배정에 안 쓰고, 팔을 배정에 쪼갤 때의 상한(`rowsPerFace`)과 좌석 예산으로만 본다.
-   *
-   * 예전엔 이 값이 **두 번째 배정 모델**이기도 했다: 주면 [laneSlots](탭) 대신 "면 둘레 칸
-   * 수만큼 슬롯"(1:1)을 세는 rim 모드였다. 그 모드는 [emitDirectInserting] 과 짝이었고,
-   * 둘 다 2026-08-05 공급 모델 통합에서 **호출자가 0이 되어 삭제**됐다 — 기계별 포트는 이제
-   * 링크 배분기([allocateLinkFaces])가 맡는다. 그래서 `planClusterPorts` 는 **탭 하나만** 안다.
-   */
-  slotsPerFace?: { WE: number; NS: number };
-  /**
    * [트렁크 파이프](../../../../../docs/용어사전.md)가 차지하는 면 — **우리가 못 고른다.**
    * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
    * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
@@ -182,9 +172,9 @@ export interface PortPlannerInput {
   /**
    * **면당 좌석 행 수** — 그 면에 인서터 팔을 몇 개까지 앉힐 수 있나(= 그 면의 둘레 칸).
    *
-   * [slotsPerFace] 와 **세는 대상이 다르다**: 저건 "벨트를 몇 줄 세우나"(reach 종류 수, 보통 2),
-   * 이건 "팔을 몇 개 앉히나"(머신 높이, 보통 7). 배정 하나가 벨트 자리 **하나**를 먹으면서
-   * 팔은 **여러 개**([armsByPlacement]) 앉힐 수 있으므로 두 수는 서로 유도되지 않는다.
+   * 벨트 줄 수([laneSlots] = 서로 다른 reach 개수, 보통 2)와 **세는 대상이 다르다**: 저건
+   * "벨트를 몇 줄 세우나", 이건 "팔을 몇 개 앉히나"(머신 높이, 보통 7). 배정 하나가 벨트 자리
+   * **하나**를 먹으면서 팔은 **여러 개**([armsByPlacement]) 앉힐 수 있어 서로 유도되지 않는다.
    *
    * 이게 없던 동안 배분기는 좌석을 아예 못 봤고, 그래서 팔 4개짜리 줄을 좌석 3칸인 면에
    * 통째로 몰아넣은 뒤 **사후에** 거절당했다(→ 다이렉트 폴백). 이제 배분의 **입력**이라
@@ -460,14 +450,24 @@ export interface SupplyCapacity {
   lineRates?: Map<string, number>;
 }
 
-/** 판정 결과. `plan` 은 그 방식으로 배정한 슬롯이다. */
-export interface InsertingDecisionResult {
-  /** "tap" = 벨트 한 줄 + 머신별 탭. "direct" = 머신마다 상자+인서터(1:1). */
-  mode: "tap" | "direct";
-  /** direct 로 떨어진 사유(진단·계측용). mode==="tap" 이면 undefined. */
-  reason?: string;
-  plan: PortPlan;
-}
+/**
+ * 판정 결과 — **계획을 내는 쪽은 탭뿐이다.**
+ *
+ * 예전엔 `{ mode, reason?, plan }` 한 모양이었고 다이렉트도 `plan: { ok: true, lines: [] }` 를
+ * 달고 나갔다. *"성공했는데 배정 0건"* 이라는 타입상 거짓말이라, **다이렉트는 계획을 안 낸다**는
+ * 사실이 관례로만 존재했다(2026-08-05 공급 모델 통합에서 기계별 포트가 링크 배분기로 옮겨간
+ * 뒤의 자국). 유니온으로 가르면 다이렉트 가지에서 `plan` 을 읽는 것이 **타입 에러**가 된다 —
+ * [ModulePortPlan.rest] 가 이름으로 산 것과 같은 종류의 이득이다.
+ */
+export type InsertingDecisionResult =
+  /** 벨트 한 줄 + 머신별 탭. 이 방식으로 배정한 슬롯이 `plan` 에 든다. */
+  | { mode: "tap"; plan: { ok: true; lines: PlannedLine[] } }
+  /**
+   * 머신마다 상자+인서터(1:1). **자리는 여기서 안 잡는다** — 기계별 포트는 링크 배분기
+   * ([allocateLinkFaces])가 맡으므로 이 결과가 답하는 것은 **판정과 사유**뿐이다.
+   * 배정을 두 곳이 내면 좌석 장부가 갈린다.
+   */
+  | { mode: "direct"; reason: string };
 
 /**
  * **[requiredInserterCount](../../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
@@ -598,8 +598,16 @@ export function allocateArms(
  * 보류했다 — 되돌아갈 곳(1:1)이 **항상 유효**하다는 게 이 설계의 안전망이다(§2-②).
  */
 export function insertingPlanner(
-  input: PortPlannerInput & { slotsPerFace: { WE: number; NS: number } },
+  input: PortPlannerInput,
   machineCount: number,
+  /**
+   * **면당 좌석 행 수**(그 면의 둘레 칸) — 이 함수 **자신의** 입력이다.
+   *
+   * 예전엔 `PortPlannerInput.slotsPerFace` 로 들어와 여기서 빼낸 뒤 `seatRowsPerFace` 라는
+   * **다른 이름으로 다시 넣었다** — `planClusterPorts` 는 그 필드를 읽은 적이 없으므로(읽던
+   * rim 모드는 2026-08-05 에 삭제됐다) 존재 이유가 개명뿐이었다.
+   */
+  seatRows: { WE: number; NS: number },
   capacity: SupplyCapacity = {},
 ): InsertingDecisionResult {
   // **팔 개수([requiredInserterCount])를 모드보다 먼저 구한다.** 이건 공급 방식이 정하는 게
@@ -611,7 +619,7 @@ export function insertingPlanner(
   // 링크 방출이 먼저 먹은 행은 뺀다 — W/E 예산이 한 수라 **보수적으로 큰 쪽**을 뺀다
   // (정밀한 면별 차감은 planClusterPorts 의 [seatRowsUsed] 가 따로 한다).
   const linkUsedWE = Math.max(input.seatRowsUsed?.W ?? 0, input.seatRowsUsed?.E ?? 0);
-  const rowsPerFace = input.slotsPerFace ? Math.max(1, input.slotsPerFace.WE - linkUsedWE) : Infinity;
+  const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);
 
   /**
    * 줄별 **팔 개수(머신 한 대 전체)** — 배정 수와 무관한 물리량. 아래에서 배정들에 **나눠**
@@ -672,15 +680,12 @@ export function insertingPlanner(
   /**
    * **탭이 안 된다** — 자리를 여기서 잡지 않는다.
    *
-   * 예전엔 여기서 rim 모델로 1:1 배정을 함께 냈다. 지금은 기계별 포트를 링크 배분기
-   * ([allocateLinkFaces])가 맡으므로 이 함수가 답할 것은 **판정과 사유**뿐이고, 그래서
-   * `plan` 은 비어 있다. 배정을 두 곳이 내면 좌석 장부가 갈린다 — 그게 통합의 요점이다.
+   * 예전엔 여기서 rim 모델로 1:1 배정을 함께 냈고, 그 모델이 사라진 뒤에도 빈 계획
+   * (`{ ok: true, lines: [] }`)을 달고 나갔다. 지금은 [InsertingDecisionResult] 가 유니온이라
+   * **다이렉트 가지에 `plan` 이 아예 없다** — 배정을 두 곳이 내면 좌석 장부가 갈린다는 사실을
+   * 관례가 아니라 타입이 지킨다.
    */
-  const direct = (reason: string): InsertingDecisionResult => ({
-    mode: "direct",
-    reason,
-    plan: { ok: true, lines: [] },
-  });
+  const direct = (reason: string): InsertingDecisionResult => ({ mode: "direct", reason });
 
   // **벨트 줄 수** — 수요가 벨트 한 줄을 넘으면 [determineBeltCount] 가 줄을 늘린다(빠른
   // 것부터, 나머지는 그걸 감당하는 가장 싼 벨트로). 팔 개수와 **다른 축**이다: 벨트 상한은
@@ -757,13 +762,12 @@ export function insertingPlanner(
     armsByPlacement.set(key, arms);
   }
 
-  // 간단한 레시피 판별 — slotsPerFace 를 빼면 탭 인서팅(기둥 클러스터 면 용량).
+  // 간단한 레시피 판별 — 탭 인서팅(기둥 클러스터 면 용량)으로 배정해 본다.
   // **좌석 장부는 여기(탭)에만 준다** — 다이렉트는 항상 성립하는 폴백이어야 한다.
-  const { slotsPerFace: _drop, ...tapInput } = input;
   const tapPlan = planClusterPorts({
-    ...tapInput,
+    ...input,
     beltLines: placementMap,
-    seatRowsPerFace: input.slotsPerFace,
+    seatRowsPerFace: seatRows,
     armsByPlacement,
   });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
@@ -781,27 +785,13 @@ export function insertingPlanner(
     }
   }
 
-  // **좌석 예산 재검** — 이제 배분기가 좌석 장부를 들고 배정하므로(seatRowsPerFace) 여기서
-  // 걸릴 일은 원칙적으로 없다. 그래도 남겨 둔다: 장부가 틀리면 **조용히 굶는 배치**가 나가는데,
-  // 그건 이 설계가 없애려던 바로 그 실패다. 걸리면 다이렉트로 물러난다(정직한 실패).
-  // 점프 유체 면은 그 면의 유체 줄 수만큼 [fluidboxPipeCell] 이 좌석 행을 먹는다.
-  const pipeFaceOf = (side: PlannedSide) => input.pipeFaces?.find((f) => f.side === side);
-  const jumpBeltOnPipeSide = tapPlan.lines.some(
-    (p) => p.line.kind === "belt" && pipeFaceOf(p.side)?.jumpable,
-  );
-  const rowsOf = (side: PlannedSide): number => {
-    const base = side === "W" || side === "E" ? input.slotsPerFace.WE : input.slotsPerFace.NS;
-    const pf = pipeFaceOf(side);
-    return pf?.jumpable && jumpBeltOnPipeSide ? base - pf.fluidRows : base;
-  };
-  const tapsOnFace = new Map<PlannedSide, number>();
-  for (const p of tapPlan.lines) {
-    if (p.line.kind !== "belt") continue;
-    tapsOnFace.set(p.side, (tapsOnFace.get(p.side) ?? 0) + (p.requiredInserterCount ?? 1));
-  }
-  for (const [side, used] of tapsOnFace) {
-    if (used > rowsOf(side)) return direct(`seats: ${side} ${used}탭 > ${rowsOf(side)}행`);
-  }
-
+  // **좌석 예산 재검은 없다**(2026-08-06 삭제). 예전엔 여기서 면별 탭 수를 다시 세어 넘치면
+  // 다이렉트로 물렀는데, 그 그물은 **구성상 걸릴 수 없었다** — 예산을 배정 시점보다 후하게
+  // 잡았기 때문이다: [seatRowsUsed] 를 안 뺐고, 점프 유체 면 차감에도 조건이 하나 더 붙어
+  // 있었다(`jumpBeltOnPipeSide`). 게다가 [takeSeat] 이 배정 **시점에** 좌석을 보고 자리가
+  // 모자란 슬롯을 건너뛰므로, 통과한 계획이 나중에 걸릴 여지가 없다.
+  //
+  // 안전망의 값은 *"장부가 틀렸을 때 잡는 것"* 인데 장부보다 느슨한 그물은 **틀려도 못 잡는다.**
+  // 없는 보호를 있다고 적어 두는 쪽이 더 위험하다.
   return { mode: "tap", plan: tapPlan };
 }

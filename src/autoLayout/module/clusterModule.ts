@@ -119,9 +119,10 @@ export interface GeneratedModule {
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
   /**
-   * 이 모듈의 판정([insertingPlanner]) — "tap"(트렁크로 합칠 수 있다) 또는 "direct"
-   * (1:1 로 남는다) + 거절 사유. **방출기(③) 도착 전까지 판정은 보고만 되고 실제 방출은
-   * 늘 다이렉트다** — 계측기가 "몇 모듈이 트렁크가 될 수 있나"를 세는 데 쓴다.
+   * 이 모듈의 판정([insertingPlanner]) — **방출이 실제로 이 값에 갈린다**:
+   * `"tap"`(트렁크 벨트 한 줄 + 머신별 탭) 또는 `"direct"`(기계별 포트 — 링크 배분기가
+   * 자리를 잡고 [emitOutputLinks]/[emitInputLinks] 가 놓는다). 다이렉트면 `reason` 이
+   * 왜 탭이 안 됐는지 말하고, 그 문구가 UI 실패 라벨의 참고 사유로 나간다.
    */
   supply?: InsertingDecisionResult;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
@@ -351,9 +352,10 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 조용히 사라졌고, 그 조용한 실패를 막으려고 [planModulePorts] 가 유체 모듈을 통째로
   // 거절해야 했다(`fluidNeedsTap`). 방출을 갈래 밖으로 꺼내면 그 거절의 근거가 없어진다.
   //
-  // **지금은 1:1 가지에서 여기 도달할 수 없다** — 위 `fluidNeedsTap` 이 앞에서 막아
-  // `plan.rest.ok === false` 로 일찍 돌아간다. 관문은 배분기 통합(계획서 단계 3)에서 열리고,
-  // 그때까지 이 분리의 기하는 방출기 단위 테스트가 지킨다.
+  // **그 관문(`fluidNeedsTap`)은 이제 없다** — [planModulePorts] 가 근거와 함께 지웠고,
+  // 남은 유체 실패는 "배정을 못 받은 유체 줄이 있다"(`fluidUnplaceable`) 하나뿐이다.
+  // 그래서 **1:1 가지에서도 여기 도달한다.** 도달해도 기하는 같다는 것이 위 문단의 요지이고,
+  // 그 사실은 방출기 단위 테스트가 지킨다.
   emitTrunkPipe({
     plan: trunkPlan, machines, input, prefix, occupancy,
     cells, chests, inputPorts, outputPorts, unroutedLines,

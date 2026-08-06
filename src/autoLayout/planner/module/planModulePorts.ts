@@ -231,10 +231,9 @@ export function planModulePorts(
   // complex(과용량·무인서터)면 전부 위임. 트렁크로 합칠 수 있으면 "tap", 안 되면 "direct"(1:1)
   // — 거절은 **항상 안전**하다: 1:1 은 구성으로 성립한다.
   //
-  // slotsPerFace = 다이렉트 인서팅의 면 용량(그 면의 둘레 칸 수). 이 수는 방출 루프의
-  // `lateral`(슬롯 상한)과 **같아야** 한다 — 어긋나면 없는 자리를 배정하거나(미탭) 있는
-  // 자리를 안 쓴다(스필). 탭 인서팅(면당 2)을 1:1 에 쓰면 3×3 머신의 셋째 입력이 자리가
-  // 남는데도 출력면(W)으로 넘친다. (용어: docs/용어사전.md §D)
+  // 좌석 행 수(면의 둘레 칸)는 [insertingPlanner] 의 **자기 인자**로 준다. 이 수는 방출 루프의
+  // `lateral`(슬롯 상한)과 **같아야** 한다 — 어긋나면 없는 자리를 배정하거나 있는 자리를
+  // 안 쓴다. (용어: docs/용어사전.md §D)
   //
   // **`seatRowsUsed` 는 계층을 건너는 통보가 아니라 ① → ③ 의 내부 전달이다.** 두 배정의
   // 장부 낟알이 다르기 때문에 Map 을 그대로 넘기지는 못한다 — ①은 (머신,면)마다 세고
@@ -249,12 +248,12 @@ export function planModulePorts(
       inserters: plannerInserters,
       outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
       nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
-      slotsPerFace: { WE: input.machine.h, NS: input.machine.w },
       seatRowsUsed: seatRowsByFace(faceLedger), // ①이 먼저 먹은 행
       pipeFaces, // 유체가 붙는 면들 + 그 면의 유체 행 수·점프 여부.
       belts: input.belts,
     },
     count,
+    { WE: input.machine.h, NS: input.machine.w },
     input.supplyCapacity,
   );
 
@@ -334,7 +333,10 @@ export function planModulePorts(
       ? (fluidUnplaceable
           ? { ok: false, unplaced: restLines }
           : { ok: true, lines: [] })
-      : supply.plan.ok && !fluidUnplaceable
+      // `restLinks` 가 없다 ⟺ `supply.mode === "tap"`(위 ③′ 이 그렇게 만든다). 그래도 모드를
+      // 직접 물어야 [InsertingDecisionResult] 유니온에서 `plan` 이 열린다 — 타입이 그 대응을
+      // 대신 믿어 주지 않는 것이 요점이다.
+      : supply.mode === "tap" && !fluidUnplaceable
         ? { ok: true, lines: supply.plan.lines }
         : {
             ok: false,
