@@ -5,7 +5,7 @@
  * 틀리면 파이프가 링크 포트 끝 **위로** 지나가고, 끊겨도 겹침도 미배치도 아니라 아무도
  * 못 알아챈다 — 그래서 산술을 여기서 직접 못 박는다.
  *
- * → tempPlanDocs/케이스B-링크배분기-계획/ (1단계)
+ * → 유체 면 회수 (2026-08-09) · git log --grep="유체 면에 앉는다"
  */
 import { describe, it, expect } from "vitest";
 import { linkFaceDepths, type LinkFacePlan } from "./linkPlanner";
