@@ -313,7 +313,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // (side=fluidTrunk.side·depth=1) 기하·수치 불변이다.
   const trunkPlan = { ok: true as const, lines: [...plan.rest.lines, ...plan.pipePlanned] };
   const ctx = buildTrunkContext(
-    trunkPlan, machines, input, plan.isJumpableToClusterPipe, plan.gapExitSides,
+    trunkPlan, machines, input, plan.isJumpableToClusterPipe, plan.gapExitSides, plan.linkFaceDepths,
   );
   const seqRef = { n: 0 };
 
@@ -459,6 +459,7 @@ function buildTrunkContext(
   input: ModuleInput,
   isJumpableToClusterPipe: (side: PortSide) => boolean,
   gapExitSides: ReadonlySet<PortFace>,
+  linkFaceDepths: Partial<Record<PortFace, number>>,
 ): TrunkContext {
   const ext = {
     x0: Math.min(...machines.map((m) => m.origin.x)),
@@ -470,8 +471,16 @@ function buildTrunkContext(
   // ── 면별 값 — trunk-pipe §5.1 공식 한 곳 ────────────────────────────────────────────────
   //   base = max(그 면 벨트 최대 깊이, 1) · D_r = base + 2 + 2r · 탭 = D_r − 1
   // `n=1, beltMax>0` 을 넣으면 `beltMax + 2` — **현행과 같은 수**다(회귀 0).
+  // **탭 벨트와 링크 벨트를 함께 센다.** `plan.lines` 는 탭 계획뿐이라, 링크·다이렉트가 앉은
+  // 면에서는 이것만 보면 0 을 답한다 — 그러면 ClusterPipe 가 링크 포트 끝(d`laneDepth+2`)
+  // **위로** 지나가고, 파이프가 끊겨도 겹침도 미배치도 아니라 아무도 못 알아챈다.
+  // 오늘은 [tryLinkFace] 가 유체 면을 통째로 거절하므로 유체 면의 링크 깊이는 언제나 없고,
+  // 따라서 이 항은 **아직 아무 배치도 바꾸지 않는다** — 유체 면을 여는 다음 단계의 안전망이다.
   const beltMaxOn = (side: PortSide): number =>
-    plan.lines.reduce((a, p) => (p.line.kind === "belt" && p.side === side ? Math.max(a, p.clusterBeltDepth) : a), 0);
+    Math.max(
+      plan.lines.reduce((a, p) => (p.line.kind === "belt" && p.side === side ? Math.max(a, p.clusterBeltDepth) : a), 0),
+      linkFaceDepths[side] ?? 0,
+    );
   const baseOn = (side: PortSide): number => Math.max(beltMaxOn(side), 1);
 
   // 점프 게이트 — 좌석 줄(d1)을 통째로 먹는 옛 스파인이 **무언가를 밟을 때** 점프한다:

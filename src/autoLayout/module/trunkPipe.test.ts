@@ -523,6 +523,37 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
     expect(heavy.size).toBe(4);
     for (const y of water) expect(heavy.has(y)).toBe(false);
   });
+
+  // ── 지하파이프가 없으면 — **기계 대수와 무관하게** 둘째 줄이 설 자리가 없다 ──────────
+  //
+  // 점프를 못 하면 파이프는 옛 스파인(depth 1 을 기둥 **전체**로)만 놓을 수 있는데, 그 줄은
+  // 하나뿐이라 둘째 유체가 자기 유체 상자에 닿을 방법이 없다. `emitTrunkPipe` 의 `severed`
+  // 그물이 잡아 `unroutedLines` 로 낸다.
+  //
+  // **기계가 1대여도 마찬가지다.** 스파인이 extent 전체를 훑으므로 짧게 끊어 옆으로 빼는
+  // 모양이 애초에 없다 — 그래서 `moduleWizard` 가 `n ≥ 2 && 점프 불가` 를 **대수를 안 보고**
+  // 거절하는 것은 과잉이 아니다(2026-08-09 실측). 조기 거절이 없으면 원인에서 먼
+  // `unrouted-lines` 로만 드러난다.
+  function crackingNoUnderground(count: number): ModuleInput {
+    const base = cracking(count);
+    return {
+      ...base,
+      fluidTrunk: {
+        ...base.fluidTrunk!,
+        undergroundPipeEntityName: undefined,
+        pipeMaxUndergroundDistance: undefined,
+      },
+    };
+  }
+
+  for (const count of [1, 3]) {
+    it(`지하파이프가 없으면 둘째 줄이 unrouted — 기계 ${count}대에서도 같다`, () => {
+      const mod = generateModule(crackingNoUnderground(count));
+      // 계획은 성공한다(`mode: tap`) — 실패는 **방출에서만** 난다. 그래서 계획만 보면 안 보인다.
+      expect(mod.supply?.mode).toBe("tap");
+      expect(mod.unroutedLines.map((l) => `${l.role}:${l.name}`)).toEqual(["input:heavy-oil"]);
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -634,5 +665,78 @@ describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이�
       return pipeFlowConflict(flat.filter((c) => c.fluid === fluid), flow) !== null;
     });
     expect(hits.length).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 유체 면 회수 (2026-08-09) — 링크·다이렉트가 **점프하는** 유체 면에 앉는다
+//
+// 예전엔 유체가 붙은 면을 통째로 비켜 gap 으로 밀렸다. 이제 유체 상자 행만 건너뛰고 앉는다.
+// **다만 마지막 수단이다** — 앉는 순간 파이프가 점프해 그 면이 넓어지므로, 다른 면에 자리가
+// 있으면 거기가 먼저다.
+// → tempPlanDocs/케이스B-링크배분기-계획/ (2단계)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("유체 면 회수 — 점프 면에 링크가 앉는다", () => {
+  /** 3×3 화학공장 2대 · E 면 유체 1줄(상자 행 1, 점프 가능) · 짧은 팔만 → 기계별 포트. */
+  const crowded = (inputs: number): ModuleInput => ({
+    machine: { entityName: "chemical-plant", w: 3, h: 3 },
+    count: 2,
+    lines: [
+      ...Array.from({ length: inputs }, (_, i) => inItem(`in${i}`)),
+      inFluid("sulfuric-acid"),
+      outItem("out"),
+    ],
+    inserterEntityName: "inserter", // 긴팔 없음 → 탭이 깨지고 기계별 포트로
+    beltEntityName: "transport-belt",
+    fluidTrunk: {
+      direction: 4,
+      pipeEntityName: "pipe",
+      undergroundPipeEntityName: "pipe-to-ground",
+      pipeMaxUndergroundDistance: 10,
+      lines: [{ name: "sulfuric-acid", role: "input", side: "E", fluidboxOffset: 1, rank: 0, boxIndex: 0 }],
+    },
+  });
+
+  const gapOf = (mod: ReturnType<typeof generateModule>) => {
+    const [m0, m1] = mod.machines;
+    return m1.origin.y - (m0.origin.y + m0.size.h);
+  };
+
+  it("W 에 자리가 있으면 유체 면을 안 쓴다 — 없는 위험 때문에 폭을 낭비하지 않는다", () => {
+    const mod = generateModule(crowded(2));
+    expect(mod.unroutedLines).toHaveLength(0);
+    // E 면 좌석 줄(d1)이 통째로 파이프 = 옛 스파인. 점프할 이유가 없다.
+    const m = mod.machines[0];
+    for (let dy = 0; dy < 3; dy++) {
+      const c = cellAt(mod, m.origin.x + 3, m.origin.y + dy);
+      expect(c?.entityType, `y=${m.origin.y + dy}`).toBe(EntityType.Pipe);
+    }
+    expect(gapOf(mod)).toBe(0);
+  });
+
+  it("W 가 차면 유체 면에 앉는다 — **유체 상자 행만 건너뛴다**", () => {
+    const mod = generateModule(crowded(4));
+    expect(mod.supply?.mode).toBe("direct");
+    expect(mod.unroutedLines).toHaveLength(0);
+    for (const m of mod.machines) {
+      const at = (dy: number) => cellAt(mod, m.origin.x + 3, m.origin.y + dy)?.entityType;
+      expect(at(0)).toBe(EntityType.Inserter); // 좌석
+      expect(at(1)).toBe(EntityType.PipeUnderground); // 유체 상자 행 — 파이프가 여기서 점프
+      expect(at(2)).toBe(EntityType.Inserter); // 좌석
+    }
+  });
+
+  it("그래서 gap 이 안 벌어진다 — 예전엔 두 줄이 통째로 gap 으로 밀렸다", () => {
+    expect(gapOf(generateModule(crowded(4)))).toBe(0);
+  });
+
+  it("파이프가 링크 포트 끝 **밖으로** 물러난다 (1단계 `linkFaceDepths`)", () => {
+    // 이게 틀리면 파이프가 포트 끝 위로 지나가 조용히 끊긴다 — 겹침으로는 안 잡힌다.
+    const mod = generateModule(crowded(4));
+    const eastOf = (pred: (t: unknown) => boolean) =>
+      Math.max(...mod.cells.filter((c) => pred(c.cell.entityType) && c.x > 2).map((c) => c.x));
+    const pipeMaxX = eastOf((t) => t === EntityType.Pipe || t === EntityType.PipeUnderground);
+    const portMaxX = eastOf((t) => t === EntityType.InfinityChest);
+    expect(pipeMaxX).toBeGreaterThan(portMaxX);
   });
 });

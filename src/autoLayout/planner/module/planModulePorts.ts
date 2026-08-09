@@ -51,6 +51,7 @@ import {
   spillLinkFacesToGap,
   gapRowsFromPlans,
   gapExitSidesFromPlans,
+  linkFaceDepths,
   seatRowsByFace,
   type LinkFaceContext,
   type LinkFacePlan,
@@ -124,6 +125,13 @@ export interface ModulePortPlan {
    * 파이프가 그 면에서 **점프해야 하는** 이유가 된다([buildTrunkContext]).
    */
   gapExitSides: ReadonlySet<PortFace>;
+  /**
+   * 옆면(W/E)마다 링크·다이렉트가 먹는 **가장 깊은 칸**([linkFaceDepths]) — [ClusterPipe] 가
+   * 이보다 바깥으로 물러나야 한다. 파이프 깊이를 내는 `buildTrunkContext.beltMaxOn` 은
+   * **탭 계획만** 훑으므로, 이 값을 안 주면 링크가 앉은 면에서 0 을 답하고 파이프가 링크
+   * 포트 끝 위로 지나간다(끊겨도 겹침이 아니라 아무도 못 알아챈다).
+   */
+  linkFaceDepths: Partial<Record<PortFace, number>>;
   /** 링크가 맡은 줄의 열쇠 `${role}:${name}` — 방출기가 "이 줄은 내 몫이 아니다"를 판정한다. */
   linkedKeys: Set<string>;
   /**
@@ -175,7 +183,16 @@ export function planModulePorts(
   const pipeFaces = (["W", "E"] as const)
     .map((side) => ({ side, fluidRows: fluidLinesOnSide(ft, side).length, jumpable: isJumpableToClusterPipe(side) }))
     .filter((f) => f.fluidRows > 0);
-  const pipeSides = new Set<PortFace>(pipeFaces.map((f) => f.side));
+  /**
+   * ① 이 보는 같은 사실 — 다만 **행 번호까지** 필요하다(③ 은 개수만 쓴다). 링크는 점프 면의
+   * 유체 상자 행을 건너뛰고 앉아야 하므로 `fluidboxOffset` 을 그대로 넘긴다.
+   */
+  const pipeFaceRows = new Map<PortFace, { rows: readonly number[]; jumpable: boolean }>(
+    pipeFaces.map((f) => [
+      f.side as PortFace,
+      { rows: fluidLinesOnSide(ft, f.side).map((l) => l.fluidboxOffset), jumpable: f.jumpable },
+    ]),
+  );
 
   // ── ① 링크 면 배정 ─────────────────────────────────────────────────────────
   // 이 단계는 팔 **수**만 본다(좌표 없음). gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고,
@@ -188,13 +205,17 @@ export function planModulePorts(
   // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
   const faceGroupLedger = new Map<string, number>();
   const faceCtx: LinkFaceContext = {
-    machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeSides,
+    machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeFaces: pipeFaceRows,
   };
   const outFaces = allocateLinkFaces(faceCtx, outLinkGroups, "from", "W");
   const inFaces = allocateLinkFaces(faceCtx, inLinkGroups, "to", "E");
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  spillLinkFacesToGap(faceCtx, outLinkGroups, "from", outFaces);
-  spillLinkFacesToGap(faceCtx, inLinkGroups, "to", inFaces);
+  // **선호 면을 다시 넣는 이유**: 그 면이 유체 면이면 위에서 비켜 갔다([tryLinkFace] 의
+  // `allowPipeFace`). 넘침 단계는 유체 면을 허용하므로 여기서 한 번 더 기회를 준다 —
+  // 유체 면에 앉으면 그 면이 넓어지지만 gap 으로 가면 기둥이 벌어진다. **유체 면이 먼저다.**
+  // (반대 옆면은 여전히 안 쓴다 — 벨트가 채널 반대쪽에서 출발해 되돌아올 길이 없다.)
+  spillLinkFacesToGap(faceCtx, outLinkGroups, "from", outFaces, ["W", "S", "N"]);
+  spillLinkFacesToGap(faceCtx, inLinkGroups, "to", inFaces, ["E", "S", "N"]);
 
   // 링크가 맡은 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
   // ③의 tap/direct 판정 대상이 아니다. ③ 입력에서 빼되, 그 줄이 먹은 좌석은 ①의 장부에
@@ -295,9 +316,12 @@ export function planModulePorts(
         // 그대로 W/E 에 앉고, 예전 같으면 자리가 없어 실패하던 것만 gap 으로 간다.
         // (반대 면이 나쁜 자리인 것은 맞지만 그 완화는 **순서**가 한다: 위에서 자식-공급을
         //  먼저 앉혀 밀려나는 쪽이 원료가 되게 했다. 금지하면 gap 이 아무 때나 벌어진다.)
-        spillLinkFacesToGap(faceCtx, out, "from", outPlans, ["E", "S", "N"]);
-        spillLinkFacesToGap(faceCtx, inFed, "to", fedPlans, ["W", "S", "N"]);
-        spillLinkFacesToGap(faceCtx, inRaw, "to", rawPlans, ["W", "S", "N"]);
+        // 순서: **반대 면 → 선호 면 재시도(유체 허용) → gap.** 반대 면은 공짜지만 유체 면은
+        // 앉는 순간 파이프가 물러나 폭을 먹고([tryLinkFace]), gap 은 기둥을 벌린다.
+        // 선호 면이 유체가 아니면 재시도는 그냥 한 번 더 실패할 뿐이라 해가 없다.
+        spillLinkFacesToGap(faceCtx, out, "from", outPlans, ["E", "W", "S", "N"]);
+        spillLinkFacesToGap(faceCtx, inFed, "to", fedPlans, ["W", "E", "S", "N"]);
+        spillLinkFacesToGap(faceCtx, inRaw, "to", rawPlans, ["W", "E", "S", "N"]);
         return {
           out: { groups: out, plans: outPlans.plans },
           in: { groups: [...inFed, ...inRaw], plans: [...fedPlans.plans, ...rawPlans.plans] },
@@ -326,6 +350,10 @@ export function planModulePorts(
       [outFaces.plans, ...(restLinks ? [restLinks.out.plans] : [])],
       [inFaces.plans, ...(restLinks ? [restLinks.in.plans] : [])],
     ),
+    linkFaceDepths: linkFaceDepths([
+      outFaces.plans, inFaces.plans,
+      ...(restLinks ? [restLinks.out.plans, restLinks.in.plans] : []),
+    ]),
     linkedKeys,
     // (나)로 갔으면 [ClusterBelt] 가 하나도 없다 — 줄들은 `restLinks` 가 들고 있고, 못 앉은
     // 그룹의 실패는 링크와 똑같이 **자기 방출에서** 갈린다(그래서 `unplaced` 가 아니다).

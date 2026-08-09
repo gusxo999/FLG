@@ -101,15 +101,41 @@ export interface LinkFaceContext {
   /** 그룹 수 장부 — 막힌 면의 반출 줄 깊이 순번([LinkFacePlan.exitDepth]). */
   faceGroups: Map<string, number>;
   /**
-   * **트렁크 파이프가 가져간 면**(W/E). 그 면의 좌석 줄(d1)은 파이프 몫이라 **아무도 못 앉는다.**
+   * **트렁크 파이프가 붙는 면**(W/E) — 그 면의 **유체 상자 행 번호**와 점프 여부.
    *
-   * 왜 "점프 가능하면 유체 상자 행만 빼면 되지 않나"가 아닌가 — 그럴 수 있지만 그러려면
-   * [ClusterPipe] 깊이가 **이 면에 앉은 벨트까지** 세어야 한다. 그 깊이를 내는
-   * `buildTrunkContext.beltMaxOn` 은 지금 여기서 배정한 줄을 **안 본다**(탭 계획만 본다) →
-   * 파이프가 벨트 위로 지나가는 배치가 조용히 나온다. 면을 통째로 비켜 주는 쪽이 정직하고,
-   * 잃는 것도 적다: 갈 곳이 없으면 반대 면과 gap 이 받는다.
+   * 두 모양을 가른다(→ `docs/auto-layout/module/trunk-pipe.md`):
+   *
+   *  - **점프**(`jumpable`): 파이프가 유체 상자 칸 하나만 먹고 지하로 벨트를 넘어 바깥
+   *    [ClusterPipe] 로 나간다 → 좌석 줄이 **거의 다 살아 있다.** `rows` 만 건너뛰고 앉는다
+   *    (예산은 `machine.h − rows.length`, 순번 remap 은 [commitLinkFace]).
+   *  - **점프 불가**: 좌석 줄(d1) 전체가 파이프 스파인이다 → **통째로 거절.** 탭은 여기서
+   *    케이스 B(좌석을 d2 로 밀고 긴팔로 `2+r` 을 집기)로 살아남지만 **링크 배분기엔 그
+   *    능력이 아직 없다** — `laneDepth` 가 상수 2 이고 reach 개념이 없다.
+   *
+   * **점프 면에 앉아도 되는 근거는 [linkFaceDepths] 다.** 예전엔 면을 통째로 비켜 줬는데,
+   * 이유는 `buildTrunkContext.beltMaxOn` 이 여기서 배정한 줄을 못 봐서 파이프가 벨트 위로
+   * 지나가는 배치가 조용히 나오기 때문이었다. 이제 그 값이 링크 깊이를 함께 세므로
+   * **링크가 앉는 행위 자체가 `pipeJumpMode` 조건 ①(`beltMaxOn > 0`)을 켠다** — 계획의
+   * 전제가 스스로 참이 된다.
    */
-  pipeSides?: ReadonlySet<PortFace>;
+  pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; jumpable: boolean }>;
+}
+
+/**
+ * 유체 상자 행을 건너뛰는 **논리 순번 → 실제 행** 사상. `emitTapInserting` 의 `remapRow` 와
+ * **같은 산술**이다(둘이 갈리면 계획이 배정한 칸과 방출이 놓는 칸이 어긋난다).
+ *
+ * 링크 쪽은 이 사상을 **계획에서** 적용해 [LinkFacePlan.slotIndex] 에 실제 행을 담는다 —
+ * 방출기는 원점을 더하기만 하면 된다([placeLinkSeats]).
+ */
+function skipFluidRows(rows: readonly number[] | undefined): (r: number) => number {
+  if (!rows?.length) return (r) => r;
+  const sorted = [...rows].sort((a, b) => a - b);
+  return (r) => {
+    let v = r;
+    for (const s of sorted) if (v >= s) v += 1;
+    return v;
+  };
 }
 
 /**
@@ -150,10 +176,18 @@ function tryLinkFace(
   group: MachineLinkGroup,
   side: "from" | "to",
   face: PortFace,
+  allowPipeFace = false,
 ): LinkFaceCandidate | undefined {
   const { machine, count, used, faceGroups } = ctx;
-  // 유체가 가져간 면은 좌석 줄이 통째로 파이프다 — 여기 앉히면 인서터가 파이프 칸에 선다.
-  if ((face === "W" || face === "E") && ctx.pipeSides?.has(face)) return undefined;
+  // 유체 면 — 점프 못 하면 좌석 줄이 통째로 파이프라 **언제나** 거절한다(케이스 B 능력 없음).
+  //
+  // 점프하는 면은 앉을 수 **있지만 마지막 수단**이다: 여기 앉는 순간 `beltMaxOn > 0` 이 되어
+  // 파이프가 점프하고([linkFaceDepths] → `pipeJumpMode` 조건 ①), [ClusterPipe] 가 우리 포트
+  // 끝(d`laneDepth+2`) **밖으로** 물러나 그 면이 여러 칸 넓어진다. 갈 곳이 있으면 그쪽이 낫다 —
+  // *"없는 위험 때문에 폭을 낭비하지 않는다"* 는 `pipeJumpMode` 의 원칙과 같은 이유다.
+  // 그래서 선호 단계([allocateLinkFaces])는 비켜 가고, 넘침 단계([spillLinkFacesToGap])만 쓴다.
+  const pf = face === "W" || face === "E" ? ctx.pipeFaces?.get(face) : undefined;
+  if (pf && (!pf.jumpable || !allowPipeFace)) return undefined;
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
   // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
@@ -180,8 +214,11 @@ function tryLinkFace(
     return { face, gap, arms, laneDepth: LINK_LANE_DEPTH, exitDepth: LINK_LANE_DEPTH + nth };
   }
 
+  // 점프 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
+  // (`planClusterPorts.seatRowsOf` 의 `base − fluidRows` 와 같은 셈이다.)
+  const seatRows = machine.h - (pf?.rows.length ?? 0);
   for (const [mi, k] of arms) {
-    if ((used.get(seatKey(mi, face)) ?? 0) + k > machine.h) return undefined;
+    if ((used.get(seatKey(mi, face)) ?? 0) + k > seatRows) return undefined;
   }
   return { face, arms, laneDepth: LINK_LANE_DEPTH };
 }
@@ -204,6 +241,9 @@ function commitLinkFace(
   // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
   // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
   const fromEast = isGap && side === "to";
+  // **유체 상자 행을 여기서 건너뛴다.** 장부(`used`)는 논리 칸을 세고, 순번은 실제 행으로
+  // 나간다 — 그래야 방출기가 원점만 더하면 된다. gap 면은 유체가 없어 항등이다.
+  const remap = skipFluidRows(isGap ? undefined : ctx.pipeFaces?.get(cand.face)?.rows);
   const slotIndex = new Map<number, number[]>();
   // 머신 index 오름차순 — 방출 순서가 결정적이어야 한다.
   for (const [mi, k] of [...cand.arms].sort((a, b) => a[0] - b[0])) {
@@ -217,7 +257,7 @@ function commitLinkFace(
       mi,
       fromEast
         ? Array.from({ length: k }, (_, t) => span - 1 - base - t).reverse()
-        : Array.from({ length: k }, (_, t) => base + t),
+        : Array.from({ length: k }, (_, t) => remap(base + t)),
     );
   }
   return { ...cand, slotIndex };
@@ -275,7 +315,9 @@ export function spillLinkFacesToGap(
 ): void {
   for (const i of out.deferred) {
     for (const face of faces) {
-      const cand = tryLinkFace(ctx, groups[i], side, face);
+      // **여기서만 유체 면이 열린다.** 선호 단계가 비켜 간 면을 마지막 수단으로 다시 본다
+      // ([tryLinkFace] 의 `allowPipeFace`) — 그래서 `faces` 에 선호 면이 다시 들어 있어도 된다.
+      const cand = tryLinkFace(ctx, groups[i], side, face, true);
       if (!cand) continue;
       out.plans[i] = commitLinkFace(ctx, cand, side);
       break;
@@ -348,6 +390,32 @@ export function gapExitSidesFromPlans(
   scan(outPlans, "W");
   scan(inPlans, "E");
   return sides;
+}
+
+/**
+ * **링크·다이렉트가 옆면(W/E)에서 먹는 가장 깊은 칸** — [ClusterPipe] 가 그보다 바깥으로
+ * 물러나야 하는 기준이다([buildTrunkContext] 의 `beltMaxOn`).
+ *
+ * 벨트는 [LinkFacePlan.laneDepth] 지만 **포트 끝이 두 칸 더 깊다**: 인서터 `+1` · 상자 `+2`
+ * ([makeLinkPortChest]). 벨트 깊이만 세면 파이프가 그 두 칸 **위로** 지나가고, 파이프는
+ * 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다** — 2026-08-05 의 gap 벨트 사고와
+ * 같은 종류다([gapExitSidesFromPlans]).
+ *
+ * **gap(N/S) 스필은 세지 않는다.** 그 포트 끝은 옆면의 d1·d2 에 앉는데 [ClusterPipe] 는
+ * 최소 d3 이라 부딪히지 않는다. 그리고 *"그 면의 좌석 줄을 먹는다"* 는 사실은
+ * [gapExitSidesFromPlans] 가 이미 따로 전한다(점프 조건 ④) — 여기서 또 세면 답은 안 바뀌고
+ * 폭만 넓어진다.
+ */
+export function linkFaceDepths(
+  lists: readonly (LinkFacePlan | undefined)[][],
+): Partial<Record<PortFace, number>> {
+  const by: Partial<Record<PortFace, number>> = {};
+  for (const list of lists)
+    for (const p of list) {
+      if (!p || p.face === "N" || p.face === "S") continue;
+      by[p.face] = Math.max(by[p.face] ?? 0, p.laneDepth + 2);
+    }
+  return by;
 }
 
 /**

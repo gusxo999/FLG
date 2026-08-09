@@ -24,7 +24,7 @@
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
-npx vitest run                          # 기준선: 타입 0 · 44파일 518테스트
+npx vitest run                          # 기준선: 타입 0 · 45파일 537테스트
 ```
 
 ## 프로젝트 메모리
