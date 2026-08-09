@@ -47,10 +47,6 @@ coverage/
 .claude/settings.local.json
 .mcp.json
 .tmp_*
-# 정션: Claude 자동 메모리 폴더. 세션마다 자동 로딩되므로 저장소에 둘 필요 없음
-docs/memory/
-# 승인 전 계획서·초안 임시 보관소. 확정된 내용만 docs/ 로 옮겨 커밋한다
-tempPlanDocs/
 
 # ---- Obsidian ----
 .obsidian/workspace.json
