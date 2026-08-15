@@ -37,7 +37,7 @@ const spec = (
   machine: { entityName: "m", w: 3, h: 3 },
   count: 1,
   lines,
-  supplyCapacity: { tapCapacity: 6, lineRates: new Map(Object.entries(lineRates)) },
+  supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map(Object.entries(lineRates)) },
 });
 
 const config: PackConfig = {
@@ -93,14 +93,14 @@ describe("productOf — 부산물이 먼저 와도 부모가 먹는 품목으로
     id: "c", depth: 1, parentId: "p", machine: M, count: 1,
     lines: [belt("byproduct", "output"), belt("wanted", "output")],
     supplyCapacity: {
-      tapCapacity: 6,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }],
       lineRates: new Map([["output:byproduct", 5], ["output:wanted", 10]]),
     },
   };
   const parent: NodeSpec = {
     id: "p", depth: 0, machine: M, count: 1,
     lines: [belt("wanted", "input")],
-    supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:wanted", 10]]) },
+    supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:wanted", 10]]) },
   };
   const pack = packModuleTree([parent, child], packCfg);
 

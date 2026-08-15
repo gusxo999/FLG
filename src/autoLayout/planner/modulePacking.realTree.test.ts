@@ -11,7 +11,7 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 const cap = (rates: Record<string, number>) => ({
-  tapCapacity: 6,
+  inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }],
   lineRates: new Map(Object.entries(rates)),
 });
 

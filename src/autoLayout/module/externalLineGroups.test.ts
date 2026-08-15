@@ -16,7 +16,7 @@ const lines: IoLine[] = [
 
 /** 머신 3대, 팔 하나가 초당 5개. iron 60/3대 = 20 → ceil(20/5) = 팔 4개/머신. */
 const cap: SupplyCapacity = {
-  tapCapacity: 5,
+  inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
   lineRates: new Map([
     ["input:iron-plate", 60],
     ["output:gear", 30],
@@ -46,7 +46,7 @@ describe("외부 줄 → MachineLinkGroup — 빈 쪽이 곧 '밖'이다", () =>
 describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
   it("수량 미상이면 그룹을 안 만든다 ([edgeMachineLinks] 와 같은 문턱)", () => {
     // gear 만 rate 가 있다 — iron 은 lineRates 에 없다.
-    const partial: SupplyCapacity = { tapCapacity: 5, lineRates: new Map([["output:gear", 30]]) };
+    const partial: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["output:gear", 30]]) };
     expect(externalLineGroups(lines, 3, partial).map((g) => g.item)).toEqual(["gear"]);
   });
 
@@ -56,7 +56,7 @@ describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
 
   it("유체는 벨트 장부에 안 올린다 — 트렁크 파이프의 일이다", () => {
     const fluid: IoLine[] = [{ name: "water", kind: "pipe", role: "input" }];
-    const c: SupplyCapacity = { tapCapacity: 5, lineRates: new Map([["input:water", 60]]) };
+    const c: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["input:water", 60]]) };
     expect(externalLineGroups(fluid, 3, c)).toHaveLength(0);
   });
 
@@ -77,7 +77,7 @@ describe("팔 수는 requiredInserterCount 와 같은 값", () => {
   });
 
   it("아무리 적어도 팔은 1개 — 0개면 그 머신은 아예 안 돈다", () => {
-    const tiny: SupplyCapacity = { tapCapacity: 5, lineRates: new Map([["input:iron-plate", 0.1]]) };
+    const tiny: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["input:iron-plate", 0.1]]) };
     expect(externalLineGroups(lines, 3, tiny)[0].to.get(0)).toBe(1);
   });
 });

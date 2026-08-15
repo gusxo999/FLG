@@ -60,7 +60,7 @@ const base: ModuleInput = {
   throughput: { normal: 2.4, long: 1.2 },
   belts: [{ entityName: "transport-belt", throughput: 15 }],
   supplyCapacity: {
-    tapCapacity: 1.2,
+    inserters: [{ entityName: 'i1', reach: 1, throughput: 1.2 }, { entityName: 'i2', reach: 2, throughput: 1.2 }],
     lineRates: new Map([
       ["input:iron", 4],
       ["output:gear", 3],
@@ -146,7 +146,7 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
     throughput: { normal: 6, long: 6 },
     belts: [{ entityName: "transport-belt", throughput: 20 }],
     supplyCapacity: {
-      tapCapacity: 6,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }],
       lineRates: new Map([["input:heavy", 60], ["output:gear", 6]]), // heavy = 팔 10개 → 좌석 초과
     },
     outputLinks: [{ item: "gear", from: new Map([[0, 1]]), to: new Map([[0, 1]]) }],

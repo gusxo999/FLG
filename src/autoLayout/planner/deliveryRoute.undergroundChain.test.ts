@@ -40,12 +40,12 @@ function pack() {
     {
       id: "p", depth: 0, machine: M, count: 2,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
+      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 4,
       lines: [outL("x")],
-      supplyCapacity: { tapCapacity: 6, lineRates: new Map([["output:x", 60]]) },
+      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 60]]) },
     },
   ];
   return packModuleTree(specs, config);

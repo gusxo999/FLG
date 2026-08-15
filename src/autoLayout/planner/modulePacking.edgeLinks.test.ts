@@ -20,7 +20,7 @@ const spec = (
   machine: { entityName: "m", w: 7, h: 7 },
   count,
   lines,
-  supplyCapacity: { tapCapacity: 6, lineRates: new Map(Object.entries(lineRates)) },
+  supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map(Object.entries(lineRates)) },
 });
 
 // 인서터 6 · 벨트 20 → 용어사전 예시와 같은 수치.

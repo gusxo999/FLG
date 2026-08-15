@@ -197,10 +197,14 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       { name: "hi", kind: "belt", role: "input", amount: 10 },
     ];
     // reach 1 이 throughput 30 > reach 2 의 8.
+    // 팔 개수를 물을 수 있어야 슬롯을 고를 수 있다 — [insertingPlanner] 가 실제로 넘기는 것과
+    // 같은 모양의 함수를 준다(`⌈수요 ÷ 그 reach 의 처리량⌉`).
+    const tp = new Map([[1, 30], [2, 8]]);
     const plan = planClusterPorts({
       lines,
       inserters: [insR(1, 30), insR(2, 8)],
       outputSide: "W",
+      armsAtReach: (l, _i, reach) => Math.ceil((l.amount ?? 1) / tp.get(reach)!),
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -217,10 +221,12 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       { name: "hi", kind: "belt", role: "input", amount: 10 },
       { name: "lo", kind: "belt", role: "input", amount: 1 },
     ];
+    const tp = new Map([[1, 5], [2, 40]]);
     const plan = planClusterPorts({
       lines,
       inserters: [insR(1, 5), insR(2, 40)],
       outputSide: "W",
+      armsAtReach: (l, _i, reach) => Math.ceil((l.amount ?? 1) / tp.get(reach)!),
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;

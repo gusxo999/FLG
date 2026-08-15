@@ -44,7 +44,19 @@ import { trunkEndKey } from "../../module/clusterModule";
 import { fluidLineOf, fluidLinesOnSide } from "../../module/fluidPorts";
 import type { PipeFlowPipe } from "../../util/pipeFlow";
 
+/**
+ * **탭 좌석에 놓을 인서터 — 계획이 지목한 것을 그대로 놓는다.**
+ *
+ * 예전엔 여기서 `reach ≥ 2 → 긴팔` 로 **되유도**했다. 그게 팔을 고르는 두 번째 자리였고,
+ * 세는 쪽(`reach 1` 고정)과 어긋나 깊은 벨트를 쓰는 줄이 조용히 굶었다(계획서 §15).
+ * 게다가 reach 가 3종 이상인 모드팩에서는 그 되유도 자체가 틀린다.
+ *
+ * 이제 [insertingPlanner] 가 슬롯을 고르며 **팔 개수를 센 그 인서터**를 실어 보낸다
+ * ([PlannedLine.inserterEntityName]). 여기는 **읽기만** 한다 — 어긋날 자리가 없다.
+ * 폴백은 계획이 수량을 몰라 지목하지 못한 경우뿐이다.
+ */
 function tapInserterName(input: ModuleInput, planned: PlannedLine): string {
+  if (planned.inserterEntityName) return planned.inserterEntityName;
   return (planned.reach ?? 1) >= 2 && input.longInserter
     ? input.longInserter.entityName
     : input.inserterEntityName;

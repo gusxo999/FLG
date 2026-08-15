@@ -21,6 +21,7 @@
 import type { GeneratedModule, ModulePort } from "../../module/clusterModule";
 import type { MachineLinkGroup } from "../../module/machineLinkGroup";
 import { allocateMachineLinks, type MachineLink } from "./allocateMachineLinks";
+import { inserterForReach } from "../../buildSpec";
 import type { NodeSpec, PackConfig } from "../modulePacking";
 
 /**
@@ -123,11 +124,14 @@ export function edgeMachineLinks(
   item: string,
   config: PackConfig,
 ): MachineLink[] | undefined {
-  // 팔 하나의 처리량 = [SupplyCapacity.tapCapacity] — **여기서 다시 유도하지 않는다.**
+  // 팔 하나의 처리량 = [SupplyCapacity.inserters] — **여기서 다시 유도하지 않는다.**
   // 예전엔 `min(throughput.normal, throughput.long)` 을 자체 계산했는데, 같은 값을
-  // moduleWizard 도 따로 계산해 `tapCapacity` 에 담고 있었다. 유도가 두 곳에 있으면 한쪽만
-  // 고쳐도 조용히 어긋난다 — 실제로 그렇게 어긋났다(2026-07-22 벨트 포화). 한 곳만 읽는다.
-  const tp = child.supplyCapacity?.tapCapacity ?? 0;
+  // moduleWizard 도 따로 계산해 담고 있었다. 유도가 두 곳에 있으면 한쪽만 고쳐도 조용히
+  // 어긋난다 — 실제로 그렇게 어긋났다(2026-07-22 벨트 포화). 한 곳만 읽는다.
+  //
+  // **`reach 1` 이다** — 내부 링크의 팔은 좌석(`d1`)에서 바로 옆 벨트(`d2`)를 집는다.
+  // 깊은 벨트를 집는 것은 탭뿐이고, 그건 [insertingPlanner] 가 슬롯을 고르며 정한다(계획서 §16).
+  const tp = inserterForReach(child.supplyCapacity?.inserters ?? [], 1)?.throughput ?? 0;
   const belt = config.belts?.[0]?.throughput ?? 0;
   if (tp <= 0 || belt <= 0 || child.count <= 0 || parent.count <= 0) return undefined;
   const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);

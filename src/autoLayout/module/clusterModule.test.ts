@@ -175,7 +175,7 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
     count: 3,
     supplyCapacity: {
       beltCapacity: 100,
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. copper-cable(출력)은 수치 없음 → 1.
       lineRates: new Map([["input:copper-plate", 30]]),
     },
@@ -238,7 +238,7 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
     count: 2,
     supplyCapacity: {
       beltCapacity: 1, // 20 > 1 → 벨트 축에서 거절 → 다이렉트
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       // copper-plate 20 / 2대 = 10, ceil(10/5) = 팔 2개. copper-cable(출력)은 수치 없음 → 1.
       lineRates: new Map([["input:copper-plate", 20]]),
     },
@@ -286,7 +286,7 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
       count: 2,
       supplyCapacity: {
         beltCapacity: 1,
-        tapCapacity: 5,
+        inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
         lineRates: new Map([["input:copper-plate", 40]]), // 40/2 = 20, ceil(20/5) = 팔 4개 > 3행
       },
     };

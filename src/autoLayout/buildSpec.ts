@@ -99,27 +99,54 @@ export interface BuildSpec {
  * 프로토타입 사전에 없거나, `max_underground_distance` 가 0/미정.
  */
 /**
- * **[tapCapacity](../../../docs/용어사전.md) — 팔 하나가 초당 몇 개를 옮기나.**
- * [SupplyCapacity.tapCapacity](planner/module/clusterPortPlanner.ts) 에 담기는 그 값이고,
- * 이 함수가 **유일한 출처**다.
+ * **팔 개수의 유일한 출처** — 머신 한 대의 한 줄을 이 인서터로 먹이려면 팔이 몇 개인가.
  *
- * 값은 **reach 1 중 가장 빠른 것**이다. 좌석은 거의 전부 d1 에 앉아 d2 를 집으므로 후보가
- * reach 1 뿐이고([inserterReach] 의 reach 는 최대치가 아니라 고정 거리라 긴팔은 d2 를 아예
- * 못 집는다), [BuildSpec.inserterEntityName] 이 놓는 것도 같은 엔티티다.
+ * `⌈머신당 수요 ÷ 그 인서터의 처리량⌉`. **인서터가 인자인 것이 핵심이다**(계획서 §16):
+ * 팔 속도는 스칼라가 아니라 *어느 인서터를 쓰느냐*의 함수이고, 어느 인서터를 쓰느냐는
+ * **벨트를 어느 칸에 두느냐**로 정해진다(`reach` 는 최대치가 아니라 **고정 거리**라
+ * reach `r` 인서터는 `1+r` 칸만 집는다 — 다른 칸은 아예 못 집는다).
  *
- * **여러 곳이 이 수를 각자 유도하면 반드시 어긋난다.** 실제로 그랬다 — 규칙을 한 곳에서만
- * 바꾸자 "머신 몇 대" 담당은 1.2 를, "팔 몇 개" 담당은 10 을 믿었다(2026-07-23). 어긋나는
- * 방향에 따라 증상이 갈리는데, **빠르게 세는 쪽이 더 위험하다**: 팔이 모자란 채로 배치가
- * "성공"이라 보고되고 게임에 넣어야 안다.
+ * 예전엔 이 자리에 `tapCapacity(inserters)` 라는 **스칼라**가 있었고 값이 *"reach 1 중 가장
+ * 빠른 것"* 이었다. 그 전제(*"좌석에는 reach 1 만 앉는다"*)를 다중 깊이 탭이 깨뜨렸는데,
+ * 세는 쪽만 옛 전제에 남아 **깊은 벨트를 쓰는 줄이 조용히 굶었다**(계획서 §15).
+ * 실측 모드팩에서 fast 10/s 대 long-handed 1.2/s — **8배**.
  *
- * 데이터가 없으면 `undefined` — 지어내지 않는다.
+ * **"출처는 하나"는 그대로다.** 바뀐 것은 그 출처가 **스칼라에서 함수로** 넓어진 것뿐이다.
+ * 세는 쪽(팔 개수·그릇·머신 대수)과 놓는 쪽(`emitModule`)이 같은 인서터를 본다.
+ *
+ * 수요나 처리량을 모르면 `undefined` — 지어내지 않는다.
  */
-export function tapCapacity(inserters: ReadonlyArray<SpecInserter>): number | undefined {
-  // reach 1 중 **최댓값**을 직접 고른다. [makeBuildSpec] 이 이미 reach 별로 가장 빠른 것만
-  // 남기지만, 그 전제에 기대면 다른 호출자가 거르지 않은 목록을 줬을 때 조용히 느린 답을
-  // 낸다(= 팔이 과다해지는 쪽). 전제를 안 믿는 편이 싸다.
-  const tp = inserters.reduce((m, i) => (i.reach === 1 && i.throughput > m ? i.throughput : m), 0);
-  return tp > 0 ? tp : undefined;
+export function armsFor(
+  ratePerMachine: number | undefined,
+  inserter: SpecInserter | undefined,
+): number | undefined {
+  if (ratePerMachine === undefined || !Number.isFinite(ratePerMachine)) return undefined;
+  if (!inserter || !(inserter.throughput > 0)) return undefined;
+  return Math.max(1, Math.ceil(ratePerMachine / inserter.throughput - EPS_ARMS));
+}
+
+/** 부동소수 여유 — 수요가 처리량의 정확한 배수일 때 팔이 하나 더 붙는 것을 막는다. */
+const EPS_ARMS = 1e-9;
+
+/**
+ * `reach` 로 인서터를 찾는다 — **벨트 칸이 인서터를 지목하는 지점**.
+ *
+ * `clusterBeltDepth = 1 + reach` 이므로 깊이를 알면 reach 를 알고, reach 를 알면 인서터가
+ * 하나로 정해진다([makeBuildSpec] 이 reach 마다 가장 빠른 것 하나씩만 남긴다).
+ */
+export function inserterForReach(
+  inserters: ReadonlyArray<SpecInserter>,
+  reach: number | undefined,
+): SpecInserter | undefined {
+  if (reach === undefined) return undefined;
+  // reach 별 최댓값을 직접 고른다 — [makeBuildSpec] 이 이미 그렇게 주지만, 거르지 않은
+  // 목록을 받았을 때 조용히 느린 답(= 팔이 과다해지는 쪽)을 내지 않도록 전제를 안 믿는다.
+  let best: SpecInserter | undefined;
+  for (const i of inserters) {
+    if (i.reach !== reach) continue;
+    if (!best || i.throughput > best.throughput) best = i;
+  }
+  return best;
 }
 
 export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
@@ -138,15 +165,11 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
   }
   const inserters = [...byReach.values()].sort((a, b) => a.reach - b.reach);
   const long = inserters.find((i) => i.reach >= 2);
-  // **놓는 팔과 세는 팔은 같은 곳에서 나온다** — 이름을 [tapCapacity] 가 낸 **그 수를 가진**
-  // 항목에서 뽑아, 둘이 구조적으로 어긋날 수 없게 한다. 따로 고르면 어긋나고, 어긋나는
-  // 방향에 따라 팔이 넘치거나(폴백) 모자란다(**조용히 굶음**).
-  // reach 1 을 하나도 안 골랐으면 옛 폴백(첫 선택)으로 — 좌석 모델이 reach 1 을 전제한다.
-  const cap = tapCapacity(inserters);
+  // **기본 좌석 인서터 = reach 1.** 계획이 인서터를 지목하지 못한 배정(수량 미상 등)의
+  // 폴백일 뿐이다 — 실제로 놓는 팔은 [PlannedLine.reach] 가 정한다([inserterForReach]).
+  // reach 1 을 하나도 안 골랐으면 옛 폴백(첫 선택)으로.
   const inserterEntityName =
-    inserters.find((i) => i.reach === 1 && i.throughput === cap)?.entityName ??
-    input.selectedInserters[0] ??
-    "inserter";
+    inserterForReach(inserters, 1)?.entityName ?? input.selectedInserters[0] ?? "inserter";
 
   // 고른 벨트 전부 → 처리량 내림차순. 같은 처리량이 둘이면 하나만(자리를 두고 다툴 뿐
   // 더 나르지 못한다 — 인서터를 reach 별로 하나만 남기는 것과 같은 이유).

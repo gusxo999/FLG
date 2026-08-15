@@ -28,6 +28,7 @@
  */
 
 import type { SpecBelt, SpecInserter } from "../../buildSpec";
+import { armsFor, inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";
 
 /** 컬럼의 좌/우 면. */
@@ -101,6 +102,16 @@ export interface PlannedLine {
    * 안 본다).
    */
   requiredInserterCount?: number;
+  /**
+   * **이 배정에 앉을 인서터의 prototype** — 계획이 지목하고 방출은 **놓기만** 한다.
+   *
+   * `reach` 에서 되유도할 수도 있지만(`reach ≥ 2 → 긴팔`) 그러면 팔을 고르는 코드가 두 곳이
+   * 되고, reach 가 3종 이상인 모드팩에서 그 되유도가 틀린다. **세는 쪽이 고른 그 팔을 그대로
+   * 실어 보내면 어긋날 수가 없다**(계획서 §17.3 불변 2).
+   *
+   * [insertingPlanner] 가 채운다. 미지정 = 수량 미상 → 방출부의 기본 인서터.
+   */
+  inserterEntityName?: string;
 }
 
 export interface PortPlannerInput {
@@ -201,6 +212,17 @@ export interface PortPlannerInput {
    * **미지정 = 배정당 1개**(옛 동작).
    */
   armsByPlacement?: Map<string, number[]>;
+  /**
+   * **이 배정을 `reach` 인 팔로 먹이면 팔이 몇 개인가** — [armsByPlacement] 의 reach 판.
+   *
+   * 팔 개수는 스칼라가 아니라 *어느 인서터가 앉느냐*의 함수다(계획서 §16). 그리고 어느
+   * 인서터가 앉느냐는 **이 배분기가 슬롯을 고르는 순간** 정해진다 — 그래서 배분기가
+   * **물어봐야** 한다. 예전엔 호출부가 `reach 1` 기준으로 미리 세어 넘겼고, 그 뒤에
+   * 깊이/reach 를 재배정해서 **센 수가 무효가 됐다**(계획서 §15).
+   *
+   * 미지정이면 [armsByPlacement] 로 폴백(= reach 무관 옛 동작).
+   */
+  armsAtReach?: (line: IoLine, placementIndex: number, reach: number) => number | undefined;
 }
 
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
@@ -330,8 +352,13 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   };
   const rowsLeft = new Map<PlannedSide, number>();
   const rowsLeftOf = (side: PlannedSide): number => rowsLeft.get(side) ?? seatRowsOf(side);
-  const armsAt = (l: IoLine, i: number): number =>
-    input.armsByPlacement?.get(`${l.role}:${l.name}`)?.[i] ?? 1;
+  /**
+   * 이 배정을 `reach` 인 팔로 먹이면 팔이 몇 개인가. **`undefined` 는 "이 슬롯으로는 못 센다"** —
+   * 그 reach 의 처리량을 모른다는 뜻이라 [takeSeat] 이 그 슬롯을 **건너뛴다**. 1 로 때우면
+   * 셀 수 없는 슬롯이 **가장 싼 슬롯처럼 보여** 먼저 뽑힌다.
+   */
+  const armsAt = (l: IoLine, i: number, reach: number): number | undefined =>
+    input.armsAtReach?.(l, i, reach) ?? input.armsByPlacement?.get(`${l.role}:${l.name}`)?.[i];
 
   // (B) 정책: 출력이 출력면을 **먼저 고르고**(차면 입력면으로 넘어간다), 입력은 입력면 우선.
   // 입력이 넘치면 E → (external 한정) 노출 N/S → 출력면 잔여(W) 순 — W-spill 을 최후로 미뤄
@@ -340,13 +367,47 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   //
   // 풀을 앞에서부터 훑되 **좌석이 남은 슬롯만** 집는다. 좌석이 모자라 건너뛴 슬롯은 풀에
   // 남는다 — 팔이 적은 다른 줄이 나중에 쓸 수 있기 때문이다(자리를 낭비하지 않는다).
-  const takeSeat = (pools: Slot[][], arms: number): Slot | undefined => {
+  //
+  // **한 풀 안에서는 팔이 가장 적게 드는 슬롯부터 본다.** 슬롯이 곧 인서터이고(reach 는
+  // 고정 거리 — 계획서 §16), 인서터가 팔 개수를 정하기 때문이다. 예전엔 near→far 로 아무거나
+  // 집고 **나중에 깊이/reach 를 재배정**했는데, 그러면 좌석 장부가 예산한 팔과 실제로 앉는
+  // 팔이 어긋났다(계획서 §15). 여기서 고르면 어긋날 수가 없다.
+  //
+  // 동률이면 near→far(풀 순서) — 얕은 쪽이 벨트 칸을 덜 먹는다.
+  const takeSeat = (pools: Slot[][], line: IoLine, i: number): { slot: Slot; arms: number } | undefined => {
+    /** 어느 풀에서든 셀 수 있는 슬롯을 하나라도 봤나 — **줄 전체 기준**이다(아래 참고). */
+    let anyKnown = false;
     for (const pool of pools) {
-      const i = pool.findIndex((s) => rowsLeftOf(s.side) >= arms);
-      if (i < 0) continue;
-      const [slot] = pool.splice(i, 1);
-      rowsLeft.set(slot.side, rowsLeftOf(slot.side) - arms);
-      return slot;
+      let best = -1;
+      let bestArms = 0;
+      for (let k = 0; k < pool.length; k++) {
+        const arms = armsAt(line, i, pool[k].reach);
+        if (arms === undefined) continue; // 이 슬롯으로는 못 센다 — 건너뛴다
+        anyKnown = true;
+        if (rowsLeftOf(pool[k].side) < arms) continue;
+        if (best < 0 || arms < bestArms) {
+          best = k;
+          bestArms = arms;
+        }
+      }
+      if (best < 0) continue;
+      const [slot] = pool.splice(best, 1);
+      rowsLeft.set(slot.side, rowsLeftOf(slot.side) - bestArms);
+      return { slot, arms: bestArms };
+    }
+    // **어느 슬롯으로도 못 셀 때만** 옛 동작으로 — near→far 첫 자리, 팔 1개로 본다(수량 미상).
+    //
+    // `anyKnown` 을 풀마다 따로 보면 안 된다: 셀 수 있는 슬롯이 자리가 없어 밀려난 줄이
+    // **다음 면에서 "못 세는 슬롯"을 만나 1개짜리로 앉아 버린다.** 그러면 좌석 예산이
+    // 거절해야 할 배치가 통과하고, 그 줄은 조용히 굶는다(2026-08-15 실측: 팔 4개짜리 줄이
+    // 3행 면에서 밀린 뒤 반대 면의 reach-2 슬롯에 1개로 앉았다).
+    if (anyKnown) return undefined;
+    for (const pool of pools) {
+      const k = pool.findIndex((s) => rowsLeftOf(s.side) >= 1);
+      if (k < 0) continue;
+      const [slot] = pool.splice(k, 1);
+      rowsLeft.set(slot.side, rowsLeftOf(slot.side) - 1);
+      return { slot, arms: 1 };
     }
     return undefined;
   };
@@ -359,22 +420,40 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     const n = beltCountOf(line);
     const out: PlannedLine[] = [];
     for (let i = 0; i < n; i++) {
-      const slot = takeSeat(pools, armsAt(line, i));
-      if (!slot) {
+      const taken = takeSeat(pools, line, i);
+      if (!taken) {
         overflow ??= `${line.role}:${line.name}`;
         return;
       }
       out.push({
         line,
-        side: slot.side,
-        clusterBeltDepth: slot.clusterBeltDepth,
-        reach: slot.reach,
+        side: taken.slot.side,
+        clusterBeltDepth: taken.slot.clusterBeltDepth,
+        reach: taken.slot.reach,
         beltEntityName: beltProtoOf(line, i),
       });
     }
     assigned.set(line, out);
   };
-  for (const line of beltLines.filter((l) => l.role === "output")) {
+  /**
+   * **정책 묶음 안에서는 수요 내림차순으로 놓는다.**
+   *
+   * 면을 고르는 정책(출력 먼저 → 자식-공급 입력 → external 입력)은 **묶음의 순서**이고,
+   * 이 정렬은 **묶음 안**만 바꾼다 — 정책은 그대로다. 왜 필요한가: [takeSeat] 이 팔이 가장
+   * 적게 드는 슬롯을 집으므로, 수요가 작은 줄이 먼저 오면 **좋은 슬롯을 먼저 가져가** 수요가
+   * 큰 줄이 느린 팔로 밀린다. 큰 줄부터 고르면 그 뒤집힘이 안 생긴다(재배열 부등식).
+   *
+   * 예전엔 배정이 끝난 뒤 *수요 ↔ 처리량* 으로 **다시 붙여** 같은 효과를 냈는데, 그때는 이미
+   * 팔을 세고 좌석을 찬 뒤라 셈이 무효가 됐다(계획서 §15).
+   * 수요 신호(`amount`)가 없으면 등장 순서 그대로다(안정 정렬).
+   */
+  const byDemandDesc = (ls: IoLine[]): IoLine[] =>
+    ls
+      .map((l, i) => ({ l, i }))
+      .sort((a, b) => (b.l.amount ?? 0) - (a.l.amount ?? 0) || a.i - b.i)
+      .map(({ l }) => l);
+
+  for (const line of byDemandDesc(beltLines.filter((l) => l.role === "output"))) {
     place(line, [outPool, inPool]);
   }
   // 입력 처리 **순서**: 자식-공급(내부 간선) 먼저, external(raw) 나중.
@@ -387,8 +466,8 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // external 입력은 **납품 경로가 없다** — 그냥 perimeter 로 나가면 그만이라 W 로 밀려도 안전하다.
   // 그러니 밀려날 자격이 있는 건 external 쪽이다(제약 센 것에 좋은 자리를 먼저).
   const inputsChildFedFirst = [
-    ...beltLines.filter((l) => l.role === "input" && !l.external),
-    ...beltLines.filter((l) => l.role === "input" && l.external),
+    ...byDemandDesc(beltLines.filter((l) => l.role === "input" && !l.external)),
+    ...byDemandDesc(beltLines.filter((l) => l.role === "input" && l.external)),
   ];
   for (const line of inputsChildFedFirst) {
     place(line, line.external ? [inPool, nsPool, outPool] : [inPool, outPool]);
@@ -399,34 +478,17 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     return { ok: false, complex: true, reason: `seats-exceed-capacity (${overflow})` };
   }
 
-  // clusterBeltDepth = 운반량순 — (B) 가 정한 면은 유지하고, 같은 면 안에서 깊이/reach 만
-  // 재배정: 라인 수요(amount) 내림차순 ↔ 슬롯 용량(인서터 throughput) 내림차순 zip. **수요
-  // 신호(amount)가 하나도 없으면 건너뜀**(= (B) 등장순서 = near→far 유지). reach 순서를
-  // 가정하지 않고 실제 throughput 으로 정렬한다(사장님 단서).
-  // (한 줄이 배정을 여러 개 가질 수 있으므로 **배정 단위**로 재배정한다 — 같은 줄의 두 벨트가
-  //  같은 면에 앉았으면 둘 다 그 줄의 수요 신호를 쓴다.)
-  const throughputByReach = new Map(inserters.map((i) => [i.reach, i.throughput]));
-  const hasDemand = beltLines.some((l) => l.amount !== undefined);
-  if (hasDemand) {
-    const capOf = (r?: number) => (r === undefined ? 0 : throughputByReach.get(r) ?? 0);
-    const demandOf = (p: PlannedLine) => p.line.amount ?? 0;
-    const beltPlacements = beltLines.flatMap((l) => assigned.get(l)!);
-    for (const face of [outputSide, inputSide, ...(input.nsFaces ?? [])] as PlannedSide[]) {
-      // 유체 줄은 제외 — clusterBeltDepth 가 1 로 강제돼 있고 인서터가 없어 재배정 대상이 아니다.
-      const facePlacements = beltPlacements.filter((p) => p.side === face);
-      if (facePlacements.length <= 1) continue;
-      const slots = facePlacements
-        .map((p) => ({ clusterBeltDepth: p.clusterBeltDepth, reach: p.reach }))
-        .sort((a, b) => capOf(b.reach) - capOf(a.reach));
-      const byDemand = [...facePlacements].sort(
-        (a, b) => demandOf(b) - demandOf(a) || lines.indexOf(a.line) - lines.indexOf(b.line),
-      );
-      byDemand.forEach((p, i) => {
-        p.clusterBeltDepth = slots[i].clusterBeltDepth;
-        p.reach = slots[i].reach;
-      });
-    }
-  }
+  // **깊이/reach 재배정은 여기 없다** (2026-08-15 삭제 — 계획서 §15·§16).
+  //
+  // 예전엔 배정이 끝난 뒤 같은 면 안에서 *수요 내림차순 ↔ 슬롯 처리량 내림차순* 으로
+  // 깊이/reach 를 **다시 붙였다**. 그 자체는 옳은 짝짓기였지만 **순서가 거꾸로였다**:
+  // 팔 개수는 이미 앞 단계에서 `reach 1` 기준으로 세어져 좌석 장부에 반영된 뒤였고,
+  // 여기서 팔의 실체가 바뀌어도 아무도 다시 세지 않았다. 깊은 벨트로 옮겨진 줄은
+  // **느린 팔이 앉는데 빠른 팔 기준으로 센 개수**를 받아 조용히 굶었다.
+  //
+  // 이제 [takeSeat] 이 슬롯을 고르는 **그 자리에서** `armsAt(line, i, slot.reach)` 를 물어
+  // 팔이 가장 적게 드는 슬롯을 집고 그만큼 좌석을 찬다 — 짝짓기와 셈이 같은 순간에 일어나
+  // 어긋날 수가 없다. 별도 재배정 패스가 필요 없어졌다.
 
   return { ok: true, lines: lines.flatMap((l) => assigned.get(l)!) };
 }
@@ -441,8 +503,17 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
 export interface SupplyCapacity {
   /** 벨트 한 줄의 초당 운반량. 이걸 넘는 품목은 한 줄로 못 나른다. */
   beltCapacity?: number;
-  /** 인서터 하나(탭 하나)의 초당 처리량. 머신 한 대의 수요가 이걸 넘으면 못 먹인다. */
-  tapCapacity?: number;
+  /**
+   * **쓸 수 있는 팔들** — reach 별로 하나씩([makeBuildSpec] 의 `byReach`).
+   *
+   * 예전엔 `tapCapacity: number` 라는 **스칼라 하나**였고 값이 *"reach 1 중 가장 빠른 것"*
+   * 이었다. 팔 속도는 스칼라가 아니라 **어느 인서터를 쓰느냐의 함수**이고, 어느 인서터를
+   * 쓰느냐는 벨트를 어느 칸에 두느냐가 정한다(`reach` 는 고정 거리 — 계획서 §16).
+   * 그 전제가 깨진 채 세는 쪽만 옛 값에 남아 **깊은 벨트를 쓰는 줄이 조용히 굶었다**(§15).
+   *
+   * **파생값을 담지 않는다** — 처리량 맵을 따로 만들면 같은 사실이 두 모양이 된다(R3).
+   */
+  inserters?: SpecInserter[];
   /**
    * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
    * 미지정이면 [requiredInserterCount] 가 `undefined` 를 낸다 — 없는 숫자를 지어내지 않는다.
@@ -492,11 +563,16 @@ export function requiredInserterCount(
   line: IoLine,
   machineCount: number,
   cap: SupplyCapacity,
+  /**
+   * **이 줄을 집을 인서터.** 모드는 몰라도 되지만(위 머리말) **어느 팔이 앉는지는 알아야
+   * 한다** — 팔 속도가 그것으로 정해지기 때문이다(계획서 §16). 벨트 칸(=`clusterBeltDepth`)이
+   * `reach` 를 정하고 `reach` 가 인서터를 정하므로, 호출부는 배정된 슬롯에서 이걸 얻는다.
+   */
+  inserter: SpecInserter | undefined,
 ): number | undefined {
   const rate = cap.lineRates?.get(`${line.role}:${line.name}`);
-  if (rate === undefined) return undefined; // 수치 없음 → 판정 보류(지어내지 않는다)
-  if (cap.tapCapacity === undefined || cap.tapCapacity <= 0 || machineCount <= 0) return undefined;
-  return Math.max(1, Math.ceil(rate / machineCount / cap.tapCapacity));
+  if (rate === undefined || machineCount <= 0) return undefined; // 수치 없음 → 판정 보류
+  return armsFor(rate / machineCount, inserter);
 }
 
 /** [allocateArms] 결과 — 줄별 팔 개수 + 그래서 머신이 실제로 도는 비율. */
@@ -524,17 +600,30 @@ export interface ArmBudget {
  * **수량을 모르는 줄은 팔 1개**를 받고 비율 계산에서 빠진다 — 모르는 걸로 굶었다고
  * 단정하지 않는다.
  *
+ * ## 왜 여기서는 **reach 1** 을 쓰나 — 낙관이 아니라 폴백의 모델이다
+ *
+ * 팔 속도는 *어느 인서터가 앉느냐*의 함수이고 그건 벨트 칸이 정한다(계획서 §16). 그런데 이
+ * 함수는 **머신 대수를 정하기 전에** 돌아서 칸을 모른다.
+ *
+ * 그래도 `reach 1` 이 맞다 — **다이렉트가 언제나 유효한 폴백이고, 다이렉트의 팔은 항상
+ * `reach 1`** 이기 때문이다(인서터가 상자와 머신 **양쪽에 인접**해야 하므로 상자가 `d2`,
+ * 팔이 `d1`). 탭이 깊은 벨트를 써서 팔이 더 들면 [takeSeat] 이 **그 시점에 정직하게 거절**해
+ * 다이렉트로 물러나고, 그러면 이 함수가 센 수가 다시 맞는다.
+ *
+ * **이 정당화가 없으면 그냥 낙관이고, 낙관은 조용히 굶는다**(계획서 §15.4).
+ *
  * @param lines 이 머신의 I/O 줄들. 유체(pipe)는 인서터가 없어 대상이 아니다.
  * @param perMachineRate 줄별 **머신 한 대의** 초당 수요/산출(items/sec). 모르면 undefined.
- * @param tapCap 인서터 하나의 초당 처리량.
+ * @param seatInserter 좌석에 앉는 팔 — 위 이유로 `reach 1`. 없으면 답할 수 없다.
  * @param rowBudget 팔을 앉힐 수 있는 총 행 수(= 쓸 수 있는 면들의 좌석 행 합).
  */
 export function allocateArms(
   lines: IoLine[],
   perMachineRate: (line: IoLine) => number | undefined,
-  tapCap: number,
+  seatInserter: SpecInserter | undefined,
   rowBudget: number,
 ): ArmBudget {
+  const tapCap = seatInserter?.throughput ?? 0;
   const belts = lines.filter((l) => l.kind === "belt");
   const armsByLine = new Map<string, number>();
   const keyOf = (l: IoLine) => `${l.role}:${l.name}`;
@@ -621,12 +710,42 @@ export function insertingPlanner(
   const linkUsedWE = Math.max(input.seatRowsUsed?.W ?? 0, input.seatRowsUsed?.E ?? 0);
   const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);
 
+  // **슬롯은 `input.inserters` 가 만들고([laneSlots]), 처리량은 `capacity.inserters` 가 준다.**
+  // 실경로에서 둘은 **같은 목록**이다([moduleWizard] 가 한 곳에서 넘긴다). 그래도 갈라 읽는
+  // 이유는 역할이 다르기 때문이다 — 앞은 *"어떤 슬롯이 서나"*, 뒤는 *"그 팔이 얼마나 나르나"*.
+  // 뒤를 모르는 슬롯은 [armsAt] 이 `undefined` 를 내 배분기가 **건너뛴다**(1 로 때우지 않는다).
+  const inserters = capacity.inserters ?? input.inserters;
+  const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
+
   /**
-   * 줄별 **팔 개수(머신 한 대 전체)** — 배정 수와 무관한 물리량. 아래에서 배정들에 **나눠**
-   * 앉힌다. 통째로 달면 배정이 둘일 때 팔이 두 배가 된다(2026-07-16 버그).
+   * 줄별 **팔 개수(머신 한 대 전체)** — 배정 수와 무관한 물리량이지만 **어느 팔이 앉느냐에는
+   * 의존한다**(계획서 §16). 아래에서 배정들에 **나눠** 앉힌다. 통째로 달면 배정이 둘일 때
+   * 팔이 두 배가 된다(2026-07-16 버그).
    */
-  const armsTotalOf = (line: IoLine): number | undefined =>
-    requiredInserterCount(line, machineCount, capacity);
+  const armsTotalOf = (line: IoLine, reach: number): number | undefined =>
+    requiredInserterCount(line, machineCount, capacity, inserterForReach(inserters, reach));
+
+  /**
+   * **팔이 가장 적게 드는 reach** — 배정 수를 잡을 때의 기준이다.
+   *
+   * 배정 수는 배분기가 슬롯을 고르기 **전에** 정해야 하는데(슬롯을 몇 개 뽑을지 알아야
+   * 하므로) 슬롯이 곧 팔이라 순환처럼 보인다. **가장 좋은 팔을 받았을 때의 수**로 잡아
+   * 끊는다 — 더 나쁜 슬롯을 받으면 팔이 늘고, 그러면 [takeSeat] 이 **그 자리에서 정직하게
+   * 거절**해 다이렉트로 물러난다. 낙관이 조용한 굶음이 아니라 **보이는 폴백**으로 끝난다.
+   */
+  const bestReachFor = (line: IoLine): number | undefined => {
+    let best: number | undefined;
+    let bestArms = Infinity;
+    for (const r of reaches) {
+      const a = armsTotalOf(line, r);
+      if (a === undefined) continue;
+      if (a < bestArms) {
+        bestArms = a;
+        best = r;
+      }
+    }
+    return best;
+  };
 
   /**
    * 이 줄이 배정을 **몇 개** 가져야 하나 — 두 가지가 각각 배정을 요구하고, **더 큰 쪽**을 따른다:
@@ -644,12 +763,13 @@ export function insertingPlanner(
     const key = `${line.role}:${line.name}`;
     const chosen = beltLineMap.get(key);
     const belts = chosen?.length ?? 1;
-    const arms = armsTotalOf(line);
+    const reach = bestReachFor(line);
+    const arms = reach === undefined ? undefined : armsTotalOf(line, reach);
     if (arms === undefined) return Math.max(1, belts); // 팔 수 미상 — 지어내지 않는다
     // 그릇은 **실제로 깔릴 벨트 중 가장 느린 것**으로 잰다(보수적). 벨트를 못 골랐으면
     // (수요 미상) 이 축은 없다 — 옛 동작대로 좌석만 본다.
-    // (아래 `tapCap` 은 이 클로저보다 뒤에 선언되므로 여기서는 원본을 직접 읽는다.)
-    const tp = capacity.tapCapacity ?? 0;
+    // 팔 처리량은 위에서 고른 reach 의 것이다 — 그릇도 *어느 팔이 앉느냐*의 함수다.
+    const tp = inserterForReach(inserters, reach)?.throughput ?? 0;
     const slowest = chosen?.length ? Math.min(...chosen.map((b) => b.throughput)) : undefined;
     const grail = slowest !== undefined && tp > 0 ? Math.floor(slowest / tp) : Infinity;
     const perPlacement = Math.max(1, Math.min(rowsPerFace, grail));
@@ -663,8 +783,15 @@ export function insertingPlanner(
    * 쪼개 두 곳이 함께 읽는다(따로 계산하면 장부가 예산한 좌석과 실제로 앉는 팔이 어긋난다).
    * 수량 미상인 줄은 넣지 않는다 → 양쪽 다 "배정당 1개"로 보수적으로 본다.
    */
-  const armsByPlacement = new Map<string, number[]>();
-  /** 쪼개 둔 팔 개수를 계획의 배정들에 순서대로 단다(배정 순서 = 그 줄의 벨트 순서). */
+  /** `줄 → reach → 배정마다의 팔 개수`. reach 축이 있는 것이 §16 의 전부다. */
+  const armsByPlacement = new Map<string, Map<number, number[]>>();
+  /** 배분기가 슬롯을 고르는 순간 묻는다 — 그 슬롯의 팔로 이 배정을 먹이면 몇 개인가. */
+  const armsAtReach = (line: IoLine, i: number, reach: number): number | undefined =>
+    armsByPlacement.get(`${line.role}:${line.name}`)?.get(reach)?.[i];
+  /**
+   * 쪼개 둔 팔 개수를 계획의 배정들에 순서대로 단다(배정 순서 = 그 줄의 벨트 순서).
+   * **배정이 받은 `reach` 로 읽는다** — 배분기가 좌석을 찬 수와 같은 수여야 한다.
+   */
   const armsOf = (plan: PortPlan): void => {
     if (!plan.ok) return;
     const nth = new Map<string, number>();
@@ -673,7 +800,13 @@ export function insertingPlanner(
       const key = `${planned.line.role}:${planned.line.name}`;
       const i = nth.get(key) ?? 0;
       nth.set(key, i + 1);
-      planned.requiredInserterCount = armsByPlacement.get(key)?.[i]; // 미상 = undefined(보류)
+      const byReach = armsByPlacement.get(key);
+      planned.requiredInserterCount =
+        planned.reach === undefined ? undefined : byReach?.get(planned.reach)?.[i]; // 미상 = 보류
+      // **엔티티는 슬롯 목록(`input.inserters`)에서 뽑는다** — 슬롯이 거기서 났으므로
+      // 언제나 찾힌다. 처리량 출처(`capacity.inserters`)에서 뽑으면 두 목록이 어긋날 때
+      // 비고, 그러면 방출부의 폴백(= reach 되유도)이 살아난다.
+      planned.inserterEntityName = inserterForReach(input.inserters, planned.reach)?.entityName;
     }
   };
 
@@ -731,19 +864,24 @@ export function insertingPlanner(
   //  - **좌석**: 면 하나의 행보다 많이 앉을 수 없다.
   //  - **벨트**: 그 배정의 벨트가 나르는 양보다 많이 집을 수 없다. 벨트가 여러 줄인 건 수요가
   //    한 줄을 넘었다는 뜻이라, 한 줄에 팔을 몰면 그 벨트가 먼저 터진다.
-  const tapCap = capacity.tapCapacity;
+  //
+  // **reach 마다 한 벌씩 쪼갠다.** 어느 슬롯을 받을지는 배분기가 정하므로, 미리 한 벌만
+  // 만들어 두면 그 슬롯이 아닌 팔이 앉았을 때 수가 어긋난다(계획서 §15 의 그 어긋남).
   for (const line of input.lines) {
     if (line.kind !== "belt") continue;
     const key = `${line.role}:${line.name}`;
-    const total = armsTotalOf(line);
-    if (total === undefined || tapCap === undefined || tapCap <= 0) continue; // 미상 — 지어내지 않는다
     const belts = placementMap.get(key);
     const n = belts?.length ?? 1;
-    /** 이 배정이 받을 수 있는 팔 상한(좌석 ∧ 벨트). 최소 1 — 배정이 있으면 팔은 있어야 한다. */
-    const capOf = (i: number): number => {
-      const beltArms = belts?.[i] ? Math.floor(belts[i].throughput / tapCap) : Infinity;
-      return Math.max(1, Math.min(rowsPerFace, beltArms));
-    };
+    const byReach = new Map<number, number[]>();
+    for (const reach of reaches) {
+      const tapCap = inserterForReach(inserters, reach)?.throughput ?? 0;
+      const total = armsTotalOf(line, reach);
+      if (total === undefined || tapCap <= 0) continue; // 미상 — 지어내지 않는다
+      /** 이 배정이 받을 수 있는 팔 상한(좌석 ∧ 벨트). 최소 1 — 배정이 있으면 팔은 있어야 한다. */
+      const capOf = (i: number): number => {
+        const beltArms = belts?.[i] ? Math.floor(belts[i].throughput / tapCap) : Infinity;
+        return Math.max(1, Math.min(rowsPerFace, beltArms));
+      };
     // **합은 언제나 `total` 이다** — 상한에 막혀도 팔 개수를 깎지 않는다. 이건 협상 대상이
     // 아닌 물리량이라([requiredInserterCount]), 깎아서 적어내면 그 계획은 "성공"이라 보고하며
     // 조용히 굶는다(2026-07-16 실측의 근원). 마지막 배정이 남은 걸 다 받고, **안 들어가면**
@@ -751,15 +889,17 @@ export function insertingPlanner(
     //
     // 그 대가: 마지막 배정이 자기 벨트 상한을 넘을 수 있다(팔은 앉는데 벨트가 못 나르는 경우).
     // 벨트 축의 정밀화는 별도다 — 벨트 분할·합류가 없는 지금은 어차피 폴백뿐이다.
-    const arms: number[] = [];
-    let left = total;
-    for (let i = 0; i < n; i++) {
-      // 뒤에 남은 배정마다 최소 1개는 남겨 둔다 — 배정이 있는데 팔이 0이면 그 벨트는 헛것이다.
-      const give = i === n - 1 ? left : Math.max(1, Math.min(capOf(i), left - (n - i - 1)));
-      arms.push(give);
-      left -= give;
+      const arms: number[] = [];
+      let left = total;
+      for (let i = 0; i < n; i++) {
+        // 뒤에 남은 배정마다 최소 1개는 남겨 둔다 — 배정이 있는데 팔이 0이면 그 벨트는 헛것이다.
+        const give = i === n - 1 ? left : Math.max(1, Math.min(capOf(i), left - (n - i - 1)));
+        arms.push(give);
+        left -= give;
+      }
+      byReach.set(reach, arms);
     }
-    armsByPlacement.set(key, arms);
+    if (byReach.size > 0) armsByPlacement.set(key, byReach);
   }
 
   // 간단한 레시피 판별 — 탭 인서팅(기둥 클러스터 면 용량)으로 배정해 본다.
@@ -768,7 +908,7 @@ export function insertingPlanner(
     ...input,
     beltLines: placementMap,
     seatRowsPerFace: seatRows,
-    armsByPlacement,
+    armsAtReach,
   });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
   armsOf(tapPlan);

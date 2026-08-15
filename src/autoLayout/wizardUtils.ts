@@ -2,7 +2,7 @@ import { useGameDataStore, type Entity, type Recipe } from "../UI/store/gameData
 import type { Area, ContainerWizardInput } from "./containerModel";
 import { clusterLineRate, type MachineParamsLookup } from "./recipeTree";
 import { allocateArms, type IoLine } from "./planner/module/clusterPortPlanner";
-import { tapCapacity, type SpecInserter } from "./buildSpec";
+import { inserterForReach, type SpecInserter } from "./buildSpec";
 
 // ─── Area 유틸 ───────────────────────────────────────────────────────────────
 
@@ -101,8 +101,12 @@ export function machineSpeedFraction(
   // **여기만 옛 값에 남아** 둘이 다른 속도를 믿게 됐다(2026-07-23 실측: 팔 3개면 되는
   // 7×7 머신을 "80% 로만 돈다"고 보고 머신을 더 놓았다). 바로 이 함수의 머리말이
   // 경고하던 상태다 — 유도를 여기서 없애 구조적으로 못 어긋나게 한다.
-  const tapCap = tapCapacity(inserters);
-  if (tapCap === undefined) return undefined; // 데이터 없음 — 지어내지 않는다.
+  //
+  // **`reach 1` 인 이유는 [allocateArms] 머리말에 있다** — 다이렉트가 항상 유효한 폴백이고
+  // 다이렉트의 팔은 언제나 `reach 1` 이라서다. 탭이 깊은 벨트로 팔을 더 쓰면 배분기가
+  // 그 자리에서 거절해 다이렉트로 물러난다(계획서 §16).
+  const seatInserter = inserterForReach(inserters, 1);
+  if (!seatInserter) return undefined; // 데이터 없음 — 지어내지 않는다.
 
   const params = { craftingSpeed, productivityMultiplier: 1 }; // 전속력 기준 수요로 잰다
   const lines: IoLine[] = [
@@ -121,7 +125,7 @@ export function machineSpeedFraction(
   const { speedFraction } = allocateArms(
     lines,
     (l) => clusterLineRate(recipe, l.role, l.name, 1, params), // 머신 1대 = 머신당
-    tapCap,
+    seatInserter,
     rowBudget,
   );
   // 0 = 줄마다 팔 하나씩도 못 앉힌다 → 이 머신으론 불가능. 비율로 표현할 수 없으니

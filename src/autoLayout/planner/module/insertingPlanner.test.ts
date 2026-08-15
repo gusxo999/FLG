@@ -104,7 +104,7 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
   it("머신 한 대 몫이 인서터 하나를 넘으면 Parallel Inserting — 탭을 늘린다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30 / 3대 = 10, ceil(10/5) = 탭 2개
     };
     const d = insertingPlanner(base(lines), 3, SEATS, cap);
@@ -125,7 +125,7 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
   it("수량 미상인 줄은 lineRates 에 없다 → undefined 로 보류 (NaN 이 흘러들면 안 된다)", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // "b" 는 수량 미상 → 아예 없음
     };
     const d = insertingPlanner(base(lines), 3, SEATS, cap);
@@ -137,7 +137,7 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
   it("머신을 늘리면 머신당 몫이 줄어 탭이 1개로 준다", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 100,
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30 / 8대 = 3.75 ≤ 5 → 탭 1개
     };
     const d = insertingPlanner(base(lines), 8, SEATS, cap);
@@ -149,7 +149,7 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
     // a 혼자 E 면에서 탭 4개를 요구 — 3×3 면 좌석 3행을 넘는다.
     const cap: SupplyCapacity = {
       beltCapacity: 100,
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 탭 4개 > 3행
     };
     const d = insertingPlanner(base([inL("a"), outL("z")]), 3, SEATS, cap);
@@ -160,7 +160,7 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
   it("벨트 상한은 머신 수와 무관하다 — 합산 수요가 넘으면 몇 대든 거절", () => {
     const cap: SupplyCapacity = {
       beltCapacity: 15,
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 20]]),
     };
     expect(insertingPlanner(base(lines), 100, SEATS, cap).mode).toBe("direct");
@@ -188,7 +188,7 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
 
   const cap: SupplyCapacity = {
     beltCapacity: 100,
-    tapCapacity: 5,
+    inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
     lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 팔 4개
   };
 
@@ -253,7 +253,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 
   it("수요 40 → 빠른 벨트(30) + 나머지 10을 덮는 싼 벨트(15) = 2줄. 거절하지 않는다", () => {
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 40]]),
     });
     expect(d.mode, "옛 모델은 여기서 거절했다").toBe("tap");
@@ -265,7 +265,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 
   it("두 벨트는 서로 다른 자리에 앉는다 (같은 줄이어도 자리를 나눠 쓴다)", () => {
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 40]]),
     });
     const ps = placements(d, "a");
@@ -275,7 +275,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 
   it("한 줄로 감당되면 한 줄 그대로 — 필요 없는 벨트를 깔지 않는다", () => {
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 20]]),
     });
     expect(placements(d, "a")).toHaveLength(1);
@@ -284,7 +284,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 
   it("수량을 모르는 줄은 한 줄 — 없는 숫자로 벨트를 늘리지 않는다", () => {
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map(), // 수량 미상
     });
     expect(placements(d, "a")).toHaveLength(1);
@@ -293,7 +293,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
   it("늘린 줄이 면 용량을 넘으면 complex → 다이렉트 (거짓말 대신 정직한 위임)", () => {
     // 면당 벨트 2줄 × 2면 = 4. a 가 4줄을 요구하면 z 가 앉을 자리가 없다.
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 100,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 110]]), // 30×3 + 20 → 4줄
     });
     expect(d.mode).toBe("direct");
@@ -378,7 +378,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
   it("팔 4개가 3행짜리 면에 안 들어가면 두 면에 나눠 앉는다 (합은 4)", () => {
     // a: 60/3대 = 20, tapCap 5 → 팔 4개. 3×3 머신이라 면 좌석은 3행.
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 60]]),
     });
     const ps = armsOf(d, "a");
@@ -394,7 +394,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
       { ...base([inL("a"), outL("z")]), belts: [fast, { entityName: "t", throughput: 15 }] },
       2,
       SEATS,
-      { tapCapacity: 10, lineRates: new Map([["input:a", 40]]) },
+      { inserters: [{ entityName: 'i1', reach: 1, throughput: 10 }, { entityName: 'i2', reach: 2, throughput: 10 }], lineRates: new Map([["input:a", 40]]) },
     );
     expect(armsOf(d, "a").length).toBe(2); // 벨트 2줄
     expect(armSum(d, "a"), "배정마다 팔을 통째로 달면 4가 된다").toBe(2);
@@ -402,7 +402,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
 
   it("한 면에 들어가면 안 나눈다 — 필요 없는 배정을 만들지 않는다", () => {
     const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
-      tapCapacity: 5,
+      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30/3 = 10, ceil(10/5) = 팔 2개 ≤ 3행
     });
     expect(armsOf(d, "a").length).toBe(1);
@@ -463,7 +463,7 @@ describe("그릇 — 어떤 배정도 자기 벨트를 넘기지 않는다", () 
       },
       machineCount,
       { WE: 7, NS: 7 },
-      { tapCapacity: TAP, lineRates: new Map([["input:x", rate]]) } as SupplyCapacity,
+      { inserters: [{ entityName: 'i1', reach: 1, throughput: TAP }, { entityName: 'i2', reach: 2, throughput: TAP }], lineRates: new Map([["input:x", rate]]) } as SupplyCapacity,
     );
     if (res.mode !== "tap") return [];
     return res.plan.lines
