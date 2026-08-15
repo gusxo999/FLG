@@ -20,7 +20,9 @@
 - 문서와 코드가 어긋나면 **코드가 현재 사실**이다. 어긋남을 발견하면 문서를 삭제만 사용해 갱신한다.
 
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
-사유 목록은 `moduleWizard.RejectReason`, 읽는 법은 [docs/변수명사전.md](docs/변수명사전.md).
+사유 카탈로그는 `layoutIssue.LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —
+*어디가* 막혔는지와 *무엇을 고쳐야* 하는지가 문장에서 필드로 갈렸다),
+읽는 법은 [docs/변수명사전.md](docs/변수명사전.md).
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
