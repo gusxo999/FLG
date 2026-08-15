@@ -28,8 +28,8 @@ function plasticBar(count: number): ModuleInput {
     count,
     lines: [inFluid("petroleum-gas"), inItem("coal"), outItem("plastic-bar")],
     inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
     beltEntityName: "transport-belt",
-    longInserter: { entityName: "long-handed-inserter", reach: 2 },
     fluidTrunk: {
       direction: 4,
       pipeEntityName: "pipe",
@@ -134,10 +134,13 @@ function plasticBarJump(
   const base = plasticBar(count);
   return {
     ...base,
-    longInserter:
+    inserters:
       opts?.longInserter === false
-        ? undefined
-        : { entityName: "long-handed-inserter", reach: 2 },
+        ? [{ entityName: "inserter", reach: 1, throughput: 0 }]
+        : [
+            { entityName: "inserter", reach: 1, throughput: 0 },
+            { entityName: "long-handed-inserter", reach: 2, throughput: 0 },
+          ],
     fluidTrunk: {
       ...base.fluidTrunk!,
       lines: base.fluidTrunk!.lines.map((l) => ({ ...l, fluidboxOffset: opts?.fluidboxOffset ?? 0 })),
@@ -254,8 +257,8 @@ function fluidOut(count: number): ModuleInput {
     count,
     lines: [inItem("coal"), outFluid("petroleum-gas")],
     inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
     beltEntityName: "transport-belt",
-    longInserter: { entityName: "long-handed-inserter", reach: 2 },
     fluidTrunk: {
       direction: 12, // W 면을 보게(테스트 픽스처 — 실제는 chooseFluidTrunkPlan 이 고름)
       pipeEntityName: "pipe",
@@ -329,7 +332,7 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
     const base = plasticBar(3);
     const mod = generateModule({
       ...base,
-      longInserter: undefined,
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       lines: [...base.lines, inItem("iron-plate")],
     });
     expect(mod.supply?.mode).toBe("direct");
@@ -361,8 +364,8 @@ describe("다중 유체 — 유체 입력(E) + 유체 출력(W) 동시", () => {
       count,
       lines: [inFluid("water"), inItem("iron-plate"), outFluid("sulfuric-acid")],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      longInserter: { entityName: "long-handed-inserter", reach: 2 },
       fluidTrunk: {
         direction: 4,
         pipeEntityName: "pipe",
@@ -441,8 +444,8 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
       count,
       lines: [inFluid("water"), inFluid("heavy-oil"), outFluid("light-oil")],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      longInserter: { entityName: "long-handed-inserter", reach: 2 },
       fluidTrunk: {
         direction: 4,
         pipeEntityName: "pipe",
@@ -575,8 +578,8 @@ describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이�
         outFluid("se-space-coolant-hot"),
       ],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      longInserter: { entityName: "long-handed-inserter", reach: 2 },
       fluidTrunk: {
         direction: 4,
         pipeEntityName: "pipe",
@@ -687,6 +690,7 @@ describe("유체 면 회수 — 점프 면에 링크가 앉는다", () => {
       outItem("out"),
     ],
     inserterEntityName: "inserter", // 긴팔 없음 → 탭이 깨지고 기계별 포트로
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
     beltEntityName: "transport-belt",
     fluidTrunk: {
       direction: 4,

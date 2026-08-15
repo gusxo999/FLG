@@ -19,6 +19,7 @@ const copperCable: ModuleInput = {
   count: 5,
   lines: [line("copper-plate", "input"), line("copper-cable", "output")],
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
   beltEntityName: "transport-belt",
 };
 
@@ -32,8 +33,8 @@ const electronicCircuit: ModuleInput = {
     line("electronic-circuit", "output"),
   ],
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
 };
 
 /** electric-motor 류: 입력 3 + 출력 1 = 정확히 용량 4(긴팔). 4스트림 스트레스. */
@@ -47,8 +48,8 @@ const electricMotor: ModuleInput = {
     line("electric-motor", "output"),
   ],
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,9 +174,9 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
   const highDemand: ModuleInput = {
     ...copperCable,
     count: 3,
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
     supplyCapacity: {
       beltCapacity: 100,
-      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. copper-cable(출력)은 수치 없음 → 1.
       lineRates: new Map([["input:copper-plate", 30]]),
     },
@@ -236,9 +237,9 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
   const directHighDemand: ModuleInput = {
     ...copperCable,
     count: 2,
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
     supplyCapacity: {
       beltCapacity: 1, // 20 > 1 → 벨트 축에서 거절 → 다이렉트
-      inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       // copper-plate 20 / 2대 = 10, ceil(10/5) = 팔 2개. copper-cable(출력)은 수치 없음 → 1.
       lineRates: new Map([["input:copper-plate", 20]]),
     },
@@ -284,9 +285,9 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
     const tooHungry: ModuleInput = {
       ...copperCable,
       count: 2,
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
       supplyCapacity: {
         beltCapacity: 1,
-        inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
         lineRates: new Map([["input:copper-plate", 40]]), // 40/2 = 20, ceil(20/5) = 팔 4개 > 3행
       },
     };
@@ -318,8 +319,8 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       count: 1,
       lines: [ext("a"), ext("b"), ext("c"), ext("d")],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      longInserter: { entityName: "long-handed-inserter", reach: 2 },
       nsExposure: ["N"],
     });
     render(mod, "count=1, external 입력 4 (E2 E3 N2 N3)");
@@ -350,6 +351,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       count: 1,
       lines: [ext("a"), ext("b")],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
       nsExposure: ["N"],
     });
@@ -366,8 +368,8 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       count: 1,
       lines: [ext("a"), ext("b"), ext("c"), { name: "out", kind: "belt", role: "output" }],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      longInserter: { entityName: "long-handed-inserter", reach: 2 },
       // nsExposure 미지정 → 기존 동작.
     });
     const c = mod.inputPorts.find((p) => p.line.name === "c")!;
@@ -396,6 +398,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       line("battery", "output"),
     ],
     inserterEntityName: "inserter", // reach 1 하나뿐 — 긴팔 없음
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
     beltEntityName: "transport-belt",
     fluidTrunk: {
       direction: 4,
@@ -454,6 +457,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
         line("out", "output"),
       ],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
     });
     expect(mod.supply?.mode).toBe("direct");
@@ -574,6 +578,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
         line("d", "input"), line("e", "input"), line("out", "output"),
       ],
       inserterEntityName: "inserter",
+      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
     });
     expect(mod.unroutedLines).toHaveLength(0);

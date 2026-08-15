@@ -23,8 +23,8 @@ const base: ModuleInput = {
   count: 3,
   lines: [{ name: "x", kind: "belt", role: "input" }],
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
   inputLinks: spanning,
 };
 
@@ -81,8 +81,8 @@ describe("ParallelBelt(막힌 면, 입력) — 한 면에 벨트 여러 줄, 합
     machine: M,
     count: 2,
     inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
     beltEntityName: "transport-belt",
-    longInserter: { entityName: "long-handed-inserter", reach: 2 },
     lines: [{ name: "x", kind: "belt", role: "input" as const }],
   };
   // 머신0 의 E면(3행)을 첫 그룹이 채우고, 넘친 그룹 **둘**이 같은 gap 면(S)으로 간다.

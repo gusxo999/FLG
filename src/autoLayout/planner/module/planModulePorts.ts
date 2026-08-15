@@ -42,7 +42,6 @@ import {
   type PortSide,
   type InsertingDecisionResult,
 } from "./clusterPortPlanner";
-import type { SpecInserter } from "../../buildSpec";
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide } from "../../module/fluidPorts";
 import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "../../module/machineLinkGroup";
@@ -59,25 +58,6 @@ import {
 import type { PortFace } from "../../containerModel";
 
 /**
- * `ModuleInput` 의 이진 인서터 필드(reach 1 기본 + 긴팔 하나)를 배분기가 먹는 **reach 목록**으로.
- * 탭 배분기는 서로 다른 reach 하나당 [ClusterBelt] 한 줄을 세운다 — 지금은 최대 2종(1·긴팔)이라
- * 옛 동작과 같지만, 이 목록이 늘면 벨트 줄도 는다.
- * (`BuildSpec.inserters` 를 `ModuleInput` 까지 직접 통과시키는 일은 후속.)
- */
-function toPlannerInserters(input: ModulePortPlannerInput): SpecInserter[] {
-  return [
-    { entityName: input.inserterEntityName, reach: 1, throughput: input.throughput?.normal ?? 0 },
-    ...(input.longInserter
-      ? [{
-          entityName: input.longInserter.entityName,
-          reach: input.longInserter.reach,
-          throughput: input.throughput?.long ?? 0,
-        }]
-      : []),
-  ];
-}
-
-/**
  * 계획에 필요한 [ModuleInput] 조각 — **좌표·id 접두사·방출 취향은 안 본다.**
  * (`idPrefix`·`lineEnds` 가 빠져 있는 것이 의도다: 전자는 방출 이름, 후자는 트렁크 기하다.)
  */
@@ -86,8 +66,7 @@ export type ModulePortPlannerInput = Pick<
   | "machine"
   | "lines"
   | "inserterEntityName"
-  | "longInserter"
-  | "throughput"
+  | "inserters"
   | "nsExposure"
   | "supplyCapacity"
   | "belts"
@@ -159,7 +138,8 @@ export function planModulePorts(
   // 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
   // 스도쿠 원칙). 그리고 ①도 이 답을 알아야 한다: 유체가 가져간 면에 링크를 앉히면 인서터가
   // 파이프 칸에 선다. 예전엔 ①이 ② 앞에 있어 그 사실을 **모른 채** 배정했다.
-  const plannerInserters = toPlannerInserters(input);
+  // 슬롯 목록은 **접히지 않고 그대로 온다**(계획서 §18). 예전엔 이진 필드에서 다시 폈다.
+  const plannerInserters = input.inserters;
   const ft = input.fluidTrunk;
   const maxReach = plannerInserters.reduce((a, i) => Math.max(a, i.reach), 0);
   // [isJumpableToClusterPipe] — "이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
@@ -293,7 +273,7 @@ export function planModulePorts(
   // 그대로 W/E 에 앉는다"* 가 지켜진다.
   const restLinks = supply.mode === "direct"
     ? (() => {
-        const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, undefined, {
+        const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, input.inserters, undefined, {
           perMachine: true,
         });
         const lineOfKey = new Map(restLines.map((l) => [`${l.role}:${l.name}`, l]));

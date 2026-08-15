@@ -504,17 +504,6 @@ export interface SupplyCapacity {
   /** 벨트 한 줄의 초당 운반량. 이걸 넘는 품목은 한 줄로 못 나른다. */
   beltCapacity?: number;
   /**
-   * **쓸 수 있는 팔들** — reach 별로 하나씩([makeBuildSpec] 의 `byReach`).
-   *
-   * 예전엔 `tapCapacity: number` 라는 **스칼라 하나**였고 값이 *"reach 1 중 가장 빠른 것"*
-   * 이었다. 팔 속도는 스칼라가 아니라 **어느 인서터를 쓰느냐의 함수**이고, 어느 인서터를
-   * 쓰느냐는 벨트를 어느 칸에 두느냐가 정한다(`reach` 는 고정 거리 — 계획서 §16).
-   * 그 전제가 깨진 채 세는 쪽만 옛 값에 남아 **깊은 벨트를 쓰는 줄이 조용히 굶었다**(§15).
-   *
-   * **파생값을 담지 않는다** — 처리량 맵을 따로 만들면 같은 사실이 두 모양이 된다(R3).
-   */
-  inserters?: SpecInserter[];
-  /**
    * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
    * 미지정이면 [requiredInserterCount] 가 `undefined` 를 낸다 — 없는 숫자를 지어내지 않는다.
    */
@@ -710,11 +699,10 @@ export function insertingPlanner(
   const linkUsedWE = Math.max(input.seatRowsUsed?.W ?? 0, input.seatRowsUsed?.E ?? 0);
   const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);
 
-  // **슬롯은 `input.inserters` 가 만들고([laneSlots]), 처리량은 `capacity.inserters` 가 준다.**
-  // 실경로에서 둘은 **같은 목록**이다([moduleWizard] 가 한 곳에서 넘긴다). 그래도 갈라 읽는
-  // 이유는 역할이 다르기 때문이다 — 앞은 *"어떤 슬롯이 서나"*, 뒤는 *"그 팔이 얼마나 나르나"*.
-  // 뒤를 모르는 슬롯은 [armsAt] 이 `undefined` 를 내 배분기가 **건너뛴다**(1 로 때우지 않는다).
-  const inserters = capacity.inserters ?? input.inserters;
+  // **슬롯도 처리량도 `input.inserters` 하나에서 나온다**(계획서 §18). 예전엔 같은 자료가
+  // `SupplyCapacity` 로도 흘러 두 벌이었고, 둘이 어긋나면 *"reach 는 서는데 처리량은
+  // 모르는 슬롯"* 이 생겨 [armsAt] 이 셀 수 없었다.
+  const inserters = input.inserters;
   const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
 
   /**

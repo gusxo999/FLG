@@ -43,6 +43,7 @@ import { trunkEndKey } from "../../module/clusterModule";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
 import { fluidLineOf, fluidLinesOnSide } from "../../module/fluidPorts";
 import type { PipeFlowPipe } from "../../util/pipeFlow";
+import { inserterForReach } from "../../buildSpec";
 
 /**
  * **탭 좌석에 놓을 인서터 — 계획이 지목한 것을 그대로 놓는다.**
@@ -56,10 +57,11 @@ import type { PipeFlowPipe } from "../../util/pipeFlow";
  * 폴백은 계획이 수량을 몰라 지목하지 못한 경우뿐이다.
  */
 function tapInserterName(input: ModuleInput, planned: PlannedLine): string {
-  if (planned.inserterEntityName) return planned.inserterEntityName;
-  return (planned.reach ?? 1) >= 2 && input.longInserter
-    ? input.longInserter.entityName
-    : input.inserterEntityName;
+  return (
+    planned.inserterEntityName ??
+    inserterForReach(input.inserters, planned.reach)?.entityName ??
+    input.inserterEntityName
+  );
 }
 
 /**

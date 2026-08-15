@@ -17,9 +17,8 @@ const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 
 const config: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
-  throughput: { normal: 6, long: 6 }, // tapCap 6, 그릇 = floor(20/6) = 3
   belts: [{ entityName: "transport-belt", throughput: 20 }],
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
   // 검증하지 않는다(2026-07-20 실측: planned 0 / fallback 전부).
@@ -43,7 +42,6 @@ describe("그릇 — 링크 하나가 자기 벨트를 넘지 않는다", () => 
   // 실측 그대로: 벨트 45/s, fast 10/s, long-handed 1.2/s.
   const real: PackConfig = {
     ...config,
-    throughput: { normal: 10, long: 1.2 },
     belts: [{ entityName: "express-transport-belt", throughput: 45 }],
   };
   // kr-sand(자식 4대, 48/s) → kr-glass(부모 5대, 40/s).
@@ -51,12 +49,12 @@ describe("그릇 — 링크 하나가 자기 벨트를 넘지 않는다", () => 
     id: "c", depth: 1, parentId: "p", machine: M, count: 4,
     lines: [outL("kr-sand")],
     // moduleWizard 가 채우는 값 = **reach-1 중 가장 빠른 팔**(= fast 10). min 이 아니다.
-    supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 10 }, { entityName: 'i2', reach: 2, throughput: 10 }], lineRates: new Map([["output:kr-sand", 48]]) },
+    supplyCapacity: { lineRates: new Map([["output:kr-sand", 48]]) },
   };
   const parent: NodeSpec = {
     id: "p", depth: 0, machine: M, count: 5,
     lines: [inL("kr-sand"), outL("kr-glass")],
-    supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 10 }, { entityName: 'i2', reach: 2, throughput: 10 }], lineRates: new Map([["input:kr-sand", 40]]) },
+    supplyCapacity: { lineRates: new Map([["input:kr-sand", 40]]) },
   };
 
   const links = edgeMachineLinks(child, parent, "kr-sand", real)!;
@@ -84,12 +82,12 @@ describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도
     {
       id: "p", depth: 0, machine: M, count: 2,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 12], ["output:prod", 12]]) },
+      supplyCapacity: { lineRates: new Map([["input:x", 12], ["output:prod", 12]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 2,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 24]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 24]]) },
     },
   ];
   const pack = packModuleTree(specs, config);
@@ -177,12 +175,12 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
     {
       id: "p", depth: 0, machine: M, count: 2,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 36], ["output:prod", 12]]) },
+      supplyCapacity: { lineRates: new Map([["input:x", 36], ["output:prod", 12]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 2,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 36]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 36]]) },
     },
   ];
   const pack = packModuleTree(specs, config);
@@ -221,12 +219,12 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
     {
       id: "p", depth: 0, machine: M, count: 4,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 72], ["output:prod", 24]]) },
+      supplyCapacity: { lineRates: new Map([["input:x", 72], ["output:prod", 24]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 2,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 72]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 72]]) },
     },
   ];
   const pack = packModuleTree(specs, config);
@@ -272,17 +270,17 @@ describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자�
     {
       id: "p", depth: 0, machine: M, count: 1,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 6], ["output:prod", 6]]) },
+      supplyCapacity: { lineRates: new Map([["input:x", 6], ["output:prod", 6]]) },
     },
     {
       id: "c1", depth: 1, parentId: "p", machine: M, count: 1,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 6]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 6]]) },
     },
     {
       id: "c2", depth: 1, parentId: "p", machine: M, count: 1,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 6]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 6]]) },
     },
   ];
   const pack = packModuleTree(specs, config);
@@ -310,12 +308,12 @@ describe("링크 그룹 계산 — 간선당 정확히 1회(이중 계산 회귀
       {
         id: "p", depth: 0, machine: M, count: 2,
         lines: [inL("x"), outL("prod")],
-        supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 12], ["output:prod", 12]]) },
+        supplyCapacity: { lineRates: new Map([["input:x", 12], ["output:prod", 12]]) },
       },
       {
         id: "c", depth: 1, parentId: "p", machine: M, count: 2,
         lines: [outL("x")],
-        supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 24]]) },
+        supplyCapacity: { lineRates: new Map([["output:x", 24]]) },
       },
     ];
     packModuleTree(specs, config);

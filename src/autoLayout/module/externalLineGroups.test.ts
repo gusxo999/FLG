@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { externalLineGroups } from "./machineLinkGroup";
 import type { IoLine, SupplyCapacity } from "../planner/module/clusterPortPlanner";
+import type { SpecInserter } from "../buildSpec";
 
 /**
  * **외부 줄도 [MachineLinkGroup] 이다** (2026-07-23 사장님 결정).
@@ -14,9 +15,17 @@ const lines: IoLine[] = [
   { name: "gear", kind: "belt", role: "output" },
 ];
 
+/**
+ * **다이렉트(기계별 포트)의 팔은 언제나 `reach 1`** — 인서터가 상자와 머신 **양쪽에 인접**
+ * 해야 하므로 상자가 `d2`, 팔이 `d1` 이다. 깊은 벨트를 집는 것은 탭뿐이다(계획서 §16).
+ *
+ * 처리량이 `SupplyCapacity` 가 아니라 **인자**로 오는 이유는 §18 — 인서터는 사용자가 한 번
+ * 고르는 전역 선택이라 노드마다 실어 나르면 같은 사실이 복제된다.
+ */
+const INS: SpecInserter[] = [{ entityName: "i", reach: 1, throughput: 5 }];
+
 /** 머신 3대, 팔 하나가 초당 5개. iron 60/3대 = 20 → ceil(20/5) = 팔 4개/머신. */
 const cap: SupplyCapacity = {
-  inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
   lineRates: new Map([
     ["input:iron-plate", 60],
     ["output:gear", 30],
@@ -24,7 +33,7 @@ const cap: SupplyCapacity = {
 };
 
 describe("외부 줄 → MachineLinkGroup — 빈 쪽이 곧 '밖'이다", () => {
-  const groups = externalLineGroups(lines, 3, cap);
+  const groups = externalLineGroups(lines, 3, cap, INS);
 
   it("원료는 from 이 비고, to 에 이 클러스터 머신들이 전부 든다", () => {
     const g = groups.find((x) => x.item === "iron-plate")!;
@@ -46,23 +55,23 @@ describe("외부 줄 → MachineLinkGroup — 빈 쪽이 곧 '밖'이다", () =>
 describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
   it("수량 미상이면 그룹을 안 만든다 ([edgeMachineLinks] 와 같은 문턱)", () => {
     // gear 만 rate 가 있다 — iron 은 lineRates 에 없다.
-    const partial: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["output:gear", 30]]) };
-    expect(externalLineGroups(lines, 3, partial).map((g) => g.item)).toEqual(["gear"]);
+    const partial: SupplyCapacity = { lineRates: new Map([["output:gear", 30]]) };
+    expect(externalLineGroups(lines, 3, partial, INS).map((g) => g.item)).toEqual(["gear"]);
   });
 
   it("팔 처리량을 모르면 하나도 안 만든다", () => {
-    expect(externalLineGroups(lines, 3, { lineRates: cap.lineRates })).toHaveLength(0);
+    expect(externalLineGroups(lines, 3, { lineRates: cap.lineRates }, [])).toHaveLength(0);
   });
 
   it("유체는 벨트 장부에 안 올린다 — 트렁크 파이프의 일이다", () => {
     const fluid: IoLine[] = [{ name: "water", kind: "pipe", role: "input" }];
-    const c: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["input:water", 60]]) };
-    expect(externalLineGroups(fluid, 3, c)).toHaveLength(0);
+    const c: SupplyCapacity = { lineRates: new Map([["input:water", 60]]) };
+    expect(externalLineGroups(fluid, 3, c, INS)).toHaveLength(0);
   });
 
   it("이미 내부 링크가 있는 줄은 두 번 세지 않는다", () => {
     const linked = new Set(["output:gear"]);
-    expect(externalLineGroups(lines, 3, cap, linked).map((g) => g.item)).toEqual(["iron-plate"]);
+    expect(externalLineGroups(lines, 3, cap, INS, linked).map((g) => g.item)).toEqual(["iron-plate"]);
   });
 });
 
@@ -70,14 +79,14 @@ describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
 // (이 세션에 고친 버그들의 공통 원인이 "같은 수를 두 곳이 각자 유도"였다.)
 describe("팔 수는 requiredInserterCount 와 같은 값", () => {
   it("머신 수가 늘면 머신당 팔은 줄어든다 — 클러스터 rate 를 나눠 갖는다", () => {
-    const one = externalLineGroups(lines, 1, cap)[0].to.get(0);
-    const six = externalLineGroups(lines, 6, cap)[0].to.get(0);
+    const one = externalLineGroups(lines, 1, cap, INS)[0].to.get(0);
+    const six = externalLineGroups(lines, 6, cap, INS)[0].to.get(0);
     expect(one).toBe(12); // 60/1 = 60, ceil(60/5)
     expect(six).toBe(2); //  60/6 = 10, ceil(10/5)
   });
 
   it("아무리 적어도 팔은 1개 — 0개면 그 머신은 아예 안 돈다", () => {
-    const tiny: SupplyCapacity = { inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }], lineRates: new Map([["input:iron-plate", 0.1]]) };
-    expect(externalLineGroups(lines, 3, tiny)[0].to.get(0)).toBe(1);
+    const tiny: SupplyCapacity = { lineRates: new Map([["input:iron-plate", 0.1]]) };
+    expect(externalLineGroups(lines, 3, tiny, INS)[0].to.get(0)).toBe(1);
   });
 });

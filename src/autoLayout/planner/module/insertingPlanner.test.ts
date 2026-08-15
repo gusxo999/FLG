@@ -35,6 +35,25 @@ const insR = (reach: number): SpecInserter => ({ entityName: `i${reach}`, reach,
 
 type Decision = ReturnType<typeof insertingPlanner>;
 
+/**
+ * **처리량을 슬롯 목록으로 주입한다** — 실경로에서 슬롯과 처리량은 **한 목록**이다
+ * ([PortPlannerInput.inserters], 계획서 §18). 픽스처는 읽기 편하게 `cap` 에 적어 두고
+ * 이 헬퍼가 그 사실을 흉내 낸다: `cap.inserters` 가 있으면 그것이 곧 슬롯 목록이다.
+ */
+type Cap = SupplyCapacity & { inserters?: SpecInserter[] };
+const run = (
+  input: Parameters<typeof insertingPlanner>[0],
+  count: number,
+  seats: { WE: number; NS: number },
+  cap: Cap = {},
+): Decision => {
+  // **reach 집합은 `input` 이 정하고(픽스처의 `hasLong`), 처리량만 `cap` 에서 덮어쓴다.**
+  // 통째로 갈아 끼우면 *"긴팔 없음"* 을 전제한 픽스처가 조용히 긴팔을 얻는다.
+  const tp = new Map((cap.inserters ?? []).map((i) => [i.reach, i.throughput]));
+  const inserters = input.inserters.map((i) => ({ ...i, throughput: tp.get(i.reach) ?? i.throughput }));
+  return insertingPlanner({ ...input, inserters }, count, seats, cap);
+};
+
 /** 3×3 머신의 면당 좌석 행. [insertingPlanner] 의 **자기 인자**다(입력 객체에 없다). */
 const SEATS = { WE: 3, NS: 3 };
 
@@ -57,14 +76,14 @@ const reasonOf = (d: Decision): string => {
 describe("① 간단한 레시피 판별 — 기둥 클러스터로 표현 가능한가", () => {
   it("입력 3 + 출력 1 = 4줄, 긴팔 있음(면당 2레인 × 2면 = 4) → tap", () => {
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
-    const d = insertingPlanner(base(lines), 3, SEATS);
+    const d = run(base(lines), 3, SEATS);
     expect(d.mode).toBe("tap");
     expect(linesOf(d).length).toBeGreaterThan(0);
   });
 
   it("긴팔 없음(면당 1레인 × 2면 = 2)인데 4줄 → 복잡한 레시피 → direct 폴백", () => {
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
-    const d = insertingPlanner(base(lines, false), 3, SEATS);
+    const d = run(base(lines, false), 3, SEATS);
     expect(d.mode).toBe("direct");
     expect(reasonOf(d)).toContain("complex");
     // **폴백이 성립하는지는 더 이상 여기서 안 본다** — 기계별 포트는 링크 배분기
@@ -74,7 +93,7 @@ describe("① 간단한 레시피 판별 — 기둥 클러스터로 표현 가�
 
   it("줄이 5개면 탭 용량(4) 초과 → 복잡한 레시피 → direct", () => {
     const lines = [inL("a"), inL("b"), inL("c"), inL("d"), outL("z")];
-    expect(insertingPlanner(base(lines), 3, SEATS).mode).toBe("direct");
+    expect(run(base(lines), 3, SEATS).mode).toBe("direct");
   });
 });
 
@@ -86,28 +105,28 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
     linesOf(d).find((l) => l.line.name === name)?.requiredInserterCount;
 
   it("수치를 안 주면 판정 보류 — undefined(없는 숫자를 지어내지 않는다)", () => {
-    const d = insertingPlanner(base(lines), 3, SEATS, {});
+    const d = run(base(lines), 3, SEATS, {});
     expect(d.mode).toBe("tap");
     expect(armsOf(d, "a")).toBeUndefined();
   });
 
   it("벨트를 안 골랐으면 수요가 한 줄을 넘을 때 거절 — 줄을 늘릴 수단이 없다", () => {
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 15,
       lineRates: new Map([["input:a", 20]]), // 20 > 15
     };
-    const d = insertingPlanner(base(lines), 3, SEATS, cap); // belts 미지정
+    const d = run(base(lines), 3, SEATS, cap); // belts 미지정
     expect(d.mode).toBe("direct");
     expect(reasonOf(d)).toContain("demand>beltCap");
   });
 
   it("머신 한 대 몫이 인서터 하나를 넘으면 Parallel Inserting — 탭을 늘린다", () => {
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 100,
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30 / 3대 = 10, ceil(10/5) = 탭 2개
     };
-    const d = insertingPlanner(base(lines), 3, SEATS, cap);
+    const d = run(base(lines), 3, SEATS, cap);
     expect(d.mode).toBe("tap"); // 옛 모델은 여기서 거절했다 — 이제 탭으로 감당
     expect(armsOf(d, "a")).toBe(2);
     expect(armsOf(d, "b")).toBeUndefined(); // 수치 없는 줄은 보류
@@ -123,47 +142,47 @@ describe("② requiredInserterCount — 벨트 용량 + Parallel Inserting", () 
    * "수치 없음 → `undefined`(판정 보류)" 로 떨어지고, 소비처가 1로 본다. 그 계약을 고정한다.
    */
   it("수량 미상인 줄은 lineRates 에 없다 → undefined 로 보류 (NaN 이 흘러들면 안 된다)", () => {
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 100,
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // "b" 는 수량 미상 → 아예 없음
     };
-    const d = insertingPlanner(base(lines), 3, SEATS, cap);
+    const d = run(base(lines), 3, SEATS, cap);
     expect(d.mode).toBe("tap");
     expect(armsOf(d, "b")).toBeUndefined(); // 보류. NaN 도 0 도 아니어야 한다.
     expect(Number.isNaN(armsOf(d, "b") as number)).toBe(false);
   });
 
   it("머신을 늘리면 머신당 몫이 줄어 탭이 1개로 준다", () => {
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 100,
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30 / 8대 = 3.75 ≤ 5 → 탭 1개
     };
-    const d = insertingPlanner(base(lines), 8, SEATS, cap);
+    const d = run(base(lines), 8, SEATS, cap);
     expect(d.mode).toBe("tap");
     expect(armsOf(d, "a")).toBe(1);
   });
 
   it("좌석이 모자라면(총 탭 > 면 좌석 행) 다이렉트로 거른다", () => {
     // a 혼자 E 면에서 탭 4개를 요구 — 3×3 면 좌석 3행을 넘는다.
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 100,
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 탭 4개 > 3행
     };
-    const d = insertingPlanner(base([inL("a"), outL("z")]), 3, SEATS, cap);
+    const d = run(base([inL("a"), outL("z")]), 3, SEATS, cap);
     expect(d.mode).toBe("direct");
     expect(reasonOf(d)).toContain("seats");
   });
 
   it("벨트 상한은 머신 수와 무관하다 — 합산 수요가 넘으면 몇 대든 거절", () => {
-    const cap: SupplyCapacity = {
+    const cap: Cap = {
       beltCapacity: 15,
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 20]]),
     };
-    expect(insertingPlanner(base(lines), 100, SEATS, cap).mode).toBe("direct");
+    expect(run(base(lines), 100, SEATS, cap).mode).toBe("direct");
   });
 });
 
@@ -186,7 +205,7 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
   const armsOf = (d: Decision, name: string): number | undefined =>
     linesOf(d).find((l) => l.line.name === name)?.requiredInserterCount;
 
-  const cap: SupplyCapacity = {
+  const cap: Cap = {
     beltCapacity: 100,
     inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
     lineRates: new Map([["input:a", 60]]), // 60 / 3대 = 20, ceil(20/5) = 팔 4개
@@ -198,7 +217,7 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
   // 개수를 바꾸지 않는다 — 그 사실을 지키는 자리만 옮겼다. 여기서는 **두 출처가 같은 수를
   // 낸다**를 확인한다(수가 갈리면 좌석 예산과 실제로 앉는 팔이 어긋나 조용히 굶는다).
   it("좌석이 모자라면 다이렉트로 떨어지고, 자리는 여기서 안 잡는다", () => {
-    const d = insertingPlanner(base([inL("a"), outL("z")]), 3, SEATS, cap);
+    const d = run(base([inL("a"), outL("z")]), 3, SEATS, cap);
     expect(d.mode).toBe("direct");
     expect(reasonOf(d)).toContain("seats");
     // 배정을 두 곳이 내면 장부가 갈린다 — 그래서 판정만 하고 **계획 자체를 안 낸다.**
@@ -208,7 +227,7 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
 
   it("복잡한 레시피도 다이렉트 — 사유가 그렇게 말한다", () => {
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
-    const d = insertingPlanner(base(lines, false), 3, SEATS, cap); // 긴팔 없음 → complex
+    const d = run(base(lines, false), 3, SEATS, cap); // 긴팔 없음 → complex
     expect(d.mode).toBe("direct");
     expect(reasonOf(d)).toContain("complex");
   });
@@ -218,13 +237,13 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
     // 갈리는 건 **모드뿐**이고 수요·머신 수·인서터 처리량은 같다.
     const lines = [inL("a"), inL("b"), inL("c"), outL("z")];
     const rates = { ...cap, lineRates: new Map([["input:a", 30]]) }; // 30/3대 = 10, ceil(10/5) = 2
-    const tap = insertingPlanner(base(lines), 3, SEATS, rates);
+    const tap = run(base(lines), 3, SEATS, rates);
     expect(tap.mode).toBe("tap");
     expect(armsOf(tap, "a")).toBe(2);
 
-    expect(insertingPlanner(base(lines, false), 3, SEATS, rates).mode).toBe("direct");
+    expect(run(base(lines, false), 3, SEATS, rates).mode).toBe("direct");
     // 기계별 그룹이 든 팔 수 — 머신 3대니까 그룹 3개, 각각 팔 2개.
-    const groups = externalLineGroups(lines, 3, rates, undefined, { perMachine: true })
+    const groups = externalLineGroups(lines, 3, rates, rates.inserters ?? [], undefined, { perMachine: true })
       .filter((g) => g.item === "a");
     expect(groups).toHaveLength(3);
     for (const g of groups) {
@@ -252,7 +271,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
     linesOf(d).filter((l) => l.line.name === name);
 
   it("수요 40 → 빠른 벨트(30) + 나머지 10을 덮는 싼 벨트(15) = 2줄. 거절하지 않는다", () => {
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 40]]),
     });
@@ -264,7 +283,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
   });
 
   it("두 벨트는 서로 다른 자리에 앉는다 (같은 줄이어도 자리를 나눠 쓴다)", () => {
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 40]]),
     });
@@ -274,7 +293,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
   });
 
   it("한 줄로 감당되면 한 줄 그대로 — 필요 없는 벨트를 깔지 않는다", () => {
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 20]]),
     });
@@ -283,7 +302,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
   });
 
   it("수량을 모르는 줄은 한 줄 — 없는 숫자로 벨트를 늘리지 않는다", () => {
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map(), // 수량 미상
     });
@@ -292,7 +311,7 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 
   it("늘린 줄이 면 용량을 넘으면 complex → 다이렉트 (거짓말 대신 정직한 위임)", () => {
     // 면당 벨트 2줄 × 2면 = 4. a 가 4줄을 요구하면 z 가 앉을 자리가 없다.
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 100 }, { entityName: 'i2', reach: 2, throughput: 100 }],
       lineRates: new Map([["input:a", 110]]), // 30×3 + 20 → 4줄
     });
@@ -317,9 +336,8 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
 describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () => {
   const battery = [inL("iron-plate"), inL("copper-plate"), outL("battery")];
   /** 유체 면 E — `jumpable` 은 지하파이프를 골랐는지에 갈린다. */
-  const run = (hasLong: boolean, jumpable: boolean) =>
-    insertingPlanner(
-      { ...base(battery, hasLong), pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable }] },
+  const runBattery = (hasLong: boolean, jumpable: boolean): Decision =>
+    run({ ...base(battery, hasLong), pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable }] },
       3,
       SEATS,
       {},
@@ -327,7 +345,7 @@ describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () 
 
   it("긴팔 없음 → 레인 부족. 사유가 **인서터 reach** 를 짚는다(벨트가 아니라)", () => {
     for (const jumpable of [false, true]) {
-      const d = run(false, jumpable);
+      const d = runBattery(false, jumpable);
       expect(d.mode, `jumpable=${jumpable}`).toBe("direct");
       expect(reasonOf(d)).toContain("lanes-exceed-capacity");
       expect(reasonOf(d)).toContain("고른 인서터 reach [1]");
@@ -337,12 +355,12 @@ describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () 
   });
 
   it("점프 불가 유체 면은 레인 0 — 문구가 그 면을 지목한다", () => {
-    expect(reasonOf(run(false, false))).toContain("E0(유체·reach≥2 전용)");
+    expect(reasonOf(runBattery(false, false))).toContain("E0(유체·reach≥2 전용)");
   });
 
   it("긴팔을 고르면 케이스 B 로 유체 면이 1레인을 내어 3줄이 앉는다 → tap", () => {
     for (const jumpable of [false, true]) {
-      const d = run(true, jumpable);
+      const d = runBattery(true, jumpable);
       expect(d.mode, `jumpable=${jumpable}`).toBe("tap");
       expect(linesOf(d).length).toBeGreaterThan(0);
     }
@@ -377,7 +395,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
    */
   it("팔 4개가 3행짜리 면에 안 들어가면 두 면에 나눠 앉는다 (합은 4)", () => {
     // a: 60/3대 = 20, tapCap 5 → 팔 4개. 3×3 머신이라 면 좌석은 3행.
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 60]]),
     });
@@ -390,8 +408,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
 
   it("벨트가 2줄이어도 팔은 2배가 되지 않는다 — 나눠 앉을 뿐이다", () => {
     // 수요 40 → 벨트 2줄. 팔은 40/2대 = 20, tapCap 10 → 2개.
-    const d = insertingPlanner(
-      { ...base([inL("a"), outL("z")]), belts: [fast, { entityName: "t", throughput: 15 }] },
+    const d = run({ ...base([inL("a"), outL("z")]), belts: [fast, { entityName: "t", throughput: 15 }] },
       2,
       SEATS,
       { inserters: [{ entityName: 'i1', reach: 1, throughput: 10 }, { entityName: 'i2', reach: 2, throughput: 10 }], lineRates: new Map([["input:a", 40]]) },
@@ -401,7 +418,7 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
   });
 
   it("한 면에 들어가면 안 나눈다 — 필요 없는 배정을 만들지 않는다", () => {
-    const d = insertingPlanner({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
+    const d = run({ ...base([inL("a"), outL("z")]), belts }, 3, SEATS, {
       inserters: [{ entityName: 'i1', reach: 1, throughput: 5 }, { entityName: 'i2', reach: 2, throughput: 5 }],
       lineRates: new Map([["input:a", 30]]), // 30/3 = 10, ceil(10/5) = 팔 2개 ≤ 3행
     });
@@ -421,10 +438,10 @@ describe("⑤ 팔이 면을 넘나든다 — 개수는 보존된다", () => {
 describe("거절은 항상 안전하다 — 사유 없는 거절이 없다", () => {
   it("어떤 사유로 거절돼도 mode 와 reason 이 함께 온다", () => {
     const cases: [string, Decision][] = [
-      ["복잡한 레시피", insertingPlanner(base([inL("a"), inL("b"), inL("c"), outL("z")], false), 3, SEATS)],
+      ["복잡한 레시피", run(base([inL("a"), inL("b"), inL("c"), outL("z")], false), 3, SEATS)],
       [
         "벨트 용량",
-        insertingPlanner(base([inL("a"), outL("z")]), 3, SEATS, {
+        run(base([inL("a"), outL("z")]), 3, SEATS, {
           beltCapacity: 1,
           lineRates: new Map([["input:a", 99]]),
         }),
@@ -454,8 +471,7 @@ describe("그릇 — 어떤 배정도 자기 벨트를 넘기지 않는다", () 
   /** 실측 모드팩 값(express 45/s, fast 10/s, 7×7 머신). */
   const sweep = (rate: number, machineCount: number) => {
     const line = inL("x");
-    const res = insertingPlanner(
-      {
+    const res = run({
         lines: [line],
         inserters: [{ entityName: "fast-inserter", reach: 1, throughput: TAP }],
         outputSide: "W",
@@ -463,7 +479,7 @@ describe("그릇 — 어떤 배정도 자기 벨트를 넘기지 않는다", () 
       },
       machineCount,
       { WE: 7, NS: 7 },
-      { inserters: [{ entityName: 'i1', reach: 1, throughput: TAP }, { entityName: 'i2', reach: 2, throughput: TAP }], lineRates: new Map([["input:x", rate]]) } as SupplyCapacity,
+      { inserters: [{ entityName: 'i1', reach: 1, throughput: TAP }, { entityName: 'i2', reach: 2, throughput: TAP }], lineRates: new Map([["input:x", rate]]) } as Cap,
     );
     if (res.mode !== "tap") return [];
     return res.plan.lines
@@ -485,6 +501,7 @@ describe("그릇 — 어떤 배정도 자기 벨트를 넘기지 않는다", () 
   it("고치기 전 터지던 그 자리 — 머신 1대·수요 90/s 는 이제 탭을 거절한다", () => {
     // 예전: 배정 2개로 잡아 부하 [40, **50**] — 벨트가 못 나르는데 "성공"이라 보고했다.
     // 지금: 그릇까지 세면 배정 3개가 필요한데 이 모듈은 벨트 3줄을 못 놓는다 → **direct 폴백**.
+    // (이 픽스처는 **reach 1 하나만** 고른다 → 면당 1레인 × 2면 = 슬롯 둘뿐이다.)
     //
     // 이게 옳은 답이다. 못 하는 걸 못 한다고 말하는 쪽이, 되는 척하며 조용히 굶는 것보다 낫다
     // ("거절은 항상 안전하다" — 1:1 은 구성으로 성립한다). 고친 결과가 "배정이 하나 늘었다"가

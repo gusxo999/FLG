@@ -220,12 +220,14 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       undergroundPipeEntityName: options.undergroundPipeEntityName,
       pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
       seatRows: m.h,
+      // **면당 레인 = 서로 다른 reach 값 개수**([laneSlots]). 예전엔 `longInserter ? 2 : 1` 로
+      // 세어 reach 3종을 골라도 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(계획서 §18).
       beltLanes: Math.min(
-        options.longInserter ? 2 : 1,
+        Math.max(1, new Set(options.inserters.map((i) => i.reach)).size),
         recipe.ingredients.filter((i) => i.type !== 'fluid').length +
           recipe.products.filter((p) => p.type !== 'fluid').length,
       ),
-      maxInserterReach: options.longInserter?.reach ?? 1,
+      maxInserterReach: options.inserters.reduce((m2, i) => Math.max(m2, i.reach), 1),
     };
     let crowded: LayoutIssue | undefined;
     for (const side of ['W', 'E'] as const) {
@@ -269,8 +271,6 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   // [Parallel Inserting] 의 탭 용량. 노드와 무관(같은 인서터)해서 specs 앞에서 한 번 구한다.
   const ov = input.inserterOverrides;
   const normalTp = inserterThroughput(entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
-  const longName = options.longInserter?.entityName;
-  const longTp = longName ? inserterThroughput(entityMap.get(longName), ov?.[longName]) : normalTp;
   // **팔 속도는 스칼라가 아니다** — *어느 인서터가 앉느냐*의 함수이고, 그건 벨트를 어느
   // 칸에 두느냐가 정한다(`reach` 는 고정 거리 — 계획서 §16). 그래서 여기서 수를 접지 않고
   // **인서터 목록 자체**를 봉투에 담아 보낸다. 접는 쪽이 곧 어긋나는 쪽이었다:
@@ -338,9 +338,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     beltEntityName: options.beltEntityName,
     // 고른 벨트 전부 — determineBeltCount 가 수요를 이 티어들로 나눠 덮는다.
     belts: options.belts,
-    longInserter: options.longInserter,
-    // throughput 데이터 없으면(0) 생략 → planner 가 depth 를 (B) 등장순서로 유지.
-    throughput: normalTp > 0 ? { normal: normalTp, long: longTp } : undefined,
+    inserters: specInserters,
     // 외부상자 perimeter exit-lane 예약(조각 6-①) — 채널 폭에 lane 세로 구간 합산.
     reservePerimeterLanes: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
@@ -377,7 +375,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       // 이 모듈의 **모든** 벨트 줄을 한 장부로 본다 — 링크 줄은 [edgeMachineLinks],
       // 외부 줄은 [externalLineGroups]. 둘 다 [MachineLinkGroup] 이라 아래 출력이 하나다.
       const ext = new Map(
-        externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}).map((g) => [g.id!, g]),
+        externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}, specInserters).map((g) => [g.id!, g]),
       );
       for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
         const [role, name] = key.split(":");

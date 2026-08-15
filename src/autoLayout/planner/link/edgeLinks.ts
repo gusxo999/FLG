@@ -131,7 +131,7 @@ export function edgeMachineLinks(
   //
   // **`reach 1` 이다** — 내부 링크의 팔은 좌석(`d1`)에서 바로 옆 벨트(`d2`)를 집는다.
   // 깊은 벨트를 집는 것은 탭뿐이고, 그건 [insertingPlanner] 가 슬롯을 고르며 정한다(계획서 §16).
-  const tp = inserterForReach(child.supplyCapacity?.inserters ?? [], 1)?.throughput ?? 0;
+  const tp = inserterForReach(config.inserters, 1)?.throughput ?? 0;
   const belt = config.belts?.[0]?.throughput ?? 0;
   if (tp <= 0 || belt <= 0 || child.count <= 0 || parent.count <= 0) return undefined;
   const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);

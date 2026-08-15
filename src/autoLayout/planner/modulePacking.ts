@@ -1,3 +1,4 @@
+import type { SpecInserter } from "../buildSpec";
 ﻿/**
  * modulePacking — 모듈 트리를 좌우 계층형으로 패킹한다 (조각 3, 순수·무배선).
  *
@@ -79,9 +80,8 @@ export interface PackConfig {
    * 거절 → 다이렉트).
    */
   belts?: ModuleInput["belts"];
-  longInserter?: { entityName: string; reach: number };
-  /** 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량. */
-  throughput?: { normal: number; long: number };
+  /** **고른 인서터 전부** — reach 별 하나씩. `belts` 와 같은 자리(전역 선택)다(계획서 §18). */
+  inserters: SpecInserter[];
   /**
    * 외부상자 perimeter exit-lane 예약을 켠다(조각 6-①). true 면 채널 폭이 납품 경로 구간에
    * 더해 lane 세로 구간까지 반영해 넓어지고 bbox 에 N/S/W/E 마진 프레임이 붙는다.
@@ -654,8 +654,7 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     inserterEntityName: config.inserterEntityName,
     beltEntityName: config.beltEntityName,
     belts: config.belts,
-    longInserter: config.longInserter,
-    throughput: config.throughput,
+    inserters: config.inserters,
     idPrefix: s.id,
     // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(moduleWizard)가 이미
     // 풀어서 spec 에 실어 보낸다. module/ 는 store 를 안 본다(순수).

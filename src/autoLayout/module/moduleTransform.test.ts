@@ -13,6 +13,7 @@ const copperCable: ModuleInput = {
   count: 5,
   lines: [line("copper-plate", "input"), line("copper-cable", "output")],
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
   beltEntityName: "transport-belt",
 };
 
@@ -132,8 +133,8 @@ describe("좌표 프레임 경계 — 옮길 것을 다 옮기나", () => {
     count: 3,
     lines: [fluidLine("water", "input"), fluidLine("heavy-oil", "input"), fluidLine("light-oil", "output")],
     inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
     beltEntityName: "transport-belt",
-    longInserter: { entityName: "long-handed-inserter", reach: 2 },
     fluidTrunk: {
       direction: 4,
       pipeEntityName: "pipe",

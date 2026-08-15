@@ -24,8 +24,8 @@ const specs: NodeSpec[] = [
 
 const packConfig: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
 };
 const deliveryConfig: DeliveryConfig = { beltEntityName: "transport-belt" };
 

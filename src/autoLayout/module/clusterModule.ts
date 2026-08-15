@@ -27,7 +27,7 @@ import {
   type SupplyCapacity,
   type InsertingDecisionResult,
 } from "../planner/module/clusterPortPlanner";
-import type { SpecBelt } from "../buildSpec";
+import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
 import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "./machineLinkGroup";
 import { layoutCluster } from "./clusterLayout";
@@ -149,13 +149,21 @@ export interface ModuleInput {
   count: number;
   /** 레시피 I/O 줄(입력=ingredients, 출력=products). 등장 순서 보존. */
   lines: IoLine[];
-  /** 일반 인서터(reach 1) prototype — 늘 존재 가정. */
+  /**
+   * 일반 인서터(reach 1) prototype — **계획이 팔을 지목하지 못했을 때의 폴백**이다.
+   * 실제로 놓는 팔은 [PlannedLine.inserterEntityName] 가 정한다.
+   */
   inserterEntityName: string;
   beltEntityName: string;
-  /** 긴팔(reach≥2) — 있으면 면당 2레인(용량 4). 없으면 면당 1레인(용량 2). */
-  longInserter?: { entityName: string; reach: number };
-  /** 인서터별 실제 throughput(items/sec) — depth=운반량 매칭의 슬롯 용량. 미지정=등장순서. */
-  throughput?: { normal: number; long: number };
+  /**
+   * **고른 인서터 전부** — reach 별 하나씩([BuildSpec.inserters] 그대로).
+   *
+   * 예전엔 `longInserter` + `throughput{normal, long}` 이라는 **이진 필드**로 접혀 왔고
+   * `planModulePorts.toPlannerInserters` 가 다시 폈다. 그 접힘이 슬롯을 **정확히 둘**로
+   * 잘라, *"reach 종류가 늘면 벨트 줄도 는다"* 는 배분기의 주장을 배선이 배신하고 있었다
+   * (계획서 §18). 이제 접지 않고 그대로 통과시킨다.
+   */
+  inserters: SpecInserter[];
   /** entity id 접두사(결정적). 기본 "mod". */
   idPrefix?: string;
   /**
@@ -323,7 +331,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     // (자료구조 통일 1단계). 팔 수는 [requiredInserterCount] 에서 오므로 planner 값과 **같다** →
     // 기하·수치 불변(점수 불변). 다음 단계에서 group 의 `from`/`to`(머신마다 팔)를 실제로 쓴다.
     const groupOf = new Map<string, MachineLinkGroup>();
-    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, plan.linkedKeys)) {
+    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, input.inserters, plan.linkedKeys)) {
       groupOf.set(`${readLinkRole(g)}:${g.item}`, g);
     }
     emitTapInserting({

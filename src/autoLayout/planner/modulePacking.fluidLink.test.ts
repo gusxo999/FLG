@@ -37,13 +37,13 @@ const spec = (
   machine: { entityName: "m", w: 3, h: 3 },
   count: 1,
   lines,
-  supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map(Object.entries(lineRates)) },
+  supplyCapacity: { lineRates: new Map(Object.entries(lineRates)) },
 });
 
 const config: PackConfig = {
   inserterEntityName: "i",
+  inserters: [{ entityName: "i", reach: 1, throughput: 6 }],
   beltEntityName: "b",
-  throughput: { normal: 6, long: 6 },
   belts: [{ entityName: "b", throughput: 20 }],
 };
 
@@ -78,8 +78,8 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 const packCfg: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }],
   beltEntityName: "transport-belt",
-  throughput: { normal: 6, long: 6 },
   belts: [{ entityName: "transport-belt", throughput: 20 }],
   channelGeometry: true,
   reservePerimeterLanes: true,
@@ -93,14 +93,13 @@ describe("productOf — 부산물이 먼저 와도 부모가 먹는 품목으로
     id: "c", depth: 1, parentId: "p", machine: M, count: 1,
     lines: [belt("byproduct", "output"), belt("wanted", "output")],
     supplyCapacity: {
-      inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }],
       lineRates: new Map([["output:byproduct", 5], ["output:wanted", 10]]),
     },
   };
   const parent: NodeSpec = {
     id: "p", depth: 0, machine: M, count: 1,
     lines: [belt("wanted", "input")],
-    supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:wanted", 10]]) },
+    supplyCapacity: { lineRates: new Map([["input:wanted", 10]]) },
   };
   const pack = packModuleTree([parent, child], packCfg);
 

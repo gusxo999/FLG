@@ -24,9 +24,8 @@ const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 
 const config: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
-  throughput: { normal: 6, long: 6 },
   belts: [{ entityName: "transport-belt", throughput: 20 }],
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 로 나서 이 버그가 안 드러난다.
   channelGeometry: true,
@@ -40,12 +39,12 @@ function pack() {
     {
       id: "p", depth: 0, machine: M, count: 2,
       lines: [inL("x"), outL("prod")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
+      supplyCapacity: { lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
     },
     {
       id: "c", depth: 1, parentId: "p", machine: M, count: 4,
       lines: [outL("x")],
-      supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map([["output:x", 60]]) },
+      supplyCapacity: { lineRates: new Map([["output:x", 60]]) },
     },
   ];
   return packModuleTree(specs, config);

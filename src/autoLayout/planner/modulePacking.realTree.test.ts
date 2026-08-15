@@ -11,15 +11,13 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 const cap = (rates: Record<string, number>) => ({
-  inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }],
   lineRates: new Map(Object.entries(rates)),
 });
 
 const config: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
-  throughput: { normal: 6, long: 6 },
   belts: [{ entityName: "transport-belt", throughput: 20 }],
   channelGeometry: true,
   reservePerimeterLanes: true,

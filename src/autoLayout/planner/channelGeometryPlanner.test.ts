@@ -146,8 +146,8 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 const config: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "i", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
   reservePerimeterLanes: true,
   channelGeometry: true,
 };

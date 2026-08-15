@@ -58,8 +58,8 @@ const fluidSpecs: NodeSpec[] = [
 // 장부가 아예 안 돌았다 — 그래서 이 계측이 따로 필요하다.
 const packConfig: PackConfig = {
   inserterEntityName: "inserter",
+  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  longInserter: { entityName: "long-handed-inserter", reach: 2 },
   channelGeometry: true,
   reservePerimeterLanes: true,
   beltMaxUndergroundDistance: 4,

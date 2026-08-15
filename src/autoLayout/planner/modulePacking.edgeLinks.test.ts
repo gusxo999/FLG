@@ -20,14 +20,14 @@ const spec = (
   machine: { entityName: "m", w: 7, h: 7 },
   count,
   lines,
-  supplyCapacity: { inserters: [{ entityName: 'i1', reach: 1, throughput: 6 }, { entityName: 'i2', reach: 2, throughput: 6 }], lineRates: new Map(Object.entries(lineRates)) },
+  supplyCapacity: { lineRates: new Map(Object.entries(lineRates)) },
 });
 
 // 인서터 6 · 벨트 20 → 용어사전 예시와 같은 수치.
 const config: PackConfig = {
   inserterEntityName: "i",
+  inserters: [{ entityName: "i", reach: 1, throughput: 6 }],
   beltEntityName: "b",
-  throughput: { normal: 6, long: 6 },
   belts: [{ entityName: "b", throughput: 20 }],
 };
 
@@ -61,12 +61,16 @@ describe("edgeMachineLinks — 전제 미충족이면 undefined(지어내지 않
     expect(edgeMachineLinks(noRate, parent, "x", config)).toBeUndefined();
   });
 
-  // 팔 하나의 처리량 출처는 **`supplyCapacity.tapCapacity` 하나뿐**이다(2026-07-23).
+  // 팔 하나의 처리량 출처는 **하나뿐**이다(2026-07-23). 그 자리가 2026-08-15 에
+  // `supplyCapacity.tapCapacity`(노드마다) 에서 **`PackConfig.inserters`(전역 선택)** 로
+  // 옮겼다 — 인서터는 사용자가 위저드에서 한 번 고르는 것이라 노드마다 다를 수가 없고,
+  // 노드에 실어 나르면 같은 사실이 노드 수만큼 복제된다(계획서 §18).
+  //
   // 예전엔 `config.throughput` 에서 여기서 다시 유도했는데, moduleWizard 도 같은 값을
   // 따로 계산해 담고 있어 유도가 두 곳이었다 — 한쪽만 고쳐 조용히 어긋났다(벨트 포화).
-  it("팔 처리량(tapCapacity) 없으면 undefined", () => {
-    const noTp: NodeSpec = { ...child, supplyCapacity: { lineRates: new Map([["output:x", 10]]) } };
-    expect(edgeMachineLinks(noTp, parent, "x", config)).toBeUndefined();
+  it("팔 처리량(config.inserters) 없으면 undefined", () => {
+    const noTp: PackConfig = { ...config, inserters: [] };
+    expect(edgeMachineLinks(child, parent, "x", noTp)).toBeUndefined();
   });
 
   it("벨트 없으면 undefined", () => {

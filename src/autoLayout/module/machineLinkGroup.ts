@@ -32,7 +32,7 @@
  */
 
 import { requiredInserterCount, type IoLine, type SupplyCapacity } from "../planner/module/clusterPortPlanner";
-import { inserterForReach } from "../buildSpec";
+import { inserterForReach, type SpecInserter } from "../buildSpec";
 
 /**
  * **벨트 하나** — 이 클러스터의 머신들이 상대와 주고받는 물리 벨트 하나 = 포트 한 쌍.
@@ -146,6 +146,11 @@ export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
   machineCount: number,
   cap: SupplyCapacity,
+  /**
+   * 고른 인서터들 — **여기 팔은 언제나 `reach 1`** 이지만(아래) 목록으로 받는다.
+   * 처리량을 스칼라로 접으면 그 접힘이 다시 두 번째 출처가 된다(계획서 §18).
+   */
+  inserters: ReadonlyArray<SpecInserter>,
   linkedKeys?: ReadonlySet<string>,
   opts?: { perMachine?: boolean },
 ): MachineLinkGroup[] {
@@ -159,7 +164,7 @@ export function externalLineGroups(
     // **여기 팔은 언제나 `reach 1`** — 기계별 포트(다이렉트)의 인서터는 상자와 머신 **양쪽에
     // 인접**해야 하므로 상자가 `d2`, 팔이 `d1` 이다. 탭처럼 깊은 벨트를 집을 일이 없다
     // (계획서 §16). 그래서 이 호출만은 슬롯을 안 물어도 된다.
-    const known = requiredInserterCount(line, n, cap, inserterForReach(cap.inserters ?? [], 1));
+    const known = requiredInserterCount(line, n, cap, inserterForReach(inserters, 1));
     // 수량 미상일 때 갈리는 이유:
     //  - **묶은 그룹**은 벨트 한 줄에 실릴 부하를 뜻하므로, 모르는 채로 만들면 그 순간 부하
     //    계산이 거짓말을 시작한다 → 안 만든다(옛 경로가 맡는다).
