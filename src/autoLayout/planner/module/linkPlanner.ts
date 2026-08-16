@@ -190,13 +190,11 @@ function tryLinkFace(
   if (pf && (!pf.jumpable || !allowPipeFace)) return undefined;
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
-  // **머신 여럿에 걸친 그룹은 v1 이 앉히지 못한다** — 그러려면 벨트가 남의 머신 행을 관통해야
-  // 하고, 관통하는 순간 다른 그룹과 depth 를 다퉈야 한다(그 다툼을 없앤 게 이번 재설계다).
-  // v1 의 [edgeLinkGroups] 는 tap 이 하나뿐인 그룹만 내므로 여기 걸릴 일이 없지만, 걸리면
-  // 조용히 겹치는 대신 **정직하게 자리 없음**으로 떨어뜨린다(병합을 되살릴 때 여기가 관문).
-  if (arms.size !== 1) return undefined;
-
   if (face === "N" || face === "S") {
+    // **gap(가로) 벨트는 아직 머신 하나만 맡는다.** 가로 줄 하나가 위·아래 두 대를 먹이는 것은
+    // 별개 능력이고(좌석이 gap 양쪽에 하나씩 앉아야 한다), 그 전엔 조용히 겹치는 대신
+    // **정직하게 자리 없음**으로 떨어뜨린다.
+    if (arms.size !== 1) return undefined;
     const [mi, k] = [...arms][0];
     // **클러스터 양 끝은 gap 이 아니라 바깥이다.** 맨 위 머신의 N, 맨 아래 머신의 S 에는
     // 이웃이 없어 벨트가 모듈 밖으로 나간다 — 그래서 `gap` 이 `undefined` 이고, 벌릴 gap 도
@@ -220,6 +218,15 @@ function tryLinkFace(
   for (const [mi, k] of arms) {
     if ((used.get(seatKey(mi, face)) ?? 0) + k > seatRows) return undefined;
   }
+  // **머신 여럿을 맡는 그룹이 여기서 통과한다**(2026-08-16 — 계획서 §19).
+  //
+  // 예전엔 `arms.size !== 1` 로 통째로 거절했다. 사유는 *"관통하는 순간 다른 그룹과 depth 를
+  // 다퉈야 한다"* 였는데, **W/E 면에서는 그 다툼이 없다**: 나가는 방향이 면과 수직이라
+  // 벨트가 **자기 좌석 구간만** 덮고 끝에서 꺾는다([LinkFacePlan.laneDepth] 머리말) —
+  // 그래서 여러 그룹이 같은 깊이를 **행으로 나눠 쓴다.** 첫 칸이 언제나 포트 쪽으로 꺾이므로
+  // 행이 붙어도 두 벨트가 이어지지 않는다([emitOutputLinks] ①).
+  //
+  // 남는 자원은 **좌석 행 하나뿐**이고, 그건 바로 위에서 머신마다 이미 센다.
   return { face, arms, laneDepth: LINK_LANE_DEPTH };
 }
 

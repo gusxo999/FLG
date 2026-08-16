@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "../../module/clusterModule";
 import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import { EntityType } from "../../../types/layout";
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.
 //
@@ -9,7 +10,7 @@ import type { MachineLinkGroup } from "../../module/machineLinkGroup";
 // **같은 depth 를 그냥 나눠 쓴다**.
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
-/** 머신 여럿에 걸친 그룹 — v1 의 [edgeLinkGroups] 는 이런 걸 내지 않는다(안전망 확인용). */
+/** 머신 여럿을 맡는 그룹 — **트렁크**다. 벨트 하나가 세 머신의 좌석을 함께 먹인다. */
 const spanning: MachineLinkGroup[] = [
   {
     item: "x",
@@ -28,18 +29,44 @@ const base: ModuleInput = {
   inputLinks: spanning,
 };
 
-// 관통 벨트는 다른 그룹의 행 위를 지나므로 depth 를 다퉈야 한다 — 그 다툼을 없앤 게 이번
-// 재설계다. 그래서 v1 은 이런 그룹을 **조용히 겹치게 두지 않고 정직하게 거절**한다.
-// (병합을 되살릴 때 여기가 관문이다 — 이 테스트가 빨개지는 것이 곧 "관통을 다시 열었다"다.)
-describe("머신 여럿에 걸친 그룹 — 조용히 겹치는 대신 정직하게 거절한다", () => {
+// **관통이 열렸다** (2026-08-16 — 계획서 §19).
+//
+// 예전엔 `tryLinkFace` 가 `arms.size !== 1` 로 이런 그룹을 통째로 거절했다. 사유는 *"관통하는
+// 순간 다른 그룹과 depth 를 다퉈야 한다"* 였는데, **W/E 면에서는 그 다툼이 없다**: 나가는
+// 방향이 면과 수직이라 벨트가 자기 좌석 구간만 덮고 끝에서 꺾으므로, 여러 그룹이 같은 깊이를
+// **행으로 나눠 쓴다**. 아래 두 번째 describe 가 그 성질을 따로 못 박는다.
+//
+// 그래서 이 그룹은 이제 **트렁크로 앉는다** — 벨트 하나 · 포트 하나 · 머신마다 좌석 하나.
+describe("머신 여럿을 맡는 그룹 — 트렁크로 앉는다", () => {
   const mod = generateModule(base);
 
-  it("포트를 내지 않고 줄을 unrouted 로 남긴다", () => {
-    expect(mod.inputPorts).toHaveLength(0);
-    expect(mod.unroutedLines.map((l) => l.name)).toEqual(["x"]);
+  it("벨트 하나에 포트 하나 — 다이렉트였다면 셋이었다", () => {
+    expect(mod.unroutedLines).toHaveLength(0);
+    expect(mod.inputPorts).toHaveLength(1);
   });
 
-  it("셀이 겹치지 않는다 — 억지로 깔지 않았다는 증거", () => {
+  it("머신마다 탭 인서터가 하나씩 — 세 대가 같은 벨트에서 집는다", () => {
+    const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
+    // 탭 3개 + 포트 인서터 1개(벨트 → 상자).
+    expect(inserters).toHaveLength(4);
+  });
+
+  it("벨트가 세 머신의 좌석 행을 모두 덮는다 — 구멍이 있으면 뒤쪽이 굶는다", () => {
+    const belts = mod.cells.filter((c) => c.cell.entityType === EntityType.Belt);
+    const col = new Set(belts.map((c) => c.x));
+    expect(col.size, "트렁크는 한 열(레인)에 선다").toBe(1);
+    const ys = belts.map((c) => c.y).sort((a, b) => a - b);
+    // 연속이어야 한다 — 끊기면 그 너머는 아무도 못 잡는다(계획서 §3 조건 ⑤).
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBe(1);
+    const seats = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter).map((c) => c.y);
+    for (const m of mod.machines) {
+      const seat = seats.find((y) => y >= m.origin.y && y < m.origin.y + m.size.h);
+      expect(seat, `머신 ${m.id} 의 좌석`).toBeDefined();
+      expect(ys).toContain(seat!); // 그 좌석 행에 벨트가 있다
+    }
+  });
+
+  it("셀이 겹치지 않는다", () => {
     const seen = new Set<string>();
     let dup = 0;
     for (const c of mod.cells) {
