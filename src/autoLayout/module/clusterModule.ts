@@ -444,7 +444,9 @@ export interface TrunkContext {
 
 /** [TrunkContext.maxDepthAtEnd] 의 조회 키 — 같은 면·같은 끝(min/max)이면 같은 키. */
 export function trunkEndKey(p: PlannedLine, lineEnds: ModuleInput["lineEnds"]): string {
-  return `${p.side}:${lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min"}`;
+  // 구간이 자기 끝을 지목했으면 그것이 우선이다 — 같은 줄의 두 구간은 **반대 끝**으로 나간다.
+  const end = p.exitEnd ?? lineEnds?.get(`${p.line.role}:${p.line.name}`) ?? "min";
+  return `${p.side}:${end}`;
 }
 
 /**

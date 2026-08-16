@@ -32,6 +32,9 @@ import { armsFor, inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";
 
 /** 컬럼의 좌/우 면. */
+/** `k`(벨트 하나가 먹일 수 있는 머신 수) 계산의 부동소수 여유. */
+const EPS_K = 1e-9;
+
 export type PortSide = "W" | "E";
 
 /**
@@ -112,6 +115,24 @@ export interface PlannedLine {
    * [insertingPlanner] 가 채운다. 미지정 = 수량 미상 → 방출부의 기본 인서터.
    */
   inserterEntityName?: string;
+  /**
+   * **이 배정이 맡는 머신 범위** — `[from, to]`(닫힌 구간, 로컬 index). 미지정 = 전 머신.
+   *
+   * §14 의 **구간**이다. 한 벨트가 클러스터 전체를 관통하지 못할 때(`k < N`) 같은 레인 위에
+   * 구간을 여럿 놓아 나눠 맡는다 — 다이렉트(포트 `N`개)와 관통(포트 1개) 사이의 `c`개다.
+   *
+   * **`placementsOf` 의 다중 배정과 다른 축이다**: 저건 팔·벨트를 **면에 나누고**(각 배정이
+   * 여전히 전 머신을 관통), 이건 **머신을 나눈다**.
+   */
+  machineRange?: { from: number; to: number };
+  /**
+   * 이 구간이 포트로 나가는 끝 — 미지정이면 [ModuleInput.lineEnds] 를 따른다.
+   *
+   * 구간이 둘이면 **서로 반대 끝**으로 나가야 한다. 오늘 포트는 트렁크 끝 바깥에
+   * `[인서터][상자]` 를 **축 방향**으로 세우므로(§14-7 의 출력과 같은 모양), 안쪽 끝으로
+   * 나가면 이웃 구간의 벨트 칸을 밟는다. 그래서 **축 방향 포트로는 구간이 최대 둘**이다.
+   */
+  exitEnd?: "min" | "max";
 }
 
 export interface PortPlannerInput {
@@ -900,6 +921,57 @@ export function insertingPlanner(
   });
   if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
   armsOf(tapPlan);
+
+  // ── 구간(§19) — 한 벨트가 클러스터 전체를 못 관통하면 **머신을 나눈다** ──────────
+  //
+  // `k = ⌊벨트 처리량 ÷ 머신당 수요⌋` — 벨트 하나가 먹일 수 있는 머신 수다.
+  // `g = min(k, N)` 을 **항상 최대로** 잡고(R1), `c = ⌈N/g⌉` 개 구간으로 나눈다.
+  // 쓰는 벨트는 [determineBeltCount] 가 이미 고른 것 중 **가장 느린 것**(보수적).
+  //
+  // **지금은 `c = 2` 까지다.** 오늘 포트는 트렁크 끝 밖에 `[인서터][상자]` 를
+  // **축 방향**으로 세우므로 나갈 끝이 둘(min·max)뿐이다. 구간이 셋 이상이면 안쪽 구간이
+  // 이웃의 벨트 칸을 밟는다 — 깊이 방향 포트(R6)가 들어오면 풀린다(계획서 §19.8).
+  // `c > 2` 면 **안 쪼개고 그대로 둔다**(= 오늘 동작). 지어낸 구간을 만들지 않는다.
+  const splitIntervals = (): void => {
+    if (!tapPlan.ok || machineCount < 2) return;
+    // **벨트 축이 이미 쪼갠 줄은 건드리지 않는다.** 배정이 여럿이면 수요가 벨트 한 줄을 넘어
+    // [determineBeltCount] 가 이미 줄을 늘린 것이고, 그 벨트들이 부하를 나눠 진다. 거기 다시
+    // 머신 축을 곱하면 벨트가 `벨트수 × 구간수` 로 늘어난다(2026-08-15 실측: 2대짜리가 4줄).
+    const placements = new Map<string, number>();
+    for (const p of tapPlan.lines) {
+      const k2 = `${p.line.role}:${p.line.name}`;
+      placements.set(k2, (placements.get(k2) ?? 0) + 1);
+    }
+    const out: PlannedLine[] = [];
+    for (const planned of tapPlan.lines) {
+      const key = `${planned.line.role}:${planned.line.name}`;
+      if ((placements.get(key) ?? 1) > 1) {
+        out.push(planned);
+        continue;
+      }
+      const rate = capacity.lineRates?.get(key);
+      const chosen = placementMap.get(key);
+      const beltTp = chosen?.length ? Math.min(...chosen.map((b) => b.throughput)) : undefined;
+      const per = rate !== undefined ? rate / machineCount : undefined;
+      const k =
+        per !== undefined && per > 0 && beltTp !== undefined && beltTp > 0
+          ? Math.floor(beltTp / per + EPS_K)
+          : undefined;
+      const g = k === undefined ? machineCount : Math.max(1, Math.min(k, machineCount));
+      const c = Math.ceil(machineCount / g);
+      if (planned.line.kind !== "belt" || c !== 2) {
+        out.push(planned);
+        continue;
+      }
+      // 앞에서부터 g 대씩, 나머지는 뒤(R1). 둘은 **반대 끝**으로 나간다.
+      out.push(
+        { ...planned, machineRange: { from: 0, to: g - 1 }, exitEnd: "min" },
+        { ...planned, machineRange: { from: g, to: machineCount - 1 }, exitEnd: "max" },
+      );
+    }
+    tapPlan.lines = out;
+  };
+  splitIntervals();
 
   // 줄 수를 못 정했는데(벨트 미선택) 수요가 벨트 한 줄을 넘으면 여전히 거절 → 다이렉트.
   // 다이렉트엔 공유 벨트가 없어 이 축 자체가 없다.

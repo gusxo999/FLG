@@ -517,6 +517,12 @@ export function emitTapInserting(args: {
   // 면별로 이미 쓴 탭 좌석 행. 같은 면의 두 줄(가까운/먼 레인)은 belt 열은 다르지만
   // **좌석은 같은 d=1 열**에 앉으므로, 줄마다 다른 행을 줘야 겹치지 않는다.
   const slotOnFace = new Map<PlannedSide, number>();
+  /**
+   * 줄마다 받은 좌석 행 — **같은 줄의 구간들은 같은 행을 쓴다**(계획서 §19).
+   * 구간은 서로 다른 **머신**에 앉으므로 같은 offset 을 써도 안 겹친다.
+   * 이걸 안 나누면 구간 수만큼 좌석 예산을 두 번 센다.
+   */
+  const slotOfLine = new Map<string, number>();
 
   for (const planned of plan.lines) {
     if (planned.line.kind === "pipe") continue; // 유체는 [emitTrunkPipe] 가 처리한다.
@@ -533,19 +539,34 @@ export function emitTapInserting(args: {
     // [Parallel Inserting]: 한 줄이 머신마다 탭 `taps` 개를 쓰면 좌석 행도 그만큼 연속으로 먹는다.
     const taps = Math.max(1, group ? groupArms(group) : (planned.requiredInserterCount ?? 1));
     const lateralCap = face === "W" || face === "E" ? input.machine.h : input.machine.w;
-    const slot = slotOnFace.get(planned.side) ?? 0;
-    if (slot + taps > lateralCap) {
-      args.unroutedLines.push(line); // 좌석 행 부족 — planner 용량과 어긋난 것(안전망).
-      continue;
+    const lineKey = `${planned.side}|${line.role}:${line.name}|${planned.clusterBeltDepth}`;
+    let slot = slotOfLine.get(lineKey);
+    if (slot === undefined) {
+      slot = slotOnFace.get(planned.side) ?? 0;
+      if (slot + taps > lateralCap) {
+        args.unroutedLines.push(line); // 좌석 행 부족 — planner 용량과 어긋난 것(안전망).
+        continue;
+      }
+      slotOnFace.set(planned.side, slot + taps);
+      slotOfLine.set(lineKey, slot);
     }
-    slotOnFace.set(planned.side, slot + taps);
+
+    // **구간**(§19) — 이 배정이 맡는 머신들. 미지정이면 전 머신(= 관통, 오늘 동작).
+    const mr = planned.machineRange;
+    const mine = mr ? machines.slice(mr.from, mr.to + 1) : machines;
+    if (mine.length === 0) continue;
 
     // 트렁크가 달리는 축(W/E 면 → 세로, N/S 면 → 가로)과 포트가 나가는 끝.
     const vertical = face === "W" || face === "E";
-    const t0 = vertical ? ext.y0 : ext.x0;
-    const t1 = vertical ? ext.y1 : ext.x1;
+    // 구간의 범위 — 그 구간이 맡은 머신들의 외접. 전 머신이면 모듈 외접과 같다(오늘 동작).
+    const t0 = Math.min(...mine.map((m) => (vertical ? m.origin.y : m.origin.x)));
+    const t1 = Math.max(
+      ...mine.map((m) => (vertical ? m.origin.y + m.size.h - 1 : m.origin.x + m.size.w - 1)),
+    );
     // 끝 선호 — 합성 단계(packModuleTree)가 부모↔자식 포트를 마주 보게 정렬해 넣어준다.
-    const atMin = (input.lineEnds?.get(`${line.role}:${line.name}`) ?? "min") === "min";
+    // 구간이 자기 끝을 지목했으면 그것이 우선 — 두 구간은 **반대 끝**으로 나간다(§19).
+    const atMin =
+      (planned.exitEnd ?? input.lineEnds?.get(`${line.role}:${line.name}`) ?? "min") === "min";
     const exitFace: PortFace = vertical ? (atMin ? "N" : "S") : atMin ? "W" : "E";
     const ev = faceVector(exitFace);
 
@@ -587,11 +608,11 @@ export function emitTapInserting(args: {
 
     const beltPair: PortPair = {
       producer: {
-        containerId: line.role === "input" ? chestId : machines[0].id,
+        containerId: line.role === "input" ? chestId : mine[0].id,
         cell: { ...beltEnd }, face, kind: "item",
       },
       consumer: {
-        containerId: line.role === "input" ? machines[0].id : chestId,
+        containerId: line.role === "input" ? mine[0].id : chestId,
         cell: { ...beltEnd }, face, kind: "item",
       },
     };
@@ -633,7 +654,7 @@ export function emitTapInserting(args: {
     };
     const tapCells: PlacedCell[] = [];
     const seatDepth = tapSeatDepth(planned);
-    for (const m of machines) {
+    for (const m of mine) {
       for (let k = 0; k < taps; k++) {
         const seatRow = remapRow(slot + k);
         const t = (vertical ? m.origin.y : m.origin.x) + seatRow;
