@@ -207,7 +207,7 @@ describe("rePathToPerimeter", () => {
     expect(run()).toEqual(run());
   });
 
-  it("count≥2 코너 어깨(face=N/S) 상자도 전부 재배치 — skip 0, 유효 셀 겹침 0", () => {
+  it("count≥2 코너 어깨(face=N/S) 상자가 채널로 우회한다 — 그 사유의 skip 이 0", () => {
     // 분기 트리 n0←{n1,n2}, count=2. count≥2 기둥에선 트렁크가 레인을 따라 수평으로
     // 자라 상자가 코너 어깨(face=N/S, metaSide=E/W)에 앉는다. 옛 코드는 이 상자의 채널
     // 우회를 fv.x=0 로 무조건 거부(`N/S-side channel divert unsupported`)했고, 예약된
@@ -229,7 +229,8 @@ describe("rePathToPerimeter", () => {
       inserterEntityName: "inserter",
     });
     expect(res.relocated).toBeGreaterThan(0);
-    expect(res.skipped).toBe(0);
+    // 이 테스트가 만들어진 결함: 어깨 상자의 채널 우회를 `fv.x === 0` 으로 무조건 거부했다.
+    expect(res.skips.filter((k) => /N\/S-side channel divert/.test(k.reason))).toEqual([]);
     // 적용 후 유효 셀 겹침 0.
     const seen = new Set<string>();
     for (const c of effectiveCells(pack, res)) {

@@ -167,26 +167,20 @@ export interface PortPlannerInput {
    * 머신의 `fluid_boxes` 가 정하고, 호출자(generateModule)가 머신을 돌려 그 면이 W/E 중
    * 하나가 되게 맞춘 결과다. 유체 줄이 있는데 이게 없으면 `complex` 로 위임한다.
    *
-   * 이 면의 아이템 벨트가 어떻게 놓이는지는 `jumpable` 이 가른다:
+   * **이 면도 일반 면과 같은 벨트를 세운다.** 파이프는 머신 유체 상자 칸 **하나만** 먹고
+   * [pipeJumpToClusterPipe](../../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
+   * [ClusterPipe] 로 나가므로, 좌석 줄의 나머지 칸이 산다(유체 상자 행만 좌석에서 빠진다).
    *
-   *  - **점프 가능**(true): 파이프는 머신 유체 상자 칸 **하나만** 먹고
-   *    [pipeJumpToClusterPipe](../../../../../docs/용어사전.md)로 벨트들을 넘어 바깥
-   *    [ClusterPipe] 로 나간다. 좌석 줄의 나머지 칸이 살아서 이 면은 **일반 면과 같은**
-   *    벨트를 세운다(유체 상자 행만 좌석에서 빠진다 — 그 판정은 호출자가 이 불리언에 접었다).
-   *
-   *  - **점프 불가**(false/미지정, 옛 동작): clusterBeltDepth 1(좌석 줄) **전체가** 파이프
-   *    스파인으로 채워진다 → 아이템 벨트는 [케이스 B](../../../../../docs/용어사전.md#케이스-b-파이프-넘김-레인)
-   *    로만 놓인다 — reach `r` 인서터가 좌석을 2칸으로 밀어 앉아 파이프를 넘어 `2+r`칸에서
-   *    집는다. reach 1 인서터는 1칸에 앉아야 하는데 그 자리가 파이프라 **못 쓴다** →
-   *    이 면의 아이템 벨트는 **reach≥2 인서터만** 세울 수 있다.
+   * 다르게 만드는 것은 `laneCap` 하나뿐 — 지하파이프 사거리가 **레인 깊이의 상한**이다
+   * ([laneDepthCap]). 상한이 얕으면 그 면은 깊은 레인을 안 준다.
    *
    * **면이 여럿일 수 있다** — 유체 입력(E)과 출력(W)이 동시에 있으면 양 면이 다 유체 면이다.
    * 그래서 목록으로 받는다.
    *
-   * `fluidRows` = 그 면의 유체 줄 수(줄마다 자기 행). 점프 모드에서 좌석 줄이 그만큼 빠진다.
-   * planner 는 지하파이프 역학을 모른다 — `jumpable` 이라는 답만 받아 슬롯 모양을 가른다.
+   * `fluidRows` = 그 면의 유체 줄 수(줄마다 자기 행). 좌석 줄이 그만큼 빠진다.
+   * planner 는 지하파이프 역학을 모른다 — `laneCap` 이라는 **수 하나**만 받는다.
    */
-  pipeFaces?: readonly { side: PortSide; fluidRows: number; jumpable: boolean }[];
+  pipeFaces?: readonly { side: PortSide; fluidRows: number; laneCap: number }[];
   /**
    * 고를 수 있는 벨트들([BuildSpec.belts](../../buildSpec.ts)). [insertingPlanner] 가 이걸로
    * [determineBeltCount] 를 돌려 줄 수를 정한다. **미지정이면 줄 수를 안 늘린다**(옛 동작:
@@ -300,16 +294,16 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   const inputSide: PortSide = outputSide === "W" ? "E" : "W";
   type Slot = { side: PlannedSide; clusterBeltDepth: number; reach: number };
   const slotsOf = (side: PlannedSide): Slot[] => {
-    // 유체가 붙는 면 — `jumpable` 이 두 모양을 가른다.
-    //  - 점프 가능: 파이프가 유체 상자 칸 하나만 먹고 지하로 벨트를 넘어 ClusterPipe 로 나간다
-    //    → 좌석이 살아 **일반 면과 같은** 벨트 목록(아래 lanes 폴스루).
-    //  - 점프 불가(옛 스파인): 좌석 줄 전체가 파이프 → 케이스 B(reach≥2 만, 좌석 2칸·벨트 2+r칸).
-    if (pipeFaceOf(side) && !pipeFaceOf(side)!.jumpable) {
-      return inserters
-        .filter((i) => i.reach >= 2)
-        .map((i) => ({ side, clusterBeltDepth: 2 + i.reach, reach: i.reach }));
-    }
-    return lanes.map((lane) => ({ side, ...lane }));
+    // **유체 면도 일반 면과 같은 벨트 목록이다** — 파이프가 유체 상자 칸 하나만 먹고 지하로
+    // 벨트를 넘어 ClusterPipe 로 나가므로 좌석 줄이 산다. 다만 지하파이프 사거리가 그 면의
+    // **레인 깊이 상한**이라 깊은 레인이 잘릴 수 있다([laneDepthCap]).
+    //
+    // 예전엔 여기서 **케이스 B**(좌석을 d2 로 밀고 reach≥2 로 `2+r` 을 집기)가 갈라졌다.
+    // 파이프가 점프를 못 해 좌석 줄 전체를 스파인으로 훑는 경우였는데, 그 경우가 **도달
+    // 불가능해져** 2026-08-16 삭제했다: 지하파이프는 언제나 스펙에 있고(없으면 유체 레시피를
+    // 아예 못 고른다), 사거리가 짧은 것은 거절이 아니라 위 상한으로 나타난다.
+    const cap = pipeFaceOf(side)?.laneCap ?? Infinity;
+    return lanes.filter((lane) => lane.clusterBeltDepth <= cap).map((lane) => ({ side, ...lane }));
   };
   const outPool = slotsOf(outputSide); // 출력 우선 면(부모 쪽)
   const inPool = slotsOf(inputSide); // 입력 우선 면(자식 쪽)
@@ -327,7 +321,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     input.beltLines?.get(`${l.role}:${l.name}`)?.[i]?.entityName;
 
   // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(clusterBeltDepth 1)를 따로 쓰고
-  // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 벨트 줄을 이미 케이스 B(reach≥2만)로 깎았다(slotsOf).
+  // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 레인을 이미 사거리 상한으로 깎았다(slotsOf).
   const slotsNeeded = beltLines.reduce((n, l) => n + beltCountOf(l), 0);
   if (slotsNeeded > outPool.length + inPool.length) {
     // **이 거절은 벨트 티어와 무관하다.** 한 면이 세울 수 있는 [ClusterBelt] 수 =
@@ -336,12 +330,13 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     // 바꿔서는 절대 안 풀린다 — 오히려 [determineBeltCount] 가 줄을 늘려 더 나빠질 수 있다.
     // 실제 지렛대는 **긴팔 인서터(reach≥2)를 고르는 것**이다(면당 레인이 1 → 2로 는다).
     //
-    // 유체 면은 한 번 더 깎인다: 점프 불가면 좌석 줄이 통째로 파이프라 케이스 B(reach≥2 전용)
-    // 가 되어, 긴팔이 없으면 그 면의 레인이 **0** 이다(slotsOf). 그래서 유체 레시피는 아이템
-    // 줄이 둘만 돼도 여기 걸린다 — 그리고 유체는 다이렉트 폴백이 없어(planModulePorts)
-    // 그 거절이 곧 모듈 실패다. 숫자를 문구에 담는 이유가 이것이다.
-    const faceOf = (side: PlannedSide, pool: Slot[]): string =>
-      `${side}${pool.length}${pipeFaceOf(side) && !pipeFaceOf(side)!.jumpable ? "(유체·reach≥2 전용)" : ""}`;
+    // 유체 면은 한 번 더 깎일 수 있다: 지하파이프 사거리가 얕으면 깊은 레인이 잘린다
+    // (slotsOf 의 `laneCap`). 그리고 유체는 다이렉트 폴백이 없어(planModulePorts) 그 거절이
+    // 곧 모듈 실패다 — 숫자를 문구에 담는 이유가 이것이다.
+    const faceOf = (side: PlannedSide, pool: Slot[]): string => {
+      const cap = pipeFaceOf(side)?.laneCap;
+      return `${side}${pool.length}${cap !== undefined && cap < Infinity ? `(유체·깊이≤${cap})` : ""}`;
+    };
     const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
     return {
       ok: false,
@@ -365,9 +360,8 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     const rows = input.seatRowsPerFace;
     if (!rows) return Infinity;
     const base = side === "W" || side === "E" ? rows.WE : rows.NS;
-    // 점프 유체 면은 유체 상자 행 하나를 [fluidboxPipeCell] 이 먹는다 → 좌석 한 줄 감소.
-    const pf = pipeFaceOf(side);
-    const afterPipe = pf?.jumpable ? base - pf.fluidRows : base;
+    // 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
+    const afterPipe = base - (pipeFaceOf(side)?.fluidRows ?? 0);
     // 링크 방출이 먼저 먹은 행을 뺀다([seatRowsUsed]).
     return Math.max(0, afterPipe - (input.seatRowsUsed?.[side] ?? 0));
   };

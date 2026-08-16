@@ -123,6 +123,16 @@ export interface DeliveryResult {
   planned: number;
   /** 예약이 못 대서 dijkstra 로 넘어간 납품 경로 수 — 0 이 아니면 예약에 구멍이 있다. */
   dijkstraFallback: number;
+  /**
+   * **남의 예약을 밟고 지나간 납품 경로 수** — dijkstra 폴백조차 예약을 피해선 길이 없어
+   * *"예약 무시 재시도"* 로 넘어간 수다. `dijkstraFallback` 의 부분집합이고 **더 나쁘다**:
+   * 밟힌 계획은 다음 차례에 자기도 탐색으로 내려가 **연쇄**한다.
+   *
+   * 세는 이유 — 여태 콘솔에 줄 하나 찍고 끝이라 `failures` 도 0, 화면도 "성공"이었다.
+   * **폴백은 실패다**(2026-08-17 사용자). 실패를 삼키지 않는다는 이 저장소의 규칙이
+   * 여기서만 지켜지지 않고 있었고, 그래서 우회 기하를 배정 탓으로 오진했다.
+   */
+  reservationOverrun: number;
 }
 
 /** 포트의 경계 기하 — anchor + face 에서 유도. */
@@ -219,6 +229,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
   const strippedCellKeys = new Set<string>();
   const routes: DeliveryRoute[] = [];
   let failures = 0;
+  let reservationOverrun = 0;
   let planned = 0;        // 예약 체인으로 깐 납품 경로(탐색 없음)
   let dijkstraFallback = 0; // 예약이 못 대서 탐색으로 넘어간 납품 경로
 
@@ -309,6 +320,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
         // 떨어져 훨씬 크게 잃는다. 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
         // **최소한만 밟게** 해야 하는데, 그건 라우터 비용 모델을 바꾸는 별개 작업이다.
         route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds);
+        reservationOverrun += 1;
         if (AUTO_LAYOUT_COORD_DUMP)
           console.log("[deliveryRoute] 예약 무시 재시도 — 남의 계획을 밟는다(연쇄 가능)", k);
       }
@@ -329,7 +341,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
     for (const sk of stripKeys(delivery)) strippedCellKeys.add(sk);
   }
 
-  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback };
+  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback, reservationOverrun };
 }
 
 /**

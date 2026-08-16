@@ -71,23 +71,13 @@ describe("트렁크 파이프 — 방출 기하", () => {
     expect(onPipeColumn.every((c) => c.cell.entityType !== EntityType.Inserter)).toBe(true);
   });
 
-  it("③ 케이스 B — coal 인서터는 depth 2(x=4)에 앉고 벨트는 depth 4(x=6)에 깔린다", () => {
-    const mod = generateModule(plasticBar(3));
-    const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
-    expect(coal.meta.laneDepth).toBe(4);
-    expect(coal.meta.inserter).toBe("long");
-
-    // 벨트는 x=6(= depth 4). 머신 행마다 깔려 있다.
-    for (const m of mod.machines) {
-      expect(cellAt(mod, 6, m.origin.y)?.entityType).toBe(EntityType.Belt);
-    }
-    // 탭 인서터(긴팔)는 x=4(= depth 2) — 파이프(x=3)를 넘어 x=6 에서 집는다.
-    for (const m of mod.machines) {
-      const seat = cellAt(mod, 4, m.origin.y);
-      expect(seat?.entityType).toBe(EntityType.Inserter);
-      expect(seat?.entityName).toBe("long-handed-inserter");
-    }
-  });
+  // **③ 케이스 B 테스트는 삭제됐다**(2026-08-16). 케이스 B(좌석을 d2 로 밀고 긴팔이 파이프를
+  // 넘어 d4 에서 집기)는 파이프가 점프를 못 할 때의 폴백이었는데, 그 경우가 **도달 불가능**해졌다:
+  // 지하파이프 없는 유체 스펙은 UI 가 막고(사용자 결정), 사거리가 짧은 것은 거절이 아니라
+  // 레인 깊이 상한으로 나타난다. → trunk-pipe.md §4.1
+  //
+  // 이 픽스처(지하파이프 없음)가 남아 있는 이유는 `no-underground` **방어 경로**의 회귀
+  // 테스트이기 때문이다 — 위 ①② 가 스파인 기하를 계속 지킨다.
 
   it("④ 유체 포트는 무한파이프로 끝나고, 인서터가 끼지 않는다", () => {
     const mod = generateModule(plasticBar(3));
@@ -118,7 +108,12 @@ describe("트렁크 파이프 — 방출 기하", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // pipeJumpToClusterPipe — 좌석을 살리는 점프 방출 (docs/용어사전.md §D)
 //
-//   머신 | d1 fluidboxPipeCell | d2.. 벨트(지하 통과) | ClusterPipeTapCell | ClusterPipe
+//   머신 | d1 fluidboxPipeCell | d2.. 벨트(지하 통과) | 아이템 포트 끝 | ClusterPipeTapCell | ClusterPipe
+//
+// **아이템 포트 끝까지 넘는다**(2026-08-16). 아이템이 링크 경로로 방출되면서 포트가 축 방향
+// (기둥 끝)이 아니라 **면 바깥**으로 서게 됐다 — 벨트 d2 · 포트 인서터 d3 · 포트 상자 d4.
+// ClusterPipe 가 그보다 안쪽에 서면 파이프가 포트 위를 지나 조용히 끊긴다([linkFaceDepths]).
+// 그래서 base = 4 → ClusterPipe d6 · 탭 d5. 옛 탭 경로에선 포트가 기둥 끝이라 base = 2 였다.
 //
 // 지하파이프 direction = 지상 입구가 향하는 방향(표면 연결 측):
 //  - fluidboxPipeCell(x3): 표면이 머신 유체 상자를 향한다 → W(12).
@@ -126,14 +121,30 @@ describe("트렁크 파이프 — 방출 기하", () => {
 //    안쪽 — 지하파이프는 지하 방향으로만 합류해서, 줄 위에 앉으면 세로 연속이 끊긴다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** plasticBar + 점프 재료(상자 칸 위치 + 지하파이프). fluidboxOffset 기본 0(머신 첫 행). */
+/**
+ * plasticBar + 점프 재료(상자 칸 위치 + 지하파이프). fluidboxOffset 기본 0(머신 첫 행).
+ *
+ * **아이템 입력이 둘이다** — `coal` 과 `sulfur`. 점프의 방아쇠(`pipeJumpMode` 조건 ①)는
+ * *"그 면에 아이템이 앉았나"* 인데, 유체 면은 **반대 면이 다 찬 뒤에야** 열리기 때문이다
+ * (trunk-pipe.md §9.3 — 유체 면은 +3, 반대 면은 0/+1). 아이템이 하나뿐이면 그 하나가 W 로
+ * 가서 E 가 비고, **점프가 아예 안 일어난다** — 검사 대상이 사라진다.
+ *
+ * 예전엔 아이템 하나로도 점프가 걸렸는데, 옛 탭 경로가 유체 면에 값을 안 매겨 자기 역할
+ * 면(E)에 그냥 앉혔기 때문이다(그 경로는 2026-08-16 폐기). **방아쇠를 우연에 맡기지 않는다.**
+ */
 function plasticBarJump(
   count: number,
-  opts?: { longInserter?: boolean; fluidboxOffset?: number },
+  opts?: { longInserter?: boolean; fluidboxOffset?: number; fillOppositeFace?: boolean },
 ): ModuleInput {
   const base = plasticBar(count);
   return {
     ...base,
+    // W(출력면)를 채워 coal 이 E(유체 면)로 갈 수밖에 없게 한다 — 조건 ①의 명시적 방아쇠.
+    // **sulfur 를 coal 앞에** 둔다: 배정은 줄 순서대로라 먼저 온 줄이 싼 면(W)을 가져간다.
+    lines:
+      opts?.fillOppositeFace === false
+        ? base.lines
+        : [base.lines[0], inItem("sulfur"), ...base.lines.slice(1)],
     inserters:
       opts?.longInserter === false
         ? [{ entityName: "inserter", reach: 1, throughput: 0 }]
@@ -178,33 +189,39 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
       expect(box?.entityName).toBe("pipe-to-ground");
       expect(box?.direction).toBe(12); // 표면이 머신 유체 상자를 향한다(W)
 
-      const tap = cellAt(mod, 5, row); // d3 = ClusterPipe(d4) 1칸 안쪽
+      const tap = cellAt(mod, 7, row); // d5 = ClusterPipe(d6) 1칸 안쪽
       expect(tap?.entityType).toBe(EntityType.PipeUnderground);
       expect(tap?.direction).toBe(4); // 표면이 ClusterPipe 를 향한다(E)
     }
   });
 
-  it("ClusterPipe 는 벨트 바깥(d4)에 일반 파이프 세로줄 — 좌석 줄(d1)엔 스파인이 없다", () => {
+  it("ClusterPipe 는 아이템 **포트 끝** 바깥(d6)에 일반 파이프 세로줄 — 좌석 줄(d1)엔 스파인이 없다", () => {
     const mod = generateModule(plasticBarJump(3));
     for (const m of mod.machines) {
       for (let dy = 0; dy < m.size.h; dy++) {
         const row = m.origin.y + dy;
-        // ClusterPipe 본체(x6) — 기둥 전체를 세로로 잇는 일반 파이프.
-        expect(cellAt(mod, 6, row)?.entityType).toBe(EntityType.Pipe);
+        // ClusterPipe 본체(x8 = d6) — 기둥 전체를 세로로 잇는 일반 파이프.
+        expect(cellAt(mod, 8, row)?.entityType).toBe(EntityType.Pipe);
         // 옛 스파인 자리(x3, d1)는 상자 행만 지하파이프, 나머지는 좌석(인서터)이거나 빈 칸 —
         // **일반 파이프가 아니다**(스파인이 사라졌다는 물리적 증거).
         expect(cellAt(mod, 3, row)?.entityType).not.toBe(EntityType.Pipe);
       }
       // coal 벨트(d2, x4)가 상자 행 위도 그대로 지나간다 — 지하 통과라 안 부딪힌다.
-      expect(cellAt(mod, 4, m.origin.y)?.entityType).toBe(EntityType.Belt);
+      //
+      // **첫 머신의 상자 행은 뺀다**: 벨트는 이제 자기 **좌석 범위**만 덮고(기둥 전체를 달리던
+      // 옛 트렁크와 다르다), 좌석은 상자 행을 건너뛰어 시작하므로 그 한 칸이 벨트 시작 **위**다.
+      // 아래쪽 머신들의 상자 행은 좌석 범위 **안**이라 벨트가 그대로 지나간다 — 검사 대상이
+      // 거기다(지하 통과가 실제로 일어나는 곳).
+      if (m !== mod.machines[0])
+        expect(cellAt(mod, 4, m.origin.y)?.entityType).toBe(EntityType.Belt);
     }
   });
 
-  it("유체 포트는 ClusterPipe 끝의 무한파이프 — laneDepth 가 실제 깊이(d4)", () => {
+  it("유체 포트는 ClusterPipe 끝의 무한파이프 — laneDepth 가 실제 깊이(d6)", () => {
     const mod = generateModule(plasticBarJump(3));
     const gas = mod.inputPorts.find((p) => p.line.name === "petroleum-gas")!;
     expect(gas.chest.kind).toBe("infinity-pipe");
-    expect(gas.meta.laneDepth).toBe(4);
+    expect(gas.meta.laneDepth).toBe(6);
     // 포트 계약 불변: anchor − 2·ev = tapAnchor(트렁크 끝), 가운데는 파이프.
     const ev = { x: gas.anchor.x - gas.tapAnchor.x, y: gas.anchor.y - gas.tapAnchor.y };
     expect(Math.abs(ev.x) + Math.abs(ev.y)).toBe(2);
@@ -215,7 +232,9 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
   it("긴팔 없이도(reach {1}) 유체 레시피가 탭 인서팅으로 선다 — 케이스 B 의존 제거", () => {
     // 옛 모델: 케이스 B 는 긴팔 전용 → 긴팔 없으면 E 면 벨트 0 → complex → 다이렉트조차
     // 유체 불가(fluid-requires-trunk-pipe). 점프 모드가 이 계급을 통째로 구한다.
-    const mod = generateModule(plasticBarJump(3, { longInserter: false }));
+    // 레인 용량 자체를 보는 테스트라 **방아쇠 줄을 넣지 않는다** — 넣으면 아이템 3줄이
+    // reach 1 종 하나(면당 1레인)를 넘어 `lanes-exceed-capacity` 로 떨어진다.
+    const mod = generateModule(plasticBarJump(3, { longInserter: false, fillOppositeFace: false }));
     expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
   });
@@ -229,21 +248,9 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
     }
   });
 
-  it("지하파이프가 없으면(점프 불가) 옛 스파인으로 폴백 — 연속적 저하", () => {
-    // plasticBar(원본 픽스처)는 fluidboxOffset/지하파이프가 없다 → 위 기존 describe 전체가
-    // 그 폴백의 회귀 테스트다. 여기선 "거리 0" 케이스만 짚는다.
-    const input = plasticBarJump(3);
-    input.fluidTrunk!.pipeMaxUndergroundDistance = 0;
-    const mod = generateModule(input);
-    expect(mod.supply?.mode).toBe("tap");
-    // 스파인 복귀: E 면 d1(x3)이 전부 일반 파이프, coal 은 케이스 B(d4·긴팔).
-    for (const m of mod.machines) {
-      expect(cellAt(mod, 3, m.origin.y)?.entityType).toBe(EntityType.Pipe);
-    }
-    const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
-    expect(coal.meta.laneDepth).toBe(4);
-    expect(coal.meta.inserter).toBe("long");
-  });
+  // **"사거리 0 → 옛 스파인 폴백" 테스트는 삭제됐다**(2026-08-16). 케이스 B(coal 이 d4·긴팔)를
+  // 단언하던 것인데 그 형태가 없어졌고, 사거리가 짧은 것은 이제 폴백이 아니라 **레인 깊이 상한**
+  // 으로 나타난다(trunk-pipe.md §4.1) — 그 축은 fluidPorts.test.ts 의 [laneDepthCap] 이 덮는다.
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

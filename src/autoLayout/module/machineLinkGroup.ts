@@ -48,8 +48,22 @@ import { inserterForReach, type SpecInserter } from "../buildSpec";
  */
 export interface MachineLinkGroup {
   /**
-   * 그룹 신원([linkGroupId]) — 이 벨트로 난 포트의 [ModulePort.linkId] 가 그대로 든다.
-   * **불투명 토큰이다.** 간선의 양끝(자식·부모 노드 id)을 아는 호출자
+   * **지정 짝의 토큰 — 비어 있는 것이 뜻을 갖는다.**
+   *
+   * ```
+   * 있다   이 포트는 형제 모듈의 **저** 포트와 이어져야 한다.  바꿔 끼우면 틀린다
+   * 없다   같은 품목이면 **아무거나** 이어도 된다(교환 가능)
+   * ```
+   *
+   * [pairDeliveryPorts] 가 이 유무로 갈린다 — 있으면 토큰 조회, 없으면 위치-zip. 그래서
+   * *"식별자가 있으면 편하겠지"* 로 채우면 **알고리즘의 갈래가 조용히 바뀐다**(2026-08-17 실측:
+   * 채운 줄이 납품 경로를 통째로 잃었다).
+   *
+   * **채우는 곳은 [linkGroupId] 하나뿐이다.** 지정이 존재하는 조건은 *"외부냐 내부냐"* 가 아니라
+   * **"[allocateMachineLinks] 가 머신 단위로 배정했나"** 다 — 배정이 없으면 지킬 것도 없으므로
+   * 교환 가능이고, 그때는 비워 두는 것이 **정답**이지 정보 부족이 아니다.
+   *
+   * 값 자체는 **불투명 토큰**이다. 간선의 양끝(자식·부모 노드 id)을 아는 호출자
    * (`planner/modulePacking`)가 채우고, 이 폴더는 **파싱하지 않는다**.
    */
   id?: string;
@@ -156,6 +170,17 @@ export function externalLineGroups(
 ): MachineLinkGroup[] {
   const n = Math.max(1, machineCount);
   const groups: MachineLinkGroup[] = [];
+  // **여기서 나는 그룹은 신원(`id`)을 안 단다 — 두 모양 다.**
+  //
+  // [MachineLinkGroup.id] 는 *"이 포트는 형제 모듈의 **저** 포트와 짝"* 이라는 **지정 짝**을
+  // 뜻하고, 그 지정은 [allocateMachineLinks] 가 머신 단위로 배정했을 때만 존재한다. 원료·완제품
+  // 줄은 그 배정을 안 거치므로 **교환 가능**이고, [pairDeliveryPorts] 는 그때 위치-zip 으로
+  // 짝짓는다 — 신원이 있으면 조회 갈래로 빠져 짝을 못 찾고 불변식 위반으로 보고한다.
+  //
+  // 예전엔 묶은 그룹에만 `ext:${role}:${item}` 을 얹었다. 자식의 `ext:output:X` 와 부모의
+  // `ext:input:X` 가 **절대 안 맞으므로** 그 줄은 납품 경로를 통째로 잃는다. 옛 탭 경로가
+  // 이 줄들을 신원 없이 내보내 우연히 가려 주고 있었고, 아이템 방출이 한 경로로 합쳐지면서
+  // (계획서 §19-④) 전부 발현했다(2026-08-17).
   for (const line of lines) {
     // 유체는 팔로 나르지 않는다 — 트렁크 파이프의 일이라 벨트 장부에 안 올린다.
     if (line.kind !== "belt") continue;
@@ -165,18 +190,16 @@ export function externalLineGroups(
     // 인접**해야 하므로 상자가 `d2`, 팔이 `d1` 이다. 탭처럼 깊은 벨트를 집을 일이 없다
     // (계획서 §16). 그래서 이 호출만은 슬롯을 안 물어도 된다.
     const known = requiredInserterCount(line, n, cap, inserterForReach(inserters, 1));
-    // 수량 미상일 때 갈리는 이유:
-    //  - **묶은 그룹**은 벨트 한 줄에 실릴 부하를 뜻하므로, 모르는 채로 만들면 그 순간 부하
-    //    계산이 거짓말을 시작한다 → 안 만든다(옛 경로가 맡는다).
-    //  - **쪼갠 그룹**은 머신 하나의 팔 개수일 뿐이고, 이 경우의 관례는 이미 **"판정 보류 = 1"**
-    //    이다([PlannedLine.requiredInserterCount] 소비처가 전부 그렇게 읽는다). 지어낸 수가
-    //    아니라 **기존 관례를 그대로 따르는 것**이라 여기서만 1로 채운다 — 안 그러면 수량 모르는
-    //    줄만 그룹이 없어 배분기 밖으로 떨어지고, 그 줄을 다른 방출기가 맡으면 좌석 장부가 갈린다.
-    const arms = known ?? (opts?.perMachine ? 1 : undefined);
-    if (arms === undefined) continue;
+    // **수량 미상이면 팔 1개** — 두 모양 모두. 이 경우의 관례는 이미 *"판정 보류 = 1"* 이다
+    // ([PlannedLine.requiredInserterCount] 소비처가 전부 그렇게 읽는다). 지어낸 수가 아니라
+    // **기존 관례를 그대로 따르는 것**이다.
+    //
+    // 예전엔 **묶은 그룹만** 안 만들었다 — *"벨트 한 줄에 실릴 부하를 모르는 채로 만들면 부하
+    // 계산이 거짓말을 시작한다"* 는 이유였고, 그때는 안 만들어도 **옛 탭 경로가 그 줄을 맡았다.**
+    // 그 경로가 사라진 지금(2026-08-16, 계획서 §19-④) 안 만들면 **그 줄이 통째로 사라진다** —
+    // 거짓말보다 나쁘다. 부하 축은 `beltCapacity` 가 따로 거절하고, 그건 수량을 알 때만 켜진다.
+    const arms = known ?? 1;
     if (opts?.perMachine) {
-      // **신원(id)을 안 단다** — 원료·완제품은 상대가 모듈 밖이라 짝지을 대상이 없다.
-      // 신원이 있으면 [pairDeliveryPorts] 가 조회로 짝을 찾다 못 찾고 불변식 위반으로 보고한다.
       for (let i = 0; i < n; i++) {
         groups.push(makeLink(line.name, line.role, new Map([[i, arms]])));
       }
@@ -184,8 +207,7 @@ export function externalLineGroups(
     }
     const mine = new Map<number, number>();
     for (let i = 0; i < n; i++) mine.set(i, arms);
-    // "빈 쪽 = 밖" 규약은 [makeLink] 한 곳에만 — 여기선 신원(id)만 얹는다.
-    groups.push({ id: `ext:${key}`, ...makeLink(line.name, line.role, mine) });
+    groups.push(makeLink(line.name, line.role, mine));
   }
   return groups;
 }

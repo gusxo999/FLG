@@ -103,22 +103,80 @@ export interface LinkFaceContext {
   /**
    * **트렁크 파이프가 붙는 면**(W/E) — 그 면의 **유체 상자 행 번호**와 점프 여부.
    *
-   * 두 모양을 가른다(→ `docs/auto-layout/module/trunk-pipe.md`):
+   * 파이프는 유체 상자 칸 하나만 먹고 지하로 벨트를 넘어 바깥 [ClusterPipe] 로 나간다
+   * → 좌석 줄이 **거의 다 살아 있다.** `rows` 만 건너뛰고 앉는다(예산은
+   * `machine.h − rows.length`, 순번 remap 은 [commitLinkFace]).
    *
-   *  - **점프**(`jumpable`): 파이프가 유체 상자 칸 하나만 먹고 지하로 벨트를 넘어 바깥
-   *    [ClusterPipe] 로 나간다 → 좌석 줄이 **거의 다 살아 있다.** `rows` 만 건너뛰고 앉는다
-   *    (예산은 `machine.h − rows.length`, 순번 remap 은 [commitLinkFace]).
-   *  - **점프 불가**: 좌석 줄(d1) 전체가 파이프 스파인이다 → **통째로 거절.** 탭은 여기서
-   *    케이스 B(좌석을 d2 로 밀고 긴팔로 `2+r` 을 집기)로 살아남지만 **링크 배분기엔 그
-   *    능력이 아직 없다** — `laneDepth` 가 상수 2 이고 reach 개념이 없다.
+   * `laneCap` 은 **그 면의 레인 깊이 상한** — 지하파이프 사거리가 정한다([laneDepthCap]).
+   * 얕으면 깊은 레인이 잘려 그만큼 그룹이 다른 면으로 넘어간다.
    *
-   * **점프 면에 앉아도 되는 근거는 [linkFaceDepths] 다.** 예전엔 면을 통째로 비켜 줬는데,
+   * (예전엔 *"점프 불가"* 갈래가 있어 그 면을 통째로 거절했고, 탭 경로만 **케이스 B** 로
+   * 살아남았다. 2026-08-16 그 경우가 도달 불가능해져 둘 다 삭제됐다 — `docs/.../trunk-pipe.md`.)
+   *
+   * **유체 면에 앉아도 되는 근거는 [linkFaceDepths] 다.** 예전엔 면을 통째로 비켜 줬는데,
    * 이유는 `buildTrunkContext.beltMaxOn` 이 여기서 배정한 줄을 못 봐서 파이프가 벨트 위로
    * 지나가는 배치가 조용히 나오기 때문이었다. 이제 그 값이 링크 깊이를 함께 세므로
    * **링크가 앉는 행위 자체가 `pipeJumpMode` 조건 ①(`beltMaxOn > 0`)을 켠다** — 계획의
    * 전제가 스스로 참이 된다.
    */
-  pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; jumpable: boolean }>;
+  pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; laneCap: number }>;
+  /**
+   * **레인 장부** — `${면}|${깊이}` → 그 레인에서 이미 먹은 **행 범위**들(닫힌 구간, 서로소).
+   *
+   * 왜 셋째 장부가 필요한가 — **관통 트렁크가 레인을 통째로 먹기 때문**이다. 벨트는 연속이라야
+   * 아이템이 흐르므로(계획서 §3 조건 ⑤) 그룹의 벨트는 *[첫 좌석 행 .. 마지막 좌석 행]* 을 통으로
+   * 덮는다. 머신 하나만 맡는 구간이면 그게 몇 행이라 **다른 구간이 남은 행을 쓴다**. 머신 여럿을
+   * 맡으면 그 사이 행이 전부 딸려 들어와 **그 면의 그 깊이가 통째로 없어진다.**
+   *
+   * 좌석 장부(`used`)로는 이 사실이 안 잡힌다 — 관통 그룹은 머신마다 좌석을 *하나씩만* 쓰므로
+   * 좌석은 넉넉한데 벨트가 지나갈 자리가 없는 상태가 된다. 그래서 별개다.
+   */
+  lanes: Map<string, Array<readonly [number, number]>>;
+  /**
+   * 쓸 수 있는 팔의 종류 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
+   * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 레인 수다. 비면 d2 하나로 본다.
+   */
+  inserters?: readonly { reach: number }[];
+}
+
+/**
+ * **면의 레인 목록** — reach 종류에서 유도된다. 깊이는 고르는 값이 아니라 *결과*다(계획서 §16):
+ * `d2` 가 관통에 먹혔으면 다음 줄은 `d3` 이고, **그러니 그 줄의 팔이 긴팔이 된다.**
+ * 거꾸로 *"긴팔을 쓸까"* 를 먼저 정하는 코드는 없다.
+ */
+function laneDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
+  const reaches = [...new Set((ctx.inserters ?? []).map((i) => i.reach))]
+    .filter((r) => Number.isFinite(r) && r >= 1)
+    .sort((a, b) => a - b);
+  const all = reaches.length ? reaches.map((r) => r + 1) : [LINK_LANE_DEPTH];
+  // **파이프가 먼저다** — 유체 면의 레인 깊이는 지하파이프가 넘을 수 있는 데까지다.
+  const cap = ctx.pipeFaces?.get(face)?.laneCap ?? Infinity;
+  return all.filter((d) => d <= cap);
+}
+
+/**
+ * 이 그룹의 벨트가 면에서 먹을 **행 범위** — 연속이라 `[최소, 최대]` 하나로 족하다.
+ *
+ * 좌표가 아니라 **모듈 안 순번**이다: `머신index × h + 면에서의 칸`. 머신 사이 gap 을 안 세지만
+ * 사상이 **단조**라 "두 범위가 겹치나"는 실제와 같은 답을 준다 — 배정이 아는 것은 그것뿐이면 된다.
+ *
+ * `used` 를 읽으므로 **장부를 늘리기 전에** 불러야 한다([commitLinkFace] 가 맨 앞에서 부른다).
+ */
+function beltRowSpan(
+  ctx: LinkFaceContext,
+  face: PortFace,
+  arms: Map<number, number>,
+): readonly [number, number] {
+  const remap = skipFluidRows(ctx.pipeFaces?.get(face)?.rows);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [mi, k] of arms) {
+    const base = ctx.used.get(seatKey(mi, face)) ?? 0;
+    const origin = mi * ctx.machine.h;
+    lo = Math.min(lo, origin + remap(base));
+    hi = Math.max(hi, origin + remap(base + k - 1));
+  }
+  return [lo, hi];
 }
 
 /**
@@ -179,15 +237,22 @@ function tryLinkFace(
   allowPipeFace = false,
 ): LinkFaceCandidate | undefined {
   const { machine, count, used, faceGroups } = ctx;
-  // 유체 면 — 점프 못 하면 좌석 줄이 통째로 파이프라 **언제나** 거절한다(케이스 B 능력 없음).
+  // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
+  // ([linkFaceDepths] → `pipeJumpMode` 조건 ①) [ClusterPipe] 가 우리 포트 끝(d`laneDepth+2`)
+  // **밖으로** 물러나 그 면이 여러 칸 넓어진다. 갈 곳이 있으면 그쪽이 낫다 — *"없는 위험 때문에
+  // 폭을 낭비하지 않는다"* 는 `pipeJumpMode` 의 원칙과 같은 이유이고, 그 이름으로 잠긴 테스트가
+  // trunkPipe.test.ts 에 있다. 그래서 선호 단계([allocateLinkFaces])는 비켜 가고,
+  // 넘침 단계([spillLinkFacesToGap])만 쓴다.
   //
-  // 점프하는 면은 앉을 수 **있지만 마지막 수단**이다: 여기 앉는 순간 `beltMaxOn > 0` 이 되어
-  // 파이프가 점프하고([linkFaceDepths] → `pipeJumpMode` 조건 ①), [ClusterPipe] 가 우리 포트
-  // 끝(d`laneDepth+2`) **밖으로** 물러나 그 면이 여러 칸 넓어진다. 갈 곳이 있으면 그쪽이 낫다 —
-  // *"없는 위험 때문에 폭을 낭비하지 않는다"* 는 `pipeJumpMode` 의 원칙과 같은 이유다.
-  // 그래서 선호 단계([allocateLinkFaces])는 비켜 가고, 넘침 단계([spillLinkFacesToGap])만 쓴다.
+  // (점프 불가 면을 통째로 거절하던 가드는 **케이스 B 와 함께 사라졌다** — 2026-08-16.
+  // 지금 유체 면을 다르게 만드는 것은 `laneCap` 하나뿐이다.)
+  //
+  // **다만 회피는 더 싼 곳이 있을 때만이다**(2026-08-16). 반대 면도 유체 면이면 어디에 앉든
+  // +3 으로 **동률**이고, 동률에서 자기 역할 면을 버리면 포트가 반대편에 서서 납품 경로만
+  // 길어진다(황산 꼴: 물 입력 E + 황산 출력 W — 아이템이 갈 비유체 면이 없다).
   const pf = face === "W" || face === "E" ? ctx.pipeFaces?.get(face) : undefined;
-  if (pf && (!pf.jumpable || !allowPipeFace)) return undefined;
+  const opposite: PortFace = face === "W" ? "E" : "W";
+  if (pf && !allowPipeFace && !ctx.pipeFaces?.has(opposite)) return undefined;
   const arms = armsByMachine(group, side);
   for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
   if (face === "N" || face === "S") {
@@ -221,13 +286,21 @@ function tryLinkFace(
   // **머신 여럿을 맡는 그룹이 여기서 통과한다**(2026-08-16 — 계획서 §19).
   //
   // 예전엔 `arms.size !== 1` 로 통째로 거절했다. 사유는 *"관통하는 순간 다른 그룹과 depth 를
-  // 다퉈야 한다"* 였는데, **W/E 면에서는 그 다툼이 없다**: 나가는 방향이 면과 수직이라
-  // 벨트가 **자기 좌석 구간만** 덮고 끝에서 꺾는다([LinkFacePlan.laneDepth] 머리말) —
-  // 그래서 여러 그룹이 같은 깊이를 **행으로 나눠 쓴다.** 첫 칸이 언제나 포트 쪽으로 꺾이므로
-  // 행이 붙어도 두 벨트가 이어지지 않는다([emitOutputLinks] ①).
+  // 다퉈야 한다"* 였는데, **그 다툼은 관통일 때만 있다**: 나가는 방향이 면과 수직이라 벨트가
+  // **자기 좌석 구간만** 덮고 끝에서 꺾으므로([LinkFacePlan.laneDepth] 머리말), 행이 안 겹치는
+  // 그룹끼리는 같은 깊이를 **나눠 쓴다.** 첫 칸이 언제나 포트 쪽으로 꺾여 행이 붙어도 두 벨트가
+  // 이어지지 않는다([emitOutputLinks] ①).
   //
-  // 남는 자원은 **좌석 행 하나뿐**이고, 그건 바로 위에서 머신마다 이미 센다.
-  return { face, arms, laneDepth: LINK_LANE_DEPTH };
+  // 그래서 자원이 둘이다 — **좌석 행**(바로 위, 머신마다)과 **레인 × 행**(아래, 면마다).
+  // 관통 그룹은 사이 행까지 통으로 먹으므로 레인 하나를 통째로 청구하는 셈이 된다.
+  const span = beltRowSpan(ctx, face, arms);
+  for (const laneDepth of laneDepthsOf(ctx, face)) {
+    const taken = ctx.lanes.get(`${face}|${laneDepth}`);
+    if (taken?.some(([a, b]) => span[0] <= b && a <= span[1])) continue;
+    return { face, arms, laneDepth };
+  }
+  // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
+  return undefined;
 }
 
 /**
@@ -245,6 +318,8 @@ function commitLinkFace(
 ): LinkFacePlan {
   const { machine, used, faceGroups } = ctx;
   const isGap = cand.face === "N" || cand.face === "S";
+  // **좌석 장부를 늘리기 전에** 잰다 — [beltRowSpan] 이 `used` 를 읽어 시작 행을 안다.
+  const span = isGap ? undefined : beltRowSpan(ctx, cand.face, cand.arms);
   // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
   // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
   const fromEast = isGap && side === "to";
@@ -266,6 +341,12 @@ function commitLinkFace(
         ? Array.from({ length: k }, (_, t) => span - 1 - base - t).reverse()
         : Array.from({ length: k }, (_, t) => remap(base + t)),
     );
+  }
+  // 레인 장부 — gap(N/S)은 안 센다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
+  // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
+  if (span) {
+    const key = `${cand.face}|${cand.laneDepth}`;
+    ctx.lanes.set(key, [...(ctx.lanes.get(key) ?? []), span]);
   }
   return { ...cand, slotIndex };
 }

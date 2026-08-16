@@ -11,7 +11,7 @@ import {
   chooseFluidTrunkPlan,
   fluidJumpBlocker,
   fluidPortSlots,
-  requiredUndergroundReach,
+  laneDepthCap,
   type FluidLineSpec,
 } from "./fluidPorts";
 import type { Entity } from "../../UI/store/gameDataStore";
@@ -299,17 +299,26 @@ describe("fluidJumpBlocker — 이 면의 유체 n줄이 바깥으로 넘을 수
     pipeMaxUndergroundDistance: 10,
     seatRows: 3,
     beltLanes: 2,
-    maxInserterReach: 2,
   };
 
-  it("n=1 이 요구하는 사거리는 `maxReach + 1` — 단계 A 와 같은 수(회귀 잠금)", () => {
-    expect(requiredUndergroundReach(1, 2)).toBe(3);
-    expect(requiredUndergroundReach(1, 1)).toBe(2);
+  // **식이 뒤집혔다**(2026-08-16). 예전엔 *"최악 base 를 가정한 필요 사거리"* 를 냈고, 그
+  // 가정 때문에 실제로는 넘을 수 있는 면을 거절했다. 이제 사거리가 **레인 깊이의 상한**을 낸다
+  // — 파이프가 먼저 답하고 아이템 레인이 그 안에 들어간다.
+  it("사거리가 곧 레인 깊이 상한 — 유체 한 줄이면 사거리 그대로", () => {
+    expect(laneDepthCap(1, 10)).toBe(10);
+    expect(laneDepthCap(1, 2)).toBe(2); // d2 까지만 — 긴팔 레인(d3)은 안 열린다
   });
 
-  it("순번마다 2칸씩 는다 — n=2 는 +2, n=3 은 +4", () => {
-    expect(requiredUndergroundReach(2, 2)).toBe(5);
-    expect(requiredUndergroundReach(3, 2)).toBe(7);
+  it("유체 줄마다 상한이 2씩 준다 — 바깥 줄의 ClusterPipe 가 더 멀다", () => {
+    expect(laneDepthCap(2, 10)).toBe(8);
+    expect(laneDepthCap(3, 10)).toBe(6);
+  });
+
+  it("상한이 1 미만이면 그때만 거절 — 아이템을 안 놓아도 못 넘는다", () => {
+    const wide = { ...budget, seatRows: 12 }; // 좌석 축을 비켜 사거리 축만 본다
+    expect(laneDepthCap(6, 10)).toBe(0);
+    expect(fluidJumpBlocker(6, wide)?.kind).toBe("underground-too-short");
+    expect(fluidJumpBlocker(5, wide)).toBeNull(); // cap=2 — 얕은 레인은 그대로 선다
   });
 
   it("지하파이프를 안 골랐으면 못 넘는다 — 사거리를 따질 것도 없다", () => {
@@ -317,10 +326,13 @@ describe("fluidJumpBlocker — 이 면의 유체 n줄이 바깥으로 넘을 수
     expect(fluidJumpBlocker(2, b)?.kind).toBe("no-underground");
   });
 
+  // **문턱이 내려갔다**(2026-08-16 — 식을 뒤집었다). 예전엔 최악 base(=maxReach+1)를 가정해
+  // 사거리 4 로 유체 2줄을 거절했는데, 실제로는 얕은 레인만 쓰면 넘는다. 이제 거절은
+  // **아이템을 하나도 안 놓아도 못 넘을 때**(base=1)뿐이고, 그 사이는 [laneDepthCap] 이 깎는다.
   it("사거리가 모자라면 underground-too-short — 처방은 파이프 단계다", () => {
-    const b = { ...budget, pipeMaxUndergroundDistance: 4 };
-    expect(fluidJumpBlocker(1, b)).toBeNull(); // 3 ≤ 4
-    expect(fluidJumpBlocker(2, b)?.kind).toBe("underground-too-short"); // 5 > 4
+    const b = { ...budget, seatRows: 12, pipeMaxUndergroundDistance: 4 };
+    expect(fluidJumpBlocker(2, b)).toBeNull(); // cap=2 — 옛 답은 거절이었다
+    expect(fluidJumpBlocker(3, b)?.kind).toBe("underground-too-short"); // cap=0
   });
 
   it("좌석이 모자라면 seats-exhausted — 처방은 더 큰 머신이다", () => {
@@ -336,10 +348,11 @@ describe("fluidJumpBlocker — 이 면의 유체 n줄이 바깥으로 넘을 수
 
   it("**기준 사례** SE 랩 9×9 — E 면 유체 2줄(cryonite 변형은 3줄)이 다 통과한다", () => {
     const lab = { ...budget, seatRows: 9 };
-    expect(fluidJumpBlocker(2, lab)).toBeNull(); // 필요 5 ≤ 10 · 좌석 9−2=7 ≥ 2
-    expect(fluidJumpBlocker(3, lab)).toBeNull(); // 필요 7 ≤ 10 (cryonite 변형)
-    // 바닐라 지하파이프(10)의 상한은 **한 면 4줄**이다(필요 9). 다섯째 줄에서 끊긴다.
-    expect(fluidJumpBlocker(4, lab)).toBeNull();
-    expect(fluidJumpBlocker(5, lab)?.kind).toBe("underground-too-short"); // 필요 11 > 10
+    expect(fluidJumpBlocker(2, lab)).toBeNull(); // cap 8 · 좌석 9−2=7 ≥ 2
+    expect(fluidJumpBlocker(3, lab)).toBeNull(); // cap 6 (cryonite 변형)
+    // 바닐라 지하파이프(10)로 넘을 수 있는 것은 **한 면 5줄**까지다(cap 2 — 얕은 레인만).
+    // 여섯째 줄은 cap 0 이라 아이템을 안 놓아도 못 넘는다.
+    expect(fluidJumpBlocker(5, lab)).toBeNull();
+    expect(fluidJumpBlocker(6, { ...lab, seatRows: 12 })?.kind).toBe("underground-too-short");
   });
 });

@@ -203,8 +203,6 @@ export interface FluidJumpBudget {
   seatRows: number;
   /** 그 면에 설 [ClusterBelt] 줄 수의 상한 — 인서터 reach 종류 수, 단 아이템 줄 수를 못 넘는다. */
   beltLanes: number;
-  /** 인서터 최대 reach — 최악 base(trunk-pipe §5.1) = `maxInserterReach + 1`. */
-  maxInserterReach: number;
 }
 
 /** 못 넘는 사유 — 셋은 처방이 다르다(파이프 고르기 · 더 긴 지하파이프 · 더 큰 머신). */
@@ -214,16 +212,20 @@ export type FluidJumpBlocker =
   | { kind: "seats-exhausted"; detail: string };
 
 /**
- * 유체 `n` 줄이 있는 면에서 **지하파이프 하나가 넘어야 하는 좌표 차**(trunk-pipe §5.1).
+ * **그 면의 아이템 벨트가 가질 수 있는 최대 깊이** — 지하파이프 사거리가 정하는 상한.
  *
- * `base = max(그 면 벨트 최대 깊이, 1)` 이고 순번 `r` 의 터널 좌표 차가 `base + 2r` 이므로,
- * 가장 바깥 줄(`r = n−1`)이 최장이다. 여기서는 실제 벨트 깊이 대신 **최악 base = maxReach+1**
- * 을 쓴다 — 배정이 아직 안 끝난 시점에도 답해야 하기 때문이다(실제 폭은 이보다 좁을 수 있다).
+ * 순번 `r` 인 유체 줄의 터널 좌표 차가 `base + 2r` 이고(trunk-pipe §5.1) 가장 바깥 줄이
+ * `r = n−1` 이므로, 사거리 `have` 로 넘을 수 있는 `base` 는 `have − 2(n−1)` 이다.
+ * `base = max(그 면 벨트 최대 깊이, 1)` 이라 이 값이 곧 **레인 깊이의 상한**이다.
  *
- * `n = 1` 이면 `maxReach + 1` — **현행과 같은 수**다(회귀 0).
+ * **식을 뒤집은 것이다**(2026-08-16 사용자 결정 — *"사거리가 짧으면 파이프 배치를 우선"*).
+ * 예전엔 `maxInserterReach + 1` 을 **최악 base 로 가정**해 필요 사거리를 냈다. 배정이 아직
+ * 안 끝나 실제 깊이를 몰랐기 때문인데, 그 가정 때문에 **실제로는 넘을 수 있는 면을 거절**했다.
+ * 이제 파이프가 먼저 답을 내고 아이템 레인이 그 안에 들어간다 — 상한이 2 미만이면 그 면은
+ * 아이템 레인을 안 주고(사다리 한 칸), 거절이 아니다.
  */
-export function requiredUndergroundReach(n: number, maxInserterReach: number): number {
-  return maxInserterReach + 1 + 2 * (n - 1);
+export function laneDepthCap(n: number, pipeMaxUndergroundDistance: number | undefined): number {
+  return (pipeMaxUndergroundDistance ?? 0) - 2 * (n - 1);
 }
 
 /**
@@ -237,12 +239,13 @@ export function fluidJumpBlocker(n: number, b: FluidJumpBudget): FluidJumpBlocke
   if (!b.undergroundPipeEntityName) {
     return { kind: "no-underground", detail: `유체 ${n}줄을 넘길 지하파이프를 안 골랐다` };
   }
-  const need = requiredUndergroundReach(n, b.maxInserterReach);
-  const have = b.pipeMaxUndergroundDistance ?? 0;
-  if (have < need) {
+  // **아이템 벨트를 하나도 안 놓아도 못 넘나** — 그때만 거절이다(base 의 최소값은 1).
+  // 넘을 수는 있는데 좁은 경우는 거절이 아니라 [laneDepthCap] 이 레인을 깎는다.
+  if (laneDepthCap(n, b.pipeMaxUndergroundDistance) < 1) {
+    const have = b.pipeMaxUndergroundDistance ?? 0;
     return {
       kind: "underground-too-short",
-      detail: `유체 ${n}줄엔 지하파이프 사거리 ${need} 가 필요한데 ${b.undergroundPipeEntityName} 은 ${have}`,
+      detail: `유체 ${n}줄엔 지하파이프 사거리 ${1 + 2 * (n - 1)} 가 필요한데 ${b.undergroundPipeEntityName} 은 ${have}`,
     };
   }
   // 좌석 줄에서 유체 상자 행 n개를 빼고도 벨트 좌석이 남아야 한다.

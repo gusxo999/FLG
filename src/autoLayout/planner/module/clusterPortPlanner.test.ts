@@ -34,38 +34,33 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines: [item("iron", "input"), fluid("water", "input")],
       inserters: longInserters,
       outputSide: "W",
-      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }],
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: 1 }],
     });
     expect(plan.ok).toBe(false);
     if (!plan.ok) expect(plan.reason).toBe("fluid-handled-by-generateModule");
   });
 
-  it("파이프 면의 아이템은 케이스 B(reach 2, d=4) 한 줄뿐", () => {
-    // 화학 공장 꼴의 **아이템 쪽**: 파이프가 E 면 좌석을 먹은 상태(pipeSide)에서의 배치.
+  // **케이스 B 가 사라진 자리**(2026-08-16). 옛 두 테스트는 *"파이프 면의 아이템은 케이스 B
+  // (좌석 d2 · 벨트 d4 · reach 2) 한 줄뿐"* 을 단언했다. 이제 파이프는 언제나 점프해 좌석 줄이
+  // 살고, 유체 면을 다르게 만드는 것은 **레인 깊이 상한**([laneDepthCap]) 하나뿐이다.
+  it("사거리 상한이 얕으면 얕은 레인만 — 깊은 레인이 잘려 둘째 줄이 반대 면으로", () => {
+    const lines = [item("coal", "input"), item("iron-plate", "input"), item("thing", "output")];
+    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: 2 }] });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // E 는 d2 하나만 준다(d3 는 상한 밖) → coal 이 쓰고 iron-plate 는 W 로.
+    expect(plan.lines.map((l) => `${l.line.name}:${l.side}${l.clusterBeltDepth}`))
+      .toEqual(["coal:E2", "iron-plate:W3", "thing:W2"]);
+  });
+
+  it("상한이 1이면 그 면은 아이템 레인을 아예 안 준다 — 거절이 아니라 반대 면", () => {
     const lines = [item("coal", "input"), item("plastic-bar", "output")];
-    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
+    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: 1 }] });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const by = (n: string) => plan.lines.find((l) => l.line.name === n)!;
-
-    // 아이템 입력은 입력면(E) — 다만 좌석(depth 1)이 파이프라 케이스 B(reach 2)로 밀린다.
-    expect(by("coal")).toMatchObject({ side: "E", clusterBeltDepth: 4, reach: 2 });
-    // 출력은 평소대로 출력면(W) 가까운 벨트.
+    expect(by("coal").side).toBe("W");
     expect(by("plastic-bar")).toMatchObject({ side: "W", clusterBeltDepth: 2, reach: 1 });
-  });
-
-  it("파이프 면은 아이템 벨트가 하나뿐 — 둘째 아이템 입력은 출력면으로 밀린다", () => {
-    const lines = [
-      item("coal", "input"),
-      item("iron-plate", "input"),
-      item("thing", "output"),
-    ];
-    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
-    expect(plan.ok).toBe(true);
-    if (!plan.ok) return;
-    const sides = plan.lines.map((l) => `${l.line.name}:${l.side}${l.clusterBeltDepth}`);
-    // E 면 벨트는 케이스 B 하나뿐(reach 2) → coal 이 쓰고, iron-plate 는 W 잔여 벨트로.
-    expect(sides).toEqual(["coal:E4", "iron-plate:W3", "thing:W2"]);
   });
 
   it("점프 가능하면 파이프 면 좌석이 살아난다 — reach 1 벨트가 그 면에 선다", () => {
@@ -76,7 +71,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines,
       inserters: longInserters,
       outputSide: "W",
-      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: true }],
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: Infinity }],
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -92,7 +87,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
       lines,
       inserters: regularInserters,
       outputSide: "W",
-      pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: true }],
+      pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: Infinity }],
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
@@ -104,7 +99,7 @@ describe("planClusterPorts — (B) 정책(출력 출력면 먼저, 입력 반대
   it("reach≥2 인서터가 없으면 파이프 면에 아이템을 못 놓는다 — 케이스 B 는 긴팔 전용", () => {
     // reach 1 인서터는 좌석(depth 1)에 앉아야 하는데 그 자리가 파이프다.
     const lines = [item("a", "input"), item("b", "input"), item("c", "output")];
-    const plan = planClusterPorts({ lines, inserters: regularInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable: false }] });
+    const plan = planClusterPorts({ lines, inserters: regularInserters, outputSide: "W", pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap: 1 }] });
     // W 면 벨트 1개(reach 1) 뿐 → 아이템 3줄을 못 담는다.
     expect(plan.ok).toBe(false);
     if (!plan.ok) expect(plan.reason).toMatch(/^lanes-exceed-capacity/);

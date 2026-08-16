@@ -81,6 +81,15 @@ export interface PerimeterPassResult {
   relocated: number;
   /** 재배치 못해 *로컬 ring 에 그대로 둔* 상자 수(미지원 배정·lane 막힘). */
   skipped: number;
+  /**
+   * 못 나간 상자마다 **사유** — `skipped` 는 그 개수다.
+   *
+   * 개수만으로는 *"무엇이 막혔나"* 를 못 묻는다. 회귀 테스트가 개수를 스냅샷으로 박으면
+   * **모델이 바뀔 때 원래 검사하려던 결함과 무관한 이유로 깨지고**, 그 숫자를 맞추려다
+   * 의도가 사라진다(2026-08-17 실측: `skip 0` 이 *"N/S 어깨 상자가 우회한다"* 의 대리
+   * 지표였는데, 포트가 옆 변으로 옮겨 가자 전혀 다른 사유의 skip 을 재게 됐다).
+   */
+  skips: readonly { chestId: string; reason: string }[];
   /** 마지막 skip 사유(진단용). */
   reason?: string;
   /**
@@ -218,8 +227,10 @@ export function rePathToPerimeter(
   let relocated = 0;
   let skipped = 0;
   let lastReason: string | undefined;
+  const skips: { chestId: string; reason: string }[] = [];
   const fail = (id: string, why: string) => {
     skipped += 1;
+    skips.push({ chestId: id, reason: why });
     lastReason = `${why} (chest ${id})`;
     if (AUTO_LAYOUT_COORD_DUMP) console.log("[perimeterPass] SKIP", id, why);
   };
@@ -327,6 +338,6 @@ export function rePathToPerimeter(
     relocated += 1;
   }
 
-  return { ok: true, relocated, skipped, reason: lastReason, droppedCellKeys, addedCells, relocations };
+  return { ok: true, relocated, skipped, skips, reason: lastReason, droppedCellKeys, addedCells, relocations };
 }
 

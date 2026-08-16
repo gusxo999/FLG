@@ -29,7 +29,7 @@ import {
 } from "../planner/module/clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
-import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "./machineLinkGroup";
+import { type MachineLinkGroup } from "./machineLinkGroup";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
 import { planModulePorts } from "../planner/module/planModulePorts";
@@ -43,7 +43,6 @@ import type { PipeFlowPipe } from "../util/pipeFlow";
 import {
   emitOutputLinks,
   emitInputLinks,
-  emitTapInserting,
   emitTrunkPipe,
 } from "../execution/module/emitModule";
 
@@ -325,33 +324,21 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   );
   const seqRef = { n: 0 };
 
-  if (supply.mode === "tap") {
-    // **외부 줄(원료·완제품)을 [MachineLinkGroup] 으로 — 방출기가 링크와 같은 자료구조를 본다.**
-    // 링크 방출([emitOutputLinks])이 이미 group 을 주 자료로 보므로, 탭 방출도 여기 맞춘다
-    // (자료구조 통일 1단계). 팔 수는 [requiredInserterCount] 에서 오므로 planner 값과 **같다** →
-    // 기하·수치 불변(점수 불변). 다음 단계에서 group 의 `from`/`to`(머신마다 팔)를 실제로 쓴다.
-    const groupOf = new Map<string, MachineLinkGroup>();
-    for (const g of externalLineGroups(input.lines, count, input.supplyCapacity ?? {}, input.inserters, plan.linkedKeys)) {
-      groupOf.set(`${readLinkRole(g)}:${g.item}`, g);
-    }
-    emitTapInserting({
-      plan: trunkPlan, machines, input, prefix, occupancy,
-      cells, chests, inputPorts, outputPorts, unroutedLines,
-      ctx, seqRef, groupOf,
-    });
-  } else {
-    // ── (나) 기계별 포트 — **링크와 같은 방출기** ────────────────────────────────
-    // 배정이 링크와 같은 자료([LinkFacePlan])로 왔으므로 놓는 것도 같은 코드다. 그래서
-    // gap(위/아래)에 앉은 그룹도 **새 코드 없이** 가로 벨트로 나간다 — 이 통합의 실질이다.
-    // 상자 id 는 방출기가 품목 이름으로 만드는데, 링크가 맡은 줄과 여기 줄은 `linkedKeys` 로
-    // 배타적이라 이름이 겹칠 수 없다.
-    const rest = plan.restLinks!; // (나) 면 배정은 mode==="direct" 와 함께 온다([planModulePorts]).
-    const restOutSeats = placeLinkSeats(machines, rest.out.plans);
-    const restInSeats = placeLinkSeats(machines, rest.in.plans);
-    const restLineOf = new Map(input.lines.map((l) => [l.name, l]));
-    emitOutputLinks({ groups: rest.out.groups, seats: restOutSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
-    emitInputLinks({ groups: rest.in.groups, seats: restInSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
-  }
+  // ── **아이템 줄 방출 — 갈래가 없다** (2026-08-16, 계획서 §19-④) ────────────────
+  //
+  // 예전엔 `mode === "tap"` 가지가 `emitTapInserting` 이라는 **두 번째 트렁크 기하**를 갖고
+  // 있었다. 같은 일을 하는 코드가 둘이면 한쪽만 고쳐도 조용히 어긋난다(R3) — 실제로 옆 포트·
+  // 좌석 구간·전달 칸·끝 칸 꺾기가 이쪽에만 있었고 저쪽은 축 방향 포트에 기둥 전체 벨트였다.
+  //
+  // [tryLinkFace] 의 `arms.size !== 1` 문턱이 풀린 지금(§19-①) **묶은 그룹이 그대로 앉는다.**
+  // 그래서 트렁크와 기계별 포트가 같은 배정([LinkFacePlan])·같은 방출기를 탄다 —
+  // 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**일 뿐이다(§16).
+  const rest = plan.restLinks!; // [planModulePorts] 가 언제나 낸다(모드 무관).
+  const restOutSeats = placeLinkSeats(machines, rest.out.plans);
+  const restInSeats = placeLinkSeats(machines, rest.in.plans);
+  const restLineOf = new Map(input.lines.map((l) => [l.name, l]));
+  emitOutputLinks({ groups: rest.out.groups, seats: restOutSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+  emitInputLinks({ groups: rest.in.groups, seats: restInSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
 
   // ── [트렁크 파이프] — **아이템 공급 방식 밖에서 한 번** ─────────────────────────
   // 파이프 기하는 아이템을 어떻게 나르는지와 무관하다: 면은 머신 `fluid_boxes` 가 강제하고,

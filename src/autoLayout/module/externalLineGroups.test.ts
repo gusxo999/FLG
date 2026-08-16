@@ -47,20 +47,46 @@ describe("외부 줄 → MachineLinkGroup — 빈 쪽이 곧 '밖'이다", () =>
     expect([...g.from]).toEqual([[0, 2], [1, 2], [2, 2]]); // 30/3=10, ceil(10/5)=2
   });
 
-  it("신원이 줄 키를 담는다 — 로그·조회가 줄과 그룹을 이어 볼 수 있게", () => {
-    expect(groups.map((g) => g.id)).toEqual(["ext:input:iron-plate", "ext:output:gear"]);
+  // **뒤집혔다**(2026-08-17). 옛 답은 `["ext:input:iron-plate", "ext:output:gear"]` 였고,
+  // 사유는 *"로그·조회가 줄과 그룹을 이어 볼 수 있게"* 였다. 목적은 정당한데 **자리가 틀렸다** —
+  // [MachineLinkGroup.id] 는 편의 식별자가 아니라 **지정 짝의 토큰**이고, 비어 있는 것이
+  // *"교환 가능"* 이라는 적극적 사실을 나른다([pairDeliveryPorts] 가 그 유무로 갈린다).
+  //
+  // 채워 두면 자식의 `ext:output:X` 와 부모의 `ext:input:X` 가 **절대 안 맞아** 조회 갈래에서
+  // 짝을 못 찾고, 그 줄이 납품 경로를 통째로 잃는다(2026-08-17 실측 — 33건 실패의 뿌리).
+  // 줄과 그룹을 이어 보는 일은 `item`·`role` 로 이미 된다.
+  it("신원을 안 단다 — 원료·완제품은 **교환 가능**이라 지정 짝이 없다", () => {
+    expect(groups.map((g) => g.id)).toEqual([undefined, undefined]);
   });
 });
 
 describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
-  it("수량 미상이면 그룹을 안 만든다 ([edgeMachineLinks] 와 같은 문턱)", () => {
+  /** 이 줄이 머신 쪽에 쓴 팔 — 입력이면 `to`, 출력이면 `from` 이 머신 맵이다. */
+  const armsOf = (g: { from: Map<number, number>; to: Map<number, number> }) =>
+    g.from.size ? g.from : g.to;
+
+  // **수량을 몰라도 그룹은 만든다** (2026-08-16 — 옛 답은 *"안 만든다"* 였다).
+  //
+  // 뒤집힌 이유는 그 답의 전제가 사라졌기 때문이다. 예전엔 안 만들어도 **옛 탭 경로가 그 줄을
+  // 맡았고**, 그래서 *"부하를 모르는 채로 벨트 그룹을 만들면 계산이 거짓말을 시작한다"* 가
+  // 공짜였다. 그 경로가 사라진 지금(계획서 §19-④) 안 만들면 **그 줄이 통째로 사라진다.**
+  //
+  // 채우는 값은 지어낸 수가 아니라 **이미 있는 관례**다 — `PlannedLine.requiredInserterCount`
+  // 의 소비처가 전부 *"판정 보류 = 팔 1개"* 로 읽는다. 부하 축은 `beltCapacity` 가 따로
+  // 거절하고, 그건 수량을 알 때만 켜진다.
+  it("수량 미상이어도 그룹을 만든다 — 팔 1개(판정 보류)로", () => {
     // gear 만 rate 가 있다 — iron 은 lineRates 에 없다.
     const partial: SupplyCapacity = { lineRates: new Map([["output:gear", 30]]) };
-    expect(externalLineGroups(lines, 3, partial, INS).map((g) => g.item)).toEqual(["gear"]);
+    const gs = externalLineGroups(lines, 3, partial, INS);
+    expect(gs.map((g) => g.item)).toEqual(["iron-plate", "gear"]);
+    // 모르는 줄은 머신마다 팔 하나 — 아는 줄은 자기 수요대로.
+    expect([...armsOf(gs[0]).values()]).toEqual([1, 1, 1]);
   });
 
-  it("팔 처리량을 모르면 하나도 안 만든다", () => {
-    expect(externalLineGroups(lines, 3, { lineRates: cap.lineRates }, [])).toHaveLength(0);
+  it("팔 처리량을 몰라도 그룹은 선다 — 팔 1개로", () => {
+    const gs = externalLineGroups(lines, 3, { lineRates: cap.lineRates }, []);
+    expect(gs.map((g) => g.item)).toEqual(["iron-plate", "gear"]);
+    for (const g of gs) expect([...armsOf(g).values()]).toEqual([1, 1, 1]);
   });
 
   it("유체는 벨트 장부에 안 올린다 — 트렁크 파이프의 일이다", () => {

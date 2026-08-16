@@ -560,6 +560,21 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         pipeFlow: pipeFlowByFluid, // [파이프 합류 가드] — 반출 파이프가 밟으면 안 되는 칸.
       })
     : null;
+  // **납품 폴백 경고**(2026-08-17) — *"계획대로 놓는다"* 는 S-layer 의 핵심 계약이 깨진 자리다.
+  // 여태 콘솔에 줄 하나 찍고 끝이라 `failures` 는 0, 화면은 "성공"이었다. **폴백은 실패다** —
+  // 계획된 경로를 못 쓰고 탐색으로 돌면 벨트가 모듈을 가로질러 남의 포트를 감고 들어오는
+  // 기하가 나온다(실측 확인). 물류는 이어지므로 경고이되, **보이지 않으면 안 된다.**
+  if (deliveryRes.dijkstraFallback > 0) {
+    issues.push({
+      code: 'delivery-dijkstra-fallback', scope: '납품경로', severity: 'warning', recoverable: true,
+      detail:
+        `납품 경로 ${deliveryRes.dijkstraFallback}개가 **계획을 못 쓰고 탐색으로** 돌았다` +
+        `(계획대로 깐 것 ${deliveryRes.planned}개)` +
+        (deliveryRes.reservationOverrun > 0
+          ? ` — 그중 ${deliveryRes.reservationOverrun}개는 **남의 예약을 밟았다**(연쇄 가능)`
+          : ''),
+    });
+  }
   // **반출 skip 경고**(A-4) — 여태 `skipped` 와 사유를 아무도 안 읽었다. 상자가 외곽으로
   // 못 나가 로컬 ring 에 남아도 사용자는 알 길이 없었다. 물류 자체는 정상이므로(회귀 0
   // 설계: 트렁크째 남아 여전히 이어진다) 실패가 아니라 **경고**다.

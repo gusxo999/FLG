@@ -312,8 +312,12 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
 describe("generateModule — 노출 N/S 완화 (count=1)", () => {
   const ext = (name: string): IoLine => ({ name, kind: "belt", role: "input", external: true });
 
-  it("N면 2레인 공존 — N2(일반) + N3(긴팔)이 같은 면에서 미탭 0 으로 방출", () => {
-    // external 입력 4개 = W/E 용량(4)을 정확히 채우는 대신 E2, E3, N2, N3 로 분산.
+  // **자원이 레인이 아니라 행이다**(2026-08-17 — 계획서 §14). 옛 답은 `E2 · E3 · N2 · N3` 로,
+  // *"줄 하나가 레인 하나를 통째로 먹는다"* 는 모델이었다. 지금은 벨트가 **자기 좌석 구간만**
+  // 덮으므로 3×3 머신의 E 면 세 행에 줄 셋이 같은 `d2` 로 앉고, 넷째만 노출 N 으로 넘어간다.
+  // 그래서 긴팔(`d3`)을 쓸 일이 아예 없다 — 깊이는 고르는 값이 아니라 **자리가 없을 때의 결과**다.
+  it("한 면의 **행**을 나눠 쓴다 — 셋이 같은 레인에 앉고 넷째만 노출 N 으로", () => {
+    // external 입력 4개. E 면 좌석 3행 → 셋이 E2 를 나눠 쓰고, 넷째가 N 으로 넘어간다.
     const mod = generateModule({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 1,
@@ -327,8 +331,9 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
 
     expect(mod.unroutedLines).toHaveLength(0);
     expect(mod.inputPorts).toHaveLength(4);
-    const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.laneDepth}/${p.meta.inserter}`);
-    expect(slots).toEqual(["E2/normal", "E3/long", "N2/normal", "N3/long"]);
+    // 넷이 다 얕은 레인(d2)·일반 팔이다 — 깊은 레인을 쓸 이유가 없었다.
+    const slots = mod.inputPorts.map((p) => `${p.meta.laneDepth}/${p.meta.inserter}`);
+    expect(slots).toEqual(["2/normal", "2/normal", "2/normal", "2/normal"]);
 
     // 면 교차 충돌 0 — E 레인(세로)과 N 레인(가로)이 코너에서 겹치지 않는다.
     const seen = new Set<string>();
@@ -337,15 +342,19 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       expect(seen.has(k), `중복 셀 ${k}`).toBe(false);
       seen.add(k);
     }
-    // N 포트 상자는 머신 위쪽(음수 y 방향)에 있다.
+    // **N 면을 실제로 썼다** — 정확히 하나가 머신 위쪽(음수 y)에 앉는다.
+    //
+    // `meta.side` 로는 못 가른다: N/S 면 벨트는 가로로 달려 **변에서 꺾이고**, 그 꺾이는 칸이
+    // 곧 평범한 E 포트가 된다([emitInputLinks] 의 `portFace`). 그래서 면이 아니라 **좌표**로 본다.
     const machineTop = 0;
-    for (const p of mod.inputPorts.filter((x) => x.meta.side === "N")) {
-      expect(p.anchor.y).toBeLessThan(machineTop);
-    }
+    const north = mod.inputPorts.filter((p) => p.anchor.y < machineTop);
+    expect(north).toHaveLength(1);
   });
 
-  it("긴팔 없음 → 면당 1레인 — 노출 N 은 N2(일반)만 제공", () => {
-    // 용량 게이트 = W1+E1 = 2. 입력 2개: E2 다음 external 이라 W-spill 대신 N2.
+  // 옛 답은 `E2 · N2` — *"긴팔이 없으면 면당 레인 1개"* 라 둘째 줄이 곧바로 다른 면으로 갔다.
+  // 행 모델에서는 **팔 길이가 면 용량을 안 정한다**: E 면 3행에 둘 다 앉으므로 노출 N 을 쓸
+  // 일이 없다. 긴팔 유무는 *"얕은 레인이 다 찼을 때 하나 더 열 수 있나"* 만 정한다.
+  it("긴팔이 없어도 한 면에 두 줄 — 면 용량은 팔 길이가 아니라 **행 수**다", () => {
     const mod = generateModule({
       machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
       count: 1,
@@ -359,10 +368,12 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
 
     expect(mod.unroutedLines).toHaveLength(0);
     const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.laneDepth}/${p.meta.inserter}`);
-    expect(slots).toEqual(["E2/normal", "N2/normal"]);
+    expect(slots).toEqual(["E2/normal", "E2/normal"]);
+    // 둘 다 머신 옆(E)이다 — 노출 N 으로 넘어간 줄이 없다.
+    expect(mod.inputPorts.every((p) => p.anchor.y >= 0)).toBe(true);
   });
 
-  it("count≥2 는 nsExposure 를 받아도 packing 이 안 주므로 여기선 미전달 규약만 확인 — nsExposure 미지정 시 기존 W-spill", () => {
+  it("nsExposure 미지정 — 노출 면을 안 주면 원료가 옆면 행을 그대로 쓴다", () => {
     const mod = generateModule({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 1,
@@ -373,7 +384,10 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       // nsExposure 미지정 → 기존 동작.
     });
     const c = mod.inputPorts.find((p) => p.line.name === "c")!;
-    expect(c.meta.side).toBe("W"); // W-spill (기존)
+    // 옛 답은 `W`(W-spill)였다. E 면 좌석이 3행이라 셋째 원료가 **아직 E 에 앉는다** —
+    // 반대 면으로 밀 이유가 생기지 않았다.
+    expect(c.meta.side).toBe("E");
+    expect(c.meta.laneDepth).toBe(2);
   });
 });
 

@@ -335,18 +335,18 @@ describe("④ 수요가 벨트 한 줄을 넘으면 줄을 늘린다", () => {
  */
 describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () => {
   const battery = [inL("iron-plate"), inL("copper-plate"), outL("battery")];
-  /** 유체 면 E — `jumpable` 은 지하파이프를 골랐는지에 갈린다. */
-  const runBattery = (hasLong: boolean, jumpable: boolean): Decision =>
-    run({ ...base(battery, hasLong), pipeFaces: [{ side: "E" as const, fluidRows: 1, jumpable }] },
+  /** 유체 면 E — `laneCap` 은 지하파이프 사거리가 정하는 레인 깊이 상한이다. */
+  const runBattery = (hasLong: boolean, laneCap: number): Decision =>
+    run({ ...base(battery, hasLong), pipeFaces: [{ side: "E" as const, fluidRows: 1, laneCap }] },
       3,
       SEATS,
       {},
     );
 
   it("긴팔 없음 → 레인 부족. 사유가 **인서터 reach** 를 짚는다(벨트가 아니라)", () => {
-    for (const jumpable of [false, true]) {
-      const d = runBattery(false, jumpable);
-      expect(d.mode, `jumpable=${jumpable}`).toBe("direct");
+    for (const laneCap of [2, Infinity]) {
+      const d = runBattery(false, laneCap);
+      expect(d.mode, `laneCap=${laneCap}`).toBe("direct");
       expect(reasonOf(d)).toContain("lanes-exceed-capacity");
       expect(reasonOf(d)).toContain("고른 인서터 reach [1]");
       // 옛 이름으로 되돌아가면 화면 처방이 다시 4단계(벨트)로 샌다.
@@ -354,14 +354,17 @@ describe("④-B battery 형상 — 레인 부족의 처방은 인서터다", () 
     }
   });
 
-  it("점프 불가 유체 면은 레인 0 — 문구가 그 면을 지목한다", () => {
-    expect(reasonOf(runBattery(false, false))).toContain("E0(유체·reach≥2 전용)");
+  // **케이스 B 가 사라진 자리**(2026-08-16). 예전엔 *"점프 불가 유체 면은 레인 0"* 이었고
+  // 긴팔이 있으면 케이스 B(d4)로 1레인을 냈다. 이제 파이프는 언제나 점프하고, 사거리가
+  // 짧으면 **깊은 레인만 잘린다** — 얕은 레인은 그대로 선다.
+  it("거절 문구가 그 면의 **사거리 상한**을 지목한다 — 처방이 파이프로도 갈 수 있게", () => {
+    expect(reasonOf(runBattery(false, 2))).toContain("(유체·깊이≤2)");
   });
 
-  it("긴팔을 고르면 케이스 B 로 유체 면이 1레인을 내어 3줄이 앉는다 → tap", () => {
-    for (const jumpable of [false, true]) {
-      const d = runBattery(true, jumpable);
-      expect(d.mode, `jumpable=${jumpable}`).toBe("tap");
+  it("긴팔이 있으면 사거리가 얕아도 선다 — 옛 케이스 B 자리를 **얕은 레인**이 대신한다", () => {
+    for (const laneCap of [2, Infinity]) {
+      const d = runBattery(true, laneCap);
+      expect(d.mode, `laneCap=${laneCap}`).toBe("tap");
       expect(linesOf(d).length).toBeGreaterThan(0);
     }
   });

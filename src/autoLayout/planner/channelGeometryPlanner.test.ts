@@ -228,8 +228,18 @@ describe("채널 기하 예약 — 파이프라인 불변식(§9)", () => {
     expect(summarize()).toEqual(summarize());
   });
 
-  it("반출 예약 재생 — 예약 lane 덕에 skip 이 옛 경로(2)보다 늘지 않는다", () => {
-    const { res } = runPipeline();
-    expect(res.skipped).toBeLessThanOrEqual(2);
+  // **대조군으로 잰다**(2026-08-17). 옛 답은 `skipped <= 2` 였는데, 그 `2` 는 *"당시 옛 경로의
+  // 실측값"* 을 상수로 박은 것이라 **모델이 바뀌면 비교 대상 없이 깨진다.** 이 테스트가 묻고
+  // 싶은 것은 절대 수가 아니라 *"예약이 반출을 나쁘게 만들지 않는다"* 이므로, 같은 트리를
+  // 예약 켜고/끄고 돌려 **둘을 비교**한다 — 그러면 배치 모델이 바뀌어도 뜻이 그대로 남는다.
+  it("반출 예약 재생 — 예약을 켜도 skip 이 끈 것보다 늘지 않는다", () => {
+    const withRes = runPipeline().res;
+    const withoutPack = packModuleTree(specs, { ...config, reservePerimeterLanes: false, channelGeometry: false });
+    const withoutDelivery = routeDeliveryRoutes(withoutPack, { beltEntityName: "transport-belt" });
+    const withoutRes = rePathToPerimeter(withoutPack, withoutDelivery.strippedChestIds, withoutDelivery.cells, {
+      beltEntityName: "transport-belt",
+      inserterEntityName: "inserter",
+    });
+    expect(withRes.skipped).toBeLessThanOrEqual(withoutRes.skipped);
   });
 });
