@@ -3,6 +3,11 @@
 폴더는 **두 축**으로 나뉜다. 정의와 현재 트리는
 [docs/code-folders.md](../../docs/auto-layout/common/code-folders.md) 가 단일 출처다.
 
+**폴더 말고 *모델* 을 건드릴 때는** [layout-models](../../docs/auto-layout/common/layout-models.md) —
+배치 모델 넷이 각자 **무엇을 그릴 수 있고 무엇을 못 그리나**. 새 능력을 넣기 전에
+*"이건 어느 모델의 일인가 · 그 모델이 그릴 수 있는 도형인가"* 를 거기서 먼저 답한다.
+그걸 건너뛰면 **경계를 여는 것을 게이트를 여는 것으로 착각한다**(2026-08-18 `eligible` 실측).
+
 ```
 축 1 계층    planner/ (안 놓는다)  ↔  execution/ (PlacedCell 을 만든다)
 축 2 관심사   module(형제를 모른다) · link(두 모듈의 식별자) ·

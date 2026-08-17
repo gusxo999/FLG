@@ -24,6 +24,10 @@
  * **폭 역전(문서 §6)**: 트랙·행 배정을 먼저 끝내고 `trackCount` 는 그 결과에서 나온다.
  * 채널 폭 = `channelWidthFromTracks(trackCount, …)` 는 호출자(modulePacking) 책임.
  *
+ * **이 모델이 못 그리는 것**은 `docs/auto-layout/common/layout-models.md` §2③ 에 있다 —
+ * 특히 *"포트가 채널 벽을 마주 본다"* 는 전제(코드에서의 이름은 `modulePacking.eligible`).
+ * 그 전제가 깨지면 계단꼴이 모듈 몸통을 관통하는 경로를 그린다(2026-08-18 실측 `planned = 0`).
+ *
  * 좌표계: 추상 (열, 행). 열 = 트랙 0..T-1(서→동) + 가상 벽 마진(W쪽 -1, E쪽 trackCap).
  * 절대 x 변환(트랙 → 채널 내부 x)은 호출자 책임. 순수·결정적.
  */

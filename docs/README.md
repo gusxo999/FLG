@@ -56,6 +56,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
+| [layout-models](auto-layout/common/layout-models.md) | **모델 넷이 각자 무엇을 그릴 수 있나** — 좌표계 · 고정/자유 · 도형 · **경계**. 새 능력을 넣기 전에 *"이건 어느 모델의 일인가"* 를 여기서 답한다 |
 | [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
 | [placement-search](auto-layout/common/placement-search.md) | **모델 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M). Part II 의 S-LAYER 흐름은 삭제됨 |
 | [entity-roles](auto-layout/common/entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
