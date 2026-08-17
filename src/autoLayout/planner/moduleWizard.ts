@@ -584,6 +584,12 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         `(계획대로 깐 것 ${deliveryRes.planned}개)` +
         (deliveryRes.reservationOverrun > 0
           ? ` — 그중 ${deliveryRes.reservationOverrun}개는 **남의 예약을 밟았다**(연쇄 가능)`
+          : '') +
+        // **사유를 붙인다** — 넷의 처방이 다 다르다([DeliveryRouteResult.chainMisses]).
+        (deliveryRes.chainMisses.length
+          ? `; 사유 ${[...new Map(deliveryRes.chainMisses.map((m) => [m.reason, 0])).keys()]
+              .map((r) => `${r}×${deliveryRes.chainMisses.filter((m) => m.reason === r).length}`)
+              .join(' ')}`
           : ''),
     });
   }

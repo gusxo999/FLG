@@ -133,6 +133,19 @@ export interface DeliveryResult {
    * 여기서만 지켜지지 않고 있었고, 그래서 우회 기하를 배정 탓으로 오진했다.
    */
   reservationOverrun: number;
+  /**
+   * **계획을 못 쓴 납품 경로마다 그 사유** — `planned` 가 0 인데 왜 0 인지 물을 수 있어야 한다.
+   *
+   * 사유가 넷이고 **처방이 다 다르다**:
+   *  - `no-geometry-plan` — 채널 장부가 이 납품에 배정을 안 냈다(계획 단계가 포기)
+   *  - `underground-not-allowed` — 지하 횡단 계획인데 지하벨트를 안 골랐다(사용자 입력)
+   *  - `chain-build-failed` — 배정은 있는데 체인을 못 세웠다(장부와 기하가 어긋남 = 버그)
+   *  - `chain-blocked` — 체인은 섰는데 놓을 때 칸이 막혔다(예약 불변식 파손)
+   *
+   * 개수만으로는 어느 처방인지 못 고른다 — 2026-08-17 실측에서 `planned 0` 을 보고도
+   * 넷 중 무엇인지 몰라 게이트·배선·기하를 차례로 뒤졌다.
+   */
+  chainMisses: { key: string; reason: string }[];
 }
 
 /** 포트의 경계 기하 — anchor + face 에서 유도. */
@@ -253,15 +266,28 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
   const geo = pack.channelGeometry;
   const reservedExport = geo?.reservedExportCells ?? new Set<string>();
   const plannedChains = new Map<string, DijkstraResult>();
+  const chainMisses: { key: string; reason: string }[] = [];
   if (geo) {
     for (const delivery of pack.deliveries) {
       const k = deliveryKey(delivery);
       const g = geo.deliveries.get(k);
-      if (!g) continue;
-      if (g.kind === "undergroundCrossing" && maxJump < 2) continue; // 지하 미허용 — dijkstra 로
+      if (!g) {
+        // 장부가 남긴 사유가 있으면 그걸 쓴다 — "계획이 없다"만 말하면 처방을 못 고른다.
+        const why = geo.skips.find((sk) => sk.key === k)?.reason;
+        chainMisses.push({ key: k, reason: why ? `no-plan:${why}` : "no-geometry-plan" });
+        continue;
+      }
+      if (g.kind === "undergroundCrossing" && maxJump < 2) {
+        chainMisses.push({ key: k, reason: "underground-not-allowed" }); // 지하 미허용 — dijkstra 로
+        continue;
+      }
       const chain = buildPlannedChain(delivery, g);
       if (chain) plannedChains.set(k, chain);
+      else chainMisses.push({ key: k, reason: `chain-build-failed(${g.kind})` });
     }
+  } else {
+    for (const delivery of pack.deliveries)
+      chainMisses.push({ key: deliveryKey(delivery), reason: "channel-geometry-off" });
   }
   const reservedDelivery = new Map<string, Set<string>>();
   for (const [k, chain] of plannedChains)
@@ -280,7 +306,10 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
     const chain = plannedChains.get(k);
     let route: Omit<DeliveryRoute, "key">;
     const mergeGuard = isFluid ? config.fluidBlocked?.get(delivery.item) : undefined;
-    if (chain && plannedChainClear(chain, k, base, deliveryBelts, reservedExport, reservedDelivery, mergeGuard)) {
+    const blockedBy = chain
+      ? plannedChainClear(chain, k, base, deliveryBelts, reservedExport, reservedDelivery, mergeGuard)
+      : null;
+    if (chain && blockedBy === null) {
       // 계획 체인은 품목-무관하다([buildPlannedChain]) — 갈리는 곳은 방출 하나뿐이다.
       route = isFluid ? finishFluidChain(delivery, chain, config) : finishChain(delivery, chain, config);
       planned += 1;
@@ -303,8 +332,11 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
         : { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
     } else {
       dijkstraFallback += 1;
-      if (chain && AUTO_LAYOUT_COORD_DUMP)
-        console.log("[deliveryRoute] planned chain blocked — dijkstra fallback", k);
+      if (chain) {
+        chainMisses.push({ key: k, reason: `chain-blocked:${blockedBy}` });
+        if (AUTO_LAYOUT_COORD_DUMP)
+          console.log("[deliveryRoute] planned chain blocked — dijkstra fallback", k, "—", blockedBy);
+      }
       // 다른 예약 자리(반출 lane + 다른 계획 납품 경로)는 dijkstra 도 침범 금지.
       const extra = new Set<string>(reservedExport);
       for (const [k2, cells] of reservedDelivery) if (k2 !== k) for (const c of cells) extra.add(c);
@@ -341,7 +373,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
     for (const sk of stripKeys(delivery)) strippedCellKeys.add(sk);
   }
 
-  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback, reservationOverrun };
+  return { cells, corridors, strippedChestIds, strippedCellKeys, routes, failures, planned, dijkstraFallback, reservationOverrun, chainMisses };
 }
 
 /**
@@ -593,6 +625,12 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryGeometry): Dijkstr
       push({ x: g.trackX, y: e.y });
       push(e);
       break;
+    case "wrapAround":
+      // **ㄱ자** — 자기 행을 따라 가로로 간 뒤 목표 열에서 세로로. 상자는 면 위에 있어
+      // 자기 **열**은 늘 붐비고(같은 면의 다른 포트들) 자기 **행**은 대개 비어 있다.
+      push({ x: e.x, y: s.y });
+      push(e);
+      break;
     case "columnSwitch":
       push({ x: g.startTrackX, y: s.y });
       push({ x: g.startTrackX, y: g.switchY });
@@ -680,12 +718,18 @@ function plannedChainClear(
    * 지도를 봐야 두 유체가 한 통이 되는 사고를 막는다.
    */
   fluidBlocked?: ReadonlySet<string>,
-): boolean {
+): string | null {
+  // **막혔으면 어디서·누구에게 막혔는지 낸다** — `false` 만 내면 소비처가 "막혔다"만 알고
+  // 처방을 못 고른다. 계획이 안 쓰이는 것은 예약 철학이 깨진 신호라 사유가 곧 수사 단서다.
   for (let i = 1; i + 1 < chain.cells.length; i++) {
-    const k = cellKey(chain.cells[i].x, chain.cells[i].y);
-    if (base.has(k) || deliveryBelts.has(k) || reservedExport.has(k)) return false;
-    if (fluidBlocked?.has(k)) return false;
-    for (const [k2, cells] of reservedDelivery) if (k2 !== ownKey && cells.has(k)) return false;
+    const c = chain.cells[i];
+    const k = cellKey(c.x, c.y);
+    if (base.has(k)) return `모듈 몸통 (${c.x},${c.y})`;
+    if (deliveryBelts.has(k)) return `이미 깔린 납품 벨트 (${c.x},${c.y})`;
+    if (reservedExport.has(k)) return `반출 예약 (${c.x},${c.y})`;
+    if (fluidBlocked?.has(k)) return `유체 합류 가드 (${c.x},${c.y})`;
+    for (const [k2, cells] of reservedDelivery)
+      if (k2 !== ownKey && cells.has(k)) return `남의 납품 예약 ${k2} (${c.x},${c.y})`;
   }
-  return true;
+  return null;
 }

@@ -141,6 +141,28 @@ export interface DeliverySpec {
 export type DeliveryGeometry =
   | { kind: "straight" }
   | { kind: "staircase"; trackX: number }
+  | {
+      /**
+       * **되꺾기 — 계단꼴의 전치(轉置)다.** 계단꼴이 *가로→세로(트랙)→가로* 라면 이쪽은
+       * *세로→가로(랩 행)→세로* 다. 모양이 하나 더 는 게 아니라 **축이 바뀐 같은 모양**이다.
+       *
+       * 왜 필요한가 — 계단꼴은 *"자식 출력 W변 → 채널 → 부모 입력 E변"*, 즉 **둘 다 채널을
+       * 마주 본다**를 전제한다([eligible]). 부모 입력이 반대 면(W)으로 스필하면 그 전제가
+       * 깨지고, 여태 이 납품은 장부에서 빠져 dijkstra 가 맡았다 — 그리고 그 폴백은 남의
+       * 예약을 밟아 연쇄했다(2026-08-17 실측: 완제품 상자가 갇혔다).
+       *
+       * 스필은 이제 드문 예외가 아니다. 아이템 방출이 링크 경로로 합쳐지며 관통 트렁크가
+       * 레인을 통째로 먹자 W 스필이 흔해졌다. **모델이 따라가는 것이 맞다** — 우회 자체는
+       * 남지만 *계획된* 우회가 되어 남의 자리를 안 밟는다.
+       *
+       * 모양은 **ㄱ자** 하나다: *자기 행을 따라 가로로* → *목표 열에서 세로로*. 세로부터
+       * 올라가는 변형도 만들어 봤는데 자기 모듈의 다른 포트 열을 뚫었다(실측 `모듈 몸통
+       * (19,6)`) — 상자는 면 위에 있어 **자기 열은 늘 붐비고 자기 행은 대개 비어 있다**.
+       *
+       * 막혀 있으면 [plannedChainClear] 가 걸러 오늘과 같은 폴백으로 떨어진다(더 나빠지지 않는다).
+       */
+      kind: "wrapAround";
+    }
   | { kind: "columnSwitch"; startTrackX: number; switchY: number; endTrackX: number }
   | {
       /** 계단꼴 + 지하 점프들. 각 점프는 (from)에서 (to)까지 그 사이 셀 **밑으로** 건넌다. */
@@ -155,6 +177,19 @@ export interface PackChannelGeometry {
   deliveries: Map<string, DeliveryGeometry>;
   /** 반출 경로 예약 셀(절대 cellKey) — 폴백 dijkstra 납품 경로가 침범하면 안 되는 자리. */
   reservedExportCells: Set<string>;
+  /**
+   * **장부에 못 들어간 납품 경로와 그 사유** — `deliveries` 에 없는 것들의 이유다.
+   *
+   * `not-eligible` 이 특히 조용했다: [eligible] 은 *"계단꼴 모델이 전제하는 기하인가"* 인데
+   * (자식 출력 W변 · 부모 입력 E변 · 깊이 인접 — 2026-07-11 도입 주석), 그 전제를 못 맞춘
+   * 납품은 **루프 첫 줄에서 걸러져 `계획 포기` 로그조차 안 찍혔다.** 흔적이 0이라
+   * 2026-08-17 조사에서 게이트·배선을 헛짚었다.
+   *
+   * 도입 당시엔 스필이 드문 예외라 견딜 만했다. 아이템 방출이 링크 경로로 합쳐지면서
+   * 관통 트렁크가 레인을 통째로 먹자 **W 스필이 흔해졌고**, 그 폴백(dijkstra)은 남의 예약을
+   * 밟아 연쇄한다 — 조용하면 안 되는 수가 됐다.
+   */
+  skips: { key: string; reason: string }[];
 }
 
 export interface PackResult {
@@ -548,7 +583,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
  */
 function materializeChannelGeometry(args: {
   geometryPlans: Map<number, ChannelGeometryPlan>;
-  deliverySeeds: { depth: number; key: string; eligible: boolean }[];
+  deliverySeeds: { depth: number; key: string; eligible: boolean; fluid?: string }[];
   lanePlan: LanePlan;
   placements: ModulePlacement[];
   channelStartX: (d: number) => number;
@@ -557,14 +592,29 @@ function materializeChannelGeometry(args: {
 }): PackChannelGeometry {
   const { geometryPlans, deliverySeeds, lanePlan, placements, channelStartX, rawBbox, reserveLanes } = args;
   const deliveries = new Map<string, DeliveryGeometry>();
+  const skips: { key: string; reason: string }[] = [];
   for (const seed of deliverySeeds) {
-    if (!seed.eligible) continue;
+    if (!seed.eligible) {
+      // **계단꼴이 못 그리는 기하 → 되꺾기로 계획한다**(2026-08-17). 대개 부모 입력이 반대
+      // 면으로 스필한 경우다. 여태 여기서 조용히 빠져 dijkstra 가 맡았고, 그 폴백이 남의
+      // 예약을 밟아 연쇄했다. 랩 행은 **배치 위쪽 여백 한 줄** — 세로로 올라와 가로로 건너고
+      // 다시 내려간다. 유체는 제외한다(유체는 언제나 적격이라 여기 오면 그게 사고다).
+      if (seed.fluid !== undefined) {
+        skips.push({ key: seed.key, reason: "not-eligible-fluid" });
+        if (AUTO_LAYOUT_COORD_DUMP)
+          console.log("[channelGeometry] 장부에서 제외 —", seed.key, "not-eligible(유체인데 전제 위반 — 사고)");
+        continue;
+      }
+      deliveries.set(seed.key, { kind: "wrapAround" });
+      continue;
+    }
     const plan = geometryPlans.get(seed.depth)?.deliveries.get(seed.key);
     if (!plan || plan.kind === "fallback") {
       // **장부가 왜 포기했는지는 여기서만 알 수 있다** — 아래로 안 내려보내면 소비처는
       // "계획이 없다"만 보고 이유를 영영 못 본다(2026-07-22 조사에서 계측을 새로 만들어야
       // 했던 자리). 포기한 납품 경로 하나가 탐색으로 내려가면 남의 계획까지 밟아 **연쇄**하므로
       // ([deliveryRoute] 의 "예약 무시 재시도"), 이 한 줄이 그 연쇄의 출발점을 가리킨다.
+      skips.push({ key: seed.key, reason: plan ? plan.reason : "no-plan" });
       if (AUTO_LAYOUT_COORD_DUMP)
         console.log("[channelGeometry] 계획 포기 —", seed.key, plan ? plan.reason : "계획 자체가 없음");
       continue;
@@ -626,7 +676,7 @@ function materializeChannelGeometry(args: {
     }
   }
 
-  return { deliveries, reservedExportCells };
+  return { deliveries, reservedExportCells, skips };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
