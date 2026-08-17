@@ -53,6 +53,27 @@ export interface LinkFacePlan {
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
   arms: Map<number, number>;
   /**
+   * **포트가 기둥 끝에 선다** — 관통(g=N) 그룹만 갖는다. `undefined` = 옆(면 바깥).
+   *
+   * 방향은 취향이 아니라 **`g` 가 정한다**(2026-08-17):
+   *
+   * ```
+   * 관통 (g = N)   벨트가 기둥 전체 → 포트는 **기둥 끝**.  건널 것이 없다
+   * 구간 (g < N)   벨트가 일부     → 포트는 **옆**.  그 면에 관통이 없어야 성립
+   * ```
+   *
+   * 왜 갈리나 — 상자에 바깥에서 닿으려면 **그보다 깊은 레인들을 가로질러야** 하는데,
+   * W/E 면의 레인은 세로줄이라 **관통 레인은 어떤 행에서도 못 건넌다.** 포트를 옆에 두면
+   * 그 면의 깊은 관통이 자기 상자를 가둔다(2026-08-17 실측: `planned = 0` · 완제품 상자가
+   * 갇힘 · R-도달 위반). 기둥 끝에 두면 상자가 기둥 **밖**이라 면 깊이와 무관해진다.
+   *
+   * **옛 탭 기하가 이것이었다** — 유산이 아니라 관통의 올바른 기하였고, 아이템 방출을 한
+   * 경로로 합치면서(§19-④) 함께 지워졌다.
+   *
+   * 끝은 면마다 **둘**(N·S)뿐이다. 세 번째 관통은 못 받아 옆으로 물러난다.
+   */
+  portEnd?: "N" | "S";
+  /**
    * 머신 index → 이 그룹이 그 머신 면에서 쓰는 **머신 원점 기준 상대 칸 번호**들(오름차순).
    * 키 순서는 머신 index 오름차순이다(방출 순서가 결정적이어야 하므로).
    *
@@ -132,6 +153,8 @@ export interface LinkFaceContext {
    * 좌석은 넉넉한데 벨트가 지나갈 자리가 없는 상태가 된다. 그래서 별개다.
    */
   lanes: Map<string, Array<readonly [number, number]>>;
+  /** 기둥 끝 장부 — `${면}` → 이미 쓴 끝들([LinkFacePlan.portEnd]). 면마다 N·S 둘뿐이다. */
+  ends: Map<PortFace, Set<"N" | "S">>;
   /**
    * 쓸 수 있는 팔의 종류 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
    * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 레인 수다. 비면 d2 하나로 본다.
@@ -294,10 +317,17 @@ function tryLinkFace(
   // 그래서 자원이 둘이다 — **좌석 행**(바로 위, 머신마다)과 **레인 × 행**(아래, 면마다).
   // 관통 그룹은 사이 행까지 통으로 먹으므로 레인 하나를 통째로 청구하는 셈이 된다.
   const span = beltRowSpan(ctx, face, arms);
+  // **관통이면 기둥 끝을 청구한다**([LinkFacePlan.portEnd]). 못 받으면 옆으로 — 그때는
+  // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
+  const spanning = arms.size === count && count > 1;
+  const endsTaken = ctx.ends.get(face);
+  const portEnd = spanning
+    ? (["N", "S"] as const).find((e) => !endsTaken?.has(e))
+    : undefined;
   for (const laneDepth of laneDepthsOf(ctx, face)) {
     const taken = ctx.lanes.get(`${face}|${laneDepth}`);
     if (taken?.some(([a, b]) => span[0] <= b && a <= span[1])) continue;
-    return { face, arms, laneDepth };
+    return { face, arms, laneDepth, portEnd };
   }
   // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;
@@ -347,6 +377,11 @@ function commitLinkFace(
   if (span) {
     const key = `${cand.face}|${cand.laneDepth}`;
     ctx.lanes.set(key, [...(ctx.lanes.get(key) ?? []), span]);
+  }
+  if (cand.portEnd) {
+    const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
+    set.add(cand.portEnd);
+    ctx.ends.set(cand.face, set);
   }
   return { ...cand, slotIndex };
 }

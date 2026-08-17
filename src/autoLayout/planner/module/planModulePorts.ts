@@ -194,7 +194,7 @@ export function planModulePorts(
   const laneLedger = new Map<string, Array<readonly [number, number]>>();
   const faceCtx: LinkFaceContext = {
     machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeFaces: pipeFaceRows,
-    lanes: laneLedger, inserters: input.inserters,
+    lanes: laneLedger, ends: new Map(), inserters: input.inserters,
   };
   const outFaces = allocateLinkFaces(faceCtx, outLinkGroups, "from", "W");
   const inFaces = allocateLinkFaces(faceCtx, inLinkGroups, "to", "E");

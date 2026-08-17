@@ -205,14 +205,18 @@ export function emitOutputLinks(args: {
     // 예전엔 **언제나 W** 였다. 링크 출력은 선호 면이 W 고 넘치면 gap 으로만 가서 그게 늘
     // 맞았기 때문이다. 원료·완제품 줄까지 이 배분기를 타면 출력이 E 에 앉을 수 있고, 그때
     // W 를 고집하면 포트 인서터가 **머신 쪽으로** 자라 좌석 줄과 부딪힌다.
-    const portFace: PortFace = isGap ? "W" : face;
+    // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd]) — 상자가 기둥 밖이라 그 면의 깊은
+    // 레인이 상자를 가두지 못한다. 구간이면 오늘처럼 옆이다.
+    const portFace: PortFace = plan.portEnd ?? (isGap ? "W" : face);
     const pfv = faceVector(portFace);
     // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
     // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
     const laneDepth = plan.laneDepth;
     const exitDepth = plan.exitDepth ?? laneDepth;
-    const topT = allRows[0];
-    const belt0 = faceCell(mExt, face, laneDepth, topT); // 벨트 줄의 시작 칸
+    // 흐름은 **포트 쪽 끝**을 향한다 — 옆 포트/N 끝이면 위(t 작은 쪽), S 끝이면 아래.
+    const toSouth = plan.portEnd === "S";
+    const topT = toSouth ? allRows[allRows.length - 1] : allRows[0];
+    const belt0 = faceCell(mExt, face, laneDepth, topT); // 벨트 줄의 **포트 쪽** 끝 칸
     // 트렁크 끝(= 납품 경로 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
     // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
     const trunkStart = isGap
@@ -224,7 +228,7 @@ export function emitOutputLinks(args: {
     });
 
     // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W/E 면은 위로, N/S 면은 서쪽으로.
-    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: -1 };
+    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? 1 : -1 };
     // **끝 칸은 면을 따라 계속 흐르지 않고 포트 쪽으로 꺾는다.** 안 꺾으면 이 그룹의 물건이
     // 면을 따라 더 흘러 **이웃 그룹의 벨트로 넘어간다**(머신 사이 gap 이 0 이면 두 벨트가 실제로
     // 맞닿는다). 품목이 같아 오염은 안 나지만 장부가 통째로 거짓이 된다 — 이쪽 부모는 굶고
@@ -246,8 +250,10 @@ export function emitOutputLinks(args: {
     //
     // 벨트는 연속이라야 물건이 흐른다(계획서 §3 조건 ⑤). [emitInputLinks] ③ 은 처음부터
     // `topT..botT` 범위로 돌고 있었다 — **두 방출기는 거울인데 이 한 줄에서 깨져 있었다.**
-    const botT = Math.max(...allRows);
-    for (let t = topT; t <= botT; t++) {
+    // 범위는 **포트 방향과 무관**하다 — 좌석 전체를 덮는다. 포트 쪽 끝(`topT`)에서만 꺾는다.
+    const loT = Math.min(...allRows);
+    const hiT = Math.max(...allRows);
+    for (let t = loT; t <= hiT; t++) {
       if (blocked) break;
       // 끝 칸: 자기 줄로 내려가야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
       const turn = exitDepth > laneDepth ? fv : pfv;
@@ -351,17 +357,22 @@ export function emitInputLinks(args: {
       ? { x0: m0.origin.x, y0: m0.origin.y, x1: m0.origin.x + m0.size.w - 1, y1: m0.origin.y + m0.size.h - 1 }
       : ext;
     const allRows = seats.flatMap((s) => s.rows);
-    const topT = Math.min(...allRows);
+    // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd] — 출력과 같은 규칙). S 끝이면
+    // 포트가 아래에 서고 공급이 위로 흐른다.
+    const toSouth = plan.portEnd === "S";
+    const topT = toSouth ? Math.max(...allRows) : Math.min(...allRows);
     // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 자기 줄로 내려가는 그룹은
     // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
     const exitDepth = plan.exitDepth ?? plan.laneDepth;
     const ownEast = Math.max(...allRows);
-    const botT = isGap ? (exitDepth > plan.laneDepth ? ownEast : m0.origin.x + m0.size.w - 1) : ownEast;
+    const botT = isGap
+      ? (exitDepth > plan.laneDepth ? ownEast : m0.origin.x + m0.size.w - 1)
+      : toSouth ? Math.min(...allRows) : ownEast;
 
     // 입구는 **벨트가 앉은 면을 따른다**([emitOutputLinks] 와 같은 규약). gap 좌석이면 가로
     // 벨트가 동쪽 변에서 90° 꺾여 들어온다 — 그 꺾이는 칸이 곧 평범한 E 포트(모서리 포트)다.
     // 링크 입력은 선호 면이 E 라 예전의 하드코딩과 값이 같고, W 로 밀려나는 것은 원료 줄뿐이다.
-    const portFace: PortFace = isGap ? "E" : face;
+    const portFace: PortFace = plan.portEnd ?? (isGap ? "E" : face);
     const pfv = faceVector(portFace);
 
     // 좌석(d1)이 막히면 폴백. 레인은 막히면 다음 후보로.
@@ -380,7 +391,7 @@ export function emitInputLinks(args: {
     const lane = { d: plan.laneDepth, inserter: seatInserterName(input, plan.laneDepth) };
     const fv = faceVector(face);
     // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
-    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: 1 };
+    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
     const inward = { x: -fv.x, y: -fv.y };
 
     // 벨트 경로를 **먼저 전부 계산하고**, 다 놓을 수 있을 때만 놓는다. 반만 놓인 벨트는
@@ -397,7 +408,8 @@ export function emitInputLinks(args: {
     // ③ **수집** — 자기 좌석 구간을 덮으며 탭에 나눠 준다. 먼 쪽 끝 칸은 면을 따라 더 흐르면
     // **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다 — 그 칸은 이 그룹 자신의
     // 좌석(인서터)이라 언제나 안전하다.
-    for (let t = topT; t <= botT; t++) {
+    // 범위는 포트 방향과 무관하다 — 좌석 전체를 덮고, **먼 쪽 끝**에서만 머신 쪽으로 꺾는다.
+    for (let t = Math.min(topT, botT); t <= Math.max(topT, botT); t++) {
       const far = isGap ? t === topT : t === botT;
       path.push({ at: faceCell(geomExt, face, lane.d, t), v: far ? inward : beltDirV });
     }
