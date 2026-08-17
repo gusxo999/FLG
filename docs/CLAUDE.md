@@ -20,8 +20,9 @@
 
 [auto-layout/common/code-folders.md](auto-layout/common/code-folders.md) 의 **두 축**으로 판정한다.
 문서가 코드 폴더에 대응하면 **그 거울**로 둔다 — `auto-layout/{common,module,link,channel,perimeter}/`
-는 `src/autoLayout/` 의, `factorio/`·`blueprint/`·`UI/` 는 같은 이름의 `src/` 폴더의 거울이다
-(2026-08-02 `utils/` 해체, 2026-08-03 `UI/` 신설로 넷 다 거울이 됐다). 대응이 없으면 주제로 둔다.
+는 `src/autoLayout/` 의, `factorio/`·`blueprint/`·`UI/`·`debug/` 는 같은 이름의 `src/` 폴더의
+거울이다 (2026-08-02 `utils/` 해체, 2026-08-03 `UI/` 신설, 2026-08-17 `debug/` 신설).
+대응이 없으면 주제로 둔다.
 사전·MOC 는 전역이라 최상위다.
 
 **이 거울이 도달 경로다** — 코드 폴더의 `CLAUDE.md` 가 같은 이름의 문서 폴더를 가리키므로,

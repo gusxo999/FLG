@@ -38,6 +38,7 @@ docs/
 ├ factorio/     ← src/factorio/ 의 거울 (+ scripts/export-gamedata.lua)
 ├ blueprint/    ← src/blueprint/ 의 거울
 ├ UI/           ← src/UI/ 의 거울 (components · i18n · pixi · store)
+├ debug/        ← src/debug/ 의 거울 (콘솔 조작 API `flg`)
 └ deferred/     보류·폐기 — 다음 시도가 같은 함정에 안 빠지게
 ```
 
@@ -128,6 +129,7 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 | 문서 | 주제 |
 |------|------|
 | [belt-flow-inspection](UI/belt-flow-inspection.md) | 벨트 셀 클릭 → 운반 품목·items/sec. 세션이 아니라 **그리드 정적 분석**이라 수동 배치도 동작 |
+| [ai-console](debug/ai-console.md) | **콘솔 조작 API `flg`** — 화면을 텍스트로 누르고 읽는다. 왕복 규약 · 세 방식 판정 · 정직한 괴리. 목록은 `flg.help()` |
 
 ### 🚧 보류 · 폐기 결정 `#deferred`
 

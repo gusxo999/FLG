@@ -440,18 +440,58 @@ flg.wizard.run()           [레이아웃 생성]  ✗ 6단계(검토)에서만
 
 **Step 1 만 확정이고, 뒤는 방향이다.**
 
-### Step 1 — 레지스트리 + 관측 + A 방식 (컴포넌트 무수정) ✅확정
+### Step 1 — 레지스트리 + **요구된 다섯** ✅ 완료 (2026-08-17)
 
-`src/debug/` 를 폴더로 키운다: `registry.ts`(등록·실행·로그·저널) ·
-`observe.ts`(`ui()`·`report()`) · `commands/{grid,wizard,inspect,flags,toolbar,sidebar}.ts` 중
-**A 로 되는 것만**. 기존 14개를 그룹으로 옮긴다.
+> **착수 직전에 범위가 바뀌었다.** 원래 Step 1 은 *"A 방식으로 되는 조작을 전부 그룹으로
+> 옮긴다"* 였다. [[다음작업-요구사항]] 이 그 순서를 뒤집었다 — 다음 작업(`planned = 0`)이
+> 실제로 필요로 하는 것은 **버튼 60개가 아니라 명령 다섯 개**이고, 그중 셋(`face`·`check`·
+> `report`)은 애초에 화면에 **없는** 기능이다. 카탈로그를 먼저 늘렸으면 정작 막힌 다섯을
+> 못 덮은 채 표면만 넓혔을 것이다.
+>
+> 그래서 이 단계는 *"조작 표면을 옮긴다"* 가 아니라 **"막힌 다섯을 덮는다"** 가 됐다.
+> 기존 14개는 그 김에 그룹으로 옮겼다(`grid.*`·`wizard.*`·`flags.*`).
+
+| 요구 | 명령 | 구현 |
+|---|---|---|
+| ① 3왕복 조작 | `await flg.run({…})` | [runLayout.ts](../../src/debug/runLayout.ts) — 입력 구성·서명·대기·요약 |
+| ② 100KB 출력 | `flg.face(모듈, 면)` | [faceTable.ts](../../src/debug/faceTable.ts) — 좌표와 `d1..dN` 을 **함께** |
+| ③ 흩어진 카운터 | `flg.report()` | [runStats.ts](../../src/debug/runStats.ts) + [report.ts](../../src/debug/report.ts) |
+| ④ `git stash` 비교 | `flg.snapshot/diff` | [snapshots.ts](../../src/debug/snapshots.ts) — localStorage 라 새로고침을 견딘다 |
+| ⑤ 손으로 짠 규칙 | `flg.check()` | [checkRules.ts](../../src/debug/checkRules.ts) — 실측에서 나온 넷만 |
 
 - **전제:** 조작 상태의 대부분은 `src/UI/store/` 의 스토어 9개 + `UI/i18n` 의 언어 스토어에
   있다 — 읽어서 확인함. 컴포넌트 로컬 state 는 `activeTab`·`filter`·`openSlot`·
   `importModalOpen`·`dumpEnabled`·튜토리얼 단계뿐이다.
-- **불변:** 화면 코드(`src/UI/**`)를 한 줄도 안 고친다. 이 단계에서 UI 가 바뀌면 범위가 샌 것이다.
-- **관문:** *"명령을 치고 → `flg.report()` 를 복사받아 → 다음 명령을 정한다"* 는 왕복이
-  실제로 성립하는가. 성립하면 나머지 단계는 표면을 늘리는 일일 뿐이다.
+- **불변(지켜짐):** 화면 코드(`src/UI/**`)를 한 줄도 안 고쳤다.
+- **깨진 불변 하나 — 정직하게:** *"자동 배치 코드를 안 건드린다"* 는 못 지켰다.
+  `moduleWizard.ts` 에 **기록 호출 3줄**이 늘었다(`beginRunStats`·`recordDeliveryStats`·
+  `recordPerimeterStats`). 이유는 §5 의 발견이다 — 카운터가 **이미 계산되고 있는데 밖으로
+  나오는 길이 `LayoutIssue.detail` 문장뿐**이었다. 계산·분기·반환값은 그대로이고 관측만
+  붙었다. 대안(숫자를 `CandidateLeaf` 까지 실어 올리기)은 배치 모델에 진단 필드를 심는 일이라
+  더 크다.
+- **관문(열림):** *"명령을 치고 → `flg.report()` 를 복사받아 → 다음 명령을 정한다"* 가
+  성립한다. 남은 단계는 표면을 늘리는 일이다.
+
+**착수해 보니 달랐던 것 두 가지**
+
+1. **요구 ③의 "모듈 미라우팅" 은 셀 필요가 없었다.** `unroutedLines` 가 하나라도 있으면
+   `moduleWizard` 가 `unrouted-lines` 이슈를 내고 **abort 한다** — 성공한 배치의
+   미라우팅은 구조적으로 0 이다. 그래서 숫자를 세는 대신 `report()` 에 그 사실을 적고,
+   자리를 **면별 레인 점유**(`W d2←iron-ore · E d2→concrete`)로 채웠다. 채널 조사에서
+   실제로 묻는 것이 그쪽이다.
+2. **R-연속이 조각을 짚고 있었다.** 처음 구현은 BFS 시작 셀에서 닿는 쪽을 "본체" 로 보고
+   나머지를 위반으로 냈는데, 어느 쪽이 본체가 되는지가 **삽입 순서에 달려** 있었다. 어느
+   조각이 잘못인지는 알 수 없으므로 **틈**(가장 가까운 칸 쌍)을 짚도록 바꿨다.
+
+**검증된 범위:** [layoutDiagnostics.test.ts](../../src/debug/layoutDiagnostics.test.ts) 14건
+— 대조군(위반 0) + 결함을 하나씩 심은 네 규칙 + 단면표 정렬 + 지하벨트 짝 오탐 방지 +
+자기 끝점 상자 오탐 방지. [registry.test.ts](../../src/debug/registry.test.ts) 8건 —
+스코프 격리·처방 포함·저널.
+
+**아직 안 한 것(브라우저 실측):** 진짜 배치로 한 번 돌려 봐야 한다. 합성 배치가
+검증하는 것은 *읽는 도구가 옳게 읽나* 이지 *실제 배치에서 오탐이 없나* 가 아니다.
+특히 **R-연속**은 납품 경로가 양끝 상자·좌석을 떼는 경우(`deliveryRoute.stripKeys`)에
+오탐이 날 수 있다 — 첫 실행에서 위반이 쏟아지면 그 규칙부터 의심한다.
 
 ### Step 2 — B 방식: 등록 훅 + 위저드·툴바
 

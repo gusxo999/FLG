@@ -40,6 +40,9 @@ import {
   type LayoutSnapshot,
 } from "../layoutIssue";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
+// 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
+// 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
+import { beginRunStats, recordDeliveryStats, recordPerimeterStats } from "../../debug/runStats";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
@@ -135,6 +138,7 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): ModulePipelineRe
 }
 
 function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
+  beginRunStats(); // 실행 1회 = 진단 카운터 1벌 (`flg.report()` 가 읽는다)
   const { input, metas, parentOf, order, makeId } = args;
   const { recipeMap, entityMap } = useGameDataStore.getState();
 
@@ -521,6 +525,13 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
   });
+  recordDeliveryStats({
+    planned: deliveryRes.planned,
+    dijkstraFallback: deliveryRes.dijkstraFallback,
+    reservationOverrun: deliveryRes.reservationOverrun,
+    failures: deliveryRes.failures,
+    routes: deliveryRes.routes.length,
+  });
   if (deliveryRes.failures > 0) {
     // **경로마다 하나씩** 낸다 — 예전엔 "3건" 이라는 숫자 하나였다. 어느 납품 경로가 왜
     // 막혔는지는 `routes` 에 이미 있었는데 화면까지 못 갔다.
@@ -560,6 +571,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         pipeFlow: pipeFlowByFluid, // [파이프 합류 가드] — 반출 파이프가 밟으면 안 되는 칸.
       })
     : null;
+  if (perim) recordPerimeterStats(perim);
   // **납품 폴백 경고**(2026-08-17) — *"계획대로 놓는다"* 는 S-layer 의 핵심 계약이 깨진 자리다.
   // 여태 콘솔에 줄 하나 찍고 끝이라 `failures` 는 0, 화면은 "성공"이었다. **폴백은 실패다** —
   // 계획된 경로를 못 쓰고 탐색으로 돌면 벨트가 모듈을 가로질러 남의 포트를 감고 들어오는

@@ -19,6 +19,17 @@
 - **문서를 쓰거나 옮길 때**는 [docs/CLAUDE.md](docs/CLAUDE.md) 가 안내한다(그 폴더를 건드리면 자동 로딩).
 - 문서와 코드가 어긋나면 **코드가 현재 사실**이다. 어긋남을 발견하면 문서를 삭제만 사용해 갱신한다.
 
+**화면 동작을 확인해야 하면 스크린샷이 아니라 콘솔이다.** `window.flg` 로 실행·단면표·규칙
+검사를 명령으로 친다(`npm run dev` → `localhost:5173`). 브라우저를 몰 수 있으면 **직접**
+치고, 아니면 사용자에게 `copy(flg.report())` 결과를 받는다.
+
+```js
+await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.check()
+```
+
+목록은 `flg.help()`, 규약·괴리는 [docs/debug/ai-console.md](docs/debug/ai-console.md).
+**게임데이터는 콘솔로 못 넣는다** — 파일 업로드뿐이고 localStorage 에 남는다(§정직한 괴리).
+
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
 사유 카탈로그는 `layoutIssue.LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —
 *어디가* 막혔는지와 *무엇을 고쳐야* 하는지가 문장에서 필드로 갈렸다),

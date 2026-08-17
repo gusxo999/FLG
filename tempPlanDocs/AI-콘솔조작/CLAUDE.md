@@ -1,9 +1,13 @@
 # AI-콘솔조작 — 상태와 고유 컨텍스트
 
-> 상태: **승인 대기**
+> 상태: **진행 중** — Step 1(요구된 다섯) 완료, 브라우저 실측 대기. Step 2~5 미착수.
 
 화면의 버튼·조작을 콘솔 명령으로 노출해, AI 가 스크린샷 대신 **명령을 치고 로그를 읽어**
 앱을 몰 수 있게 한다. 계획서는 [AI-콘솔조작.md](AI-콘솔조작.md).
+
+> **다음에 할 일:** 브라우저에서 `await flg.run()` → `copy(flg.report())` 를 한 번 돌려
+> 단면표 정렬과 `flg.check()` 오탐을 확인한다. 그게 끝나야 Step 2(컴포넌트 등록 훅)로 간다.
+> 코드로 검증된 범위는 [src/debug/layoutDiagnostics.test.ts](../../src/debug/layoutDiagnostics.test.ts) 가 전부다.
 
 ## 착수 전 반드시 읽을 것
 
