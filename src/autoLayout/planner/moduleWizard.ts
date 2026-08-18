@@ -531,10 +531,17 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   recordRowChannelStats({
     count: pack.rowChannels.length,
     bands: pack.rowChannels.map(
-      (b) =>
-        `d${b.depth}#${b.index} y${b.top}..${b.bottom} (높이 ${b.bottom - b.top + 1}`
-        + `${b.wantHeight > b.bottom - b.top + 1 ? ` · **수요 ${b.wantHeight}**` : ""})`
-        + ` (${b.above} | ${b.below})`,
+      (b) => {
+        const have = b.bottom - b.top + 1;
+        const who = b.kind === "between" ? `${b.above} | ${b.below}` : `${b.kind} ${b.above ?? b.below}`;
+        const t = b.tracks?.size ?? 0;
+        return (
+          `d${b.depth} ${b.kind} y${b.top}..${b.bottom} 높이 ${have}`
+          + (b.wantHeight > have ? ` → **수요 ${b.wantHeight}**` : "")
+          + (t > 0 ? ` · 트랙 ${t}건` : "")
+          + `  (${who})`
+        );
+      },
     ),
     needs: pack.rowChannelNeeds.map((n) => `${n.id} @d${n.depth} ${n.nodeId} y${n.portY} ${n.face}`),
   });
