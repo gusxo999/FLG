@@ -20,6 +20,7 @@ import type { SpecInserter } from "../buildSpec";
  */
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
+import { planRowChannel } from "./rowChannelPlanner";
 import {
   planChannelGeometry,
   type ChannelGeometryPlan,
@@ -73,6 +74,14 @@ export interface RowChannelBand {
   above: string;
   /** 아래 모듈 id. */
   below: string;
+  /**
+   * 이 띠가 **먹어야 하는** 높이 — 통과 경로에서 유도된다(폭 역전, [planRowChannel]).
+   *
+   * `bottom - top + 1`(실제 높이)과 **다를 수 있다.** 실제 높이는 `STACK_GAP` 상수로
+   * 이미 정해졌고, 이 값은 *"수요대로면 얼마여야 하나"* 다. 둘이 갈리면 그만큼
+   * **띠가 모자라다**는 뜻이고, 그 조정은 순환 때문에 Step 3(환승, 두 패스)의 일이다.
+   */
+  wantHeight: number;
 }
 
 /** 한 노드의 패킹 입력 — recipe 에서 유도. */
@@ -411,7 +420,11 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const top = topY.get(above)! + heightOf(above); // 위 모듈 바로 아래 칸
       const bottom = topY.get(below)! - 1; // 아래 모듈 바로 위 칸
       if (bottom < top) continue; // 스윕이 붙여 놨으면 띠가 없다
-      rowChannels.push({ depth, index: i, top, bottom, above, below });
+      // 통과 경로는 아직 없다(Step 1·2 — 소비처가 Step 3 에서 생긴다).
+      // 그래서 `wantHeight` 는 지금 하한(ROW_CHANNEL_MIN = STACK_GAP)과 같고,
+      // **오늘 배치를 한 칸도 안 바꾼다.** 경로가 붙으면 이 수가 자란다.
+      const { height } = planRowChannel([]);
+      rowChannels.push({ depth, index: i, top, bottom, above, below, wantHeight: height });
     }
   }
 

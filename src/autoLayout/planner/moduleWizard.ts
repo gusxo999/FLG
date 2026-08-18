@@ -531,7 +531,10 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   recordRowChannelStats({
     count: pack.rowChannels.length,
     bands: pack.rowChannels.map(
-      (b) => `d${b.depth}#${b.index} y${b.top}..${b.bottom} (${b.above} | ${b.below})`,
+      (b) =>
+        `d${b.depth}#${b.index} y${b.top}..${b.bottom} (높이 ${b.bottom - b.top + 1}`
+        + `${b.wantHeight > b.bottom - b.top + 1 ? ` · **수요 ${b.wantHeight}**` : ""})`
+        + ` (${b.above} | ${b.below})`,
     ),
   });
   recordDeliveryStats({
