@@ -46,6 +46,14 @@ export interface PerimeterCounters {
   skips: ReadonlyArray<{ chestId: string; reason: string }>;
 }
 
+/** 행 채널 — [modulePacking] 이 낸 띠들(Step 1). 아직 자리만 있고 배정은 없다. */
+export interface RowChannelCounters {
+  /** 띠 개수. 0 이면 이 트리엔 세로로 쌓인 이웃이 없다(같은 깊이에 모듈 하나씩). */
+  count: number;
+  /** 띠마다 `depth#index top..bottom (위모듈 | 아래모듈)`. */
+  bands: ReadonlyArray<string>;
+}
+
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
@@ -57,9 +65,13 @@ export interface RunStats {
    * **"0건 이사" 와 "안 돌았다" 는 다르다.**
    */
   perimeter: PerimeterCounters | null;
+  /** 행 채널 띠. 패킹까지 갔으면 채워진다. */
+  rowChannels: RowChannelCounters | null;
 }
 
-const fresh = (): RunStats => ({ startedAt: null, delivery: null, perimeter: null });
+const fresh = (): RunStats => ({
+  startedAt: null, delivery: null, perimeter: null, rowChannels: null,
+});
 
 let current: RunStats = fresh();
 
@@ -70,6 +82,10 @@ export function beginRunStats(): void {
 
 export function recordDeliveryStats(c: DeliveryCounters): void {
   current.delivery = c;
+}
+
+export function recordRowChannelStats(c: RowChannelCounters): void {
+  current.rowChannels = { count: c.count, bands: [...c.bands] };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -83,6 +99,9 @@ export function readRunStats(): RunStats {
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter
       ? { ...current.perimeter, skips: current.perimeter.skips.map((s) => ({ ...s })) }
+      : null,
+    rowChannels: current.rowChannels
+      ? { ...current.rowChannels, bands: [...current.rowChannels.bands] }
       : null,
   };
 }

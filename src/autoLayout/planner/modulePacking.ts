@@ -48,6 +48,33 @@ export { moduleExtent } from "../module/moduleTransform";
 const MODULE_CHANNEL_MIN = 4;
 const STACK_GAP = 3; // tidy-tree 서브트리 간격 + 4b 겹침 스윕 하한
 
+/**
+ * **행 채널 하나** — 같은 깊이에서 세로로 이웃한 두 모듈 사이의 빈 가로 띠.
+ *
+ * [[용어사전#행 채널 (row channel)|행 채널]] 은 [[용어사전#채널 (channel)|채널]]의 직교
+ * 짝이다. 채널이 세로로 뻗어 좌우 **깊이**를 가르면, 행 채널은 가로로 뻗어 상하 **모듈 행**을
+ * 가른다. → `docs/auto-layout/common/layout-models.md` §2⑤
+ *
+ * `top`/`bottom` 은 **빈 칸 범위**(양 끝 모듈에 안 물린다). `top > bottom` 인 띠는 안 만든다 —
+ * 겹침 스윕이 두 모듈을 붙여 놓은 경우다.
+ *
+ * **`ROW_GAP`(기둥 *안* 머신 간격)과 다르다** — 이건 모듈 *사이* 간격이다.
+ */
+export interface RowChannelBand {
+  /** 이 띠가 속한 깊이(열). */
+  depth: number;
+  /** 그 깊이에서 위에서 몇 번째 띠인가(0부터). */
+  index: number;
+  /** 띠의 첫 행(위 모듈 바로 아래). */
+  top: number;
+  /** 띠의 마지막 행(아래 모듈 바로 위). */
+  bottom: number;
+  /** 위 모듈 id. */
+  above: string;
+  /** 아래 모듈 id. */
+  below: string;
+}
+
 /** 한 노드의 패킹 입력 — recipe 에서 유도. */
 export interface NodeSpec {
   id: string;
@@ -209,6 +236,14 @@ export interface PackResult {
    * 있으면 예약 불변식이 깨진 것 — 조사 대상이지 정상 경로가 아니다. 비어 있으면 `[]`.
    */
   linkMismatches: string[];
+  /**
+   * **행 채널 띠들** — 같은 깊이의 이웃 모듈 사이 빈 가로 띠(Step 1).
+   *
+   * 아직 **자리만** 낸다. 트랙 배정·폭 역전은 후속이다
+   * (`tempPlanDocs/행채널-모델/`). 소비처가 생기기 전이라도 `flg.report()` 가 읽어
+   * **띠가 실제로 몇 개 나는지**를 실측할 수 있게 여기 싣는다.
+   */
+  rowChannels: RowChannelBand[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,6 +390,28 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       if (t < prevBottom + STACK_GAP) t = prevBottom + STACK_GAP;
       topY.set(id, t);
       prevBottom = t + heightOf(id);
+    }
+  }
+
+  // 2c) **행 채널** — 같은 깊이에서 세로로 이웃한 두 모듈 **사이의 가로 띠**
+  //     ([[용어사전#행 채널 (row channel)|행 채널]] · docs/layout-models §2⑤).
+  //
+  //     세로 채널의 **직교 짝**이다. 세로 채널이 깊이 사이를 가르면 이 띠는 같은 깊이 안의
+  //     모듈 행을 가른다. 2026-07-11 부터 **이름만 있고 계획이 없었다** — 폭이 `STACK_GAP`
+  //     상수로 우연히 생기고 아무도 예약하지 않았다.
+  //
+  //     여기서는 **자리만 낸다**(Step 1). 트랙 배정·폭 역전은 다음 단계다.
+  //     `top`/`bottom` 은 띠의 **빈 칸 범위**(양 끝 모듈에 안 물린다).
+  const rowChannels: RowChannelBand[] = [];
+  for (const [depth, ids] of idsByDepth) {
+    const sorted = [...ids].sort((a, b) => topY.get(a)! - topY.get(b)!);
+    for (let i = 0; i + 1 < sorted.length; i++) {
+      const above = sorted[i];
+      const below = sorted[i + 1];
+      const top = topY.get(above)! + heightOf(above); // 위 모듈 바로 아래 칸
+      const bottom = topY.get(below)! - 1; // 아래 모듈 바로 위 칸
+      if (bottom < top) continue; // 스윕이 붙여 놨으면 띠가 없다
+      rowChannels.push({ depth, index: i, top, bottom, above, below });
     }
   }
 
@@ -571,7 +628,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     : undefined;
 
   const bbox = config.reservePerimeterLanes ? expandBbox(rawBbox, lanePlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches };
+  return { placements, deliveries, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches, rowChannels };
 }
 
 /**

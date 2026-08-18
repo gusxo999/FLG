@@ -100,6 +100,12 @@ export function buildReport(): string {
     ),
   );
 
+  const rc = stats.rowChannels;
+  out.push(
+    line('행채널', rc ? (rc.count > 0 ? `${rc.count}개` : '0개 — 세로로 쌓인 이웃이 없다') : '단계 미도달'),
+  );
+  if (rc) for (const b of rc.bands) out.push(sub(b));
+
   const p = stats.perimeter;
   out.push(
     line(

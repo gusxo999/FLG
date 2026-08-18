@@ -42,7 +42,7 @@ import {
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
 // 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
-import { beginRunStats, recordDeliveryStats, recordPerimeterStats } from "../../debug/runStats";
+import { beginRunStats, recordDeliveryStats, recordPerimeterStats, recordRowChannelStats } from "../../debug/runStats";
 import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
@@ -524,6 +524,15 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
+  });
+  // **행 채널 띠** — 아직 소비처가 없다(Step 1: 자리만 낸다). 그래도 여기서 기록해
+  // `flg.report()` 가 **띠가 실제로 몇 개 나는지**를 실측할 수 있게 한다 —
+  // 다음 단계(트랙 배정)가 필요한지 재는 근거다.
+  recordRowChannelStats({
+    count: pack.rowChannels.length,
+    bands: pack.rowChannels.map(
+      (b) => `d${b.depth}#${b.index} y${b.top}..${b.bottom} (${b.above} | ${b.below})`,
+    ),
   });
   recordDeliveryStats({
     planned: deliveryRes.planned,
