@@ -632,14 +632,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       });
       // **띠를 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
       // 것인지 띠 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
+      // **띠 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
+      // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromBand`/`toBand` 를 덮어쓴다.
       const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
-      const fromBand = bandApproachById.get(`${dkey}:out`);
-      const toBand = bandApproachById.get(`${dkey}:in`);
       deliverySeeds.push({
         depth: s.depth,
         key: dkey,
-        startY: fromBand?.row ?? cy,
-        endY: toBand?.row ?? py,
+        startY: cy,
+        endY: py,
         // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
         //
         // 예전엔 *"포트가 벽을 마주 본다"*(`side === W`/`E`)로만 봤다. 그게 계단꼴 모델의
@@ -654,8 +654,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         // 오도록 회전을 강제하고(wantFace) 못 맞추면 트리째 reject 하기 때문이다. 즉 위
         // eligible 조건과 유체의 존재 조건이 같다(docs/…fluid-delivery-reservation.md §1.1).
         fluid: out.line.kind === "pipe" ? product : undefined,
-        fromBand,
-        toBand,
       });
     });
   }
@@ -694,6 +692,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         if (t === undefined) continue;
         bandApproachById.set(n.id, { row: band.top + t, chestY: n.portY });
       }
+    }
+    // **배정이 끝난 지금** seed 에 실어 준다 — 위 짝짓기 루프는 배정을 아직 모른다.
+    // 진입 행이 곧 세로 채널의 출발/도착 행이다(Step 0: 출처를 안 가린다).
+    for (const seed of deliverySeeds) {
+      const fb = bandApproachById.get(`${seed.key}:out`);
+      const tb = bandApproachById.get(`${seed.key}:in`);
+      if (fb) { seed.fromBand = fb; seed.startY = fb.row; }
+      if (tb) { seed.toBand = tb; seed.endY = tb.row; }
     }
   }
 
