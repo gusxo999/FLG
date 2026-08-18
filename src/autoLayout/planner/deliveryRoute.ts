@@ -53,7 +53,7 @@ import { dijkstraWithJumps, type DijkstraResult } from "./containerRouting";
 import { emitItemPath, emitFluidPath } from "../execution/emitPath";
 import { cellKey, faceVector, segment } from "../util/helper";
 import type { ModulePort } from "../module/clusterModule";
-import { deliveryKey, type DeliveryGeometry, type DeliverySpec, type PackResult } from "./modulePacking";
+import { deliveryKey, type DeliveryDirective, type DeliverySpec, type PackResult } from "./modulePacking";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 import { EntityType } from "../../types/layout";
 
@@ -602,10 +602,15 @@ function finishFluidChain(delivery: DeliverySpec, chain: DijkstraResult, config:
  * 지하 횡단 = 계단꼴 + 남의 셀 밑을 건너는 점프 여러 개.
  * 축 정렬이 깨진 지시(예: straight 인데 행이 다름)는 null — 호출자가 dijkstra 폴백.
  */
-function buildPlannedChain(delivery: DeliverySpec, g: DeliveryGeometry): DijkstraResult | null {
-  const s = portGeometry(delivery.from).chest;
-  const e = portGeometry(delivery.to).chest;
-  const cells: { x: number; y: number }[] = [{ ...s }];
+function buildPlannedChain(delivery: DeliverySpec, g: DeliveryDirective): DijkstraResult | null {
+  const s0 = portGeometry(delivery.from).chest;
+  const e0 = portGeometry(delivery.to).chest;
+  // **띠 접근** — 포트가 기둥 끝이면 상자에서 띠의 트랙 행까지 **세로로** 먼저 간다.
+  // 그러고 나면 남은 일은 계단꼴 그대로다 — 세로 채널은 그 행이 어디서 왔는지 안 묻는다
+  // (2026-08-18 Step 0). 도착 쪽도 거울이다.
+  const s = g.fromBand ? { x: s0.x, y: g.fromBand.row } : s0;
+  const e = g.toBand ? { x: e0.x, y: g.toBand.row } : e0;
+  const cells: { x: number; y: number }[] = [{ ...s0 }];
   const edges: DijkstraResult["edges"][number][] = [];
   const push = (to: { x: number; y: number }) => {
     const cur = cells[cells.length - 1];
@@ -614,6 +619,9 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryGeometry): Dijkstr
       edges.push("surface");
     }
   };
+
+  // 자식 상자 → 띠 트랙 행(세로). 띠를 안 쓰면 0칸이다.
+  if (g.fromBand) push(s);
 
   switch (g.kind) {
     case "straight":
@@ -683,6 +691,9 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryGeometry): Dijkstr
       break;
     }
   }
+  // 띠 트랙 행 → 부모 상자(세로). 띠를 안 쓰면 0칸이다.
+  if (g.toBand) push(e0);
+
 
   // segment() 는 축 정렬 입력만 안전 — 연속성 검증에 실패한 지시는 폐기(폴백).
   for (let i = 0; i + 1 < cells.length; i++) {

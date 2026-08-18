@@ -192,6 +192,20 @@ export interface DeliverySpec {
 }
 
 /** 납품 경로의 결정적 방출 지시(절대 좌표) — 통합 장부의 배정을 트랙 index→x 로 변환한 것. */
+/**
+ * **띠 접근** — 포트가 기둥 끝이라 세로 채널 벽을 직접 못 마주 볼 때, 그 끝이 띠에서
+ * 달리는 구간. `row` 가 곧 세로 채널에 넘기는 **진입 행**이다.
+ *
+ * (E) 결정에 따라 이 구간은 **자기 깊이 열 안에서만** 달린다 — 세로 채널을 안 가로지르므로
+ * 교차로가 없다. → `tempPlanDocs/행채널-모델/`
+ */
+export interface BandApproach {
+  /** 배정된 트랙의 **절대 행**. 세로 채널의 `startY`/`endY` 가 이 값이 된다. */
+  row: number;
+  /** 상자의 절대 y — 여기서 `row` 까지 세로로 간다. */
+  chestY: number;
+}
+
 export type DeliveryGeometry =
   | { kind: "straight" }
   | { kind: "staircase"; trackX: number }
@@ -225,10 +239,24 @@ export type DeliveryGeometry =
       jumps: { from: { x: number; y: number }; to: { x: number; y: number } }[];
     };
 
+/**
+ * 납품 하나의 방출 지시 = **도형 + 띠 접근**.
+ *
+ * 도형은 세로 채널의 일이고(계단꼴 등), 띠 접근은 행 채널의 일이다. 둘이 한 자료형에
+ * 실리되 **서로를 안 본다** — 세로 채널은 진입 행만 받고 그게 어디서 왔는지 안 묻는다
+ * (2026-08-18 Step 0 확인: `startY` 의 출처를 안 가린다).
+ */
+export type DeliveryDirective = DeliveryGeometry & {
+  /** 자식 쪽 끝이 띠에서 온다면 그 구간. 포트가 채널 벽을 직접 마주 보면 없다. */
+  fromBand?: BandApproach;
+  /** 부모 쪽 끝이 띠로 나간다면 그 구간. */
+  toBand?: BandApproach;
+};
+
 /** 채널 기하 예약 결과 — deliveryRoute(납품 방출)·modulePerimeterPass(반출 재생)가 소비. */
 export interface PackChannelGeometry {
   /** [deliveryKey] → 방출 지시. 없는 납품 경로 = fallback(기존 dijkstra). */
-  deliveries: Map<string, DeliveryGeometry>;
+  deliveries: Map<string, DeliveryDirective>;
   /** 반출 경로 예약 셀(절대 cellKey) — 폴백 dijkstra 납품 경로가 침범하면 안 되는 자리. */
   reservedExportCells: Set<string>;
   /**
@@ -526,6 +554,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     eligible: boolean;
     /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
     fluid?: string;
+    /** 자식 쪽 끝의 띠 접근(있으면). */
+    fromBand?: BandApproach;
+    /** 부모 쪽 끝의 띠 접근(있으면). */
+    toBand?: BandApproach;
   }[] = [];
   const pairedChestIds = new Set<string>();
   const usedParentIn = new Map<string, Set<string>>();
@@ -541,6 +573,8 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    * 지금은 **세기만** 한다. 이 수가 0이면 행 채널이 이 트리에 필요 없다는 뜻이고,
    * 0이 아니면 Step 3(트랙 배정 + 두 패스)이 실제로 값을 낸다.
    */
+  /** 경로 끝 id(`…:out`/`…:in`) → 띠 접근. 5a-2 가 채우고 5c 가 지시에 싣는다. */
+  const bandApproachById = new Map<string, BandApproach>();
   const rowChannelNeeds: {
     id: string;
     nodeId: string;
@@ -596,17 +630,32 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         lo: Math.min(cy, py),
         hi: Math.max(cy, py),
       });
+      // **띠를 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
+      // 것인지 띠 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
+      const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
+      const fromBand = bandApproachById.get(`${dkey}:out`);
+      const toBand = bandApproachById.get(`${dkey}:in`);
       deliverySeeds.push({
         depth: s.depth,
-        key: deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId }),
-        startY: cy,
-        endY: py,
+        key: dkey,
+        startY: fromBand?.row ?? cy,
+        endY: toBand?.row ?? py,
+        // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
+        //
+        // 예전엔 *"포트가 벽을 마주 본다"*(`side === W`/`E`)로만 봤다. 그게 계단꼴 모델의
+        // 전제였다(docs/layout-models §2③). 이제 **기둥 끝 포트도 띠를 지나 벽에 닿으므로**
+        // 그 경우를 적격에 넣는다 — 조건이 넓어진 게 아니라 **닿는 길이 하나 늘었다.**
+        // (2026-08-17 에 조건만 넓히고 도형을 안 늘렸다가 모듈 관통 경로가 나왔다.)
         eligible:
-          out.meta.side === "W" && inp.meta.side === "E" && byId.get(s.parentId!)!.depth === s.depth - 1,
+          (out.meta.side === "W" || out.face === "N" || out.face === "S")
+          && (inp.meta.side === "E" || inp.face === "N" || inp.face === "S")
+          && byId.get(s.parentId!)!.depth === s.depth - 1,
         // 유체 납품 경로는 **항상** 적격이다 — moduleWizard 가 출력 유체를 W, 입력 유체를 E 면에
         // 오도록 회전을 강제하고(wantFace) 못 맞추면 트리째 reject 하기 때문이다. 즉 위
         // eligible 조건과 유체의 존재 조건이 같다(docs/…fluid-delivery-reservation.md §1.1).
         fluid: out.line.kind === "pipe" ? product : undefined,
+        fromBand,
+        toBand,
       });
     });
   }
@@ -639,6 +688,12 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const plan = planRowChannel(crossings);
       band.wantHeight = plan.height;
       band.tracks = plan.tracks;
+      // 트랙 index → **절대 행**. 띠의 위에서부터 센다.
+      for (const n of rowChannelNeeds) {
+        const t = plan.tracks.get(n.id);
+        if (t === undefined) continue;
+        bandApproachById.set(n.id, { row: band.top + t, chestY: n.portY });
+      }
     }
   }
 
@@ -773,7 +828,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
  */
 function materializeChannelGeometry(args: {
   geometryPlans: Map<number, ChannelGeometryPlan>;
-  deliverySeeds: { depth: number; key: string; eligible: boolean; fluid?: string }[];
+  deliverySeeds: {
+    depth: number; key: string; eligible: boolean; fluid?: string;
+    fromBand?: BandApproach; toBand?: BandApproach;
+  }[];
   lanePlan: LanePlan;
   placements: ModulePlacement[];
   channelStartX: (d: number) => number;
@@ -781,9 +839,11 @@ function materializeChannelGeometry(args: {
   reserveLanes: boolean;
 }): PackChannelGeometry {
   const { geometryPlans, deliverySeeds, lanePlan, placements, channelStartX, rawBbox, reserveLanes } = args;
-  const deliveries = new Map<string, DeliveryGeometry>();
+  const deliveries = new Map<string, DeliveryDirective>();
   const skips: { key: string; reason: string }[] = [];
   for (const seed of deliverySeeds) {
+    // 띠 접근은 도형과 무관하게 붙는다 — 세로 채널은 진입 행만 받고 출처를 안 묻는다.
+    const bands = { fromBand: seed.fromBand, toBand: seed.toBand };
     if (!seed.eligible) {
       // **계단꼴이 못 그리는 기하 → 되꺾기로 계획한다**(2026-08-17). 대개 부모 입력이 반대
       // 면으로 스필한 경우다. 여태 여기서 조용히 빠져 dijkstra 가 맡았고, 그 폴백이 남의
@@ -795,7 +855,7 @@ function materializeChannelGeometry(args: {
           console.log("[channelGeometry] 장부에서 제외 —", seed.key, "not-eligible(유체인데 전제 위반 — 사고)");
         continue;
       }
-      deliveries.set(seed.key, { kind: "wrapAround" });
+      deliveries.set(seed.key, { kind: "wrapAround", ...bands });
       continue;
     }
     const plan = geometryPlans.get(seed.depth)?.deliveries.get(seed.key);
@@ -810,10 +870,12 @@ function materializeChannelGeometry(args: {
       continue;
     }
     const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
-    if (plan.kind === "straight") deliveries.set(seed.key, { kind: "straight" });
-    else if (plan.kind === "staircase") deliveries.set(seed.key, { kind: "staircase", trackX: tx(plan.track) });
+    if (plan.kind === "straight") deliveries.set(seed.key, { kind: "straight", ...bands });
+    else if (plan.kind === "staircase")
+      deliveries.set(seed.key, { kind: "staircase", trackX: tx(plan.track), ...bands });
     else if (plan.kind === "columnSwitch")
       deliveries.set(seed.key, {
+        ...bands,
         kind: "columnSwitch",
         startTrackX: tx(plan.startTrack),
         switchY: plan.switchY,
@@ -821,6 +883,7 @@ function materializeChannelGeometry(args: {
       });
     else
       deliveries.set(seed.key, {
+        ...bands,
         kind: "undergroundCrossing",
         trackX: tx(plan.track),
         // 행은 이미 abs y. 열만 트랙 index → 절대 x. 벽 마진 열(-1 / capCol)은 점프에
