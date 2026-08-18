@@ -536,6 +536,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         + `${b.wantHeight > b.bottom - b.top + 1 ? ` · **수요 ${b.wantHeight}**` : ""})`
         + ` (${b.above} | ${b.below})`,
     ),
+    needs: pack.rowChannelNeeds.map((n) => `${n.id} @d${n.depth} ${n.nodeId} y${n.portY} ${n.face}`),
   });
   recordDeliveryStats({
     planned: deliveryRes.planned,

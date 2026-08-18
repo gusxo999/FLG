@@ -253,6 +253,13 @@ export interface PackResult {
    * **띠가 실제로 몇 개 나는지**를 실측할 수 있게 여기 싣는다.
    */
   rowChannels: RowChannelBand[];
+  /**
+   * **띠를 지나야 하는 경로 끝** — 포트가 기둥 끝이라 세로 채널 벽을 직접 못 마주 보는 것.
+   *
+   * 이 수가 **0이면 행 채널이 그 트리에 필요 없다**. 0이 아니면 Step 3 이 값을 낸다.
+   * 진단(`flg.report()`)이 이 수를 읽어 착수 근거로 쓴다.
+   */
+  rowChannelNeeds: ReadonlyArray<{ id: string; nodeId: string; depth: number; portY: number; face: string }>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -488,6 +495,22 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   /** [pairDeliveryPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
   const linkMismatches: string[] = [];
   /** [자식 id] → 짝지은 (출력상자 id, 입력상자 id, linkId) 쌍들. 7)이 absById 로 재구성한다. */
+  /**
+   * **띠를 지나야 하는 경로 끝들** — 포트가 기둥 끝(N/S)이라 세로 채널 벽을 직접 못 마주 보는 것.
+   *
+   * (E) 결정에 따라 이 경로는 **자기 깊이 열 안에서만** 가로로 달린다 — 세로 채널을
+   * 가로지르지 않으므로 교차로가 없다. → `tempPlanDocs/행채널-모델/`
+   *
+   * 지금은 **세기만** 한다. 이 수가 0이면 행 채널이 이 트리에 필요 없다는 뜻이고,
+   * 0이 아니면 Step 3(트랙 배정 + 두 패스)이 실제로 값을 낸다.
+   */
+  const rowChannelNeeds: {
+    id: string;
+    nodeId: string;
+    depth: number;
+    portY: number;
+    face: ModulePort["face"];
+  }[] = [];
   const deliveryPairs = new Map<string, { item: string; outId: string; inId: string; linkId?: string }[]>();
   for (const s of specs) {
     if (!s.parentId) continue;
@@ -502,6 +525,21 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     pairs.forEach(({ out, inp }, i) => {
       pairedChestIds.add(out.chest.id);
       pairedChestIds.add(inp.chest.id);
+      // **띠를 지나야 하는 끝** — 포트가 기둥 끝(N/S)이면 상자가 기둥 밖에 있어
+      // 세로 채널 벽을 **직접 못 마주 본다**. 자기 깊이 열 안에서 가로로 달려 벽까지 가야
+      // 하고, 그 가로 구간이 **행 채널의 트랙**이다((E) — 세로 채널을 안 가로지른다).
+      //
+      // 여기서는 **세기만** 한다(Step 3 준비). 실제 배정은 통로가 서고 나서다.
+      for (const [who, port] of [["out", out], ["in", inp]] as const) {
+        if (port.face !== "N" && port.face !== "S") continue;
+        rowChannelNeeds.push({
+          id: `${deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId })}:${who}`,
+          nodeId: who === "out" ? s.id : s.parentId!,
+          depth: who === "out" ? s.depth : s.depth - 1,
+          portY: absPortY(who === "out" ? s.id : s.parentId!, port.anchor.y),
+          face: port.face,
+        });
+      }
       const cy = absPortY(s.id, out.anchor.y);
       const py = absPortY(s.parentId!, inp.anchor.y);
       (intervalsByDepth.get(s.depth) ?? intervalsByDepth.set(s.depth, []).get(s.depth)!).push({
@@ -641,7 +679,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     : undefined;
 
   const bbox = config.reservePerimeterLanes ? expandBbox(rawBbox, lanePlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches, rowChannels };
+  return { placements, deliveries, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
 }
 
 /**

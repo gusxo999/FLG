@@ -102,9 +102,18 @@ export function buildReport(): string {
 
   const rc = stats.rowChannels;
   out.push(
-    line('행채널', rc ? (rc.count > 0 ? `${rc.count}개` : '0개 — 세로로 쌓인 이웃이 없다') : '단계 미도달'),
+    line(
+      '행채널',
+      rc
+        ? `띠 ${rc.count}개 · **통과 수요 ${rc.needs.length}건**`
+          + (rc.needs.length === 0 ? '  (0이면 이 트리엔 행채널이 필요 없다)' : '')
+        : '단계 미도달',
+    ),
   );
-  if (rc) for (const b of rc.bands) out.push(sub(b));
+  if (rc) {
+    for (const b of rc.bands) out.push(sub(b));
+    for (const n of rc.needs) out.push(sub(`수요 ${n}`));
+  }
 
   const p = stats.perimeter;
   out.push(

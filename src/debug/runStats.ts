@@ -52,6 +52,11 @@ export interface RowChannelCounters {
   count: number;
   /** 띠마다 `depth#index top..bottom (위모듈 | 아래모듈)`. */
   bands: ReadonlyArray<string>;
+  /**
+   * **띠를 지나야 하는 경로 끝 수** — 포트가 기둥 끝이라 세로 채널 벽을 직접 못 마주 보는 것.
+   * 0이면 행 채널이 이 트리에 필요 없다.
+   */
+  needs: ReadonlyArray<string>;
 }
 
 export interface RunStats {
@@ -85,7 +90,7 @@ export function recordDeliveryStats(c: DeliveryCounters): void {
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
-  current.rowChannels = { count: c.count, bands: [...c.bands] };
+  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs] };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -101,7 +106,11 @@ export function readRunStats(): RunStats {
       ? { ...current.perimeter, skips: current.perimeter.skips.map((s) => ({ ...s })) }
       : null,
     rowChannels: current.rowChannels
-      ? { ...current.rowChannels, bands: [...current.rowChannels.bands] }
+      ? {
+          ...current.rowChannels,
+          bands: [...current.rowChannels.bands],
+          needs: [...current.rowChannels.needs],
+        }
       : null,
   };
 }
