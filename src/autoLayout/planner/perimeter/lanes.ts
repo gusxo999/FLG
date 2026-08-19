@@ -58,7 +58,7 @@ export function planLanes(
   const sideOf = (p: ModulePort): ExitEdge => p.meta.side;
   const ports: LanePortInput[] = [];
   let gyMin = Infinity, gyMax = -Infinity;
-  const bandsByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
+  const spansByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
   for (const s of specs) {
     const mod = oriented.get(s.id)!.module;
     const ext = moduleExtent(mod);
@@ -66,7 +66,7 @@ export function planLanes(
     const bottom = top + ext.h - 1;
     gyMin = Math.min(gyMin, top);
     gyMax = Math.max(gyMax, bottom);
-    (bandsByDepth.get(s.depth) ?? bandsByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
+    (spansByDepth.get(s.depth) ?? spansByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
     // 반출 대상 = **납품 경로로 짝지어지지 않은 포트 전부**. 입력이면 외부 공급 무한상자,
     // 출력이면 무한 sink — 둘 다 perimeter 로 나가야 한다. (1:1 방출이라 자식 출력이
     // 부모 입력보다 많으면 남는 출력도 여기 들어온다.) wayOuts = 모듈이 답해준
@@ -82,6 +82,6 @@ export function planLanes(
           wayOuts: p.moduleWayOuts,
         });
   }
-  const ctx: LaneContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, bandsByDepth };
+  const ctx: LaneContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, spansByDepth };
   return planPerimeterLanes(ports, ctx);
 }

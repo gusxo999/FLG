@@ -13,7 +13,7 @@ const p = (
 const ctx3 = (): LaneContext => ({
   globalY: { min: 0, max: 9 },
   maxDepth: 2,
-  bandsByDepth: new Map([
+  spansByDepth: new Map([
     [0, [{ id: "d0", top: 0, bottom: 9 }]],
     [1, [{ id: "d1", top: 0, bottom: 9 }]],
     [2, [{ id: "d2", top: 0, bottom: 9 }]],
@@ -66,7 +66,7 @@ describe("planPerimeterLanes", () => {
     const ctx: LaneContext = {
       globalY: { min: 0, max: 12 },
       maxDepth: 1,
-      bandsByDepth: new Map([
+      spansByDepth: new Map([
         [0, [{ id: "root", top: 3, bottom: 9 }]],
         // depth 1 두 형제 세로 적층: sib0 위, sib1 아래.
         [1, [

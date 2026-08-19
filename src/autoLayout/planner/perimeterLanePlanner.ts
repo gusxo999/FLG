@@ -82,8 +82,18 @@ export interface LaneOption {
   usesChannelTrack: boolean;
 }
 
-/** 한 depth 열의 모듈 세로 밴드(abs y) — 자기-열 막힘 판정용. */
-export interface ColumnBand {
+/**
+ * 한 레이어(depth 열)에서 **모듈 하나가 차지한** 세로 구간(abs y) — 자기-열 막힘 판정용.
+ *
+ * **[[용어사전#띠 (band)|띠]]가 아니다** — 띠는 머신이 안 놓이는 *빈* 구간이고 이건 그
+ * 반대인 *점유* 구간이다. 2026-08-19 까지 `ColumnBand` 였는데, 같은 `top`/`bottom` 필드로
+ * 빈칸을 담는 `RowChannelBand` 와 뜻이 정반대라 개명했다("Column" 도 어긋났다 —
+ * `spansByDepth` 이므로 기둥(ColumnCluster)이 아니라 레이어다).
+ *
+ * **높이가 아니라 위치다** — `selfBlocked` 이 `b.top < myTop` 으로 *"형제가 내 위에 있나"*
+ * 를 묻는다. 크기(`bottom - top + 1`)는 아무도 안 쓴다.
+ */
+export interface ModuleSpan {
   id: string;
   top: number;
   bottom: number;
@@ -93,8 +103,8 @@ export interface LaneContext {
   /** 전역 세로 범위(모듈 union). */
   globalY: { min: number; max: number };
   maxDepth: number;
-  /** depth → 그 열의 모듈 밴드들. */
-  bandsByDepth: Map<number, ColumnBand[]>;
+  /** depth → 그 열의 모듈 구간들. */
+  spansByDepth: Map<number, ModuleSpan[]>;
 }
 
 export interface LaneAssignment {
@@ -152,7 +162,7 @@ function selfBlocked(
   edge: "N" | "S",
   ctx: LaneContext,
 ): boolean {
-  const bands = ctx.bandsByDepth.get(depth) ?? [];
+  const bands = ctx.spansByDepth.get(depth) ?? [];
   const mine = bands.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
   const myTop = mine ? mine.top : anchorY;
   const myBottom = mine ? mine.bottom : anchorY;

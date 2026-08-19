@@ -199,11 +199,19 @@ export interface DeliverySpec {
  * (E) 결정에 따라 이 구간은 **자기 깊이 열 안에서만** 달린다 — 세로 채널을 안 가로지르므로
  * 교차로가 없다. → `tempPlanDocs/행채널-모델/`
  */
-export interface BandApproach {
+/**
+ * **행 채널 진입점** — 상자에서 행 채널로 갈아타는 지점.
+ *
+ * 포트 상자가 [[용어사전#기둥 (column)|기둥]] 끝(N/S)에 있으면 세로 채널 벽을 **직접 마주
+ * 보지 않는다**. 계단꼴은 "벽에서 출발"을 전제하므로 그대로는 못 그린다. 그래서 상자에서
+ * 이 `row` 까지 **세로로 먼저** 간 뒤, 거기서부터 평소의 계단꼴을 그린다 — 갈아탄 뒤엔
+ * 출처가 구별되지 않아서 세로 채널은 `startY` 가 어디서 왔는지 안 묻는다.
+ *
+ * 세로 채널 쪽 거울은 `perimeterLanePlanner.LaneOption.entry`(채널 진입점)다.
+ */
+export interface RowChannelEntry {
   /** 배정된 트랙의 **절대 행**. 세로 채널의 `startY`/`endY` 가 이 값이 된다. */
   row: number;
-  /** 상자의 절대 y — 여기서 `row` 까지 세로로 간다. */
-  chestY: number;
 }
 
 export type DeliveryGeometry =
@@ -240,17 +248,17 @@ export type DeliveryGeometry =
     };
 
 /**
- * 납품 하나의 방출 지시 = **도형 + 띠 접근**.
+ * 납품 하나의 방출 지시 = **도형 + 행 채널 진입**.
  *
- * 도형은 세로 채널의 일이고(계단꼴 등), 띠 접근은 행 채널의 일이다. 둘이 한 자료형에
+ * 도형은 세로 채널의 일이고(계단꼴 등), 진입은 행 채널의 일이다. 둘이 한 자료형에
  * 실리되 **서로를 안 본다** — 세로 채널은 진입 행만 받고 그게 어디서 왔는지 안 묻는다
  * (2026-08-18 Step 0 확인: `startY` 의 출처를 안 가린다).
  */
 export type DeliveryDirective = DeliveryGeometry & {
-  /** 자식 쪽 끝이 띠에서 온다면 그 구간. 포트가 채널 벽을 직접 마주 보면 없다. */
-  fromBand?: BandApproach;
-  /** 부모 쪽 끝이 띠로 나간다면 그 구간. */
-  toBand?: BandApproach;
+  /** 자식 쪽 끝이 행 채널에서 온다면 그 진입점. 포트가 채널 벽을 직접 마주 보면 없다. */
+  fromRowChannel?: RowChannelEntry;
+  /** 부모 쪽 끝이 행 채널로 나간다면 그 진입점. */
+  toRowChannel?: RowChannelEntry;
 };
 
 /** 채널 기하 예약 결과 — deliveryRoute(납품 방출)·modulePerimeterPass(반출 재생)가 소비. */
@@ -555,9 +563,9 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
     fluid?: string;
     /** 자식 쪽 끝의 띠 접근(있으면). */
-    fromBand?: BandApproach;
+    fromRowChannel?: RowChannelEntry;
     /** 부모 쪽 끝의 띠 접근(있으면). */
-    toBand?: BandApproach;
+    toRowChannel?: RowChannelEntry;
   }[] = [];
   const pairedChestIds = new Set<string>();
   const usedParentIn = new Map<string, Set<string>>();
@@ -574,7 +582,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    * 0이 아니면 Step 3(트랙 배정 + 두 패스)이 실제로 값을 낸다.
    */
   /** 경로 끝 id(`…:out`/`…:in`) → 띠 접근. 5a-2 가 채우고 5c 가 지시에 싣는다. */
-  const bandApproachById = new Map<string, BandApproach>();
+  const rowChannelEntryById = new Map<string, RowChannelEntry>();
   const rowChannelNeeds: {
     id: string;
     nodeId: string;
@@ -633,7 +641,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       // **띠를 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
       // 것인지 띠 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
       // **띠 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
-      // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromBand`/`toBand` 를 덮어쓴다.
+      // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromRowChannel`/`toRowChannel` 를 덮어쓴다.
       const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
       deliverySeeds.push({
         depth: s.depth,
@@ -690,16 +698,16 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       for (const n of rowChannelNeeds) {
         const t = plan.tracks.get(n.id);
         if (t === undefined) continue;
-        bandApproachById.set(n.id, { row: band.top + t, chestY: n.portY });
+        rowChannelEntryById.set(n.id, { row: band.top + t });
       }
     }
     // **배정이 끝난 지금** seed 에 실어 준다 — 위 짝짓기 루프는 배정을 아직 모른다.
     // 진입 행이 곧 세로 채널의 출발/도착 행이다(Step 0: 출처를 안 가린다).
     for (const seed of deliverySeeds) {
-      const fb = bandApproachById.get(`${seed.key}:out`);
-      const tb = bandApproachById.get(`${seed.key}:in`);
-      if (fb) { seed.fromBand = fb; seed.startY = fb.row; }
-      if (tb) { seed.toBand = tb; seed.endY = tb.row; }
+      const fb = rowChannelEntryById.get(`${seed.key}:out`);
+      const tb = rowChannelEntryById.get(`${seed.key}:in`);
+      if (fb) { seed.fromRowChannel = fb; seed.startY = fb.row; }
+      if (tb) { seed.toRowChannel = tb; seed.endY = tb.row; }
     }
   }
 
@@ -836,7 +844,7 @@ function materializeChannelGeometry(args: {
   geometryPlans: Map<number, ChannelGeometryPlan>;
   deliverySeeds: {
     depth: number; key: string; eligible: boolean; fluid?: string;
-    fromBand?: BandApproach; toBand?: BandApproach;
+    fromRowChannel?: RowChannelEntry; toRowChannel?: RowChannelEntry;
   }[];
   lanePlan: LanePlan;
   placements: ModulePlacement[];
@@ -849,7 +857,7 @@ function materializeChannelGeometry(args: {
   const skips: { key: string; reason: string }[] = [];
   for (const seed of deliverySeeds) {
     // 띠 접근은 도형과 무관하게 붙는다 — 세로 채널은 진입 행만 받고 출처를 안 묻는다.
-    const bands = { fromBand: seed.fromBand, toBand: seed.toBand };
+    const bands = { fromRowChannel: seed.fromRowChannel, toRowChannel: seed.toRowChannel };
     if (!seed.eligible) {
       // **계단꼴이 못 그리는 기하 → 되꺾기로 계획한다**(2026-08-17). 대개 부모 입력이 반대
       // 면으로 스필한 경우다. 여태 여기서 조용히 빠져 dijkstra 가 맡았고, 그 폴백이 남의
