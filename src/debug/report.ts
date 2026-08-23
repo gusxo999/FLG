@@ -100,6 +100,25 @@ export function buildReport(): string {
     ),
   );
 
+  // **배선 형태** — 이 배치가 무엇을 깔았나. 이용률이 낮은데 줄이 많으면 그게 낭비의 얼굴이다
+  // (glass 100/s: 필요 5줄 자리에 54줄, 줄당 8%). 그 사실을 예전엔 손으로 세야 알았다.
+  const bf = stats.beltForms;
+  out.push(
+    line(
+      '형태',
+      bf
+        ? `트렁크 ${bf.trunk} · 다이렉트 ${bf.direct} · 관통 ${bf.spanning}`
+          + ` · 최대 fan-out ${bf.fanOutMax}`
+          + (bf.capacity > 0
+            ? ` · 이용률 ${Math.round((bf.loaded / bf.capacity) * 100)}%`
+              + ` (${bf.loaded.toFixed(1)}/${bf.capacity.toFixed(0)}/s)`
+            : '')
+          + (bf.unpourable > 0 ? ` · 붓기불가 ${bf.unpourable}줄` : '')
+          + (bf.overloaded > 0 ? `  ← **과적재 ${bf.overloaded}줄**(못 나른다)` : '')
+        : '단계 미도달 — 벨트 줄을 만들기 전에 거절됐다',
+    ),
+  );
+
   const rc = stats.rowChannels;
   out.push(
     line(

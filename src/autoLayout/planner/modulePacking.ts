@@ -30,7 +30,7 @@ import {
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import type { MachineLinkGroup } from "../module/machineLinkGroup";
+import { summarizeBeltForms, type Link } from "../module/link";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planLanes, expandBbox } from "./perimeter/lanes";
 import type { LanePlan } from "./perimeterLanePlanner";
@@ -38,11 +38,12 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
+import { recordBeltFormStats, resetBeltFormStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
 // 자연스럽다. 정의의 소유자는 각각 `link/edgeLinks` 와 `module/moduleTransform` 이다.
-export { deliveryKey, edgeMachineLinks, edgeLinkGroups } from "./link/edgeLinks";
+export { deliveryKey, edgeFlows, edgeLinkGroups } from "./link/edgeLinks";
 export { moduleExtent } from "../module/moduleTransform";
 
 /** 채널 폭 하한(셀). 단일 납품 경로(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
@@ -392,24 +393,24 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 자식 쪽(outputLinksOf)과 부모 쪽(inputLinksOf)이 예전엔 이 계산을 각자 독립으로
   // 두 번 돌려 "결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 일치를 기대했다
   // (2026-07-21 이전) — 이제 한 번 계산된 같은 객체를 양쪽이 그대로 참조한다.
-  const linkGroupCache = new Map<string, MachineLinkGroup[]>();
+  const linkCache = new Map<string, Link[]>();
   for (const s of specs) {
     if (!s.parentId) continue;
     const product = productOf(s);
     if (!product) continue;
     const groups = edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
-    if (groups) linkGroupCache.set(s.id, groups);
+    if (groups) linkCache.set(s.id, groups);
   }
-  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [MachineLinkGroup] 목록.
+  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
-  const outputLinksOf = (s: NodeSpec): MachineLinkGroup[] | undefined => linkGroupCache.get(s.id);
+  const outputLinksOf = (s: NodeSpec): Link[] | undefined => linkCache.get(s.id);
   // 입력 fan-in 그룹 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 그룹을 모은다.
   // 캐시에서 그대로 가져오므로 자식 쪽과 그룹 객체(및 id)가 완전히 일치한다.
-  const inputLinksOf = (s: NodeSpec): MachineLinkGroup[] | undefined => {
+  const inputLinksOf = (s: NodeSpec): Link[] | undefined => {
     const kids = childIdsByParent.get(s.id) ?? [];
-    const groups: MachineLinkGroup[] = [];
+    const groups: Link[] = [];
     for (const cid of kids) {
-      const g = linkGroupCache.get(cid);
+      const g = linkCache.get(cid);
       if (g) groups.push(...g);
     }
     return groups.length > 0 ? groups : undefined;
@@ -536,8 +537,25 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   }
 
   // 4) 2차 생성 — 끝 선호 반영(포트가 부모↔자식 방향 끝으로 정렬).
+  // **1차가 센 형태는 버린다** — 1차 모듈은 끝 선호를 재려고 만든 것이라 실제로 안 깔린다.
+  // (계측 전용. 계산·분기·반환값은 안 바뀐다.)
+  resetBeltFormStats();
   const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
   for (const s of specs) oriented.set(s.id, { module: gen(s, lineEndsById.get(s.id)), orientation: IDENTITY });
+  // 내부 링크(자식→부모)의 형태 — 외부 줄은 `planModulePorts` 가 자기 몫을 센다.
+  // 대수가 끝마다 다르다(자식 count ↔ 부모 count)라 그대로 넘긴다.
+  recordBeltFormStats(
+    summarizeBeltForms(
+      [...linkCache].flatMap(([childId, groups]) => {
+        const child = byId.get(childId);
+        const parent = child?.parentId ? byId.get(child.parentId) : undefined;
+        return groups.map((group) => ({
+          group, fromCount: child?.count ?? 0, toCount: parent?.count ?? 0,
+        }));
+      }),
+      (name) => (name === undefined ? undefined : config.belts?.find((b) => b.entityName === name)?.throughput),
+    ),
+  );
 
   // 5) 열 폭 + 채널 폭(수요 기반) → x 좌표. 채널 d(깊이 d↔d-1)를 가로지르는 납품 경로를 세로
   //    구간 [min(자식포트y, 부모포트y), max(...)] 으로 모아 left-edge 트랙 수 = 폭의 근거.

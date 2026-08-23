@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { faceVector, PERIMETER_MARGIN } from "../util/helper";
+import { scaledPack, scaledSpecs } from "../module/testScale";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -9,7 +10,7 @@ const M = { entityName: "assembling-machine-2", w: 3, h: 3 };
 
 // 트리: electronic-circuit(root) ← copper-cable ← copper-plate(raw)
 //                                ← iron-plate(raw)
-const specs: NodeSpec[] = [
+const specs: NodeSpec[] = scaledSpecs([
   {
     id: "circuit", depth: 0, machine: M, count: 4,
     lines: [inL("iron-plate"), inL("copper-cable"), outL("electronic-circuit")],
@@ -18,13 +19,13 @@ const specs: NodeSpec[] = [
     id: "coppercable", depth: 1, parentId: "circuit", machine: M, count: 5,
     lines: [inL("copper-plate"), outL("copper-cable")],
   },
-];
+]);
 
-const config: PackConfig = {
+const config: PackConfig = scaledPack({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+});
 
 /** 포트가 머신 bbox 의 어느 변에 붙었나 (테스트 단언용 — 패킹 내부와 동일 규칙). */
 function side(anchor: { x: number; y: number }, bbox: { x: number; y: number; w: number; h: number }): string {
@@ -54,10 +55,10 @@ describe("packModuleTree", () => {
 
   it("1:1 형태(count=1)도 작동 — 단일 머신 부모/자식, 면=역할 유지", () => {
     // count=1 은 높이 1짜리 기둥(degenerate). 용량은 reach 기반이라 동일하게 적용.
-    const oneToOne: NodeSpec[] = [
+    const oneToOne: NodeSpec[] = scaledSpecs([
       { id: "p", depth: 0, machine: M, count: 1, lines: [inL("gear"), outL("widget")] },
       { id: "c", depth: 1, parentId: "p", machine: M, count: 1, lines: [inL("iron"), outL("gear")] },
-    ];
+    ]);
     const res = packModuleTree(oneToOne, config);
     const byId = new Map(res.placements.map((pl) => [pl.id, pl.module]));
     const parent = byId.get("p")!;
@@ -79,8 +80,11 @@ describe("packModuleTree", () => {
     expect(res.deliveries[0].from.line.role).toBe("output");
     expect(res.deliveries[0].to.line.role).toBe("input");
     expect(res.deliveries[0].to.line.name).toBe("copper-cable");
-    // rate 미상(옛 탭/다이렉트 경로) — 포트가 교환 가능해 linkId 가 없다. seq(위치)가 유일한 구분.
-    expect(res.deliveries[0].linkId).toBeUndefined();
+    // **rate 가 있으면 지정 짝이 선다** — 간선이 [Link] 로 서고 그 신원이 양쪽 포트에 실린다
+    // ([ModulePort.linkId]). 예전엔 이 픽스처에 저울이 없어 링크가 못 서고 포트가
+    // *교환 가능*(linkId 없음)이었는데, 그건 픽스처가 수치를 안 줬기 때문이지 이 경로의
+    // 성질이 아니었다(2026-08-24). 짝짓기는 위치-zip 이 아니라 신원으로 이뤄진다.
+    expect(res.deliveries[0].linkId).toBe(`${specs[1].id}→${specs[0].id}:copper-cable#0`);
     expect(res.linkMismatches).toEqual([]);
   });
 

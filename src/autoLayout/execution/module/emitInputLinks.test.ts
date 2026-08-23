@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type ModuleInput } from "../../module/clusterModule";
-import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import type { Link } from "../../module/link";
 import { EntityType } from "../../../types/layout";
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.
@@ -11,7 +11,7 @@ import { EntityType } from "../../../types/layout";
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 /** 머신 여럿을 맡는 그룹 — **트렁크**다. 벨트 하나가 세 머신의 좌석을 함께 먹인다. */
-const spanning: MachineLinkGroup[] = [
+const spanning: Link[] = [
   {
     item: "x",
     from: new Map([[0, 3]]),
@@ -79,7 +79,7 @@ describe("머신 여럿을 맡는 그룹 — 트렁크로 앉는다", () => {
 });
 
 describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴다", () => {
-  const disjoint: MachineLinkGroup[] = [
+  const disjoint: Link[] = [
     { item: "x", from: new Map([[0, 1]]), to: new Map([[0, 1]]) },
     { item: "x", from: new Map([[1, 1]]), to: new Map([[1, 1]]) },
   ];

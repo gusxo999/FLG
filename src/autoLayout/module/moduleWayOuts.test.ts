@@ -2,20 +2,29 @@ import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModulePort } from "./clusterModule";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
 import type { PortFace } from "../containerModel";
+import { PER_MACHINE, scaled } from "./testScale";
 
 const inL = (name: string, amount?: number): IoLine => ({ name, kind: "belt", role: "input", amount });
 const outL = (name: string, amount?: number): IoLine => ({ name, kind: "belt", role: "output", amount });
 
 function mod(count: number, lines: IoLine[]): GeneratedModule {
-  return generateModule({
+  return generateModule(scaled({
     idPrefix: "m",
     machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
     count,
     lines,
     inserterEntityName: "inserter",
-    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
+    inserters: [
+      { entityName: "inserter", reach: 1, throughput: 0.83 },
+      { entityName: "long-handed-inserter", reach: 2, throughput: 0.83 },
+    ],
     beltEntityName: "transport-belt",
-  });
+    belts: [{ entityName: "transport-belt", throughput: 15 }],
+    supplyCapacity: {
+      beltCapacity: 15,
+      lineRates: new Map(lines.map((l) => [`${l.role}:${l.name}`, PER_MACHINE * count])),
+    },
+  }));
 }
 
 const FV: Record<PortFace, { x: number; y: number }> = {

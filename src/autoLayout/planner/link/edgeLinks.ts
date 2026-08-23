@@ -4,11 +4,11 @@
  *
  * ## 왜 `link/` 인가
  * 여기 있는 함수는 전부 **두 모듈의 식별자를 안다** — `child.id`·`parent.id` 를 받아
- * 신원을 만들고([linkGroupId]), 자식·부모 양쪽의 대수와 rate 를 함께 본다. 그것이 축 2 의
- * `link` 판정이다. 반대로 `module/machineLinkGroup` 은 로컬 머신 index 만 알아 `module` 이다.
+ * 신원을 만들고([makeLinkId]), 자식·부모 양쪽의 대수와 rate 를 함께 본다. 그것이 축 2 의
+ * `link` 판정이다. 반대로 `module/link` 은 로컬 머신 index 만 알아 `module` 이다.
  *
  * ## 신원(`linkId`)의 단일 출처
- * [linkGroupId] 가 이 저장소에서 링크 신원을 **만드는 유일한 곳**이다. 모듈과 방출기는
+ * [makeLinkId] 가 이 저장소에서 링크 신원을 **만드는 유일한 곳**이다. 모듈과 방출기는
  * 그것을 **복사만 하고 파싱하지 않는다** — 파싱하는 순간 모듈이 형제를 알게 된다.
  * 신원이 있으면 [pairDeliveryPorts] 가 배열 위치가 아니라 **조회**로 짝을 찾는다.
  *
@@ -19,9 +19,10 @@
  */
 
 import type { GeneratedModule, ModulePort } from "../../module/clusterModule";
-import type { MachineLinkGroup } from "../../module/machineLinkGroup";
-import { allocateMachineLinks, type MachineLink } from "./allocateMachineLinks";
-import { inserterForReach } from "../../buildSpec";
+import { createLinks, type Link } from "../../module/link";
+import { allocateFlows, type Flow } from "./allocateFlows";
+import { faceSeatArms, inserterForReach } from "../../buildSpec";
+import { determineBeltCount } from "../../beltThroughput";
 import type { NodeSpec, PackConfig } from "../modulePacking";
 
 /**
@@ -52,7 +53,7 @@ export function deliveryKey(delivery: { fromId: string; toId: string; item: stri
  * 양쪽에서 **같은 값으로(child, parent, item, config)** 독립으로 계산되므로, 이 키를
  * 대화 없이 양쪽이 동일하게 재현할 수 있다. `ModulePort.linkId` 가 이 값을 그대로 든다.
  */
-function linkGroupId(childId: string, parentId: string, item: string, groupIndex: number): string {
+function makeLinkId(childId: string, parentId: string, item: string, groupIndex: number): string {
   return `${childId}→${parentId}:${item}#${groupIndex}`;
 }
 
@@ -111,19 +112,19 @@ export function pairDeliveryPorts(
 }
 
 /**
- * 한 엣지(자식→부모, 한 품목)의 [MachineLink] 목록을 spec 의 rate·count 에서 유도.
+ * 한 엣지(자식→부모, 한 품목)의 [Flow] 목록을 spec 의 rate·count 에서 유도.
  * rate 나 처리량을 모르면 `undefined`(지어내지 않는다).
  *
  * **논리 층 — 좌표·전략 무관.** 자식 머신당 산출 = 클러스터 산출 ÷ 대수, 부모 머신당
  * 수요 = 클러스터 수요 ÷ 대수. 인서터 처리량은 보수적으로 min(normal, long)([insertingPlanner]
  * 의 tapCap 과 동일), 벨트는 가장 빠른 티어. Phase 2(출력 emit)가 이 결과를 소비한다.
  */
-export function edgeMachineLinks(
+export function edgeFlows(
   child: NodeSpec,
   parent: NodeSpec,
   item: string,
   config: PackConfig,
-): MachineLink[] | undefined {
+): Flow[] | undefined {
   // 팔 하나의 처리량 = [SupplyCapacity.inserters] — **여기서 다시 유도하지 않는다.**
   // 예전엔 `min(throughput.normal, throughput.long)` 을 자체 계산했는데, 같은 값을
   // moduleWizard 도 따로 계산해 담고 있었다. 유도가 두 곳에 있으면 한쪽만 고쳐도 조용히
@@ -137,36 +138,52 @@ export function edgeMachineLinks(
   const outTotal = child.supplyCapacity?.lineRates?.get(`output:${item}`);
   const inTotal = parent.supplyCapacity?.lineRates?.get(`input:${item}`);
   if (outTotal === undefined || inTotal === undefined) return undefined;
-  return allocateMachineLinks({
+  // **벨트·인서터 처리량은 여기서 안 넘긴다**(2026-08-22) — 흐름 배정은 순수한 rate 산술이고,
+  // 벨트 상한은 [edgeLinkGroups] 의 접기가 본다. 두 곳이 같은 상한을 각자 유도하면 어긋난다.
+  // 다만 **둘을 모르면 아예 시작하지 않는다** — 접을 수 없는 흐름을 내면 뒤에서 지어내게 된다.
+  return allocateFlows({
     childCount: child.count,
     parentCount: parent.count,
     childProduction: outTotal / child.count,
     parentDemand: inTotal / parent.count,
     item,
-    inserterThroughput: tp,
-    beltThroughput: belt,
   });
 }
 
 /**
- * 한 엣지의 링크를 **벨트**로 — **링크 하나 = 벨트 하나 = 포트 한 쌍**(v1, 2026-07-22).
+ * 한 엣지의 **흐름을 벨트 줄로 접는다**(2026-08-22 재설계 — 용어사전 §D "배선 형태 셋").
  *
- * 예전엔 여기서 같은 (품목, 자식 머신)의 연속 링크를 `min(그릇, 자식 머신 좌석)` 까지 한
- * 벨트로 묶었다. 그 병합이 부모 머신의 **인접**을 요구했고(벨트 하나가 여럿을 관통해야
- * 하므로), 인접이 클러스터를 세로 한 줄로 못박아 한 면의 벨트 줄 수를 팔 길이에 묶었다 —
- * 채널 트랙 하나 값으로는 너무 비쌌다. 되살릴 때는 채널 층에서 합친다(같은 품목 벨트끼리는
- * 합류해도 오염이 없다).
+ * ## 접기 하나가 형태 셋을 전부 낸다
+ * 줄 수는 `determineBeltCount(간선 총량)` 이 정하고, 흐름을 **순서대로** 그 줄들에 붓는다.
+ *
+ * ```
+ * 흐름 하나가 여러 줄에 걸침   → 그 (자식,부모) 쌍이 **링크**   (rate > 벨트 한 줄)
+ * 한 줄에 흐름이 여럿 쌓임     → 그 줄이 **트렁크**
+ * 한 줄에 흐름이 하나          → 그 줄이 **다이렉트**
+ * ```
+ *
+ * **형태를 고르는 `if` 가 없다.** 셋은 같은 붓기의 결과를 읽은 이름이다 — 이것이
+ * *"구조적으로 하드코딩하지 않는다"*(2026-08-22 사장님)의 실질이다.
+ *
+ * ## 교차가 안 생기는 이유
+ * [allocateFlows] 의 흐름 수열이 **양끝 모두 단조**이고 붓기가 그 순서를 유지하므로,
+ * 한 줄이 맡는 자식·부모는 각각 **연속 구간**이다. 좌표를 한 번도 안 보고 교차 불가가 나온다.
+ *
+ * ## 팔 수는 여기서 유도된다
+ * `팔 수 = ceil(그 줄이 그 머신에서 싣는/내리는 rate ÷ 팔 하나의 실효 처리량)`([armsFor]).
+ * 인서터의 실효 처리량은 이미 **가장 빠른 벨트에서 접혀** 있으므로([makeBuildSpec]) 팔 하나가
+ * 벨트 한 줄을 넘길 수 없다.
  *
  * 이 함수는 간선당 [packModuleTree] 안에서 **한 번만** 불린다(사전 캐시) — 자식(출력 emit)과
- * 부모(입력 emit)는 그 결과 [MachineLinkGroup] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.
- * `id`([linkGroupId])도 여기서 한 번 매겨져 그룹 안에 실린다.
+ * 부모(입력 emit)는 그 결과 [Link] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.
+ * `id`([makeLinkId])도 여기서 한 번 매겨져 그룹 안에 실린다.
  */
 export function edgeLinkGroups(
   child: NodeSpec,
   parent: NodeSpec,
   item: string,
   config: PackConfig,
-): MachineLinkGroup[] | undefined {
+): Link[] | undefined {
   // 유체는 팔로 나르지 않는다 — [externalLineGroups] 가 외부 줄에 두는 것과 **같은 가드**다.
   // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
   // (물을 인서터로 옮길 수 없다), `linkedKeys` 에 실려 아이템 방출기
@@ -179,14 +196,33 @@ export function edgeLinkGroups(
   if (child.lines.find((l) => l.role === "output" && l.name === item)?.kind !== "belt") {
     return undefined;
   }
-  const links = edgeMachineLinks(child, parent, item, config);
-  if (!links || links.length === 0) return undefined;
-  // 내부 링크는 양쪽 다 머신 하나씩 — 자식이 내놓고 부모가 받는다([MachineLinkGroup]).
-  // 외부 줄은 한쪽이 비는데(밖), 그건 다른 호출부가 만든다.
-  return links.map((l, gi) => ({
-    id: linkGroupId(child.id, parent.id, item, gi),
-    item: l.item,
-    from: new Map([[l.fromMachine, l.inserterCount]]),
-    to: new Map([[l.toMachine, l.inserterCount]]),
-  }));
+  const flows = edgeFlows(child, parent, item, config);
+  if (!flows || flows.length === 0) return undefined;
+  const inserter = inserterForReach(config.inserters, 1);
+  if (!inserter) return undefined; // 팔을 모르면 지어내지 않는다.
+
+  // 줄 수와 티어 — **수요에서** 유도한다. 자식·부모가 같은 규칙을 보므로 경계에서 안 어긋난다.
+  const tiers = determineBeltCount(
+    flows.reduce((sum, f) => sum + f.rate, 0),
+    config.belts ?? [],
+  );
+  if (tiers.length === 0) return undefined; // 벨트를 못 고름 — 없는 숫자로 깔지 않는다.
+
+  // **한 줄이 머신 한 대에게 줄 수 있는 최대** — 그 면의 좌석 수 × 팔 하나.
+  // 좌석 수는 [faceSeatArms] 가 낸다 — 여기서 다시 유도하지 않는다(2026-08-23).
+  // `fluidRows = 0` 은 **일부러 낙관**이다: 이 함수는 간선 하나만 보고 돌아서 그 줄이 어느
+  // 면에 앉을지(= 그 면의 파이프가 몇 칸을 먹었는지) 알 수 없다. 좁힐지는 계측이 답한다
+  // (`tempPlanDocs/배선-형태/judgements.md` J2 — 실패 0건이면 영구 폐기).
+  const seatCap = (h: number) => faceSeatArms(h, 0) * inserter.throughput;
+
+  // **붓는 일 자체는 [createLinks] 가 한다** — 이 저장소에서 [Link] 를 만드는 유일한 곳이다.
+  // 여기가 하는 일은 그 앞뒤 둘뿐이다: ① 흐름을 계산하고(자식·부모를 **둘 다** 봐야 하므로
+  // planner 의 몫) ② 난 줄에 **신원**을 얹는다(간선의 양끝 id 를 아는 것도 여기뿐).
+  const links = createLinks(
+    flows.map((f) => ({ from: f.fromMachine, to: f.toMachine, rate: f.rate })),
+    item,
+    { tiers, inserter, fromSeat: seatCap(child.machine.h), toSeat: seatCap(parent.machine.h) },
+  );
+  return links.map((link, gi) => ({ ...link, id: makeLinkId(child.id, parent.id, item, gi) }));
 }
+

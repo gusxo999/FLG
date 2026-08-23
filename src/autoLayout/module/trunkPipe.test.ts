@@ -15,6 +15,7 @@ import { generateModule, type ModuleInput } from "./clusterModule";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
 import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
+import { scaled } from "./testScale";
 
 const inItem = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outItem = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -23,7 +24,7 @@ const outFluid = (name: string): IoLine => ({ name, kind: "pipe", role: "output"
 
 /** 화학 공장 꼴: petroleum-gas(유체) + coal(아이템) → plastic-bar(아이템). 3×3, 3대. */
 function plasticBar(count: number): ModuleInput {
-  return {
+  return scaled({
     machine: { entityName: "chemical-plant", w: 3, h: 3 },
     count,
     lines: [inFluid("petroleum-gas"), inItem("coal"), outItem("plastic-bar")],
@@ -35,7 +36,7 @@ function plasticBar(count: number): ModuleInput {
       pipeEntityName: "pipe",
       lines: [{ name: "petroleum-gas", role: "input", side: "E", fluidboxOffset: 0, rank: 0, boxIndex: 0 }],
     },
-  };
+  });
 }
 
 /** 모듈이 놓은 셀을 좌표로 조회. */
@@ -137,8 +138,10 @@ function plasticBarJump(
   opts?: { longInserter?: boolean; fluidboxOffset?: number; fillOppositeFace?: boolean },
 ): ModuleInput {
   const base = plasticBar(count);
-  return {
+  return scaled({
     ...base,
+    // 줄을 갈아끼웠으면 **저울도 다시 단다** — 물려받으면 새 줄만 수치가 없어 안 깔린다.
+    supplyCapacity: undefined,
     // W(출력면)를 채워 coal 이 E(유체 면)로 갈 수밖에 없게 한다 — 조건 ①의 명시적 방아쇠.
     // **sulfur 를 coal 앞에** 둔다: 배정은 줄 순서대로라 먼저 온 줄이 싼 면(W)을 가져간다.
     lines:
@@ -158,7 +161,7 @@ function plasticBarJump(
       undergroundPipeEntityName: "pipe-to-ground",
       pipeMaxUndergroundDistance: 10,
     },
-  };
+  });
 }
 
 describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
@@ -259,7 +262,7 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
 
 /** 아이템 입력(coal) + 유체 출력(petroleum-gas). 출력 유체는 W 면(부모 쪽). 3×3. */
 function fluidOut(count: number): ModuleInput {
-  return {
+  return scaled({
     machine: { entityName: "chemical-plant", w: 3, h: 3 },
     count,
     lines: [inItem("coal"), outFluid("petroleum-gas")],
@@ -273,7 +276,7 @@ function fluidOut(count: number): ModuleInput {
       pipeMaxUndergroundDistance: 10,
       lines: [{ name: "petroleum-gas", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 }],
     },
-  };
+  });
 }
 
 describe("유체 출력 반출 — 머신 유체 → 무한파이프", () => {
@@ -325,7 +328,7 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
     // 그 한계는 사라졌다(면당 여러 줄이 선다). 남은 사실은 **배정을 못 받은 줄**이다 —
     // `lines` 에 있는데 `fluidTrunk.lines` 가 안 덮으면 그 줄의 면·행을 지어낼 수 없다.
     const base = plasticBar(3);
-    const mod = generateModule({ ...base, lines: [...base.lines, inFluid("water")] });
+    const mod = generateModule(scaled({ ...base, supplyCapacity: undefined, lines: [...base.lines, inFluid("water")] }));
     expect(mod.unroutedLines.map((l) => l.name)).toContain("water");
     expect(mod.unroutedLines.map((l) => l.name)).toContain("petroleum-gas");
     expect(mod.outputPorts).toHaveLength(0);
@@ -337,11 +340,13 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
     // **안에만** 있어서 물러나는 순간 유체가 조용히 사라졌기 때문이다(`fluidNeedsTap`).
     // 이제 파이프는 갈래 밖에서 깔리므로, 아이템만 기계별 포트로 내려가고 유체는 그대로 선다.
     const base = plasticBar(3);
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       ...base,
+      // 줄을 갈아끼웠으면 **저울도 다시 단다** — 물려받으면 새 줄만 수치가 없어 안 깔린다.
+      supplyCapacity: undefined,
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       lines: [...base.lines, inItem("iron-plate")],
-    });
+    }));
     expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
     // 유체 포트는 여전히 기둥에 **하나** — 파이프는 쪼개지지 않는다.
@@ -366,7 +371,7 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
 describe("다중 유체 — 유체 입력(E) + 유체 출력(W) 동시", () => {
   /** 황산 꼴: 물(유체 입력) + 철판(아이템 입력) → 황산(유체 출력). */
   function bothFaces(count: number): ModuleInput {
-    return {
+    return scaled({
       machine: { entityName: "chemical-plant", w: 3, h: 3 },
       count,
       lines: [inFluid("water"), inItem("iron-plate"), outFluid("sulfuric-acid")],
@@ -383,7 +388,7 @@ describe("다중 유체 — 유체 입력(E) + 유체 출력(W) 동시", () => {
           { name: "sulfuric-acid", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 },
         ],
       },
-    };
+    });
   }
 
   it("유체 포트가 둘 다 선다 — 입력은 E, 출력은 W, 끝은 둘 다 무한파이프", () => {
@@ -446,7 +451,7 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
    * **아이템 줄이 하나도 없다** — 그 면에 벨트가 0줄이라 `base = 1` 로 승격된다.
    */
   function cracking(count: number): ModuleInput {
-    return {
+    return scaled({
       machine: { entityName: "chemical-plant", w: 3, h: 3 },
       count,
       lines: [inFluid("water"), inFluid("heavy-oil"), outFluid("light-oil")],
@@ -464,7 +469,7 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
           { name: "light-oil", role: "output", side: "W", fluidboxOffset: 0, rank: 0, boxIndex: 2 },
         ],
       },
-    };
+    });
   }
 
   it("세 줄이 다 선다 — 같은 면의 두 줄이 각자 무한파이프로 끝난다", () => {
@@ -546,14 +551,16 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
   // `unrouted-lines` 로만 드러난다.
   function crackingNoUnderground(count: number): ModuleInput {
     const base = cracking(count);
-    return {
+    return scaled({
       ...base,
+      // 줄을 갈아끼웠으면 **저울도 다시 단다** — 물려받으면 새 줄만 수치가 없어 안 깔린다.
+      supplyCapacity: undefined,
       fluidTrunk: {
         ...base.fluidTrunk!,
         undergroundPipeEntityName: undefined,
         pipeMaxUndergroundDistance: undefined,
       },
-    };
+    });
   }
 
   for (const count of [1, 3]) {
@@ -576,7 +583,7 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이템 3줄)", () => {
   function coolantHot(count: number): ModuleInput {
-    return {
+    return scaled({
       machine: { entityName: "se-space-biochemical-laboratory", w: 9, h: 9 },
       count,
       lines: [
@@ -600,7 +607,7 @@ describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이�
         // 안 쓰고 남는 유체 상자 칸 — E 면 셋째 입력, W 면 나머지 출력 둘.
         unusedFluidboxRows: { E: [6], W: [4, 6] },
       },
-    };
+    });
   }
 
   it("여섯 줄이 전부 선다 — 유체 3 + 아이템 3, 못 놓은 줄이 없다", () => {
@@ -688,7 +695,7 @@ describe("기준 사례 — se-space-coolant-hot (9×9 · 유체 3줄 · 아이�
 // ─────────────────────────────────────────────────────────────────────────────
 describe("유체 면 회수 — 점프 면에 링크가 앉는다", () => {
   /** 3×3 화학공장 2대 · E 면 유체 1줄(상자 행 1, 점프 가능) · 짧은 팔만 → 기계별 포트. */
-  const crowded = (inputs: number): ModuleInput => ({
+  const crowded = (inputs: number): ModuleInput => (scaled({
     machine: { entityName: "chemical-plant", w: 3, h: 3 },
     count: 2,
     lines: [
@@ -706,7 +713,7 @@ describe("유체 면 회수 — 점프 면에 링크가 앉는다", () => {
       pipeMaxUndergroundDistance: 10,
       lines: [{ name: "sulfuric-acid", role: "input", side: "E", fluidboxOffset: 1, rank: 0, boxIndex: 0 }],
     },
-  });
+  }));
 
   const gapOf = (mod: ReturnType<typeof generateModule>) => {
     const [m0, m1] = mod.machines;

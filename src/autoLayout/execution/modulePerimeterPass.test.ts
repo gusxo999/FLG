@@ -6,23 +6,24 @@ import { PERIMETER_MARGIN, faceVector } from "../util/helper";
 import { seatIsBeltFeeder } from "../planner/deliveryRoute";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
+import { scaledPack, scaledSpecs } from "../module/testScale";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
 const M = { entityName: "assembling-machine-2", w: 3, h: 3 };
 
-const config: PackConfig = {
+const config: PackConfig = scaledPack({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "i", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+});
 
 // 3-depth: root ← mid ← leaf. root/mid 각각 raw 입력 1개 + 자식-공급 입력 1개.
-const specs: NodeSpec[] = [
+const specs: NodeSpec[] = scaledSpecs([
   { id: "root", depth: 0, machine: M, count: 4, lines: [inL("rawA"), inL("midOut"), outL("rootOut")] },
   { id: "mid", depth: 1, parentId: "root", machine: M, count: 3, lines: [inL("rawB"), inL("leafOut"), outL("midOut")] },
   { id: "leaf", depth: 2, parentId: "mid", machine: M, count: 2, lines: [inL("rawC"), outL("leafOut")] },
-];
+]);
 
 function survivingChests(pack: ReturnType<typeof packModuleTree>, stripped: Set<string>) {
   const out: { id: string; origin: { x: number; y: number }; role?: string }[] = [];
@@ -216,11 +217,11 @@ describe("rePathToPerimeter", () => {
     const bin = (name: string, amount: number): IoLine => ({ name, kind: "belt", role: "input", amount });
     const bout = (name: string, amount: number): IoLine => ({ name, kind: "belt", role: "output", amount });
     const M3 = { entityName: "assembling-machine-3", w: 3, h: 3 };
-    const branch: NodeSpec[] = [
+    const branch: NodeSpec[] = scaledSpecs([
       { id: "n0", depth: 0, machine: M3, count: 2, lines: [bin("copper-cable", 4), bin("electronic-circuit", 2), bin("kr-components", 2), bout("advanced-circuit", 1)] },
       { id: "n1", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("plastic-bar", 4), bin("kr-silicon", 2), bin("kr-glass", 2), bout("kr-components", 4)] },
       { id: "n2", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("copper-cable", 3), bin("stone-tablet", 1), bout("electronic-circuit", 2)] },
-    ];
+    ]);
     const pack = packModuleTree(branch, { ...config, reservePerimeterLanes: true, channelGeometry: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);

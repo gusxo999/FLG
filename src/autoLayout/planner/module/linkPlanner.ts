@@ -21,8 +21,9 @@
  * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
  */
 
+import { faceSeatArms } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
-import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import { machinesOn, spansAllMachines, type Link } from "../../module/link";
 import type { PlannedSide } from "./clusterPortPlanner";
 
 export interface LinkFacePlan {
@@ -224,8 +225,8 @@ function skipFluidRows(rows: readonly number[] | undefined): (r: number) => numb
  * "from"(출력, 자식 머신 하나 고정) 이면 항목이 하나뿐이고, "to"(입력, 부모 머신 여럿)
  * 이면 `taps` 를 그대로 목적지별로 편다.
  */
-function armsByMachine(group: MachineLinkGroup, side: "from" | "to"): Map<number, number> {
-  // 구조가 대칭이라 그냥 그쪽을 본다([MachineLinkGroup] — 2026-07-23 정의 확장 전에는
+function armsByMachine(group: Link, side: "from" | "to"): Map<number, number> {
+  // 구조가 대칭이라 그냥 그쪽을 본다([Link] — 2026-07-23 정의 확장 전에는
   // fromMachine(스칼라)과 taps(배열)를 각각 풀어 Map 으로 만들어야 했다).
   return group[side];
 }
@@ -254,7 +255,7 @@ const LINK_LANE_DEPTH = 2;
  */
 function tryLinkFace(
   ctx: LinkFaceContext,
-  group: MachineLinkGroup,
+  group: Link,
   side: "from" | "to",
   face: PortFace,
   allowPipeFace = false,
@@ -282,7 +283,7 @@ function tryLinkFace(
     // **gap(가로) 벨트는 아직 머신 하나만 맡는다.** 가로 줄 하나가 위·아래 두 대를 먹이는 것은
     // 별개 능력이고(좌석이 gap 양쪽에 하나씩 앉아야 한다), 그 전엔 조용히 겹치는 대신
     // **정직하게 자리 없음**으로 떨어뜨린다.
-    if (arms.size !== 1) return undefined;
+    if (machinesOn(group, side) !== 1) return undefined;
     const [mi, k] = [...arms][0];
     // **클러스터 양 끝은 gap 이 아니라 바깥이다.** 맨 위 머신의 N, 맨 아래 머신의 S 에는
     // 이웃이 없어 벨트가 모듈 밖으로 나간다 — 그래서 `gap` 이 `undefined` 이고, 벌릴 gap 도
@@ -291,7 +292,9 @@ function tryLinkFace(
     const g = face === "S" ? mi : mi - 1;
     const gap = g >= 0 && g < count - 1 ? g : undefined;
     const base = used.get(seatKey(mi, face)) ?? 0;
-    if (base + k > machine.w) return undefined; // 이 면의 좌석(열)이 다 찼다
+    // 좌석 수는 [faceSeatArms] 가 낸다(붓기·배정이 같은 자를 쓴다). gap 면(N/S)의 길이 방향
+    // 칸은 `machine.w` 이고, 파이프는 W/E 에만 붙으므로 여기 유체 행은 언제나 0이다.
+    if (base + k > faceSeatArms(machine.w, 0)) return undefined; // 이 면의 좌석(열)이 다 찼다
     // **[[ParallelBelt]] — 막힌 면** — 이 면의 몇 번째 그룹인가가 곧 자기 줄의 깊이다
     // (탐색 없이 순번으로 결정. 줄이 달라야 두 벨트가 **합류하지 않는다**).
     // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
@@ -302,7 +305,10 @@ function tryLinkFace(
 
   // 점프 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
   // (`planClusterPorts.seatRowsOf` 의 `base − fluidRows` 와 같은 셈이다.)
-  const seatRows = machine.h - (pf?.rows.length ?? 0);
+  // **자는 [faceSeatArms] 하나다** — 붓기([edgeLinkGroups])가 같은 함수를 `fluidRows = 0` 으로
+  // 부른다. 이쪽은 면이 정해진 뒤라 실제 유체 행 수를 안다. 그 차이가 곧 붓기의 낙관이고,
+  // 이제 주석이 아니라 **인자**로 드러난다.
+  const seatRows = faceSeatArms(machine.h, pf?.rows.length ?? 0);
   for (const [mi, k] of arms) {
     if ((used.get(seatKey(mi, face)) ?? 0) + k > seatRows) return undefined;
   }
@@ -319,7 +325,7 @@ function tryLinkFace(
   const span = beltRowSpan(ctx, face, arms);
   // **관통이면 기둥 끝을 청구한다**([LinkFacePlan.portEnd]). 못 받으면 옆으로 — 그때는
   // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
-  const spanning = arms.size === count && count > 1;
+  const spanning = spansAllMachines(group, side, count);
   const endsTaken = ctx.ends.get(face);
   const portEnd = spanning
     ? (["N", "S"] as const).find((e) => !endsTaken?.has(e))
@@ -404,7 +410,7 @@ function commitLinkFace(
  */
 export function allocateLinkFaces(
   ctx: LinkFaceContext,
-  groups: MachineLinkGroup[],
+  groups: Link[],
   side: "from" | "to",
   prefer: PortFace,
 ): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
@@ -431,7 +437,7 @@ export function allocateLinkFaces(
  */
 export function spillLinkFacesToGap(
   ctx: LinkFaceContext,
-  groups: MachineLinkGroup[],
+  groups: Link[],
   side: "from" | "to",
   out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
   faces: readonly PortFace[] = ["S", "N"],

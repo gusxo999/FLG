@@ -37,20 +37,61 @@ const UNDERGROUND = {
   beltMaxUndergroundDistance: 4,
 };
 
+/**
+ * 벨트/인서터는 **이름과 저울이 함께** 온다 — 이름만 주고 처리량을 0 으로 두면 줄 수를
+ * 못 정해 한 줄도 안 깔린다(2026-08-24). 바닐라 노랑 벨트 15/s, 일반 인서터 0.83/s,
+ * 긴팔 0.83/s 를 그대로 쓴다.
+ */
 const config: PackConfig = {
   inserterEntityName: "inserter",
-  inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
+  inserters: [
+    { entityName: "inserter", reach: 1, throughput: 0.83 },
+    { entityName: "long-handed-inserter", reach: 2, throughput: 0.83 },
+  ],
   beltEntityName: "transport-belt",
+  belts: [{ entityName: "transport-belt", throughput: 15 }],
   reservePerimeterLanes: true,
   channelGeometry: true,
   beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
 
-const mk = (c0: number, c1: number, c2: number): NodeSpec[] => [
-  { id: "n0", depth: 0, machine: M, count: c0, lines: [inL("copper-cable", 4), inL("electronic-circuit", 2), inL("kr-components", 2), outL("advanced-circuit", 1)] },
-  { id: "n1", depth: 1, parentId: "n0", machine: M, count: c1, lines: [inL("plastic-bar", 4), inL("kr-silicon", 2), inL("kr-glass", 2), outL("kr-components", 4)] },
-  { id: "n2", depth: 1, parentId: "n0", machine: M, count: c2, lines: [inL("copper-cable", 3), inL("stone-tablet", 1), outL("electronic-circuit", 2)] },
-];
+/**
+ * **줄마다 초당 얼마가 흐르나** — 이름만 있고 저울이 없으면 줄 수를 못 정해 한 줄도 안
+ * 깔린다(2026-08-24, `makeLink` 폴백 삭제 후 드러남). 세 불변이 검사의 전제다:
+ *
+ *  - **간선 양끝이 같은 수** — 자식의 산출 rate = 부모의 수요 rate. 어긋나면 부모 머신
+ *    일부에 그 줄이 안 닿아 검사 ①(줄마다 인서터 하나)이 깨지는 게 **옳은** 동작이다.
+ *  - 머신 한 대가 한 줄에서 받는 몫 ≤ 팔 하나(0.83/s) — 그래야 인서터가 줄마다 하나다.
+ *    간선 줄의 자식 쪽 몫은 `PER_MACHINE × 부모수 / 자식수` 라 비율이 가장 나쁜
+ *    6/4/2(=3배)에서도 0.75/s 로 팔 하나 안에 든다.
+ *  - 클러스터 합 ≤ 벨트 한 줄(15/s) — 그래야 한 품목이 한 줄이다.
+ */
+const PER_MACHINE = 0.25;
+/** 간선 줄(자식이 부모에게 주는 품목) — 양끝이 이 이름으로 같은 rate 를 본다. */
+const EDGE_ITEM = { n1: "kr-components", n2: "electronic-circuit" } as const;
+
+const mk = (c0: number, c1: number, c2: number): NodeSpec[] => {
+  const specs: NodeSpec[] = [
+    { id: "n0", depth: 0, machine: M, count: c0, lines: [inL("copper-cable", 4), inL("electronic-circuit", 2), inL("kr-components", 2), outL("advanced-circuit", 1)] },
+    { id: "n1", depth: 1, parentId: "n0", machine: M, count: c1, lines: [inL("plastic-bar", 4), inL("kr-silicon", 2), inL("kr-glass", 2), outL("kr-components", 4)] },
+    { id: "n2", depth: 1, parentId: "n0", machine: M, count: c2, lines: [inL("copper-cable", 3), inL("stone-tablet", 1), outL("electronic-circuit", 2)] },
+  ];
+  const edgeRate = PER_MACHINE * c0; // 부모(n0)의 수요가 간선 rate 를 정한다.
+  return specs.map((s) => ({
+    ...s,
+    supplyCapacity: {
+      beltCapacity: 15,
+      lineRates: new Map(
+        s.lines.map((l) => {
+          const isEdge =
+            (s.id === "n0" && l.role === "input" && (Object.values(EDGE_ITEM) as string[]).includes(l.name)) ||
+            (s.id !== "n0" && l.role === "output");
+          return [`${l.role}:${l.name}`, isEdge ? edgeRate : PER_MACHINE * s.count];
+        }),
+      ),
+    },
+  }));
+};
 
 const COUNTS: [number, number, number][] = [
   [1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 2], [6, 4, 2], [8, 6, 4], [3, 2, 5],

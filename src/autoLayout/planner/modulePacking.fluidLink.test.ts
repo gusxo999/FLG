@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import {
   edgeLinkGroups,
-  edgeMachineLinks,
+  edgeFlows,
   packModuleTree,
   type NodeSpec,
   type PackConfig,
@@ -62,11 +62,11 @@ describe("edgeLinkGroups — 유체는 링크 장부에 안 오른다", () => {
     expect(edgeLinkGroups(child, parent, "water", config)).toBeDefined();
   });
 
-  it("하위 계산기(edgeMachineLinks)는 그대로다 — 가드는 edgeLinkGroups 의 몫", () => {
+  it("하위 계산기(edgeFlows)는 그대로다 — 가드는 edgeLinkGroups 의 몫", () => {
     // kind 를 모르는 층까지 가드를 내리면 아이템 경로 계산이 흔들린다. 여기서 경계를 못 박는다.
     const child = spec("c", [pipe("water", "output")], rates);
     const parent = spec("p", [pipe("water", "input")], rates, "c");
-    expect(edgeMachineLinks(child, parent, "water", config)).toBeDefined();
+    expect(edgeFlows(child, parent, "water", config)).toBeDefined();
   });
 });
 

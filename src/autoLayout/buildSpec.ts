@@ -129,6 +129,33 @@ export function armsFor(
 const EPS_ARMS = 1e-9;
 
 /**
+ * **면 좌석의 유일한 출처** — 머신 한 대의 **한 면**에 팔을 몇 개까지 앉힐 수 있나.
+ *
+ * [armsFor] 의 짝이다: 저쪽이 *"몇 개가 필요한가"*, 이쪽이 *"몇 개가 들어가는가"*.
+ * 면의 `d1` 칸이 그것뿐이라 물리로 정해진다 — 협상 대상이 아니다.
+ *
+ * ```
+ * faceSeatArms = 면의 길이 방향 칸 수 − 그 면에서 파이프가 먹은 칸 수
+ * ```
+ *
+ * **왜 한 곳이어야 하나.** 예전엔 같은 사실을 셋이 각자 셌다 —
+ * 붓기([edgeLinkGroups])는 `max(1, h)`(유체를 안 뺀다), 면 배정([tryLinkFace])은
+ * `h − 유체 행`, 외부 줄 조립([externalLineGroups])은 **아예 안 셌다.** 그래서 붓기가
+ * *"여기 8개 들어간다"* 며 만든 줄이 배정에서 자리를 못 찾아 통째로 사라지는 일이 났다
+ * (2026-08-22 `linkMismatches`). 셋이 같은 자를 쓰면 그 어긋남은 생길 자리가 없다.
+ *
+ * **`fluidRows` 가 인자인 것이 요점이다.** 줄을 *만드는* 때는 그 줄이 어느 면에 앉을지
+ * 모르므로 유체 칸 수를 알 수 없다 — 그래서 붓기는 `0` 을 넘긴다(**상속된 낙관**이고,
+ * 그 사실이 주석이 아니라 **호출부의 인자**로 드러난다). 좁힐지는
+ * `tempPlanDocs/배선-형태/judgements.md` **J2** — 착수 조건은 계측 수치다.
+ *
+ * `max(1, …)` 는 붓기가 쓰던 방어를 그대로 가져온 것이다(면이 0칸인 머신은 없다).
+ */
+export function faceSeatArms(machineFaceCells: number, fluidRows: number): number {
+  return Math.max(1, machineFaceCells) - fluidRows;
+}
+
+/**
  * `reach` 로 인서터를 찾는다 — **벨트 칸이 인서터를 지목하는 지점**.
  *
  * `clusterBeltDepth = 1 + reach` 이므로 깊이를 알면 reach 를 알고, reach 를 알면 인서터가
@@ -151,26 +178,6 @@ export function inserterForReach(
 
 export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
   const { entityMap } = useGameDataStore.getState();
-  const beltEntityName = input.primaryBelt ?? input.selectedBelts[0] ?? "transport-belt";
-  // 고른 인서터 전부 → reach 별로 **가장 빠른 것 하나씩**. reach 가 같으면 두 인서터가
-  // 같은 depth 의 벨트를 집으므로 벨트를 한 줄 더 세워주지 못한다 — 더 빠른 쪽만 쓴다.
-  const byReach = new Map<number, SpecInserter>();
-  for (const entityName of input.selectedInserters) {
-    const entity = entityMap.get(entityName);
-    const reach = inserterReach(entity);
-    if (reach < 1) continue;
-    const throughput = inserterThroughput(entity, input.inserterOverrides?.[entityName]);
-    const cur = byReach.get(reach);
-    if (!cur || throughput > cur.throughput) byReach.set(reach, { entityName, reach, throughput });
-  }
-  const inserters = [...byReach.values()].sort((a, b) => a.reach - b.reach);
-  const long = inserters.find((i) => i.reach >= 2);
-  // **기본 좌석 인서터 = reach 1.** 계획이 인서터를 지목하지 못한 배정(수량 미상 등)의
-  // 폴백일 뿐이다 — 실제로 놓는 팔은 [PlannedLine.reach] 가 정한다([inserterForReach]).
-  // reach 1 을 하나도 안 골랐으면 옛 폴백(첫 선택)으로.
-  const inserterEntityName =
-    inserterForReach(inserters, 1)?.entityName ?? input.selectedInserters[0] ?? "inserter";
-
   // 고른 벨트 전부 → 처리량 내림차순. 같은 처리량이 둘이면 하나만(자리를 두고 다툴 뿐
   // 더 나르지 못한다 — 인서터를 reach 별로 하나만 남기는 것과 같은 이유).
   const byThroughput = new Map<number, SpecBelt>();
@@ -180,6 +187,52 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
     if (!byThroughput.has(throughput)) byThroughput.set(throughput, { entityName, throughput });
   }
   const belts = [...byThroughput.values()].sort((a, b) => b.throughput - a.throughput);
+
+  // **벨트 한 줄이 나르는 양의 상한 `B`** — 가장 빠른 벨트. 벨트를 하나도 안 골랐으면
+  // 상한이 없다(0) — 지어내지 않는다.
+  const beltCeiling = belts[0]?.throughput ?? 0;
+
+  /**
+   * **기본 벨트 — 이름과 저울은 함께 온다**(2026-08-24 사장님 확정).
+   *
+   * 예전엔 `input.primaryBelt ?? input.selectedBelts[0] ?? "transport-belt"` 였다. 세 번째
+   * 항이 **지어낸 이름**이고, 앞의 둘도 처리량을 확인하지 않은 원본 선택이라 *"이름은 아는데
+   * 저울은 없는"* 상태를 만들 수 있었다. 그 상태가 아래층까지 내려가 폴백을 불렀다.
+   * 이제는 **처리량이 확인된 `belts` 안에서만** 고른다 — 불변식: `beltEntityName ∈ belts`.
+   *
+   * 하나도 없으면 빈 문자열이고, 그 스펙으로는 아무것도 못 짓는다 —
+   * `runModulePipeline` 이 진입에서 거절한다(옛 경로는 애초에 이 값을 안 쓴다).
+   */
+  const beltEntityName =
+    belts.find((b) => b.entityName === input.primaryBelt)?.entityName ?? belts[0]?.entityName ?? "";
+
+  // 고른 인서터 전부 → reach 별로 **가장 빠른 것 하나씩**. reach 가 같으면 두 인서터가
+  // 같은 depth 의 벨트를 집으므로 벨트를 한 줄 더 세워주지 못한다 — 더 빠른 쪽만 쓴다.
+  //
+  // **처리량은 `B` 에서 접는다**(2026-08-22 사장님 확정, 용어사전 §D "배선 형태 셋" 물리 2):
+  // *팔 하나가 벨트 한 줄보다 많이 나를 수는 없다.* 접는 자리가 여기 **하나**여서
+  // 소비처(armsFor·maxInsertersPerBelt·requiredInserterCount)는 아무것도 안 바꿔도 된다.
+  // 안 접으면 `그릇 = floor(벨트 ÷ 인서터)` 가 1로 접혀 벨트가 텅 빈 채로 깔리고,
+  // *"인서터 처리량 무한"* 같은 입력이 링크를 통째로 0으로 만든다(2026-08-21 battery 실측).
+  const byReach = new Map<number, SpecInserter>();
+  for (const entityName of input.selectedInserters) {
+    const entity = entityMap.get(entityName);
+    const reach = inserterReach(entity);
+    if (reach < 1) continue;
+    const raw = inserterThroughput(entity, input.inserterOverrides?.[entityName]);
+    const throughput = beltCeiling > 0 ? Math.min(raw, beltCeiling) : raw;
+    const cur = byReach.get(reach);
+    if (!cur || throughput > cur.throughput) byReach.set(reach, { entityName, reach, throughput });
+  }
+  const inserters = [...byReach.values()].sort((a, b) => a.reach - b.reach);
+  const long = inserters.find((i) => i.reach >= 2);
+  // **기본 좌석 인서터 = reach 1.** 계획이 인서터를 지목하지 못한 배정(수량 미상 등)의
+  // 폴백일 뿐이다 — 실제로 놓는 팔은 [PlannedLine.reach] 가 정한다([inserterForReach]).
+  // reach 1 을 하나도 안 골랐으면 옛 폴백(첫 선택)으로.
+  // **같은 규칙** — 처리량이 확인된 `inserters` 안에서만 고른다(불변식: ∈ inserters).
+  // reach 1 이 없으면 가장 짧은 것. 목록이 비면 빈 문자열이고, 진입에서 거절된다.
+  const inserterEntityName =
+    inserterForReach(inserters, 1)?.entityName ?? inserters[0]?.entityName ?? "";
 
   const undergroundPipeEntityName = input.selectedUndergroundPipes[0];
   const undergroundBeltEntityName = input.selectedUndergroundBelts[0];

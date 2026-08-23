@@ -17,6 +17,11 @@ import type { IoLine } from "./module/clusterPortPlanner";
  * 건너려고 낸 계획인데, 검사기가 그걸 충돌로 읽은 것이다.
  *
  * 실측(브라우저 kr-glass 16머신)에서 납품 경로 16개 중 5개가 탐색으로 났고, 그 조사에서 나온 버그다.
+ *
+ * **2026-08-22 형상 갱신.** 흐름을 벨트 줄로 접게 되면서(용어사전 §D "배선 형태 셋") 옛 형상
+ * (부모 2 / 자식 4)이 납품 경로 4개로 줄었고 **더 이상 지하 횡단을 만들지 않는다** — 즉 이
+ * 테스트의 전제가 사라졌다. 통과시키려고 기대값을 낮추면 **지키려던 불변식을 안 재게 되므로**,
+ * 지하 횡단이 실제로 계획되는 형상으로 옮긴다(부모 3 / 자식 2, 같은 총량 60/60).
  */
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
@@ -33,16 +38,16 @@ const config: PackConfig = {
   beltMaxUndergroundDistance: 4,
 };
 
-/** 지하 횡단이 실제로 계획되는 형상 — 부모 2 / 자식 4, 머신당 팔 5개. */
+/** 지하 횡단이 실제로 계획되는 형상 — 부모 3 / 자식 2, 총 60/60. */
 function pack() {
   const specs: NodeSpec[] = [
     {
-      id: "p", depth: 0, machine: M, count: 2,
+      id: "p", depth: 0, machine: M, count: 3,
       lines: [inL("x"), outL("prod")],
       supplyCapacity: { lineRates: new Map([["input:x", 60], ["output:prod", 60]]) },
     },
     {
-      id: "c", depth: 1, parentId: "p", machine: M, count: 4,
+      id: "c", depth: 1, parentId: "p", machine: M, count: 2,
       lines: [outL("x")],
       supplyCapacity: { lineRates: new Map([["output:x", 60]]) },
     },
@@ -64,12 +69,12 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
   });
 
   it("예약이 전부 계획한다 — 탐색 폴백 0", () => {
-    // 버그가 있던 시절: 계획은 5개 다 있는데(noPlan 0) planned 3 / fallback 2 였다.
-    // 되돌아 걷는 사슬 **하나**가 멀쩡한 이웃까지 끌고 떨어졌다.
-    expect(p.deliveries.length).toBe(5);
+    // 버그가 있던 시절: 계획은 다 있는데(noPlan 0) 일부가 fallback 이었다.
+    // 되돌아 걷는 사슬 **하나**가 멀쩡한 이웃까지 끌고 떨어졌다 — 그래서 **폴백 0** 이 신호다.
+    expect(p.deliveries.length).toBe(6);
     expect(delivery.failures).toBe(0);
     expect(delivery.dijkstraFallback).toBe(0);
-    expect(delivery.planned).toBe(5);
+    expect(delivery.planned).toBe(6);
   });
 
   it("계획된 사슬은 같은 칸을 두 번 밟지 않는다 (되돌아 걷기 금지)", () => {

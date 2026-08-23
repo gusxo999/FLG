@@ -184,7 +184,7 @@ Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않
 
 ```
 전:  원료·완제품 → IoLine → planClusterPorts(rim) → PlannedLine → emitDirectInserting
-     내부 링크   → MachineLinkGroup → allocateLinkFaces → LinkFacePlan → emitOutputLinks
+     내부 링크   → Link → allocateLinkFaces → LinkFacePlan → emitOutputLinks
 
 한 일:  자료구조를 한 글자도 안 건드리고 **입력의 낟알만** 바꿨다
         externalLineGroups(…, { perMachine: true })
@@ -192,7 +192,7 @@ Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않
         → tryLinkFace 의 `arms.size !== 1` 문턱을 통과
         → **기존 배분기가 그냥 받아들였다**
 
-후:  둘 다 → MachineLinkGroup → allocateLinkFaces → LinkFacePlan → emitOutputLinks
+후:  둘 다 → Link → allocateLinkFaces → LinkFacePlan → emitOutputLinks
      그리고 rim 모드 · PlannedLine 의 그 용법 · emitDirectInserting 이 **호출자 0 → 삭제**
 ```
 

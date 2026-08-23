@@ -44,7 +44,8 @@ import {
 } from "./clusterPortPlanner";
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
-import { externalLineGroups, readLinkRole, type MachineLinkGroup } from "../../module/machineLinkGroup";
+import { externalLineGroups, readLinkRole, summarizeBeltForms, type Link } from "../../module/link";
+import { recordBeltFormStats } from "../../../debug/runStats";
 import {
   allocateLinkFaces,
   spillLinkFacesToGap,
@@ -88,8 +89,8 @@ export interface ModulePortPlan {
    * 방출기가 `plans[i]` 를 그룹 순서로 읽기 때문이다.
    */
   restLinks?: {
-    out: { groups: MachineLinkGroup[]; plans: (LinkFacePlan | undefined)[] };
-    in: { groups: MachineLinkGroup[]; plans: (LinkFacePlan | undefined)[] };
+    out: { groups: Link[]; plans: (LinkFacePlan | undefined)[] };
+    in: { groups: Link[]; plans: (LinkFacePlan | undefined)[] };
   };
   /** 머신 i 와 i+1 사이를 몇 칸 벌릴까 — ①의 부산물. `layoutCluster` 로 그대로 간다. */
   rowGaps: number[];
@@ -124,6 +125,18 @@ export interface ModulePortPlan {
   rest:
     | { ok: true; lines: PlannedLine[] }
     | { ok: false; unplaced: IoLine[] };
+  /**
+   * **부을 수 없어 줄이 하나도 안 난 나머지 줄들** — 수량 미상이거나(저울 없음) 팔이 면
+   * 좌석에 안 들어가는 줄이다([externalLineGroups] 가 빈 손으로 돌아온 경우).
+   *
+   * `rest.unplaced` 와 **다른 자리**인 이유: 저쪽은 *"나머지 줄 전체가 실패했다"* 라 모듈이
+   * 통째로 물러나지만, 이쪽은 **그 줄 하나만** 못 깐 것이라 나머지는 그대로 깔린다.
+   *
+   * 이 목록이 없으면 그 줄은 **조용히 사라진다** — 포트도 벨트도 안 나는데 모듈은 성공으로
+   * 보고되고, 그 재료를 못 받는 머신이 굶는 걸 게임에 넣어야 안다(2026-08-24 `makeLink`
+   * 폴백 삭제 때 드러났다: 폴백이 가짜 줄로 그 구멍을 덮고 있었다).
+   */
+  unpourableLines: IoLine[];
 }
 
 /**
@@ -184,8 +197,8 @@ export function planModulePorts(
   // 이 단계는 팔 **수**만 본다(좌표 없음). gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고,
   // **gap 폭 = 그 gap 을 지나는 가로 벨트 수**다 — 그 폭이 다시 머신 좌표를 정하므로
   // 좌표보다 면이 먼저다.
-  const outLinkGroups = input.outputLinks ?? [];
-  const inLinkGroups = input.inputLinks ?? [];
+  const outLinks = input.outputLinks ?? [];
+  const inLinks = input.inputLinks ?? [];
   const faceLedger = new Map<string, number>();
   // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
   // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
@@ -196,15 +209,15 @@ export function planModulePorts(
     machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeFaces: pipeFaceRows,
     lanes: laneLedger, ends: new Map(), inserters: input.inserters,
   };
-  const outFaces = allocateLinkFaces(faceCtx, outLinkGroups, "from", "W");
-  const inFaces = allocateLinkFaces(faceCtx, inLinkGroups, "to", "E");
+  const outFaces = allocateLinkFaces(faceCtx, outLinks, "from", "W");
+  const inFaces = allocateLinkFaces(faceCtx, inLinks, "to", "E");
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
   // **선호 면을 다시 넣는 이유**: 그 면이 유체 면이면 위에서 비켜 갔다([tryLinkFace] 의
   // `allowPipeFace`). 넘침 단계는 유체 면을 허용하므로 여기서 한 번 더 기회를 준다 —
   // 유체 면에 앉으면 그 면이 넓어지지만 gap 으로 가면 기둥이 벌어진다. **유체 면이 먼저다.**
   // (반대 옆면은 여전히 안 쓴다 — 벨트가 채널 반대쪽에서 출발해 되돌아올 길이 없다.)
-  spillLinkFacesToGap(faceCtx, outLinkGroups, "from", outFaces, ["W", "S", "N"]);
-  spillLinkFacesToGap(faceCtx, inLinkGroups, "to", inFaces, ["E", "S", "N"]);
+  spillLinkFacesToGap(faceCtx, outLinks, "from", outFaces, ["W", "S", "N"]);
+  spillLinkFacesToGap(faceCtx, inLinks, "to", inFaces, ["E", "S", "N"]);
 
   // 링크가 맡은 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
   // ③의 tap/direct 판정 대상이 아니다. ③ 입력에서 빼되, 그 줄이 먹은 좌석은 ①의 장부에
@@ -213,8 +226,8 @@ export function planModulePorts(
   //     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 납품 경로가 샌다 — 2026-07-19 실측).
   //  ② ③이 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
   const linkedKeys = new Set([
-    ...outLinkGroups.map((g) => `output:${g.item}`),
-    ...inLinkGroups.map((g) => `input:${g.item}`),
+    ...outLinks.map((g) => `output:${g.item}`),
+    ...inLinks.map((g) => `input:${g.item}`),
   ]);
 
   // ── ② 유체(pipe) 줄 — 면을 우리가 못 고른다 ────────────────────────────────
@@ -290,9 +303,14 @@ export function planModulePorts(
   const restLinks = (() => {
         const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, input.inserters, undefined, {
           perMachine: supply.mode !== "tap",
+          belts: input.belts,
+          // **좌석 상한의 재료** — 이걸 안 주면 바깥 줄이 좌석을 안 보고 묶여, 팔이 면에
+          // 안 들어가는 줄이 나서 배정에서 통째로 떨어진다(2026-08-23 실측: 40/s 원료 줄이
+          // 팔 9개짜리 한 줄로 나 3칸 면에 못 앉았다).
+          machineFaceCells: input.machine.h,
         });
         const lineOfKey = new Map(restLines.map((l) => [`${l.role}:${l.name}`, l]));
-        const isExternal = (g: MachineLinkGroup): boolean =>
+        const isExternal = (g: Link): boolean =>
           lineOfKey.get(`${readLinkRole(g)}:${g.item}`)?.external ?? false;
         const out = groups.filter((g) => readLinkRole(g) === "output");
         // **입력 처리 순서: 자식-공급(내부 간선) 먼저, external(원료) 나중.**
@@ -329,6 +347,24 @@ export function planModulePorts(
         };
       })();
 
+  /** 실제로 줄이 난 나머지 줄들 — 이 집합에 없는 나머지 줄이 [unpourableLines] 다. */
+  const pouredKeys = new Set(
+    [...restLinks.out.groups, ...restLinks.in.groups].map((g) => `${readLinkRole(g)}:${g.item}`),
+  );
+
+  // ── 계측 — **관측만 한다**(계산도 분기도 반환값도 안 바꾼다) ──────────────────
+  // 형태는 산출물 어디에도 안 남아서, glass 54줄(필요 5줄)을 사후에 손으로 세야 했다.
+  // 내부 링크는 `modulePacking` 이 따로 센다 — 여기는 **외부 줄**(원료·완제품) 몫이다.
+  // 싱크에 직접 쓰는 것은 `moduleWizard` 가 이미 하는 일과 같은 관용구다(runStats 머리말).
+  recordBeltFormStats(
+    summarizeBeltForms(
+      [...restLinks.out.groups, ...restLinks.in.groups].map((group) => ({
+        group, fromCount: count, toCount: count,
+      })),
+      (name) => (name === undefined ? undefined : input.belts?.find((b) => b.entityName === name)?.throughput),
+    ),
+  );
+
   // 유체 줄이 자리를 못 잡으면 나머지 줄이 통째로 실패한다 — 반만 놓으면 유체를 못 받는
   // 머신이 **조용히 굶는다**. 예전엔 여기 `supply.mode === "direct"` 도 함께 있었다: 파이프
   // 방출이 tap 가지 안에만 있어서 1:1 로 물러나면 유체가 사라졌기 때문이다. 방출을 갈래 밖으로
@@ -362,6 +398,12 @@ export function planModulePorts(
     // 유체가 못 앉으면 나머지 줄도 통째로 실패한다(반만 놓으면 그 머신이 조용히 굶는다).
     // 유체가 못 앉으면 **유체 줄까지** 함께 낸다 — `restLines` 는 파이프를 빼고 걸러진 목록이라
     // 그것만 내면 정작 실패한 유체가 사유에서 사라진다(2026-08-16 회귀).
+    // 부을 수 없어 줄이 하나도 안 난 나머지 줄 — **삼키지 않는다**(위 [unpourableLines]).
+    unpourableLines: restLines.filter(
+      (l) =>
+        l.kind === "belt" &&
+        !pouredKeys.has(`${l.role}:${l.name}`),
+    ),
     rest: fluidUnplaceable
       ? { ok: false, unplaced: input.lines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)) }
       : { ok: true, lines: [] },

@@ -19,7 +19,7 @@
  *  - 빠르게 셈 → 팔 부족 → 배치는 "성공"이라 보고하고 **게임에 넣어야 안다**.
  */
 import { describe, it, expect } from "vitest";
-import { armsFor, inserterForReach, type SpecInserter } from "./buildSpec";
+import { armsFor, faceSeatArms, inserterForReach, type SpecInserter } from "./buildSpec";
 import { machineSpeedFraction } from "./wizardUtils";
 import type { Entity, Recipe } from "../UI/store/gameDataStore";
 
@@ -130,5 +130,29 @@ describe("machineSpeedFraction — 자리가 넉넉하면 굶었다고 하지 �
     const f = machineSpeedFraction(krSand, tiny, 20, [FAST]);
     expect(f).toBeDefined();
     expect(f!).toBeLessThan(1);
+  });
+});
+
+/**
+ * [faceSeatArms] — [armsFor] 의 짝. 저쪽이 *"몇 개가 필요한가"*, 이쪽이 *"몇 개가 들어가는가"*.
+ *
+ * **이 자리를 셋이 각자 셌다**(2026-08-23 통일 전): 붓기는 `max(1,h)`(유체 무시), 면 배정은
+ * `h − 유체 행`, 외부 줄 조립은 **아예 안 셌다**. 아래 두 테스트는 통일이 **옛 두 식을 그대로
+ * 재현**하는지를 지킨다 — 통일이 값을 바꿨다면 그건 리팩토링이 아니라 동작 변경이다.
+ */
+describe("faceSeatArms — 면 좌석의 단일 출처", () => {
+  it("유체가 없으면 옛 붓기 식 `max(1, h)` 와 같다", () => {
+    for (const h of [1, 3, 5, 7]) expect(faceSeatArms(h, 0)).toBe(Math.max(1, h));
+  });
+
+  it("유체 행만큼 준다 — 옛 배정 식 `h − 유체 행` 과 같다", () => {
+    expect(faceSeatArms(5, 2)).toBe(3);
+    expect(faceSeatArms(3, 1)).toBe(2);
+  });
+
+  it("파이프가 면을 다 먹으면 0 이하로 정직하게 떨어진다 — 1 로 올려 주지 않는다", () => {
+    // 올려 주면 **없는 자리**를 배정해 셀이 겹친다. 배정은 이 값이 0 이하면 전부 거절한다.
+    expect(faceSeatArms(3, 3)).toBe(0);
+    expect(faceSeatArms(3, 4)).toBeLessThan(0);
   });
 });

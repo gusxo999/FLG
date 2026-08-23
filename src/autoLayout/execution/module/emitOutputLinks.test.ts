@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
-import type { MachineLink } from "../../planner/link/allocateMachineLinks";
-import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import type { Flow } from "../../planner/link/allocateFlows";
+import type { Link } from "../../module/link";
 import { directionToVector } from "../../planner/containerRouting";
+import { EntityType } from "../../../types/layout";
 
 /**
  * **한 그룹의 벨트가 다른 그룹의 벨트로 흘러들면 안 된다.**
@@ -27,24 +28,26 @@ function beltLeaks(mod: GeneratedModule): string[] {
 }
 
 // 출력 fan-out 방출 검증 — 링크 그룹(=벨트) 단위로 "머신당·목적지별" belt 가 갈라 나온다.
-// count≥2, W/E 에 앉는 중간 출력 케이스. **v1 은 링크 하나가 곧 벨트 하나**라
-// 여기서도 링크를 그대로 그룹으로 편다.
+// count≥2, W/E 에 앉는 중간 출력 케이스. **이 테스트가 재는 것은 방출 기하**(좌석·벨트·포트)
+// 이지 접기가 아니다. 그래서 흐름을 일부러 **한 줄에 하나씩** 편 그룹을 손으로 만든다 —
+// 접기(흐름 → 벨트 줄)는 [edgeLinkGroups] 의 테스트가 따로 잰다.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 
 // 자식 2대. 머신0 이 부모0·부모1 로 갈라 낸다(fan-out).
 //   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)  → 목적지가 다르니 **벨트도 따로**
 //   머신1 → 부모1 (팔1)                        → 자기 벨트
-const flat: MachineLink[] = [
-  { fromMachine: 0, toMachine: 0, item: "gear", inserterCount: 1 },
-  { fromMachine: 0, toMachine: 1, item: "gear", inserterCount: 1 },
-  { fromMachine: 1, toMachine: 1, item: "gear", inserterCount: 1 },
+const flat: Flow[] = [
+  { fromMachine: 0, toMachine: 0, item: "gear", rate: 5 },
+  { fromMachine: 0, toMachine: 1, item: "gear", rate: 5 },
+  { fromMachine: 1, toMachine: 1, item: "gear", rate: 5 },
 ];
-// 회계(MachineLink) → 벨트(MachineLinkGroup). 내부 링크는 양쪽 다 머신 하나씩이다.
-const groups: MachineLinkGroup[] = flat.map((l) => ({
+// 흐름(Flow) → 벨트 줄(Link). 여기서는 흐름마다 줄 하나·팔 하나로 편다.
+const groups: Link[] = flat.map((l) => ({
   item: l.item,
-  from: new Map([[l.fromMachine, l.inserterCount]]),
-  to: new Map([[l.toMachine, l.inserterCount]]),
+  from: new Map([[l.fromMachine, 1]]),
+  to: new Map([[l.toMachine, 1]]),
+  carries: [{ from: l.fromMachine, to: l.toMachine, rate: l.rate }],
 }));
 
 const base: ModuleInput = {
@@ -463,5 +466,54 @@ describe("클러스터 양 끝 — 머신 하나뿐이어도 넘친 그룹이 �
       seen.add(k);
     }
     expect(dup).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **벨트 티어는 그룹이 든다** (2026-08-23).
+//
+// 실으려는 양을 정한 곳([determineBeltCount] 이 고른 티어)과 깔 벨트를 고르는 곳이 갈리면
+// 용량이 거짓이 된다 — 접기는 90/s 짜리로 세 놓고 방출이 15/s 짜리를 깔면 그 줄은 **조용히
+// 굶는다.** 그룹에 티어가 없으면 예전대로 기본 벨트로 떨어진다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("방출은 그룹의 벨트 티어를 쓴다", () => {
+  const tiered: Link[] = groups.map((g, i) => ({
+    ...g,
+    beltEntityName: i === 0 ? "express-transport-belt" : undefined,
+  }));
+  const mod = generateModule({ ...base, outputLinks: tiered });
+  const beltsOf = (name: string) =>
+    mod.cells.filter((c) => c.cell.entityName === name && c.cell.entityType === EntityType.Belt);
+
+  it("티어를 든 그룹은 그 벨트로 깔린다", () => {
+    expect(beltsOf("express-transport-belt").length).toBeGreaterThan(0);
+  });
+
+  it("티어가 없는 그룹은 기본 벨트로 떨어진다", () => {
+    expect(beltsOf("transport-belt").length).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **포트가 운반량과 티어를 들고 모듈 밖으로 나간다** (2026-08-23).
+//
+// 이 값이 없으면 납품 경로·반출 경로가 *"이 벨트에 얼마가 흐르나"* 를 되물을 곳이 없어
+// 벨트 티어를 **고를 근거 자체가 없다.** 모듈 경계를 넘어 살아남는 유일한 운반량이다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("포트가 운반량·티어를 들고 나간다", () => {
+  const tiered: Link[] = groups.map((g) => ({ ...g, beltEntityName: "express-transport-belt" }));
+  const mod = generateModule({ ...base, outputLinks: tiered });
+
+  it("포트마다 그 줄의 적재 합이 실린다", () => {
+    expect(mod.outputPorts.map((p) => p.rate)).toEqual([5, 5, 5]);
+  });
+
+  it("포트마다 그 줄이 고른 티어가 실린다", () => {
+    expect(mod.outputPorts.every((p) => p.beltEntityName === "express-transport-belt")).toBe(true);
+  });
+
+  it("적재 목록이 없으면 운반량도 없다 — 지어내지 않는다", () => {
+    const bare = generateModule({ ...base, outputLinks: groups.map((g) => ({ ...g, carries: undefined })) });
+    expect(bare.outputPorts.every((p) => p.rate === undefined)).toBe(true);
   });
 });

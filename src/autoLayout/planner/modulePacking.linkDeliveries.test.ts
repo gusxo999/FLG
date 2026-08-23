@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
-import { packModuleTree, edgeMachineLinks, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, edgeLinkGroups, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "./module/clusterPortPlanner";
-import * as allocateMachineLinksModule from "./link/allocateMachineLinks";
+import { groupRate } from "../module/link";
+import * as allocateFlowsModule from "./link/allocateFlows";
 import { faceVector } from "../util/helper";
 import { EntityType } from "../../types/layout";
 
-// 끝단 통합 — 링크 그룹(=벨트) 단위 fan-out/fan-in 이 1:1 납품 경로로 이어지는지.
-// v1 은 **링크 하나 = 벨트 하나**다(2026-07-22).
-// 링크가 작아 그릇에 여유가 남아도 목적지가 다르면 안 묶는다 — 묶으면 그 벨트가 부모 머신
-// 여럿을 관통해야 하고, 그러려면 그 머신들이 붙어 있어야 하기 때문(= ColumnCluster 강제).
+// 끝단 통합 — 벨트 줄 단위 fan-out/fan-in 이 납품 경로로 이어지는지.
+//
+// **2026-08-22 재작성.** 예전 이 파일은 *"링크 하나 = 벨트 하나 — 목적지가 다르면 안 묶는다"*
+// 를 잠그고 있었다. 형태를 가르는 축이 **양**이 된 지금 그 정책은 폐기됐다: 벨트 한 줄에
+// 여유가 있으면 여러 목적지가 그 줄을 나눠 쓰고(= 트렁크), 흐름 하나가 줄 하나를 넘칠 때만
+// 여러 줄로 쪼개진다(= split belt). 안 묶으면 채널 트랙과 포트를 그만큼 더 먹는 순수한 손해다.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
@@ -57,27 +60,32 @@ describe("그릇 — 링크 하나가 자기 벨트를 넘지 않는다", () => 
     supplyCapacity: { lineRates: new Map([["input:kr-sand", 40]]) },
   };
 
-  const links = edgeMachineLinks(child, parent, "kr-sand", real)!;
+  const groups = edgeLinkGroups(child, parent, "kr-sand", real)!;
 
-  it("어떤 링크도 벨트 처리량을 넘겨 싣지 않는다", () => {
-    expect(links.length).toBeGreaterThan(0);
-    for (const l of links) {
-      // 고칠 때까지: tapCap 1.2 → 그릇 37 → 팔 7개 → 70/s > 45/s 로 여기서 터진다.
-      expect(l.inserterCount * 10).toBeLessThanOrEqual(45);
+  it("어떤 벨트 줄도 자기 처리량을 넘겨 싣지 않는다", () => {
+    expect(groups.length).toBeGreaterThan(0);
+    // 고칠 때까지: tapCap 1.2 → 그릇 37 → 팔 7개 → 70/s > 45/s 로 여기서 터졌다.
+    // 이제는 팔이 아니라 **실린 rate** 를 직접 잰다 — 올림된 용량이 아니라 약속량이다.
+    for (const g of groups) expect(groupRate(g) ?? 0).toBeLessThanOrEqual(45 + 1e-9);
+  });
+
+  it("한 줄이 머신 하나에게 면 좌석(3행)보다 많은 팔을 붙이지 않는다", () => {
+    // 벨트 한 줄은 면 하나에 눕고, 머신 한 대가 그 면에 가진 칸은 `h` 개뿐이다.
+    for (const g of groups) {
+      for (const arms of g.from.values()) expect(arms).toBeLessThanOrEqual(M.h);
+      for (const arms of g.to.values()) expect(arms).toBeLessThanOrEqual(M.h);
     }
   });
 
-  it("자식 머신 하나가 요구하는 팔이 면 좌석(3행)을 안 넘는다", () => {
-    // 팔을 느린 팔로 세면 머신당 10개를 요구해 면이 넘치고 벨트가 갈려 나갔다.
-    const byMachine = new Map<number, number>();
-    for (const l of links) byMachine.set(l.fromMachine, (byMachine.get(l.fromMachine) ?? 0) + l.inserterCount);
-    for (const arms of byMachine.values()) expect(arms).toBeLessThanOrEqual(M.h);
+  it("접어도 총량이 보존된다", () => {
+    expect(groups.reduce((sum, g) => sum + (groupRate(g) ?? 0), 0)).toBeCloseTo(40, 9);
   });
 });
 
-describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도 따로", () => {
-  // 부모 2대(머신당 6 = 팔 1), 자식 2대(머신당 12). 링크: (c0→p0,1),(c0→p1,1).
-  // 그릇은 3이라 예전이면 한 벨트로 묶였을 자리 — 이제 목적지가 달라 벨트 둘이다.
+describe("작은 입력은 **묶는다** — 여유가 있으면 한 줄이 부모 둘을 먹인다", () => {
+  // 부모 2대(머신당 6), 자식 2대(머신당 12). 흐름 둘: (c0→p0, 6) · (c0→p1, 6).
+  // 벨트가 20 이라 12 는 한 줄에 다 들어간다 → **트렁크 한 줄**(부모 둘이 그 줄에서 집는다).
+  // 예전엔 *"목적지가 다르면 벨트도 따로"* 라는 정책이 이걸 둘로 갈랐다(2026-08-22 폐기).
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 2,
@@ -94,19 +102,17 @@ describe("작은 입력도 묶지 않는다 — 목적지가 다르면 벨트도
   const child = pack.placements.find((pl) => pl.id === "c")!;
   const parent = pack.placements.find((pl) => pl.id === "p")!;
 
-  it("자식 출력 포트 2개 — 그릇에 여유가 있어도 안 묶는다", () => {
-    expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
+  it("자식 출력 포트 1개 — 여유가 있으니 한 줄로 묶인다", () => {
+    expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(1);
   });
 
-  it("부모 입력 포트 2개 — 벨트가 남의 머신 행을 관통하지 않는다", () => {
+  it("부모 입력 포트 1개 — 그 벨트가 부모 둘의 행을 관통한다", () => {
     const ports = parent.module.inputPorts.filter((p) => p.line.name === "x");
-    expect(ports).toHaveLength(2);
-    // 각 벨트는 **자기 목적지 머신의 좌석 행만** 덮는다(팔 1개 = 셀 1개).
-    expect(ports.map((p) => p.cells.length)).toEqual([1, 1]);
+    expect(ports).toHaveLength(1);
   });
 
-  it("납품 경로 2개 — 그룹 순서 1:1, raw 0", () => {
-    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(2);
+  it("납품 경로 1개 — 채널 트랙도 하나만 먹는다, raw 0", () => {
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(1);
     expect(pack.rawPorts.filter((p) => p.line.name === "x")).toHaveLength(0);
   });
 
@@ -264,7 +270,7 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
 
 // 신원이 자식 구분을 잃지 않는지 — 같은 부모·같은 품목을 자식 **둘**이 먹인다. inputLinksOf
 // 가 두 자식의 그룹을 평평하게 이어붙이면서도 groupIndex 를 자식마다 따로 세야
-// linkGroupId 가 outputLinksOf(각 자식) 와 어긋나지 않는다(2026-07-21, 이 세션에서 고친 지점).
+// makeLinkId 가 outputLinksOf(각 자식) 와 어긋나지 않는다(2026-07-21, 이 세션에서 고친 지점).
 describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자식이 둘", () => {
   const specs: NodeSpec[] = [
     {
@@ -295,15 +301,15 @@ describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자�
   });
 });
 
-// 간선당 1회 계산(MachineLinkGroup 리팩터 회귀 테스트, 2026-07-22) — 예전엔 outputLinksOf
+// 간선당 1회 계산(Link 리팩터 회귀 테스트, 2026-07-22) — 예전엔 outputLinksOf
 // (자식 쪽)·inputLinksOf(부모 쪽)가 같은 간선에 대해 edgeLinkGroups 를 각자 독립으로 두 번
 // 불렀다("결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 양쪽이 일치하길 기대하던
 // 구조). packModuleTree 가 간선당 사전 캐시 1개만 만들고 양쪽이 그 캐시를 참조하는지,
-// edgeMachineLinks 가 부르는 allocateMachineLinks(cross-module import — 같은 파일 안 호출과
+// edgeFlows 가 부르는 allocateFlows(cross-module import — 같은 파일 안 호출과
 // 달리 vi.spyOn 이 가로챌 수 있다) 호출 횟수로 확인한다.
 describe("링크 그룹 계산 — 간선당 정확히 1회(이중 계산 회귀 방지)", () => {
-  it("자식→부모 간선 하나에 allocateMachineLinks 가 딱 한 번 불린다", () => {
-    const spy = vi.spyOn(allocateMachineLinksModule, "allocateMachineLinks");
+  it("자식→부모 간선 하나에 allocateFlows 가 딱 한 번 불린다", () => {
+    const spy = vi.spyOn(allocateFlowsModule, "allocateFlows");
     const specs: NodeSpec[] = [
       {
         id: "p", depth: 0, machine: M, count: 2,

@@ -6,11 +6,43 @@ tags: [auto-layout, placement, routing]
 
 > **부모 문서:** [auto-layout-wizard](../wizard.md)
 > **관련 문서:** [.trunk-redesign](../module/trunk-redesign.md) · [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) · [.ns-face-relief](../module/ns-face-relief.md)
-> **용어:** [[용어사전#MachineLink|MachineLink]] · [[용어사전#allocateMachineLinks|allocateMachineLinks]] · [[용어사전#기둥 (column)|기둥]]
+> **용어:** [[용어사전#Flow|Flow]] · [[용어사전#allocateFlows|allocateFlows]] · [[용어사전#기둥 (column)|기둥]]
+
+## 0. 개념 정정 — 링크는 **양이 강제할 때만** 생긴다 (2026-08-22 사장님 확정)
+
+> **이 문서의 아래 절들은 링크를 *"자식 머신 하나 → 부모 머신 하나로 가는 벨트 하나"* 로 놓고 쓰였다. 그 전제가 바뀌었다.** 확정된 개념의 단일 출처는 [[용어사전#배선 형태 셋 (2026-08-22 사장님 확정)|용어사전 §D]] 이고, 여기서는 이 문서에 직접 영향을 주는 것만 적는다.
+
+배선 형태는 셋이고 **한 모듈 안에 공존한다.** 형태는 모듈의 속성도 품목의 속성도 아니라 **벨트 한 줄 · 흐름 하나의 성질**이기 때문이다.
+
+```
+흐름(flow)     (자식 머신, 부모 머신, 품목, rate)      "a 가 b 에게 초당 r 개"
+벨트 줄        (품목, 티어, 적재 목록)                  실린 총량 ≤ 그 벨트의 처리량
+                  적재 목록 항목 = (흐름, 맡은 rate, 싣는 팔 수, 내리는 팔 수)
+
+흐름 ↔ 벨트 줄 은 **M:N**
+   한 줄이 흐름 여럿을 싣는다        → 그 줄은 **트렁크**
+   한 흐름이 줄 여럿에 쪼개진다      → 그 쌍은 **링크**
+   둘 다 하나                        → **다이렉트**
+```
+
+**split belt 의 발동 조건은 양이다** — 한 쌍의 흐름 `r` 이 벨트 한 줄의 상한 `B`(가장 빠른 벨트의 처리량)를 넘을 때. `r ≤ min(자식 산출, 부모 필요량)` 이므로 **필요조건은 양쪽 머신이 둘 다 `B` 를 넘는 것**이다. 한쪽만 넘어서는 안 생긴다.
+
+**이 문서에서 폐기되는 문장 넷:**
+
+| 폐기 | 왜 |
+|---|---|
+| *"Flow = 인서터 n개가 채우는 벨트 하나"* | 흐름과 벨트는 M:N. 장부의 단위는 **rate** 이고 팔 수는 거기서 유도된다 |
+| *"링크 하나 = 벨트 하나 = 포트 한 쌍"*(v1 기본값) | 벨트 줄 수는 `determineBeltCount` 가 **양에서** 유도한다 |
+| *"`toMachine` 은 물류 계약이 아니라 장부다"* | 적재 목록이 흐름별 rate 를 들면 **계약이 된다**(2026-08-23 구현). 남는 물리는 하나 — 한 줄에 부모가 여럿이면 그 줄 **안에서의** 분배는 물리가 정한다 |
+| *"링크 줄은 tap/direct 판정 대상이 아니다"* | 판정이 **모듈 단위가 아니라 벨트 줄 단위**가 되면 예외 자체가 없다 |
+
+**실측이 이 정정을 요구했다.** battery 트리(용광로 0.625/s)는 팔 하나 몫에 미달해 쪼갬이 **언제나 0** 이었고, glass 트리(분쇄기 15/s · 벨트 90/s)는 **쪼개지 않아야 할 자리**에서 54줄을 깔아 필요량(5줄)의 **6.8배**를 쓰고 채널 폭이 34가 됐다. 두 증상의 원인은 하나 — **형태를 양이 아니라 팔·출처로 갈랐다.**
+
+---
 
 ## 한 줄 요약
 
-자식 머신의 산출을 부모 머신에게 잇는 일은 **"누가 누구에게 얼마"**(논리)와 **"그 벨트가 어디로 꺾여 가나"**(기하) 두 층으로 갈라진다. 논리는 배치 전략과 **무관**하고(`MachineLink`), 기하만 S-LAYER 가 실현한다. 이 분리가 되면 옛 `DeliverySpec`·`pairDeliveryPorts`·`seq` 가 사라지고, **포트·gap 폭·짝짓기가 전부 `MachineLink` 목록에서 유도**된다.
+자식 머신의 산출을 부모 머신에게 잇는 일은 **"누가 누구에게 얼마"**(논리)와 **"그 벨트가 어디로 꺾여 가나"**(기하) 두 층으로 갈라진다. 논리는 배치 전략과 **무관**하고(`Flow`), 기하만 S-LAYER 가 실현한다. 이 분리가 되면 옛 `DeliverySpec`·`pairDeliveryPorts`·`seq` 가 사라지고, **포트·gap 폭·짝짓기가 전부 `Flow` 목록에서 유도**된다.
 
 ---
 
@@ -18,7 +50,7 @@ tags: [auto-layout, placement, routing]
 
 옛 모델에서 모듈(클러스터)은 **부모를 안 보고 자기 포트를 스스로 정하는** 블랙박스였다. 포트가 **노드의 속성**이었기 때문이다.
 
-[[용어사전#allocateMachineLinks|allocateMachineLinks]] 가 들어오면 포트가 **간선(자식↔부모)의 속성**이 된다 — 벨트 묶음(=포트)을 정하려면 자식과 부모를 **둘 다** 봐야 한다. 속성이 노드에서 간선으로 옮겨간 순간 블랙박스는 성립할 수 없다.
+[[용어사전#allocateFlows|allocateFlows]] 가 들어오면 포트가 **간선(자식↔부모)의 속성**이 된다 — 벨트 묶음(=포트)을 정하려면 자식과 부모를 **둘 다** 봐야 한다. 속성이 노드에서 간선으로 옮겨간 순간 블랙박스는 성립할 수 없다.
 
 **블랙박스의 두 뜻 중 하나만 폐기된다:**
 
@@ -34,18 +66,18 @@ tags: [auto-layout, placement, routing]
 ```
 논리 층 (좌표 없음, 배치 전략과 무관)
 ──────────────────────────────────
-  레시피 트리 → 대수 → MachineLink[]
-     MachineLink = 벨트 하나 = { from:{node,machine}, to:{node,machine}, item, inserterCount }
+  레시피 트리 → 대수 → Flow[]
+     Flow = 벨트 하나 = { from:{node,machine}, to:{node,machine}, item, inserterCount }
      "머신 3 → 머신 1, glass, 인서터 2"
         │  머신에 좌표가 생기면
         ▼
 기하 층 (S-LAYER)
 ──────────────────────────────────
-  각 MachineLink 를 끝점(포트) 두 개로 실현 → 통로에 트랙 배정 → DeliveryGeometry
+  각 Flow 를 끝점(포트) 두 개로 실현 → 통로에 트랙 배정 → DeliveryGeometry
      어느 면·어느 트랙·교차 지하·gap 폭 (부산물은 전부 여기서)
 ```
 
-**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateMachineLinks` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
+**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateFlows` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
 
 ---
 
@@ -55,10 +87,10 @@ tags: [auto-layout, placement, routing]
 
 | 옛 이름 | 무엇 | 통일 후 |
 |---|---|---|
-| `DeliverySpec` | 모듈포트 ↔ 모듈포트 (클러스터 **사이**) | **하나의 `MachineLink`** — 짧으면 클러스터 안, 길면 채널을 탐. 거리 차이일 뿐 |
-| `MachineLink` | 머신 ↔ 머신 (클러스터 **안**) | ″ |
+| `DeliverySpec` | 모듈포트 ↔ 모듈포트 (클러스터 **사이**) | **하나의 `Flow`** — 짧으면 클러스터 안, 길면 채널을 탐. 거리 차이일 뿐 |
+| `Flow` | 머신 ↔ 머신 (클러스터 **안**) | ″ |
 
-**안/밖 구분이 사라진다.** 그래서 "클러스터 내부 링크 vs 모듈 간 납품 경로"이라는 두 자료 구조가 **한 개념**으로 합쳐진다. 링크 이름은 `Link`(코드 심볼은 `MachineLink`)로 유지한다(사용자 지정).
+**안/밖 구분이 사라진다.** 그래서 "클러스터 내부 링크 vs 모듈 간 납품 경로"이라는 두 자료 구조가 **한 개념**으로 합쳐진다. 링크 이름은 `Link`(코드 심볼은 `Flow`)로 유지한다(사용자 지정).
 
 ### 가장 억지스럽던 부분 — `seq` 가 사라진다
 
@@ -68,7 +100,7 @@ tags: [auto-layout, placement, routing]
 2. 기하 계획과 라우팅 **두 곳이 같은 번호를 독립으로 재현**해야 한다 — 어긋나면 조용히 폴백.
 3. 진짜 물건(벨트)이 일급이 아니라 **두 포트를 순번으로 맞춰 본 결과로 암시**될 뿐이라는 흉터다.
 
-`MachineLink` 는 **하나가 곧 벨트 하나**(`allocateMachineLinks` 가 자식0→부모0 을 `[3,3,3,2]` = 링크 4개로 냄)라, 링크 자체가 신원이다. **`seq` 가 통째로 필요 없어진다.**
+`Flow` 는 **하나가 곧 벨트 하나**(`allocateFlows` 가 자식0→부모0 을 `[3,3,3,2]` = 벨트 4줄로 냄)라, 그 줄 자체가 신원이다. **`seq` 가 통째로 필요 없어진다.**
 
 ---
 
@@ -134,7 +166,7 @@ tags: [auto-layout, placement, routing]
 - **fan-out** — 자식 머신 **하나**의 산출이 **여러 부모**로 갈라진다.
 - **fan-in** — **여러 자식**의 산출이 **한 부모**로 모인다.
 
-둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateMachineLinks.test.ts](../../../src/autoLayout/planner/link/allocateMachineLinks.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
+둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateFlows.test.ts](../../../src/autoLayout/planner/link/allocateFlows.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
 
 ```
 자식0 ──[3][3][3][2]──> 부모0      ← 자식0 이 부모0·부모1 둘을 먹인다 = fan-out
@@ -148,7 +180,7 @@ tags: [auto-layout, placement, routing]
 
 ### 왜 "논리는 하나" 인가
 
-fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineLinks`](../../../src/autoLayout/planner/link/allocateMachineLinks.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
+fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](../../../src/autoLayout/planner/link/allocateFlows.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
 
 > 자식 손가락과 부모 손가락이 각자 위에서 아래로 훑는다. 자식이 **인서터 한도**를 다 쓰면 자식 손가락이 내려가고, 부모가 **필요량**을 다 채우면 부모 손가락이 내려간다.
 
@@ -162,7 +194,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 
 | 조각 | 누가 | 하는 일 |
 |---|---|---|
-| 논리 (fan-out + fan-in) | [`allocateMachineLinks`](../../../src/autoLayout/planner/link/allocateMachineLinks.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
+| 논리 (fan-out + fan-in) | [`allocateFlows`](../../../src/autoLayout/planner/link/allocateFlows.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
 | 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
 | 기하 — 부모 쪽 (입력) | `emitInputLinks` (같은 파일, **거울**) | 그룹의 부모 머신**들**을 관통하는 벨트 한 줄 + 머신마다 탭 |
 
@@ -175,7 +207,9 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 
 > **2026-07-19 정정.** 예전 이 절은 "입력 쪽은 기존 `insertingPlanner` 탭을 **재사용**한다"고 적었다. **틀렸다** — 실제 구현은 `emitInputLinks` 가 **자기 기하를 직접 놓고**, 링크가 있는 줄은 `generateModule` 이 planner 에 넘기는 `lines` 에서 **제외**된다([[#링크 줄은 tap/direct 판정 대상이 아니다 (2026-07-19 해소)]]). planner 는 그 줄이 먹은 좌석을 `seatRowsUsed` 로 **빼고 받을** 뿐이다.
 
-### 링크의 `toMachine` 은 물리 짝짓기가 아니라 회계다
+### ~~링크의 `toMachine` 은 물리 짝짓기가 아니라 회계다~~ — 적재 목록이 이 방어를 없앤다 (2026-08-22)
+
+> 아래 절은 `Link` 이 `from` / `to` **두 명단**만 들어서, *0번 자식이 1번·2번에게 각각 얼마씩* 인지를 **표현할 수 없다**는 사실을 개념으로 감싼 것이다. 새 모델에서 벨트 줄은 **적재 목록**(흐름마다 맡은 rate)을 들고, 그러면 `toMachine` 은 다시 **계약**이 된다. 다만 *"인서터는 앞에 물건이 있으면 무조건 내린다"* 는 물리는 그대로이므로, **한 줄에 여러 부모가 붙으면 그 줄 안에서의 분배는 여전히 물리가 정한다** — 계약이 보장하는 것은 *"그 줄에 이만큼이 실려 그 행을 지난다"* 까지다.
 
 `toMachine: 1` 이라고 해서 "이 벨트의 물건이 반드시 부모 머신 1번에 들어간다"는 뜻이 **아니다.** 벨트 한 줄이 부모 머신 여럿의 행을 관통하며 머신마다 탭이 붙고, **인서터는 앞에 물건이 있으면 무조건 내리기** 때문이다 — 누가 정확히 몇 개를 집어가는지는 우리가 정할 수 없고, 정할 필요도 없다.
 
@@ -207,7 +241,9 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 있어 한 면의 줄 수가 **인서터 팔 길이 종류 수**(보통 2)로 묶인다. 거대 출력이 자리를 못 찾는
 막힘이 바로 여기서 나온다. 트랙 하나를 아끼려고 형태 전체를 저당 잡히는 거래다.
 
-### 그래서 기본값은 "안 합친다"
+### ~~그래서 기본값은 "안 합친다"~~ — 폐기 (2026-08-22)
+
+> **기본값이라는 것이 없다.** 벨트 줄 수는 정책이 아니라 **양에서 유도**된다(`determineBeltCount`). 합치기가 가능한데 안 합치면 채널 트랙과 포트를 그만큼 더 먹는 **순수한 손해**다 — glass 100/s 에서 그 손해가 필요량의 6.8배(54줄 vs 5줄)로 측정됐다. 아래는 그 결정을 내리던 시점의 기록이다.
 
 **링크 하나 = 벨트 하나 = 포트 한 쌍.** 목적지 머신이 다르면 벨트도 따로 낸다. 그러면 벨트는
 언제나 머신 한 대만 상대하므로 면에서 **수직으로** 빠져나갈 수 있고
@@ -244,9 +280,9 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 | 커밋 | 내용 |
 |---|---|
 | `bcf1178` | `craftsPerSec` 가 `speedFraction` 안 곱던 버그 — 굶는 부모가 자식에 안 먹을 양 요구(자식 128→64 재현) |
-| `c60cddf` | **`allocateMachineLinks`** 순수 함수 + 13 테스트 — 물붓기(부모 ceil/자식 floor), 예시(100/60.5/20/6) 전량 재현, 꼬리 부모 미세부족(60<60.5) 등재 |
+| `c60cddf` | **`allocateFlows`** 순수 함수 + 13 테스트 — 물붓기(부모 ceil/자식 floor), 예시(100/60.5/20/6) 전량 재현, 꼬리 부모 미세부족(60<60.5) 등재 |
 | `61fbea7`~ | 용어사전·본 문서 정정(클러스터=가벼운 배열, fan-in=기존 탭 재사용) — **"기존 탭 재사용"은 그 뒤 Phase 3/`groupLinkBelts` 로 뒤집혔다**([[#fan-out 과 fan-in — 논리는 하나, 기하는 둘]] 참고) |
-| Phase 1 | **`edgeMachineLinks`**(modulePacking.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateMachineLinks. rate 미상이면 undefined(지어내지 않음) |
+| Phase 1 | **`edgeFlows`**(modulePacking.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateFlows. rate 미상이면 undefined(지어내지 않음) |
 | `459f63e` | 출력 링크를 `ModuleInput.outputLinks` 까지 전달 |
 | Phase 2 | **`emitOutputLinks`**(clusterModule.ts) — 링크당 [머신 k좌석 탭 + 세로 belt + W꺾음 포트]. 셀 생성자 재사용, 그 위 emit 은 새로(링크 필드=논리, 셀 입력=기하, 겹침 0이라 그렇게 갈림) |
 | Phase 3 | **`emitInputLinks`**(E면 거울) + `ModuleInput.inputLinks` — 부모가 링크마다 입력 포트. **pairDeliveryPorts 는 안 고침**: 양쪽이 링크 순서로 포트를 내니 index-zip 이 곧 링크 짝짓기 |
@@ -256,7 +292,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateMachineL
 
 ```
 rate(supplyCapacity.lineRates + config.throughput + config.belts) 있음
-   → edgeMachineLinks 가 링크 냄 → 새 emit (fan-out/fan-in, W/E 모서리 belt)
+   → edgeFlows 가 링크 냄 → 새 emit (fan-out/fan-in, W/E 모서리 belt)
 rate 없음
    → undefined → 옛 트렁크/탭 emit (골든·대부분의 옛 테스트가 이 경로)
 ```
@@ -347,7 +383,7 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 ### 원료·완제품 줄도 같은 배분기를 탄다 (2026-08-05 공급 모델 통합)
 
 [[용어사전#탭 인서팅 (Tap Inserting)|탭]]이 안 되면 그 줄들은 **머신마다 하나씩 쪼개져**
-([externalLineGroups](../../../src/autoLayout/module/machineLinkGroup.ts) `perMachine`) 여기
+([externalLineGroups](../../../src/autoLayout/module/link.ts) `perMachine`) 여기
 설명한 배분기·방출기를 **그대로** 탄다. 쪼개는 이유는 `tryLinkFace` 의 문턱 하나다:
 
 ```ts

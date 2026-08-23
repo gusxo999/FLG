@@ -21,7 +21,7 @@ import { useGameDataStore } from "../../UI/store/gameDataStore";
 import { EntityType } from "../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "./module/clusterPortPlanner";
-import { externalLineGroups } from "../module/machineLinkGroup";
+import { externalLineGroups, groupRate } from "../module/link";
 import { chooseFluidTrunkPlan, fluidJumpBlocker, type FluidLineSpec } from "../module/fluidPorts";
 import {
   collectPipeFlow,
@@ -31,7 +31,7 @@ import {
   type PipeFlowPipe,
 } from "../util/pipeFlow";
 import type { RecipeTreeNode } from "../types";
-import { packModuleTree, edgeMachineLinks, deliveryKey, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
+import { packModuleTree, edgeLinkGroups, deliveryKey, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import { routeDeliveryRoutes, type DeliveryResult } from "./deliveryRoute";
 import {
   describeIssue,
@@ -161,6 +161,23 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     for (const i of issues) console.info(`[autoLayout] 모듈 경로 포기 ${describeIssue(i)}`);
     return { ok: false, issues, snapshot };
   };
+
+  // ── 0-) 설정이 서 있나 — **저울이 없으면 여기서 끝난다**(2026-08-24 사장님 확정) ──────
+  //
+  // 벨트와 인서터는 **처리량과 함께** 와야 한다. 하나도 없으면 `determineBeltCount` 는 줄
+  // 수를, `armsFor` 는 팔 수를 못 정한다. 예전엔 그 상태가 아래층까지 내려가 [makeLink] 의
+  // 폴백이 **팔 1개짜리 가짜 줄**을 조립해 덮었다 — 배치는 "성공"이라 나오고 게임에 넣어야
+  // 굶는 걸 안다. 그 폴백을 지울 수 있게 된 것은 거절을 **여기 한 층 위로** 올렸기 때문이다.
+  //
+  // 이름만 있고 저울이 없는 상태는 이제 만들어지지 않는다 — [makeBuildSpec] 이 이름을
+  // **처리량이 확인된 목록에서만** 고른다.
+  if (options.belts.length === 0) {
+    issues.push(fail("no-belt", "게임데이터", "벨트를 하나도 안 골랐다 — 처리량을 모르면 줄 수를 못 정한다", { fixStep: "belt" }));
+  }
+  if (options.inserters.length === 0) {
+    issues.push(fail("no-inserter", "게임데이터", "reach 1 이상 인서터를 하나도 안 골랐다 — 팔 처리량을 모른다", { fixStep: "inserter" }));
+  }
+  if (issues.length > 0) return abort();
 
   // 0) 적격성 — 아이템은 전부 OK. 유체는 [트렁크 파이프](../../../../docs/auto-layout/module/trunk-pipe.md)
   //    §5 범위(**외부 공급 유체 입력 1개**)만 받고 나머지는 옛 경로로 폴백한다.
@@ -357,7 +374,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
 
   // **왜 팔이 그만큼 앉았나** — 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느
   // 식에서 나왔는지 좌표만 보고는 못 가린다. 그런데 줄마다 **누가 세느냐**부터 갈린다:
-  //  - **링크 줄**(자식↔부모): [allocateMachineLinks] 가 간선별로 벨트를 쪼갠다. 팔 개수는
+  //  - **링크 줄**(자식↔부모): [allocateFlows] 가 간선별로 벨트를 쪼갠다. 팔 개수는
   //    링크마다 다르므로 `requiredInserterCount`(아래 팔/머신)는 **쓰이지 않는다** — 참고용.
   //  - **외부 줄**(raw 입력·최종 출력): `requiredInserterCount` 가 그대로 배치를 정한다.
   // 두 줄을 섞어 팔/머신만 보면 링크 줄에서 헛다리를 짚는다(실측 오해). 그래서 갈라 찍는다.
@@ -376,8 +393,8 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     const grail = Math.max(1, Math.floor(fastest / seatTp));
     for (const s of specs) {
       const rows = { WE: s.machine.h, NS: s.machine.w };
-      // 이 모듈의 **모든** 벨트 줄을 한 장부로 본다 — 링크 줄은 [edgeMachineLinks],
-      // 외부 줄은 [externalLineGroups]. 둘 다 [MachineLinkGroup] 이라 아래 출력이 하나다.
+      // 이 모듈의 **모든** 벨트 줄을 한 장부로 본다 — 링크 줄은 [edgeLinkGroups],
+      // 외부 줄은 [externalLineGroups]. 둘 다 [Link] 이라 아래 출력이 하나다.
       const ext = new Map(
         externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}, specInserters).map((g) => [g.id!, g]),
       );
@@ -386,26 +403,33 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         // 이 줄이 링크인가 — 출력이면 부모가, 입력이면 자식이 같은 품목을 주고받나.
         const parent = s.parentId ? nodeById.get(s.parentId) : undefined;
         const child = specs.find((c) => c.parentId === s.id && c.lines.some((l) => l.role === "output" && l.name === name));
+        // **벨트 줄**로 본다(2026-08-22) — 흐름 목록이 아니라 접힌 결과가 화면의 단위다.
         const linkEdge =
           role === "output" && parent?.lines.some((l) => l.role === "input" && l.name === name)
-            ? edgeMachineLinks(s, parent, name, packConfig)
+            ? edgeLinkGroups(s, parent, name, packConfig)
             : role === "input" && child
-              ? edgeMachineLinks(child, s, name, packConfig)
+              ? edgeLinkGroups(child, s, name, packConfig)
               : undefined;
         const g = ext.get(`ext:${key}`);
         const who = linkEdge ? "링크" : g ? "외부" : "미상";
-        // **벨트 줄 수와 줄당 팔**은 두 줄에서 뜻이 조금 다르다 — 누가 셌는지 밝힌다:
-        //  - 링크: [allocateMachineLinks] 가 **이미 쪼갠 결과**. 줄마다 팔 수가 다를 수 있다.
-        //  - 외부: 그룹은 줄 하나(안 쪼갠다) → 여기서 **그릇으로 유도한 예측**을 찍는다.
-        //    실제 쪼개기는 [clusterPortPlanner] 의 배정 수가 하므로, 이 예측과 화면이
-        //    어긋나면 그 둘이 다른 수를 보고 있다는 뜻이다(그게 이 로그의 쓸모다).
+        // **벨트 줄 수와 줄당 부하**는 두 줄에서 뜻이 다르다 — 누가 셌는지 밝힌다:
+        //  - 링크: [edgeLinkGroups] 가 **이미 접은 결과**. 줄마다 실린 양이 다를 수 있다.
+        //  - 외부: 그룹은 아직 줄 하나(Step 4 대기) → 여기서 **그릇으로 유도한 예측**을 찍는다.
+        //    이 예측과 화면이 어긋나면 둘이 다른 수를 보고 있다는 뜻이다(그게 이 로그의 쓸모다).
+        //
+        // **부하는 rate 로 잰다**(2026-08-22). `max(팔) × 팔처리량` 은 **올림된 용량**이라
+        // 언제나 실제보다 커서 멀쩡한 줄을 "포화" 라고 거짓 경고했다.
         const armsOf = (m: Map<number, number>): number => [...m.values()].reduce((a, b) => a + b, 0);
         const total = g ? armsOf(g.from.size > 0 ? g.from : g.to) : 0;
         const belts = linkEdge ? linkEdge.length : g ? Math.ceil(total / grail) : 0;
-        const perBelt = linkEdge ? linkEdge.map((l) => l.inserterCount) : g ? [Math.min(total, grail)] : [];
-        const load = perBelt.length > 0 ? Math.max(...perBelt) * normalTp : 0;
+        const perBelt = linkEdge
+          ? linkEdge.map((l) => Number((groupRate(l) ?? 0).toFixed(1)))
+          : g
+            ? [Math.min(total, grail) * normalTp]
+            : [];
+        const load = perBelt.length > 0 ? Math.max(...perBelt) : 0;
         console.log(
-          `  ${s.id} ${key}: [${who}] 벨트 ${belts}줄, 줄당 팔 [${perBelt}]${g ? ` (총 ${total})` : ""} ` +
+          `  ${s.id} ${key}: [${who}] 벨트 ${belts}줄, 줄당 부하 [${perBelt}]/s${g ? ` (총 팔 ${total})` : ""} ` +
             `· 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} · 그릇=${grail} ` +
             `· 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
             `|| 최대 실부하 ${load.toFixed(1)}/s vs 벨트 ${fastest}/s${load > fastest ? "  ← 포화" : ""}`,

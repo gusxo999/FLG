@@ -22,6 +22,16 @@
  * 곧 진단이다). `flg.report()` 가 [readRunStats] 로 읽는다.
  */
 
+/**
+ * **배선 형태** — 이 배치가 실제로 무엇을 깔았나([summarizeBeltForms]).
+ *
+ * 없어서 데인 적이 있다: glass 100/s 에서 필요 5줄 자리에 54줄이 깔린 것을 **사후에 손으로
+ * 세어** 알았다. 형태는 산출물 어디에도 안 남기 때문이다. 모듈마다 한 벌씩 나므로
+ * [mergeBeltFormCounters] 로 누적한다.
+ */
+import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/link';
+export type { BeltFormCounters };
+
 /** 납품 경로 — [deliveryRoute.routeDeliveryRoutes] 의 카운터 그대로. */
 export interface DeliveryCounters {
   /** 채널 장부의 **계획대로** 깐 납품 경로 수. 이게 0 이면 예약이 한 번도 안 쓰였다. */
@@ -62,6 +72,11 @@ export interface RowChannelCounters {
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
+  /**
+   * 배선 형태 — 벨트 줄을 하나라도 만들었으면 채워진다.
+   * **null 과 "전부 0" 은 다르다** — 전자는 줄을 만드는 단계에 못 갔다는 뜻이다.
+   */
+  beltForms: BeltFormCounters | null;
   /** 납품 단계까지 갔으면 채워진다. 그 전에 거절됐으면 null. */
   delivery: DeliveryCounters | null;
   /**
@@ -75,7 +90,7 @@ export interface RunStats {
 }
 
 const fresh = (): RunStats => ({
-  startedAt: null, delivery: null, perimeter: null, rowChannels: null,
+  startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
 });
 
 let current: RunStats = fresh();
@@ -87,6 +102,23 @@ export function beginRunStats(): void {
 
 export function recordDeliveryStats(c: DeliveryCounters): void {
   current.delivery = c;
+}
+
+/**
+ * 배선 형태 계수기만 비운다 — **측정용 패스를 버리기 위한 것**이다.
+ * `packModuleTree` 는 모듈을 두 번 만든다(끝 선호를 재는 1차 · 그것을 반영한 2차).
+ * 1차가 센 줄은 실제로 안 깔리므로, 2차 직전에 여기서 지운다. 다른 계수기는 안 건드린다.
+ */
+export function resetBeltFormStats(): void {
+  current.beltForms = null;
+}
+
+/**
+ * 배선 형태를 **누적**한다 — 모듈마다(그리고 내부 링크는 트리 전체에서 한 번) 불린다.
+ * 덮어쓰기가 아니라 합치기인 것이 요점이다([mergeBeltFormCounters]).
+ */
+export function recordBeltFormStats(c: BeltFormCounters): void {
+  current.beltForms = current.beltForms ? mergeBeltFormCounters(current.beltForms, c) : c;
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
@@ -101,6 +133,7 @@ export function recordPerimeterStats(c: PerimeterCounters): void {
 export function readRunStats(): RunStats {
   return {
     startedAt: current.startedAt,
+    beltForms: current.beltForms ? { ...current.beltForms } : null,
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter
       ? { ...current.perimeter, skips: current.perimeter.skips.map((s) => ({ ...s })) }

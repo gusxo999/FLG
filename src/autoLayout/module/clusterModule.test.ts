@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
 import type { IoLine } from "../planner/module/clusterPortPlanner";
+import { scaled } from "./testScale";
 import { EntityType } from "../../types/layout";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,17 +15,18 @@ const line = (name: string, role: "input" | "output"): IoLine => ({
 });
 
 /** copper-cable 류: 입력 1(copper-plate) + 출력 1(copper-cable), 일반 인서터만(용량 2). */
-const copperCable: ModuleInput = {
+const copperCable: ModuleInput = scaled({
   machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
   count: 5,
   lines: [line("copper-plate", "input"), line("copper-cable", "output")],
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+  belts: [{ entityName: "transport-belt", throughput: 15 }],
+});
 
 /** electronic-circuit 류: 입력 2 + 출력 1, 긴팔 보유(용량 4 → 면당 2레인). */
-const electronicCircuit: ModuleInput = {
+const electronicCircuit: ModuleInput = scaled({
   machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
   count: 4,
   lines: [
@@ -35,10 +37,11 @@ const electronicCircuit: ModuleInput = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+  belts: [{ entityName: "transport-belt", throughput: 15 }],
+});
 
 /** electric-motor 류: 입력 3 + 출력 1 = 정확히 용량 4(긴팔). 4스트림 스트레스. */
-const electricMotor: ModuleInput = {
+const electricMotor: ModuleInput = scaled({
   machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
   count: 3,
   lines: [
@@ -50,7 +53,8 @@ const electricMotor: ModuleInput = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+  belts: [{ entityName: "transport-belt", throughput: 15 }],
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ASCII 렌더 — 결과물을 눈으로 보기 위한 진단 출력
@@ -175,10 +179,13 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
     ...copperCable,
     count: 3,
     inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
+    // 벨트 티어도 같은 저울(100/s)이어야 30/s 가 **한 줄**에 담긴다 — 15/s 짜리를 주면
+    // 두 줄로 갈리는 게 옳은 동작이라 이 검사(줄 하나)의 전제가 깨진다.
+    belts: [{ entityName: "transport-belt", throughput: 100 }],
     supplyCapacity: {
       beltCapacity: 100,
-      // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. copper-cable(출력)은 수치 없음 → 1.
-      lineRates: new Map([["input:copper-plate", 30]]),
+      // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. 출력 6 / 3대 = 2 → 팔 1개.
+      lineRates: new Map([["input:copper-plate", 30], ["output:copper-cable", 6]]),
     },
   };
 
@@ -240,8 +247,8 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
     inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
     supplyCapacity: {
       beltCapacity: 1, // 20 > 1 → 벨트 축에서 거절 → 다이렉트
-      // copper-plate 20 / 2대 = 10, ceil(10/5) = 팔 2개. copper-cable(출력)은 수치 없음 → 1.
-      lineRates: new Map([["input:copper-plate", 20]]),
+      // copper-plate 20 / 2대 = 10, ceil(10/5) = 팔 2개. 출력 4 / 2대 = 2 → 팔 1개.
+      lineRates: new Map([["input:copper-plate", 20], ["output:copper-cable", 4]]),
     },
   };
 
@@ -274,28 +281,51 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
     expect(new Set(plateChests.map((c) => `${c.origin.x},${c.origin.y}`)).size).toBe(2);
   });
 
-  it("수량을 모르는 줄은 팔 1개 — 없는 숫자로 상자를 늘리지 않는다", () => {
-    const mod = generateModule(directHighDemand);
-    // copper-cable(출력)은 lineRates 에 없다 → 보류값 1 → 머신당 상자 1개.
-    expect(mod.chests.filter((c) => c.content === "copper-cable")).toHaveLength(2);
+  it("수량을 모르는 줄은 아예 안 깔린다 — 없는 숫자로 상자를 지어내지 않는다", () => {
+    // 예전엔 수치가 없으면 **팔 1개짜리 줄을 지어냈다**(`makeLink` 폴백). 2026-08-24 그 폴백을
+    // 지우면서 의도가 더 강해졌다: 저울이 없으면 줄 수를 정할 근거가 없으므로 **못 깐 줄로
+    // 정직하게 낸다.** 조용히 1을 쓰면 그 줄은 실제로 굶으면서도 성공처럼 보였다.
+    const noRate: ModuleInput = {
+      ...directHighDemand,
+      supplyCapacity: {
+        beltCapacity: 1,
+        lineRates: new Map([["input:copper-plate", 20]]), // 출력 copper-cable 은 일부러 뺀다
+      },
+    };
+    const mod = generateModule(noRate);
+    expect(mod.chests.filter((c) => c.content === "copper-cable")).toHaveLength(0);
+    expect(mod.unroutedLines.map((l) => l.name)).toContain("copper-cable");
   });
 
-  it("면에 팔을 다 앉힐 행이 없으면 정직하게 못 놓는다 (줄여서 굶히지 않는다)", () => {
-    // 팔 4개가 필요한데 3×3 머신의 면은 3행뿐 — 줄여 놓으면 굶는 배치가 된다.
+  it("팔이 한 면에 다 안 앉으면 **줄을 갈라 두 면에** 앉힌다 (줄여서 굶히지 않는다)", () => {
+    // 팔 4개가 필요한데 3×3 머신의 한 면은 3행뿐이다.
+    //
+    // **2026-08-24 이전의 답은 "못 놓는다"였다** — 한 줄에 팔을 다 못 앉히니 그 줄을 통째로
+    // 포기했다(줄여 놓으면 굶는 배치가 되니까). 지금은 [split belt](../../../docs/용어사전.md)
+    // 가 있다: 좌석 상한(면 3칸 × 5/s = 15/s)을 넘는 몫은 **둘째 줄**로 갈라져 반대 면에
+    // 앉는다. 그래서 팔 4개가 E 3 + W 1 로 나뉘어 **다 앉는다** — 굶는 머신이 없다는 의도는
+    // 그대로고, 답만 "포기"에서 "분할"로 바뀌었다.
     const tooHungry: ModuleInput = {
       ...copperCable,
       count: 2,
       inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
       supplyCapacity: {
         beltCapacity: 1,
-        lineRates: new Map([["input:copper-plate", 40]]), // 40/2 = 20, ceil(20/5) = 팔 4개 > 3행
+        // 40/2 = 20, ceil(20/5) = 팔 4개 > 3행 → 한 줄로는 못 앉는다.
+        lineRates: new Map([["input:copper-plate", 40], ["output:copper-cable", 4]]),
       },
     };
     const mod = generateModule(tooHungry);
     expect(mod.supply?.mode).toBe("direct");
-    expect(mod.unroutedLines.map((l) => l.name)).toContain("copper-plate");
-    // 굶는 상자를 놓느니 아무것도 안 놓는다.
-    expect(mod.chests.filter((c) => c.content === "copper-plate")).toHaveLength(0);
+    // **아무 줄도 안 버렸다** — 못 부은 줄은 여기 이름이 뜬다([ModulePortPlan.unpourableLines]).
+    expect(mod.unroutedLines).toHaveLength(0);
+    // 머신 2대 × 갈라진 줄 2개 = 상자 4개(머신마다 두 면).
+    expect(mod.chests.filter((c) => c.content === "copper-plate")).toHaveLength(4);
+    // 한 머신의 copper-plate 포트가 **서로 다른 두 면**에 있다 — 한 면에 4개를 우겨넣지 않았다.
+    const sides = new Set(
+      mod.inputPorts.filter((p) => p.line.name === "copper-plate").map((p) => p.meta.side),
+    );
+    expect(sides.size).toBeGreaterThan(1);
   });
 
   it("결정적", () => {
@@ -318,15 +348,16 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
   // 그래서 긴팔(`d3`)을 쓸 일이 아예 없다 — 깊이는 고르는 값이 아니라 **자리가 없을 때의 결과**다.
   it("한 면의 **행**을 나눠 쓴다 — 셋이 같은 레인에 앉고 넷째만 노출 N 으로", () => {
     // external 입력 4개. E 면 좌석 3행 → 셋이 E2 를 나눠 쓰고, 넷째가 N 으로 넘어간다.
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 1,
       lines: [ext("a"), ext("b"), ext("c"), ext("d")],
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
+      belts: [{ entityName: "transport-belt", throughput: 15 }],
       nsExposure: ["N"],
-    });
+    }));
     render(mod, "count=1, external 입력 4 (E2 E3 N2 N3)");
 
     expect(mod.unroutedLines).toHaveLength(0);
@@ -355,15 +386,16 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
   // 행 모델에서는 **팔 길이가 면 용량을 안 정한다**: E 면 3행에 둘 다 앉으므로 노출 N 을 쓸
   // 일이 없다. 긴팔 유무는 *"얕은 레인이 다 찼을 때 하나 더 열 수 있나"* 만 정한다.
   it("긴팔이 없어도 한 면에 두 줄 — 면 용량은 팔 길이가 아니라 **행 수**다", () => {
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
       count: 1,
       lines: [ext("a"), ext("b")],
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
+      belts: [{ entityName: "transport-belt", throughput: 15 }],
       nsExposure: ["N"],
-    });
+    }));
     render(mod, "count=1, 일반만, external 입력 2 (E2 N2)");
 
     expect(mod.unroutedLines).toHaveLength(0);
@@ -374,15 +406,16 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
   });
 
   it("nsExposure 미지정 — 노출 면을 안 주면 원료가 옆면 행을 그대로 쓴다", () => {
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 1,
       lines: [ext("a"), ext("b"), ext("c"), { name: "out", kind: "belt", role: "output" }],
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
+      belts: [{ entityName: "transport-belt", throughput: 15 }],
       // nsExposure 미지정 → 기존 동작.
-    });
+    }));
     const c = mod.inputPorts.find((p) => p.line.name === "c")!;
     // 옛 답은 `W`(W-spill)였다. E 면 좌석이 3행이라 셋째 원료가 **아직 E 에 앉는다** —
     // 반대 면으로 밀 이유가 생기지 않았다.
@@ -402,7 +435,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("공급 모델 통합 — 기계별 포트", () => {
   /** battery 꼴: 철판·구리판(아이템) + 황산(유체) → 배터리. **짧은 팔만** 고른다. */
-  const battery = (count: number): ModuleInput => ({
+  const battery = (count: number): ModuleInput => scaled({
     machine: { entityName: "chemical-plant", w: 3, h: 3 },
     count,
     lines: [
@@ -414,6 +447,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
     inserterEntityName: "inserter", // reach 1 하나뿐 — 긴팔 없음
     inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
     beltEntityName: "transport-belt",
+    belts: [{ entityName: "transport-belt", throughput: 15 }],
     fluidTrunk: {
       direction: 4,
       pipeEntityName: "pipe",
@@ -462,7 +496,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
   it("W/E 가 다 차면 **위/아래로 넘어가고** 그만큼 기계 사이가 벌어진다", () => {
     // 3×3 머신의 W/E 좌석은 머신당 3+3 = 6줄. 7줄을 주면 하나가 갈 곳이 없다 —
     // 예전엔 여기서 그 줄이 그냥 못 놓였고, 이제 gap 으로 간다.
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 2,
       lines: [
@@ -473,7 +507,8 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
-    });
+      belts: [{ entityName: "transport-belt", throughput: 15 }],
+    }));
     expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
     // 일곱 줄 × 머신 2대 = 포트 14개. 하나도 안 잃었다.
@@ -491,10 +526,10 @@ describe("공급 모델 통합 — 기계별 포트", () => {
   // 상자 칸에 붙었고**, 합류 가드가 hard 위반으로 모듈을 거절했다(화면: "물러설 곳이 없었습니다").
   it("안 쓰는 유체 상자 칸이 있으면 넘을 벨트가 없어도 점프한다", () => {
     const base = battery(2);
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       ...base,
       fluidTrunk: { ...base.fluidTrunk!, unusedFluidboxRows: { E: [2] } },
-    });
+    }));
     expect(mod.unroutedLines).toHaveLength(0);
     const at = (x: number, y: number) => mod.cells.find((c) => c.x === x && c.y === y)?.cell;
     for (const m of mod.machines) {
@@ -546,7 +581,9 @@ describe("공급 모델 통합 — 기계별 포트", () => {
   /** battery 에 아이템 한 줄을 더해 W 3칸을 넘긴다 — 넷째 줄이 gap 으로 간다. */
   const batteryPlusOne = (count: number): ModuleInput => {
     const base = battery(count);
-    return { ...base, lines: [...base.lines, line("d", "input")] };
+    // 줄을 더했으면 **저울도 다시 단다** — `supplyCapacity` 를 그대로 물려받으면 새 줄 `d` 만
+    // 수치가 없어 안 깔린다(그게 옳은 동작이라, 이 검사의 전제가 사라진다).
+    return scaled({ ...base, lines: [...base.lines, line("d", "input")], supplyCapacity: undefined });
   };
 
   it("gap 벨트가 나가는 면에서는 파이프가 점프한다 — 기둥이 안 끊긴다", () => {
@@ -561,15 +598,16 @@ describe("공급 모델 통합 — 기계별 포트", () => {
 
   it("유체가 W(출력)일 때도 같다 — gap 출력이 서쪽으로 나가는 면", () => {
     const base = battery(2);
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       ...base,
+      supplyCapacity: undefined, // 줄이 통째로 바뀌었다 — 저울을 다시 단다.
       lines: [line("a", "input"), line("b", "input"), line("c", "input"), line("out", "output"),
         { name: "steam", kind: "pipe", role: "output" }],
       fluidTrunk: {
         ...base.fluidTrunk!,
         lines: [{ name: "steam", role: "output", side: "W", fluidboxOffset: 1, rank: 0, boxIndex: 0 }],
       },
-    });
+    }));
     const gapPorts = mod.outputPorts.filter((p) => p.line.kind === "belt" && p.meta.side === "W");
     expect(gapPorts.length).toBeGreaterThan(0);
     expect(mod.unroutedLines).toHaveLength(0);
@@ -584,7 +622,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
   });
 
   it("여섯 줄까지는 안 벌어진다 — gap 은 **찼을 때만** 쓰는 마지막 수단", () => {
-    const mod = generateModule({
+    const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
       count: 2,
       lines: [
@@ -594,7 +632,8 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
-    });
+      belts: [{ entityName: "transport-belt", throughput: 15 }],
+    }));
     expect(mod.unroutedLines).toHaveLength(0);
     const [m0, m1] = mod.machines;
     expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBe(0);

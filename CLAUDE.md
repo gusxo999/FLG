@@ -17,7 +17,9 @@
 - **Blueprint import/export, Factorio 데이터 시맨틱스**(방향 인코딩, MapPosition, 유체 상자, 메타데이터)를
   다룰 때는 [docs/README.md](docs/README.md) 의 "Factorio 데이터" / "Blueprint" 그룹에서 해당 문서를 찾아 읽는다.
 - **문서를 쓰거나 옮길 때**는 [docs/CLAUDE.md](docs/CLAUDE.md) 가 안내한다(그 폴더를 건드리면 자동 로딩).
-- 문서와 코드가 어긋나면 **코드가 현재 사실**이다. 어긋남을 발견하면 문서를 삭제만 사용해 갱신한다.
+- 문서와 코드가 어긋나면 — 코드는 **"지금 무엇이 일어나는가"의 단일 출처**이지 **"무엇이어야 하는가"의
+  출처가 아니다.** 어긋남을 보면 어느 쪽이 어긋났는지 **먼저 판정한다** — 문서가 낡았으면 갱신하고,
+  **코드가 개념에 미달한 것이면 문서를 고치지 않고 결함으로 적는다**(판정표는 [docs/CLAUDE.md](docs/CLAUDE.md)).
 
 **화면 동작을 확인해야 하면 스크린샷이 아니라 콘솔이다.** `window.flg` 로 실행·단면표·규칙
 검사를 명령으로 친다(`npm run dev` → `localhost:5173`). 브라우저를 몰 수 있으면 **직접**
@@ -37,7 +39,7 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
-npx vitest run                          # 기준선: 타입 0 · 45파일 537테스트
+npx vitest run                          # 기준선: 타입 0 · 48파일 596테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
 ```
 
 ## 프로젝트 메모리

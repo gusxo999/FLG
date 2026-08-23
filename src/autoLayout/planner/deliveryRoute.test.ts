@@ -4,6 +4,7 @@ import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
 import { faceVector } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { EntityType } from "../../types/layout";
+import { scaledPack, scaledSpecs } from "../module/testScale";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -11,7 +12,7 @@ const M = { entityName: "assembling-machine-2", w: 3, h: 3 };
 
 // 트리: electronic-circuit(root) ← copper-cable ← (raw copper-plate)
 //                                ← (raw iron-plate)
-const specs: NodeSpec[] = [
+const specs: NodeSpec[] = scaledSpecs([
   {
     id: "circuit", depth: 0, machine: M, count: 4,
     lines: [inL("iron-plate"), inL("copper-cable"), outL("electronic-circuit")],
@@ -20,25 +21,25 @@ const specs: NodeSpec[] = [
     id: "coppercable", depth: 1, parentId: "circuit", machine: M, count: 5,
     lines: [inL("copper-plate"), outL("copper-cable")],
   },
-];
+]);
 
-const packConfig: PackConfig = {
+const packConfig: PackConfig = scaledPack({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+});
 const deliveryConfig: DeliveryConfig = { beltEntityName: "transport-belt" };
 
 // 프로덕션 충실 트리: electric-motor(root) ← iron-gear-wheel + copper-cable (2 납품 경로).
 // + 프로덕션처럼 지하벨트 활성 config. 단일-납품 경로·지상-only 테스트가 못 잡던 멀티납품 경로 교차를 재현.
-const emSpecs: NodeSpec[] = [
+const emSpecs: NodeSpec[] = scaledSpecs([
   {
     id: "em", depth: 0, machine: M, count: 3,
     lines: [inL("iron-gear-wheel"), inL("copper-cable"), inL("iron-plate"), outL("electric-motor")],
   },
   { id: "gear", depth: 1, parentId: "em", machine: M, count: 2, lines: [inL("iron-plate"), outL("iron-gear-wheel")] },
   { id: "copper", depth: 1, parentId: "em", machine: M, count: 6, lines: [inL("copper-plate"), outL("copper-cable")] },
-];
+]);
 const ugConfig: DeliveryConfig = {
   beltEntityName: "transport-belt",
   beltMaxUndergroundDistance: 9,
@@ -65,7 +66,7 @@ const fluidTrunk = (side: "W" | "E") => ({
     },
   ],
 });
-const fluidSpecs: NodeSpec[] = [
+const fluidSpecs: NodeSpec[] = scaledSpecs([
   {
     id: "user", depth: 0, machine: M, count: 2,
     lines: [inFluidL("petroleum-gas"), outL("plastic-bar")], fluidTrunk: fluidTrunk("E"),
@@ -74,7 +75,7 @@ const fluidSpecs: NodeSpec[] = [
     id: "gasmaker", depth: 1, parentId: "user", machine: M, count: 2,
     lines: [inL("coal"), outFluidL("petroleum-gas")], fluidTrunk: fluidTrunk("W"),
   },
-];
+]);
 const fluidDeliveryConfig: DeliveryConfig = {
   beltEntityName: "transport-belt",
   pipeEntityName: "pipe",
@@ -125,14 +126,14 @@ describe("routeDeliveryRoutes", () => {
   // ([seatIsBeltFeeder] 가 플래그가 아니라 **기하에서 유도**한다), 유체 포트가 그 반례를
   // 계속 들고 있다(아래 "유체 납품 경로" — 좌석이 파이프라 belt 피더가 아니다).
   it("트렁크든 기계별 포트든 — 양 끝 좌석이 belt 로 메워진다", () => {
-    const mixedSpecs: NodeSpec[] = [
+    const mixedSpecs: NodeSpec[] = scaledSpecs([
       {
         id: "p", depth: 0, machine: M, count: 2,
         // 입력 5줄 = 트렁크 거절 → 다이렉트 인서팅(포트가 머신에 직접 붙는다).
         lines: [inL("a"), inL("b"), inL("c"), inL("d"), inL("x"), outL("prod")],
       },
       { id: "c", depth: 1, parentId: "p", machine: M, count: 2, lines: [outL("x")] },
-    ];
+    ]);
     const pack = packModuleTree(mixedSpecs, packConfig);
     const res = routeDeliveryRoutes(pack, deliveryConfig);
     const delivery = pack.deliveries.find((h) => h.item === "x")!;

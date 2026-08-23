@@ -27,6 +27,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, deliveryKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
 import type { IoLine } from "./module/clusterPortPlanner";
+import { scaledPack, scaledSpecs } from "../module/testScale";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
@@ -54,7 +55,7 @@ const fluidTrunk = (side: "W" | "E", role: "input" | "output") => ({
  * 정렬이 안정이라 순서가 그대로여서 — 인덱스로 읽어도 우연히 맞는다(= 계측이 무의미).
  * 아래 마지막 테스트가 이 전제를 지킨다.
  */
-const specs: NodeSpec[] = [
+const specs: NodeSpec[] = scaledSpecs([
   {
     id: "user", depth: 0, machine: M, count: 2,
     lines: [inFluidL("petroleum-gas"), inL("iron-plate"), outL("plastic-bar")],
@@ -69,16 +70,16 @@ const specs: NodeSpec[] = [
     lines: [inL("coal"), outFluidL("petroleum-gas")],
     fluidTrunk: fluidTrunk("W", "output"),
   },
-];
+]);
 
-const packConfig: PackConfig = {
+const packConfig: PackConfig = scaledPack({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
   channelGeometry: true,
   reservePerimeterLanes: true,
   beltMaxUndergroundDistance: 4,
-};
+});
 const deliveryConfig: DeliveryConfig = {
   beltEntityName: "transport-belt",
   pipeEntityName: "pipe",

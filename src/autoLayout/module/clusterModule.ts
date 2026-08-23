@@ -29,7 +29,7 @@ import {
 } from "../planner/module/clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
-import { type MachineLinkGroup } from "./machineLinkGroup";
+import { type Link } from "./link";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
 import { planModulePorts } from "../planner/module/planModulePorts";
@@ -93,8 +93,25 @@ export interface ModulePort {
   /** 산출 근거(planner 슬롯 + 트렁크 seed 점수) — 표시·진단 전용, 좌표 없음. */
   meta: ModulePortMeta;
   /**
-   * **링크 그룹 신원** — `${childId}→${parentId}:${item}#${groupIndex}`([linkGroupId]).
-   * [MachineLinkGroup]에서 난 포트만 갖는다 — 옛 탭/다이렉트 포트는 없다(undefined). 자식·
+   * **이 포트가 나르는 초당 개수** — 이 포트를 낸 [Link] 의 적재 합([groupRate]).
+   * 모르면 `undefined`(지어내지 않는다).
+   *
+   * **모듈 경계를 넘어 살아남는 유일한 운반량이다.** 이 값이 없으면 납품 경로·반출 경로가
+   * *"이 벨트에 얼마가 흐르나"* 를 되물을 곳이 없어, 벨트 티어를 **고를 근거 자체가 없다**
+   * (2026-08-23 조사: 그래서 두 경로가 기본 벨트 하나로만 깔리고 있었다).
+   */
+  rate?: number;
+  /**
+   * **이 포트의 벨트 줄이 고른 티어** — 모듈 **안쪽** 벨트가 이 이름으로 깔린다
+   * ([Link.beltEntityName]). 모르면 `undefined`(기본 벨트).
+   *
+   * 모듈 **밖**(납품·반출)은 아직 이 값을 안 쓴다 — 쓰려면 지하벨트 티어도 함께 맞춰야
+   * 한다(안 맞추면 점프 칸이 그 줄을 목 조른다). → `tempPlanDocs/배선-형태/`
+   */
+  beltEntityName?: string;
+  /**
+   * **링크 그룹 신원** — `${childId}→${parentId}:${item}#${groupIndex}`([makeLinkId]).
+   * [Link]에서 난 포트만 갖는다 — 옛 탭/다이렉트 포트는 없다(undefined). 자식·
    * 부모 양쪽 모듈이 packModuleTree 가 간선당 한 번만 계산해 캐시한 **같은 그룹 객체**를
    * 참조하므로 이 값이 항상 일치한다 — [pairDeliveryPorts] 가 배열 위치 대신 이 값으로 조회한다
    * (2026-07-21, 옛 `seq` 위치-zip 이 방출 실패 시 조용히 밀리던 문제의 근치).
@@ -190,22 +207,22 @@ export interface ModuleInput {
   belts?: SpecBelt[];
   /**
    * **출력 fan-out 링크** — 이 노드의 출력을 부모 머신들에게 어떻게 나눠 주나
-   * ([allocateMachineLinks]). 각 그룹 = 이 클러스터의 한 머신에서 나가는 벨트 하나(목적지
+   * ([allocateFlows]). 각 그룹 = 이 클러스터의 한 머신에서 나가는 벨트 하나(목적지
    * 목록 `taps`). 부모를 봐야 정해지므로 부모-무시인 generateModule 이 못 만든다 — 트리를
    * 아는 packModuleTree 가 계산해 넣는다. **있으면 출력 방출이 "줄당 트렁크 하나"(fan-out
    * 병합) 대신 "머신당·목적지별 벨트"로 갈라 나간다.** 미지정(rate 미상 등)이면 옛 트렁크 방출.
    *
-   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([MachineLinkGroup]). v1 은 링크 하나가 곧 그룹 하나다.
-   * 신원([linkGroupId])은 그룹 자신의 `id` 필드에 실려 온다 — `ModulePort.linkId` 가 된다.
+   * **그룹 하나 = 물리 벨트 하나 = 포트 한 쌍**([Link]). v1 은 링크 하나가 곧 그룹 하나다.
+   * 신원([makeLinkId])은 그룹 자신의 `id` 필드에 실려 온다 — `ModulePort.linkId` 가 된다.
    */
-  outputLinks?: MachineLinkGroup[];
+  outputLinks?: Link[];
   /**
    * **입력 fan-in 그룹** — `outputLinks` 의 거울: 같은 간선의 같은 그룹을 부모(toMachine)
-   * 관점에서 받은 것(같은 [MachineLinkGroup] 객체 — packModuleTree 가 간선당 한 번만 계산해
+   * 관점에서 받은 것(같은 [Link] 객체 — packModuleTree 가 간선당 한 번만 계산해
    * 캐시한 것을 그대로 참조). 그룹마다 입력 트렁크 하나(그룹의 toMachine 들을 세로로 관통하는
    * 벨트 + 머신별 탭)가 나서, 자식 출력 벨트와 **그룹 순서로 1:1** 짝지어진다. 미지정=옛 트렁크 입력.
    */
-  inputLinks?: MachineLinkGroup[];
+  inputLinks?: Link[];
   /**
    * [트렁크 파이프](../../../../docs/auto-layout/module/trunk-pipe.md) 계획 — 유체 줄이
    * 있을 때만. 어느 면에 파이프가 달리고 그러려면 머신을 몇 도 돌려야 하는지는 머신
@@ -226,8 +243,8 @@ export interface ModuleInput {
 export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
   const count = Math.max(1, input.count);
-  const outLinkGroups = input.outputLinks ?? [];
-  const inLinkGroups = input.inputLinks ?? [];
+  const outLinks = input.outputLinks ?? [];
+  const inLinks = input.inputLinks ?? [];
 
   // ── 계획 — **머신을 놓기 전에 전부 끝난다** ───────────────────────────────
   // 자리를 정하는 일은 여기 한 번뿐이다([planModulePorts]). 좌표가 없어야 이 순서가 성립한다:
@@ -283,18 +300,23 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outSeats = placeLinkSeats(machines, plan.linkFaces.out);
   const inSeats = placeLinkSeats(machines, plan.linkFaces.in);
   const lineOf = new Map(input.lines.map((l) => [`${l.role}:${l.name}`, l]));
-  if (outLinkGroups.length > 0) {
-    const m = new Map(outLinkGroups.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
-    emitOutputLinks({ groups: outLinkGroups, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+  if (outLinks.length > 0) {
+    const m = new Map(outLinks.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
+    emitOutputLinks({ groups: outLinks, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
   }
-  if (inLinkGroups.length > 0) {
-    const m = new Map(inLinkGroups.map((g) => [g.item, lineOf.get(`input:${g.item}`)!]));
-    emitInputLinks({ groups: inLinkGroups, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+  if (inLinks.length > 0) {
+    const m = new Map(inLinks.map((g) => [g.item, lineOf.get(`input:${g.item}`)!]));
+    emitInputLinks({ groups: inLinks, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
   }
 
   // 나머지 줄이 못 앉았으면 그 줄들만 unrouted 로 낸다 — **못 앉은 줄이 계획에 적혀 있어서**
   // 여기서 다시 고를 필요가 없다([ModulePortPlan.rest.unplaced]). 링크 줄은 위에서 이미
   // 성패가 갈렸으므로 그 목록에 없다.
+  // **부을 수 없던 줄은 여기서 사유가 된다** — 줄이 하나도 안 난 나머지 줄들
+  // ([ModulePortPlan.unpourableLines]). 모듈을 물리지는 않는다: 그 줄 하나만 못 깐 것이라
+  // 나머지는 그대로 깔리고, 못 깐 줄은 `unroutedLines` 로 위층에 올라간다.
+  unroutedLines.push(...plan.unpourableLines);
+
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);

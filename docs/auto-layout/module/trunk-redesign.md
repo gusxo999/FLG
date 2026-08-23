@@ -14,7 +14,7 @@ tags: [auto-layout, placement, routing]
 > `clusterPortPlanner.insertingPlanner` + `emitTapInserting` + `deliveryRoute` 로 돌아간다.
 >
 > 단, §10.1 의 **"납품 경로 수(품목당 1)" 은 대체됐다** — [[machine-link]] 가
-> 간선-단위 링크로 세분화했다(`edgeMachineLinks` → `DeliverySpec.linkId`). 품목 하나가
+> 간선-단위 링크로 세분화했다(`edgeFlows` → `DeliverySpec.linkId`). 품목 하나가
 > 여러 납품 경로로 쪼개질 수 있다.
 
 ## 0. 한 줄 요약

@@ -17,7 +17,7 @@
 | 폴더 | 판정 | 내용 | 문서 |
 |---|---|---|---|
 | `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · `clusterPortPlanner` · `linkPlanner` | `docs/auto-layout/module/` |
-| `link/` | 두 모듈의 **식별자**를 안다 | `allocateMachineLinks` · `edgeLinks` | `docs/auto-layout/link/` |
+| `link/` | 두 모듈의 **식별자**를 안다 | `allocateFlows` · `edgeLinks` | `docs/auto-layout/link/` |
 | `perimeter/` | **전역 외곽**을 안다 | `wayOuts` · `lanes` | `docs/auto-layout/perimeter/` |
 | (평면) | 조율·통로·탐색 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `deliveryRoute` · `containerRouting` | `docs/auto-layout/channel/` |
 
@@ -37,7 +37,7 @@
 
 ## `link/` 는 아무것도 import 하지 않는다
 
-`allocateMachineLinks` 는 *"어느 기계 쌍을 몇 벨트로 잇나"* 만 답하는 순수 산술이다.
-벨트 한 줄의 자료 구조(`MachineLinkGroup`)는 로컬 머신 index + 팔 수만 알아
-**`module/machineLinkGroup.ts`** 에 있다 — 한 파일에 있던 시절엔 `module/ ⇄ planner/link/`
+`allocateFlows` 는 *"어느 기계 쌍을 몇 벨트로 잇나"* 만 답하는 순수 산술이다.
+벨트 한 줄의 자료 구조(`Link`)는 로컬 머신 index + 팔 수만 알아
+**`module/link.ts`** 에 있다 — 한 파일에 있던 시절엔 `module/ ⇄ planner/link/`
 왕복 간선이 생겼다(2026-08-02 해소). 이 파일이 순수하게 남아 있는 한 그 간선은 안 돌아온다.

@@ -25,10 +25,10 @@ emit*(...)                                      ← execution/module/emitModule
 
 | 아는 것 | 모르는 것 |
 |---|---|
-| `MachineLinkGroup.from`/`to` = **로컬 머신 index → 팔 수** | 형제 모듈의 대수·좌표·모양 |
+| `Link.from`/`to` = **로컬 머신 index → 팔 수** | 형제 모듈의 대수·좌표·모양 |
 | `group.id`(`linkId`) — **불투명 토큰**. 복사만 하고 파싱하지 않는다 | 그 토큰이 어느 부모를 가리키는지 |
 
-`linkId` 를 만드는 곳은 `planner/modulePacking.linkGroupId` **한 곳뿐**이고,
+`linkId` 를 만드는 곳은 `planner/modulePacking.makeLinkId` **한 곳뿐**이고,
 여기서는 `ModulePort.linkId` 로 그대로 흘려보낸다. **파싱하는 코드가 0 인 것이
 모듈-링크 분리의 실질**이다 — 파싱하는 순간 모듈이 형제를 알게 된다.
 

@@ -55,7 +55,7 @@ tags: [auto-layout, placement, routing]
 
 | 축 | 값 | 처리 |
 |---|---|---|
-| 저쪽 끝 | 안 / 밖 | **데이터** — `MachineLinkGroup` 의 `from`/`to` **빈 쪽** |
+| 저쪽 끝 | 안 / 밖 | **데이터** — `Link` 의 `from`/`to` **빈 쪽** |
 | 역할 | 입력 / 출력 | **데이터** — `side: "from"\|"to"` + 선호 면 |
 | external 여부 | 예 / 아니오 | **데이터** — 처리 **순서**만 다르다 |
 | 면 방향 | W/E / N/S(gap) | **데이터** — `face` 값 |
@@ -106,7 +106,7 @@ autoLayout/
 │   │   ├ clusterPortPlanner.ts    줄 슬롯 배정 · tap/direct 판정
 │   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
 │   ├ link/                      모듈과 모듈을 잇는 일
-│   │   ├ allocateMachineLinks.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
+│   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
@@ -126,7 +126,7 @@ autoLayout/
 │   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
 ├ module/                      한 모듈 안쪽 (형제를 모른다. 셀을 만들지 않는다)
 │   ├ clusterModule.ts             모듈 생성 오케스트레이터
-│   ├ machineLinkGroup.ts          벨트 한 줄 = 팔 묶음 (자료 구조 + 조립·판독)
+│   ├ link.ts          벨트 한 줄 = 팔 묶음 (자료 구조 + 조립·판독)
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                유체 면 선택
 │   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
@@ -162,7 +162,7 @@ rg -c "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" `
 rg "planner/link" src/autoLayout/module
 
 # link 는 순수 배정기다 — import 가 하나도 없어야 한다.
-rg "^import" src/autoLayout/planner/link/allocateMachineLinks.ts
+rg "^import" src/autoLayout/planner/link/allocateFlows.ts
 ```
 
 2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:
@@ -170,16 +170,16 @@ rg "^import" src/autoLayout/planner/link/allocateMachineLinks.ts
 | # | 무엇이 문제였나 | 어떻게 |
 |---|---|---|
 | V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `planner/perimeter/wayOuts.ts` |
-| V2 | `allocateMachineLinks` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
+| V2 | `allocateFlows` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
 | V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/` |
 | V4 | 한 파일에 **두 관심사**가 있어 `module/ ⇄ planner/link/` 왕복 간선이 생겼다 | 둘로 가름 — 아래 |
 | V5 | `clusterModule` 이 다이렉트 인서팅 셀을 **직접 만들었다** | → `execution/module/emitDirectInserting` |
 
-**V4 가 왜 왕복 간선을 만들었나:** `allocateMachineLinks`(두 클러스터의 대수를 본다 = link)와
-`MachineLinkGroup`·`makeLink`·`readLinkRole`·`externalLineGroups`(로컬 머신 index + 팔 수뿐
+**V4 가 왜 왕복 간선을 만들었나:** `allocateFlows`(두 클러스터의 대수를 본다 = link)와
+`Link`·`makeLink`·`readLinkRole`·`externalLineGroups`(로컬 머신 index + 팔 수뿐
 = module)가 한 파일에 있었다. 그래서 `module/` 이 그 파일을 부르고, 그 파일이 다시 `module/`
 의 `requiredInserterCount` 를 불렀다. 갈라 놓으니 **두 간선이 동시에 사라졌다** —
-`planner/link/allocateMachineLinks` 는 이제 아무것도 import 하지 않는 순수 산술이다.
+`planner/link/allocateFlows` 는 이제 아무것도 import 하지 않는 순수 산술이다.
 
 ## 자리를 정한 근거 — 판단이 갈렸던 것들
 

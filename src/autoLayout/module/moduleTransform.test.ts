@@ -5,17 +5,18 @@ import { transformModule, shiftModule, rotationToFace, type Orientation, type Ro
 import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
 import { EntityType } from "../../types/layout";
 import type { PlacedCell } from "../containerModel";
+import { scaled } from "./testScale";
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });
 
-const copperCable: ModuleInput = {
+const copperCable: ModuleInput = scaled({
   machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
   count: 5,
   lines: [line("copper-plate", "input"), line("copper-cable", "output")],
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
   beltEntityName: "transport-belt",
-};
+});
 
 /** 회전/반사 불변 비교용 정규 서명 — 머신 footprint + 셀(좌표·종류·방향) + 포트. */
 function sig(mod: GeneratedModule): string {

@@ -20,7 +20,7 @@
 import { checkLayout } from './checkRules';
 import { cellHistogram } from './faceTable';
 import { machineBoxOf, type LayoutView } from './layoutView';
-import { readRunStats, type DeliveryCounters, type PerimeterCounters } from './runStats';
+import { readRunStats, type BeltFormCounters, type DeliveryCounters, type PerimeterCounters } from './runStats';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 
 const STORAGE_KEY = 'flg-snapshots';
@@ -43,6 +43,14 @@ export interface LayoutDigest {
   histogram: Record<string, number>;
   delivery: DeliveryCounters | null;
   perimeter: PerimeterCounters | null;
+  /**
+   * **배선 형태** — 이 배치가 무엇을 깔았나.
+   *
+   * 여기 있어야 하는 이유는 [diffDigests] 다: 형태를 바꾸는 변경(합치기·쪼개기 규칙)은
+   * *"줄이 줄었나 늘었나, 이용률이 올랐나"* 로만 판정된다. 콘솔 한 줄은 **지금**을 말하지만
+   * 스냅샷은 **전/후**를 말한다 — 새로고침을 견디므로 코드 두 버전 사이도 비교된다.
+   */
+  beltForms: BeltFormCounters | null;
   issues: string[];
   violations: string[];
   modules: Array<{
@@ -84,6 +92,7 @@ export function digestOf(view: LayoutView, label: string): LayoutDigest {
     histogram: cellHistogram(view),
     delivery: stats.delivery,
     perimeter: stats.perimeter,
+    beltForms: stats.beltForms,
     issues: run.issues.map((i) => `${i.severity}:${i.code}`).sort(),
     violations: checkLayout(view).map((v) => `${v.rule} ${v.detail}`).sort(),
     modules: view.modules
@@ -176,6 +185,22 @@ export function diffDigests(before: LayoutDigest, after: LayoutDigest): string {
       ap.skips.map((s) => `${s.chestId}: ${s.reason}`),
       counters,
     );
+  }
+  const bf = before.beltForms;
+  const af = after.beltForms;
+  if (bf && af) {
+    num('형태 트렁크', bf.trunk, af.trunk, counters);
+    num('형태 다이렉트', bf.direct, af.direct, counters);
+    num('형태 관통', bf.spanning, af.spanning, counters);
+    num('형태 fan-out최대', bf.fanOutMax, af.fanOutMax, counters);
+    num('형태 붓기불가', bf.unpourable, af.unpourable, counters);
+    num('형태 과적재', bf.overloaded, af.overloaded, counters);
+    // **줄 수만 보면 오독한다** — 먼저 나누느라 줄이 늘어도 이용률이 유지되면 낭비가 아니다.
+    // 그래서 이용률을 함께 낸다(정수 %로 접어 부동소수 흔들림을 없앤다).
+    const pct = (c: BeltFormCounters) => (c.capacity > 0 ? Math.round((c.loaded / c.capacity) * 100) : -1);
+    num('형태 이용률%', pct(bf), pct(af), counters);
+  } else if (bf !== af) {
+    counters.push(`  형태 카운터        ${bf ? '있음' : '없음'} → ${af ? '있음' : '없음'}`);
   }
   if (counters.length) lines.push('카운터', ...counters);
 

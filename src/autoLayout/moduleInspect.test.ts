@@ -43,8 +43,12 @@ const machine = (name: string, categories: string[]): Entity =>
 const DATA: GameData = {
   entities: [
     machine('assembler', ['crafting']),
-    { name: 'inserter', type: 'inserter', tile_width: 1, tile_height: 1 } as unknown as Entity,
-    { name: 'transport-belt', type: 'transport-belt', tile_width: 1, tile_height: 1 } as unknown as Entity,
+    { name: 'inserter', type: 'inserter', tile_width: 1, tile_height: 1,
+      // **저울 없는 프로토타입을 만들지 않는다**(2026-08-24) — reach 와 회전 속도가 없으면
+      // `makeBuildSpec` 이 이 인서터를 목록에서 빼고, 파이프라인이 진입에서 거절한다.
+      inserter_pickup_position: { x: 0, y: -1 }, inserter_rotation_speed: 0.014 } as unknown as Entity,
+    { name: 'transport-belt', type: 'transport-belt', tile_width: 1, tile_height: 1,
+      belt_speed: 0.03125 } /* 바닐라 노랑 = 15/s */ as unknown as Entity,
   ],
   recipes: [
     recipe('target-item', 'crafting', [item('sub-item')], [item('target-item')]),

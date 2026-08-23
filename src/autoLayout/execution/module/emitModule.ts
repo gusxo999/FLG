@@ -20,7 +20,7 @@
  */
 
 import type { IoLine, PlannedLine, PortSide } from "../../planner/module/clusterPortPlanner";
-import type { MachineLinkGroup } from "../../module/machineLinkGroup";
+import { groupRate, type Link } from "../../module/link";
 import type { Container, PlacedCell, PortFace, PortPair } from "../../containerModel";
 import { cellKey, faceCell, faceVector, vectorToDirection } from "../../util/helper";
 import { EntityType } from "../../../types/layout";
@@ -108,6 +108,9 @@ function pushLinkPortEnd(o: {
   beltCells: PlacedCell[];
   line: IoLine;
   linkId?: string;
+  /** 이 포트가 나르는 초당 개수 · 그 줄이 고른 벨트 티어 — 둘 다 그룹에서 온다. */
+  rate?: number;
+  beltEntityName?: string;
   tapAnchor: { x: number; y: number };
   laneDepth: number;
   inserterEntityName: string;
@@ -130,6 +133,7 @@ function pushLinkPortEnd(o: {
   o.ports.push({
     line: o.line, anchor: { ...o.chestAt }, tapAnchor: o.tapAnchor, face: o.portFace,
     moduleWayOuts: [], chest: o.chest, cells: o.beltCells, linkId: o.linkId,
+    rate: o.rate, beltEntityName: o.beltEntityName,
     meta: {
       // **어느 변에 섰나** — 반출·채널 장부의 단일 출처([[ns-face-relief]] 결정 5).
       // `portFace` 와 같은 값이어야 한다: gap 그룹은 서/동쪽 변으로 나가고, W/E 면 그룹은
@@ -150,7 +154,7 @@ function pushLinkPortEnd(o: {
  * 면부터 정해야 한다(폭은 우리가 고르는 값이 아니라 배정의 부산물).
  */
 export function emitOutputLinks(args: {
-  groups: MachineLinkGroup[];
+  groups: Link[];
   seats: (LinkSeats | undefined)[];
   lineOf: Map<string, IoLine>;
   machines: Container[];
@@ -238,7 +242,9 @@ export function emitOutputLinks(args: {
     let blocked = false;
     const push = (at: { x: number; y: number }, v: { x: number; y: number }): void => {
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; return; }
-      beltCells.push(makeBeltCell(at, vectorToDirection(v.x, v.y), input.beltEntityName, portPair)); // 티어는 후속
+      // **티어는 그룹이 든다**(2026-08-23) — 실으려는 양을 정한 곳([determineBeltCount])과
+      // 깔 벨트를 고르는 곳이 갈리면 용량이 거짓이 된다. 모르면 기본 벨트로 떨어진다.
+      beltCells.push(makeBeltCell(at, vectorToDirection(v.x, v.y), group.beltEntityName ?? input.beltEntityName, portPair));
     };
     // ① **수집** — 자기 좌석 **구간**(첫 좌석 행 ~ 마지막 좌석 행)을 빠짐없이 덮는다.
     //
@@ -299,7 +305,7 @@ export function emitOutputLinks(args: {
     // 안 드러났다.
     pushLinkPortEnd({
       role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      line, linkId: group.id,
+      line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
       tapAnchor: isGap
         ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: trunkStart.y }
         : { ...trunkStart },
@@ -318,7 +324,7 @@ export function emitOutputLinks(args: {
  * 넣음; belt=d2 세로(아래로 흐름 — 포트에서 받아 탭에 분배); 포트 인서터=d3, chest=d4(동).
  */
 export function emitInputLinks(args: {
-  groups: MachineLinkGroup[];
+  groups: Link[];
   seats: (LinkSeats | undefined)[];
   lineOf: Map<string, IoLine>;
   machines: Container[];
@@ -433,7 +439,8 @@ export function emitInputLinks(args: {
     });
 
     const beltCells: PlacedCell[] = path.map((c) =>
-      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), input.beltEntityName, portPair), // 티어는 후속
+      // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
+      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
     );
     for (const c of beltCells) occupancy.add(cellKey(c.x, c.y));
     for (const s of seats) {
@@ -451,7 +458,7 @@ export function emitInputLinks(args: {
     // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(W 면이면 서쪽 끝).
     pushLinkPortEnd({
       role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
-      line, linkId: group.id,
+      line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
       tapAnchor: isGap
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },

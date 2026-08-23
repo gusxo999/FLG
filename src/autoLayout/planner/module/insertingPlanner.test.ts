@@ -25,7 +25,7 @@ import {
   type PlannedLine,
   type SupplyCapacity,
 } from "./clusterPortPlanner";
-import { externalLineGroups } from "../../module/machineLinkGroup";
+import { externalLineGroups } from "../../module/link";
 import type { SpecInserter } from "../../buildSpec";
 
 const inL = (n: string, a = 1): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
@@ -243,7 +243,12 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
 
     expect(run(base(lines, false), 3, SEATS, rates).mode).toBe("direct");
     // 기계별 그룹이 든 팔 수 — 머신 3대니까 그룹 3개, 각각 팔 2개.
-    const groups = externalLineGroups(lines, 3, rates, rates.inserters ?? [], undefined, { perMachine: true })
+    // 벨트 티어도 함께 준다 — 30/s 가 한 줄에 담기는 저울이라야 *줄 수* 가 이 검사에
+    // 끼어들지 않는다(이 검사가 보는 것은 **팔 수**다).
+    const groups = externalLineGroups(lines, 3, rates, rates.inserters ?? [], undefined, {
+      perMachine: true,
+      belts: [{ entityName: "b", throughput: 100 }],
+    })
       .filter((g) => g.item === "a");
     expect(groups).toHaveLength(3);
     for (const g of groups) {
