@@ -356,7 +356,7 @@ export function planModulePorts(
   // 형태는 산출물 어디에도 안 남아서, glass 54줄(필요 5줄)을 사후에 손으로 세야 했다.
   // 내부 링크는 `modulePacking` 이 따로 센다 — 여기는 **외부 줄**(원료·완제품) 몫이다.
   // 싱크에 직접 쓰는 것은 `moduleWizard` 가 이미 하는 일과 같은 관용구다(runStats 머리말).
-  // **면 레인 — 좌석표 계획 Step 0 의 계측**(`tempPlanDocs/좌석표-배정/` §5 Step 0).
+  // **면 레인 계측** — 설계는 `docs/auto-layout/module/module-planning.md §4.5`.
   // 묻는 것: *"둘째 레인이 실물에서 쓰이나, 그때 팔 종류가 실제로 갈리나."*
   // 사후에 훑기만 한다 — [laneDepthsOf] 가 장부를 안 읽어서 배정이 끝난 뒤에도 같은 답이다.
   // (관측만 — 계산·분기·반환값은 안 바뀐다. `runStats` 머리말의 규약.)

@@ -1,5 +1,5 @@
 /**
- * **레인이 팔을 정한다** — 좌석표 계획 Step 2 (`tempPlanDocs/좌석표-배정/`).
+ * **레인이 팔을 정한다** — 설계는 `docs/auto-layout/module/module-planning.md §4.5`.
  *
  * 두 결함을 잠근다. 둘 다 **둘째 레인을 쓰기 시작하는 순간**에만 발현한다:
  *

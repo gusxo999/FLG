@@ -150,7 +150,7 @@ export interface LinkFaceContext {
    * **면마다 좌석표 한 장** — 이 배정이 아는 자리의 전부다. 없는 면은 [tableOf] 가 만든다.
    *
    * 표는 **값**이라 복사해서 채워 보고 버릴 수 있다 — 트렁크 경로 계획의 배정 3단이 요구하는
-   * 것이 그것 하나다(`tempPlanDocs/좌석표-배정/`).
+   * 것이 그것 하나다(`tempPlanDocs/트렁크벨트-경로모델/ §9.7`).
    */
   tables: Map<PortFace, FaceTable>;
   /**

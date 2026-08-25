@@ -70,7 +70,7 @@ export interface RowChannelCounters {
 }
 
 /**
- * **면 레인 — 좌석표 계획 Step 0 의 계측기**(`tempPlanDocs/좌석표-배정/`).
+ * **면 레인 — 좌석표 배정의 계측기**(`docs/auto-layout/module/module-planning.md §4.5`).
  *
  * 묻는 것은 둘이다. *"결함이 실물에서 발현하나"* 를 **수로** 답한다:
  *

@@ -45,7 +45,7 @@ import { fluidLineOf } from "../../module/fluidPorts";
 import type { PipeFlowPipe } from "../../util/pipeFlow";
 import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
-// (`tempPlanDocs/좌석표-배정/` Step 0). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
+// (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
 import { recordFaceLaneStats } from "../../../debug/runStats";
 
 
