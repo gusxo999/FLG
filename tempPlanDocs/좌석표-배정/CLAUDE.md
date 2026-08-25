@@ -1,6 +1,7 @@
 # 좌석표 — 작업 컨텍스트
 
-> 상태: **Step 0 완료(2026-08-26) — Step 1 승인 대기.**
+> 상태: **Step 0·1 완료(2026-08-26) — Step 2 진행 중.**
+> Step 1 로 장부 셋이 [FaceTable] 한 장으로 접혔다(동치 검증 8건 · 실물 4트리 수 불변).
 > **실측이 결함 둘을 확인했다.** `electronic-circuit` 은 결함 B 로 **트리가 거절된다**
 > (`unrouted-lines: input:stone-tablet` — 사유 없음). `advanced-circuit` 은 깊은레인 626건
 > 전부가 팔 어긋남이다. 수는 계획서 §5 Step 0 의 표.

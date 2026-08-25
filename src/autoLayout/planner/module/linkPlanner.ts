@@ -25,6 +25,10 @@ import { faceSeatArms } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
 import { machinesOn, spansAllMachines, type Link } from "../../module/link";
 import type { PlannedSide } from "./clusterPortPlanner";
+import {
+  claimLane, claimSeats, freeSeatRows, groupsOn, laneClear, makeFaceTable,
+  rowIndex, seatsTaken, takeOwner, type FaceTable,
+} from "./faceTable";
 
 export interface LinkFacePlan {
   /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */
@@ -103,25 +107,43 @@ export interface LinkSeats extends LinkFacePlan {
   slots: Map<number, number[]>;
 }
 
-/** 좌석 장부의 열쇠 — 머신 하나의 한 면. 면마다 예산이 따로다(`machine.h` 행). */
-export function seatKey(machineIndex: number, face: PortFace): string {
-  return `${machineIndex}:${face}`;
+/**
+ * **이 면의 좌석표** — 없으면 만든다.
+ *
+ * 면마다 표가 따로인 이유는 **행의 뜻이 다르기 때문**이다: W/E 면의 행은 머신 세로 칸(`h`),
+ * N/S 면의 행은 가로 칸(`w`) 이다. 유체 상자는 W/E 에만 붙으므로 N/S 표는 언제나 비어서 시작한다.
+ */
+function tableOf(ctx: LinkFaceContext, face: PortFace): FaceTable {
+  const found = ctx.tables.get(face);
+  if (found) return found;
+  const isGap = face === "N" || face === "S";
+  const made = makeFaceTable(
+    isGap ? ctx.machine.w : ctx.machine.h,
+    ctx.count,
+    isGap ? [] : (ctx.pipeFaces?.get(face)?.rows ?? []),
+  );
+  ctx.tables.set(face, made);
+  return made;
 }
 
 /**
- * **한 모듈의 면 배정이 공유하는 것** — 장부 두 권 + 머신 모양 + 유체가 가져간 면.
+ * **한 모듈의 면 배정이 공유하는 것** — 면마다 [FaceTable] 한 장 + 머신 모양 + 유체가 가져간 면.
  *
- * 예전엔 이 넷이 함수마다 낱개 인자로 늘어서 있었다. 배정에 참여하는 주체가 링크 하나뿐일
- * 땐 견딜 만했는데, 원료·완제품 줄까지 같은 배분기를 타면 호출이 늘어 **인자 순서를 틀리기
- * 쉬운 모양**이 된다. 장부는 호출들 사이에 이어져야 하는 상태라 한 덩어리로 다니는 게 맞다.
+ * 예전엔 장부가 **셋**이었다(`used`·`faceGroups`·`lanes`). 셋이 서로 다른 것을 세고 서로를
+ * 몰라서, 면 전체를 그린 것이 **어디에도 없었다** — 그래서 포트 칸(`d+1`·`d+2`)이 아무
+ * 장부에도 안 올라갔고, 배정을 되돌릴 방법도 없었다. 지금은 셋이 표 하나를 읽는 질문이다
+ * (대응표는 [FaceTable] 머리말).
  */
 export interface LinkFaceContext {
   machine: { w: number; h: number };
   count: number;
-  /** 좌석(팔) 장부 — `${머신index}:${면}` → 이미 쓴 칸 수. */
-  used: Map<string, number>;
-  /** 그룹 수 장부 — 막힌 면의 반출 줄 깊이 순번([LinkFacePlan.exitDepth]). */
-  faceGroups: Map<string, number>;
+  /**
+   * **면마다 좌석표 한 장** — 이 배정이 아는 자리의 전부다. 없는 면은 [tableOf] 가 만든다.
+   *
+   * 표는 **값**이라 복사해서 채워 보고 버릴 수 있다 — 트렁크 경로 계획의 배정 3단이 요구하는
+   * 것이 그것 하나다(`tempPlanDocs/좌석표-배정/`).
+   */
+  tables: Map<PortFace, FaceTable>;
   /**
    * **트렁크 파이프가 붙는 면**(W/E) — 그 면의 **유체 상자 행 번호**와 점프 여부.
    *
@@ -143,18 +165,11 @@ export interface LinkFaceContext {
    */
   pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; laneCap: number }>;
   /**
-   * **레인 장부** — `${면}|${깊이}` → 그 레인에서 이미 먹은 **행 범위**들(닫힌 구간, 서로소).
+   * 기둥 끝 장부 — `${면}` → 이미 쓴 끝들([LinkFacePlan.portEnd]). 면마다 N·S 둘뿐이다.
    *
-   * 왜 셋째 장부가 필요한가 — **관통 트렁크가 레인을 통째로 먹기 때문**이다. 벨트는 연속이라야
-   * 아이템이 흐르므로(계획서 §3 조건 ⑤) 그룹의 벨트는 *[첫 좌석 행 .. 마지막 좌석 행]* 을 통으로
-   * 덮는다. 머신 하나만 맡는 구간이면 그게 몇 행이라 **다른 구간이 남은 행을 쓴다**. 머신 여럿을
-   * 맡으면 그 사이 행이 전부 딸려 들어와 **그 면의 그 깊이가 통째로 없어진다.**
-   *
-   * 좌석 장부(`used`)로는 이 사실이 안 잡힌다 — 관통 그룹은 머신마다 좌석을 *하나씩만* 쓰므로
-   * 좌석은 넉넉한데 벨트가 지나갈 자리가 없는 상태가 된다. 그래서 별개다.
+   * **이것만 표 밖에 남는다** — 기둥 끝은 면의 칸이 아니라 그 **바깥**이라 `(행, 깊이)` 로
+   * 표현되지 않는다. 셋을 하나로 접은 뒤에도 이 하나가 남는 것이 정직한 회계다.
    */
-  lanes: Map<string, Array<readonly [number, number]>>;
-  /** 기둥 끝 장부 — `${면}` → 이미 쓴 끝들([LinkFacePlan.portEnd]). 면마다 N·S 둘뿐이다. */
   ends: Map<PortFace, Set<"N" | "S">>;
   /**
    * 쓸 수 있는 팔의 종류 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
@@ -184,43 +199,31 @@ export function laneDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
 /**
  * 이 그룹의 벨트가 면에서 먹을 **행 범위** — 연속이라 `[최소, 최대]` 하나로 족하다.
  *
- * 좌표가 아니라 **모듈 안 순번**이다: `머신index × h + 면에서의 칸`. 머신 사이 gap 을 안 세지만
- * 사상이 **단조**라 "두 범위가 겹치나"는 실제와 같은 답을 준다 — 배정이 아는 것은 그것뿐이면 된다.
+ * 좌표가 아니라 **모듈 안 순번**이다([FaceTable] 의 행 번호 그대로).
  *
- * `used` 를 읽으므로 **장부를 늘리기 전에** 불러야 한다([commitLinkFace] 가 맨 앞에서 부른다).
+ * **표를 읽으므로 칸을 차지하기 전에** 불러야 한다([commitLinkFace] 가 맨 앞에서 부른다).
+ *
+ * 옛 코드는 `used`(논리 칸 수)에 `skipFluidRows` 를 씌워 실제 행을 구했다. 표에서는
+ * **빈 좌석을 앞에서부터 집으면** 그 사상이 저절로 나오므로([freeSeatRows]) 되사상이 없다 —
+ * `emitTapInserting.remapRow` 와 같은 산술을 두 곳이 갖던 자리가 하나 없어졌다.
  */
 function beltRowSpan(
   ctx: LinkFaceContext,
   face: PortFace,
   arms: Map<number, number>,
 ): readonly [number, number] {
-  const remap = skipFluidRows(ctx.pipeFaces?.get(face)?.rows);
+  const t = tableOf(ctx, face);
   let lo = Infinity;
   let hi = -Infinity;
   for (const [mi, k] of arms) {
-    const base = ctx.used.get(seatKey(mi, face)) ?? 0;
-    const origin = mi * ctx.machine.h;
-    lo = Math.min(lo, origin + remap(base));
-    hi = Math.max(hi, origin + remap(base + k - 1));
+    const free = freeSeatRows(t, mi);
+    if (free.length === 0) continue;
+    const first = free[0];
+    const last = free[Math.min(k, free.length) - 1];
+    lo = Math.min(lo, rowIndex(t, mi, first));
+    hi = Math.max(hi, rowIndex(t, mi, last));
   }
   return [lo, hi];
-}
-
-/**
- * 유체 상자 행을 건너뛰는 **논리 순번 → 실제 행** 사상. `emitTapInserting` 의 `remapRow` 와
- * **같은 산술**이다(둘이 갈리면 계획이 배정한 칸과 방출이 놓는 칸이 어긋난다).
- *
- * 링크 쪽은 이 사상을 **계획에서** 적용해 [LinkFacePlan.slotIndex] 에 실제 행을 담는다 —
- * 방출기는 원점을 더하기만 하면 된다([placeLinkSeats]).
- */
-function skipFluidRows(rows: readonly number[] | undefined): (r: number) => number {
-  if (!rows?.length) return (r) => r;
-  const sorted = [...rows].sort((a, b) => a - b);
-  return (r) => {
-    let v = r;
-    for (const s of sorted) if (v >= s) v += 1;
-    return v;
-  };
 }
 
 /**
@@ -263,7 +266,7 @@ function tryLinkFace(
   face: PortFace,
   allowPipeFace = false,
 ): LinkFaceCandidate | undefined {
-  const { machine, count, used, faceGroups } = ctx;
+  const { machine, count } = ctx;
   // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
   // ([linkFaceDepths] → `pipeJumpMode` 조건 ①) [ClusterPipe] 가 우리 포트 끝(d`laneDepth+2`)
   // **밖으로** 물러나 그 면이 여러 칸 넓어진다. 갈 곳이 있으면 그쪽이 낫다 — *"없는 위험 때문에
@@ -294,7 +297,8 @@ function tryLinkFace(
     // 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다.
     const g = face === "S" ? mi : mi - 1;
     const gap = g >= 0 && g < count - 1 ? g : undefined;
-    const base = used.get(seatKey(mi, face)) ?? 0;
+    const gapTable = tableOf(ctx, face);
+    const base = seatsTaken(gapTable, mi);
     // 좌석 수는 [faceSeatArms] 가 낸다(붓기·배정이 같은 자를 쓴다). gap 면(N/S)의 길이 방향
     // 칸은 `machine.w` 이고, 파이프는 W/E 에만 붙으므로 여기 유체 행은 언제나 0이다.
     if (base + k > faceSeatArms(machine.w, 0)) return undefined; // 이 면의 좌석(열)이 다 찼다
@@ -302,7 +306,7 @@ function tryLinkFace(
     // (탐색 없이 순번으로 결정. 줄이 달라야 두 벨트가 **합류하지 않는다**).
     // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
     // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
-    const nth = faceGroups.get(seatKey(mi, face)) ?? 0;
+    const nth = groupsOn(gapTable, mi);
     return { face, gap, arms, laneDepth: LINK_LANE_DEPTH, exitDepth: LINK_LANE_DEPTH + nth };
   }
 
@@ -311,9 +315,10 @@ function tryLinkFace(
   // **자는 [faceSeatArms] 하나다** — 붓기([edgeLinkGroups])가 같은 함수를 `fluidRows = 0` 으로
   // 부른다. 이쪽은 면이 정해진 뒤라 실제 유체 행 수를 안다. 그 차이가 곧 붓기의 낙관이고,
   // 이제 주석이 아니라 **인자**로 드러난다.
+  const table = tableOf(ctx, face);
   const seatRows = faceSeatArms(machine.h, pf?.rows.length ?? 0);
   for (const [mi, k] of arms) {
-    if ((used.get(seatKey(mi, face)) ?? 0) + k > seatRows) return undefined;
+    if (seatsTaken(table, mi) + k > seatRows) return undefined;
   }
   // **머신 여럿을 맡는 그룹이 여기서 통과한다**(2026-08-16 — 계획서 §19).
   //
@@ -334,8 +339,7 @@ function tryLinkFace(
     ? (["N", "S"] as const).find((e) => !endsTaken?.has(e))
     : undefined;
   for (const laneDepth of laneDepthsOf(ctx, face)) {
-    const taken = ctx.lanes.get(`${face}|${laneDepth}`);
-    if (taken?.some(([a, b]) => span[0] <= b && a <= span[1])) continue;
+    if (!laneClear(table, laneDepth, span[0], span[1])) continue;
     return { face, arms, laneDepth, portEnd };
   }
   // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
@@ -343,50 +347,44 @@ function tryLinkFace(
 }
 
 /**
- * [tryLinkFace] 가 낸 배정을 장부에 확정한다 — 좌석(팔 수)과 그룹 수를 따로 센다.
- * 둘은 유도가 안 된다: 좌석은 **팔마다** 하나, 반출 줄은 **그룹마다** 하나다.
+ * [tryLinkFace] 가 낸 배정을 **표에 적는다** — 좌석 칸과 (gap 이 아니면) 벨트 칸.
  *
- * **여기서 순번([LinkFacePlan.slotIndex])도 함께 낸다.** 장부를 늘리기 직전의 값(`base`)이
- * 곧 "이 그룹이 몇 번째 칸부터 쓰나" 이므로, 확정과 순번은 **같은 순간의 같은 사실**이다.
+ * **여기서 순번([LinkFacePlan.slotIndex])도 함께 낸다.** 칸을 차지하기 직전에 고른 빈 칸이
+ * 곧 "이 그룹이 몇 번째 칸을 쓰나" 이므로, 확정과 순번은 **같은 순간의 같은 사실**이다.
  * 나눠 두면 나중 단계가 같은 누적을 다시 세야 한다(옛 `placeLedger`).
+ *
+ * 예전엔 장부 둘(`used`·`faceGroups`)을 따로 밀고 셋째(`lanes`)에 구간을 얹었다. 지금은
+ * **주인을 적는 일 한 번**이고, 옛 두 수는 그 주인들을 세면 나온다([seatsTaken]·[groupsOn]).
  */
 function commitLinkFace(
   ctx: LinkFaceContext,
   cand: LinkFaceCandidate,
   side: "from" | "to",
 ): LinkFacePlan {
-  const { machine, used, faceGroups } = ctx;
   const isGap = cand.face === "N" || cand.face === "S";
-  // **좌석 장부를 늘리기 전에** 잰다 — [beltRowSpan] 이 `used` 를 읽어 시작 행을 안다.
+  const table = tableOf(ctx, cand.face);
+  // **칸을 차지하기 전에** 잰다 — [beltRowSpan] 이 빈 칸을 읽어 시작 행을 안다.
   const span = isGap ? undefined : beltRowSpan(ctx, cand.face, cand.arms);
   // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
   // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
   const fromEast = isGap && side === "to";
-  // **유체 상자 행을 여기서 건너뛴다.** 장부(`used`)는 논리 칸을 세고, 순번은 실제 행으로
-  // 나간다 — 그래야 방출기가 원점만 더하면 된다. gap 면은 유체가 없어 항등이다.
-  const remap = skipFluidRows(isGap ? undefined : ctx.pipeFaces?.get(cand.face)?.rows);
+  const owner = takeOwner(table);
   const slotIndex = new Map<number, number[]>();
   // 머신 index 오름차순 — 방출 순서가 결정적이어야 한다.
   for (const [mi, k] of [...cand.arms].sort((a, b) => a[0] - b[0])) {
-    const key = seatKey(mi, cand.face);
-    const base = used.get(key) ?? 0;
-    used.set(key, base + k);
-    faceGroups.set(key, (faceGroups.get(key) ?? 0) + 1);
-    // 면의 길이 방향 칸 수 — W/E 면은 세로(h), N/S 면은 가로(w).
-    const span = isGap ? machine.w : machine.h;
-    slotIndex.set(
-      mi,
-      fromEast
-        ? Array.from({ length: k }, (_, t) => span - 1 - base - t).reverse()
-        : Array.from({ length: k }, (_, t) => remap(base + t)),
-    );
+    // W/E 는 빈 칸을 앞에서부터(유체 칸은 이미 차 있어 저절로 건너뛴다),
+    // gap 은 **동쪽 끝에서부터** — 막힌 면의 [[ParallelBelt]]가 "포트에 가까운 그룹이 얕은 줄"
+    // 이라야 성립하고, 입력의 포트는 동쪽이기 때문이다.
+    const base = seatsTaken(table, mi);
+    const slots = fromEast
+      ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
+      : freeSeatRows(table, mi).slice(0, k);
+    claimSeats(table, mi, slots, owner);
+    slotIndex.set(mi, slots);
   }
-  // 레인 장부 — gap(N/S)은 안 센다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
+  // 벨트 칸 — gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
-  if (span) {
-    const key = `${cand.face}|${cand.laneDepth}`;
-    ctx.lanes.set(key, [...(ctx.lanes.get(key) ?? []), span]);
-  }
+  if (span) claimLane(table, cand.laneDepth, span[0], span[1], owner);
   if (cand.portEnd) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
     set.add(cand.portEnd);
@@ -553,17 +551,23 @@ export function linkFaceDepths(
 /**
  * 면마다 링크가 먹은 **최대 좌석 수**(머신 하나 기준) — planner 의 좌석 예산에서 뺄 값.
  *
- * W/E 만 반환하지 않는다 — `used` 의 키는 [tryLinkFace] 가 N/S(gap 스필)에도 똑같이
- * 적는다(`seatKey(mi, "N"|"S")`). **지금은** planner 가 N/S 를 시도하는 유일한 경로
- * (`input.nsFaces`)가 count=1 일 때만 켜지고, gap 스필은 count≥2 일 때만 생겨 서로
- * 상호배타라 이 값이 없어도 조용히 안 터졌다 — 그건 우연이지 설계가 아니다. 계산해 둔
- * 값을 버리지 않는 쪽이 항상 맞다(2026-07-21, [발견 ③] 근치).
+ * W/E 만 반환하지 않는다 — 표는 [tryLinkFace] 가 N/S(gap 스필)에도 똑같이 만든다.
+ * **지금은** planner 가 N/S 를 시도하는 유일한 경로(`input.nsFaces`)가 count=1 일 때만
+ * 켜지고, gap 스필은 count≥2 일 때만 생겨 서로 상호배타라 이 값이 없어도 조용히 안 터졌다 —
+ * 그건 우연이지 설계가 아니다. 계산해 둔 값을 버리지 않는 쪽이 항상 맞다
+ * (2026-07-21, [발견 ③] 근치).
+ *
+ * **파이프 칸은 안 센다** — 이 값을 받는 `insertingPlanner` 가 유체 행을 이미 따로 뺀다
+ * (`seatRowsOf` 의 `afterPipe − seatRowsUsed`). [seatsTaken] 이 그룹 칸만 세는 것이 그 짝이다.
  */
-export function seatRowsByFace(used: Map<string, number>): Partial<Record<PlannedSide, number>> {
+export function seatRowsByFace(
+  tables: ReadonlyMap<PortFace, FaceTable>,
+): Partial<Record<PlannedSide, number>> {
   const by: Partial<Record<PlannedSide, number>> = {};
-  for (const [k, v] of used) {
-    const face = k.slice(k.indexOf(":") + 1) as PlannedSide;
-    by[face] = Math.max(by[face] ?? 0, v);
+  for (const [face, t] of tables) {
+    let max = 0;
+    for (let mi = 0; mi < t.machineCount; mi++) max = Math.max(max, seatsTaken(t, mi));
+    by[face as PlannedSide] = Math.max(by[face as PlannedSide] ?? 0, max);
   }
   return by;
 }

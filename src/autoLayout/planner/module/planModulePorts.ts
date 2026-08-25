@@ -58,6 +58,7 @@ import {
   type LinkFaceContext,
   type LinkFacePlan,
 } from "./linkPlanner";
+import type { FaceTable } from "./faceTable";
 import type { PortFace } from "../../containerModel";
 
 /**
@@ -201,15 +202,12 @@ export function planModulePorts(
   // 좌표보다 면이 먼저다.
   const outLinks = input.outputLinks ?? [];
   const inLinks = input.inputLinks ?? [];
-  const faceLedger = new Map<string, number>();
-  // 면마다 **그룹이 몇 개** 앉았나 — 막힌 면의 [[ParallelBelt]](몇 번째가 몇 칸 깊이로 달리나)를
-  // 순번으로 정한다. 좌석 장부(팔 수)에서 유도되지 않는 별개의 수다.
-  const faceGroupLedger = new Map<string, number>();
-  // 레인 장부 — 관통 그룹이 그 면의 한 깊이를 통째로 청구한다([LinkFaceContext.lanes]).
-  const laneLedger = new Map<string, Array<readonly [number, number]>>();
+  // **면마다 좌석표 한 장** — 이 배정이 아는 자리의 전부다(옛 장부 셋이 여기로 접혔다).
+  // 표는 [tryLinkFace] 가 그 면을 처음 볼 때 만들어진다(유체 칸을 미리 찍어서).
+  const faceTables = new Map<PortFace, FaceTable>();
   const faceCtx: LinkFaceContext = {
-    machine: input.machine, count, used: faceLedger, faceGroups: faceGroupLedger, pipeFaces: pipeFaceRows,
-    lanes: laneLedger, ends: new Map(), inserters: input.inserters,
+    machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
+    ends: new Map(), inserters: input.inserters,
   };
   const outFaces = allocateLinkFaces(faceCtx, outLinks, "from", "W");
   const inFaces = allocateLinkFaces(faceCtx, inLinks, "to", "E");
@@ -273,7 +271,7 @@ export function planModulePorts(
       inserters: plannerInserters,
       outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
       nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
-      seatRowsUsed: seatRowsByFace(faceLedger), // ①이 먼저 먹은 행
+      seatRowsUsed: seatRowsByFace(faceTables), // ①이 먼저 먹은 행
       pipeFaces, // 유체가 붙는 면들 + 그 면의 유체 행 수·점프 여부.
       belts: input.belts,
     },
