@@ -37,10 +37,18 @@ const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 // 자식 2대. 머신0 이 부모0·부모1 로 갈라 낸다(fan-out).
 //   머신0 → 부모0 (팔1), 머신0 → 부모1 (팔1)  → 목적지가 다르니 **벨트도 따로**
 //   머신1 → 부모1 (팔1)                        → 자기 벨트
+// **rate 는 팔 하나 안에 들어가야 한다** — 아래 `from`/`to` 가 "팔 1개"라고 적고 있고,
+// 배정이 `carries` 로 팔 수를 다시 세기 때문이다(`armsAt` — 계획서 §16).
+// 둘이 어긋나면 그건 검사의 의도가 아니라 **입력**이 깨진 것이다(`testScale.ts` 머리말).
+//
+// 2026-08-26 까지 여기 `rate: 5` 였다. reach 1 팔이 2.4/s 라 실제로는 팔 3개짜리 줄인데
+// `from` 은 1이라고 적혀 있었다 — 옛 코드가 `from` 만 읽어서 드러나지 않던 모순이다.
+const ARM_TP = 2.4; // 아래 base.inserters 의 reach 1 처리량
+const RATE = ARM_TP / 2; // 팔 하나 안에 든다 → armsFor = 1
 const flat: Flow[] = [
-  { fromMachine: 0, toMachine: 0, item: "gear", rate: 5 },
-  { fromMachine: 0, toMachine: 1, item: "gear", rate: 5 },
-  { fromMachine: 1, toMachine: 1, item: "gear", rate: 5 },
+  { fromMachine: 0, toMachine: 0, item: "gear", rate: RATE },
+  { fromMachine: 0, toMachine: 1, item: "gear", rate: RATE },
+  { fromMachine: 1, toMachine: 1, item: "gear", rate: RATE },
 ];
 // 흐름(Flow) → 벨트 줄(Link). 여기서는 흐름마다 줄 하나·팔 하나로 편다.
 const groups: Link[] = flat.map((l) => ({
@@ -505,7 +513,7 @@ describe("포트가 운반량·티어를 들고 나간다", () => {
   const mod = generateModule({ ...base, outputLinks: tiered });
 
   it("포트마다 그 줄의 적재 합이 실린다", () => {
-    expect(mod.outputPorts.map((p) => p.rate)).toEqual([5, 5, 5]);
+    expect(mod.outputPorts.map((p) => p.rate)).toEqual([RATE, RATE, RATE]);
   });
 
   it("포트마다 그 줄이 고른 티어가 실린다", () => {

@@ -376,7 +376,7 @@ export function planModulePorts(
         assignments: 1,
         multiLaneFace: lanes.length > 1 ? 1 : 0,
         deepLane: deep ? 1 : 0,
-        armMismatch: mismatch ? 1 : 0,
+        deepLaneOtherArm: mismatch ? 1 : 0,
       });
     }
   }

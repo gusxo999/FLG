@@ -75,8 +75,8 @@ export interface RowChannelCounters {
  * 묻는 것은 둘이다. *"결함이 실물에서 발현하나"* 를 **수로** 답한다:
  *
  * ```
- * deepLane / armMismatch   결함 A — 팔 개수를 센 인서터와 실제로 앉는 인서터가 다르다
- * netTrips                 결함 B — 포트 칸이 장부에 없어 방출에서 부딪힌다
+ * deepLane / deepLaneOtherArm   둘째 레인이 쓰이나, 그 팔이 얕은 레인과 다른가
+ * netTrips                      **경보** — 포트 칸 다툼이 방출까지 갔다(결함 B)
  * ```
  *
  * `netTrips` 는 `emitModule` 의 두 안전망(`:278`·`:430`)이다. 그 줄들은 스스로
@@ -92,14 +92,24 @@ export interface FaceLaneCounters {
   multiLaneFace: number;
   /** 그중 **가장 얕은 후보가 아닌** 레인에 앉은 것 — 조건 ②가 서나(계획서의 `B수`). */
   deepLane: number;
-  /** `deepLane` 중 그 레인의 팔 처리량이 reach-1 과 **다른** 것 — 조건 ③까지 선 것. */
-  armMismatch: number;
+  /**
+   * `deepLane` 중 그 레인의 팔 처리량이 가장 얕은 레인과 **다른** 것.
+   *
+   * **뜻이 Step 2 에서 뒤집혔다.** 예전엔 이 수가 곧 결함 A 였다 — 팔 개수를 얕은 레인
+   * 기준으로 세 놓고 깊은 레인의 느린 팔을 앉혔으니, 갈리는 만큼 그 줄이 굶었다.
+   * 지금은 [armsAt] 이 **그 레인의 팔로 개수를 다시 세므로** 갈려도 맞는 값이고,
+   * 이 수는 *"긴팔이 실제로 값을 하고 있다"* 는 관측치다.
+   *
+   * 결함 A 는 이제 **구성상 발생할 수 없다**(세는 곳과 앉는 곳이 같은 인서터를 본다).
+   * 그래서 이 수를 경보로 읽지 않는다 — 경보는 [netTrips] 하나다.
+   */
+  deepLaneOtherArm: number;
   /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
   netTrips: number;
 }
 
 const freshFaceLanes = (): FaceLaneCounters => ({
-  assignments: 0, multiLaneFace: 0, deepLane: 0, armMismatch: 0, netTrips: 0,
+  assignments: 0, multiLaneFace: 0, deepLane: 0, deepLaneOtherArm: 0, netTrips: 0,
 });
 
 export interface RunStats {

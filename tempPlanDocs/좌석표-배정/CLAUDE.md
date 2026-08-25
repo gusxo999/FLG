@@ -1,11 +1,9 @@
 # 좌석표 — 작업 컨텍스트
 
-> 상태: **Step 0·1 완료(2026-08-26) — Step 2 진행 중.**
-> Step 1 로 장부 셋이 [FaceTable] 한 장으로 접혔다(동치 검증 8건 · 실물 4트리 수 불변).
-> **실측이 결함 둘을 확인했다.** `electronic-circuit` 은 결함 B 로 **트리가 거절된다**
-> (`unrouted-lines: input:stone-tablet` — 사유 없음). `advanced-circuit` 은 깊은레인 626건
-> 전부가 팔 어긋남이다. 수는 계획서 §5 Step 0 의 표.
-> → **Step 1·2 는 버그 수정을 겸한다.**
+> 상태: **Step 0·1·2 완료(2026-08-26) — Step 3 승인 대기.**
+> Step 1 로 장부 셋이 [FaceTable] 한 장으로 접혔고, Step 2 로 **결함 둘이 닫혔다** —
+> 실물 4트리에서 안전망(포트 칸 다툼)이 전부 0이 됐고 `advanced-circuit` 은 이슈가 2건 줄었다.
+> 수는 계획서 §5 의 각 Step 완료 절.
 
 ## 이 계획이 무엇인가 — **수단이지 목표가 아니다**
 
@@ -86,11 +84,17 @@ B  포트 인서터·상자(d+1·d+2)가 레인 장부에 없다        ← 요�
 | 배정은 `allocateLinkFaces` **하나**가 한다(`emitTapInserting` 은 삭제됨) | `grep -rn "emitTapInserting" src/ --include=*.ts` 가 주석만 문다 | 2026-08-25 ✅ |
 | `Link` 를 만드는 곳은 `createLinks` 하나(그리고 그것을 부르는 `externalLineGroups`) | `link.ts:185`·`:506` 외에 생성처 없음 | 2026-08-25 ✅ |
 | `Link.carries` 를 읽는 곳은 `link.ts` 안뿐 | `grep -rn "carries" src/autoLayout` — 밖에서 0건 | 2026-08-25 ✅ |
+| ~~`Link.carries` 가 언제나 있다~~ | **거짓** — 테스트 픽스처가 손으로 `Link` 를 만들며 자주 뺀다. `armsAt` 이 없으면 `from`/`to` 로 물러난다 | 2026-08-26 ❌ 정정 |
 | `laneDepth = reach + 1` 항등 (케이스 B 없음) | `laneDepthsOf` 가 `r + 1` 만 낸다 · 케이스 B 는 2026-08-16 삭제 | 2026-08-25 ✅ |
 | **레인 장부는 벨트 깊이 하나만 싣는다** — 포트 두 칸이 없다 | `linkPlanner.ts` 에서 `lanes.set`/`lanes.get` 이 `:385`·`:334` **두 곳뿐**이고 둘 다 `\|laneDepth` | 2026-08-25 ✅ |
-| 포트는 진출 행의 `d+1`·`d+2` **두 칸**뿐 | `makeLinkPortChest`(`emitModule.ts:66`) — `pfv`·`2·pfv` | 2026-08-25 ✅ |
-| 팔 수 소비자는 `tryLinkFace`/`commitLinkFace` 뿐 | `Link.from/to` 의 다른 독자는 명단만 쓴다(`machinesOn`·`spansAllMachines`) | **착수 첫 항목으로 재확인** |
+| ~~포트는 진출 행의 `d+1`·`d+2` 두 칸뿐~~ | **절반만 참** — `pfv = faceVector(portEnd ?? face)` 라 **관통 그룹은 행 방향**으로 나간다(`(topT∓1, d)`). 둘 다 `(행,깊이)`라 표가 표현한다 | 2026-08-26 ⚠ 정정 |
+| 팔 수 소비자는 `tryLinkFace`/`commitLinkFace` 뿐 | `Link.from/to` 의 다른 독자는 명단만 쓴다(`machinesOn`·`spansAllMachines`) | 2026-08-26 ✅ |
 
 ## 실제로 밟은 함정
 
-(아직 없다 — 실행하며 채운다)
+| 무엇 | 어떻게 드러났나 |
+|---|---|
+| **픽스처가 자기모순이었다** | `emitOutputLinks.test.ts` 가 `from: 1개` 라고 적고 `carries: rate 5`(팔 3개)를 들고 있었다. 옛 코드가 `from` 만 읽어 안 드러났다 — 배정이 `carries` 로 다시 세자 터졌다. **의도를 살려 입력을 고쳤다**(rate 를 팔 하나 안으로) |
+| **벨트 셀 수 ≠ 팔 수** | 관통 줄의 벨트는 좌석 **사이 행까지** 덮으므로 셀 수가 구간 길이다. 첫 테스트가 그걸로 팔을 세다 틀렸다 — 머신 하나짜리 줄에만 그 등식이 선다 |
+| **콘솔의 `await import()` 가 다른 인스턴스를 준다** | 파일을 고친 뒤 Vite 가 앱에는 `?t=…` 붙은 URL 을 주는데 콘솔의 맨 경로 import 는 **새 인스턴스**를 만든다. `readRunStats()` 가 전부 0으로 보였다 — 앱이 쓰는 값은 **`flg.report()`** 로 읽어야 한다 |
+| **계측기의 뜻이 고치는 도중에 뒤집힌다** | `armMismatch` 는 Step 2 전엔 결함이었고 후엔 정상 관측치다. 이름을 `deepLaneOtherArm` 으로 바꿨다 — 안 바꾸면 다음 세션이 정상을 경보로 읽는다 |

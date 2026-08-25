@@ -264,19 +264,10 @@ export function createLinks(
 
   // **팔 수는 적재 목록에서 유도된다.** 한 머신이 이 줄에서 주고받는 rate 를 모아 한 번만
   // 올린다(조각마다 올리면 팔이 부풀어 오른다). 밖인 끝은 명단이 비어 나온다.
-  const armsBy = (side: "from" | "to", line: Pour): Map<number, number> => {
-    const per = new Map<number, number>();
-    for (const c of line.carries) {
-      const mi = c[side];
-      if (mi === undefined) continue;
-      per.set(mi, (per.get(mi) ?? 0) + c.rate);
-    }
-    return new Map([...per].map(([mi, r]) => [mi, armsFor(r, inserter) ?? 1]));
-  };
   return lines.map((line) => ({
     item,
-    from: armsBy("from", line),
-    to: armsBy("to", line),
+    from: armsFromCarries(line.carries, "from", inserter),
+    to: armsFromCarries(line.carries, "to", inserter),
     carries: line.carries,
     beltEntityName: line.belt,
   }));
@@ -284,6 +275,47 @@ export function createLinks(
 
 /** 붓기의 부동소수 여유 — rate 가 60.5 같은 분수라 경계에서 흔들린다. */
 const POUR_EPS = 1e-9;
+
+/**
+ * **적재 목록 → 머신별 팔 수.** 한 머신이 이 줄에서 주고받는 rate 를 모아 **마지막에 한 번만**
+ * 올린다 — 조각마다 `ceil` 하면 팔이 부풀어 오른다. 밖인 끝(`undefined`)은 명단에서 빠진다.
+ */
+function armsFromCarries(
+  carries: ReadonlyArray<LinkCarry>,
+  side: "from" | "to",
+  inserter: SpecInserter,
+): Map<number, number> {
+  const per = new Map<number, number>();
+  for (const c of carries) {
+    const mi = c[side];
+    if (mi === undefined) continue;
+    per.set(mi, (per.get(mi) ?? 0) + c.rate);
+  }
+  return new Map([...per].map(([mi, r]) => [mi, armsFor(r, inserter) ?? 1]));
+}
+
+/**
+ * **이 줄을 그 인서터로 먹이면 머신마다 팔이 몇 개인가** — 배정이 레인 후보마다 묻는다.
+ *
+ * 축은 깊이가 아니라 `(인서터, 그 팔이 집는 타일)` 이다(계획서 §16). 레인을 고르면 팔 종류가
+ * 정해지고, 팔 종류가 처리량을 정하고, 처리량이 팔 **개수**를 정한다. 그래서 개수는 레인을
+ * 고르기 **전에** 셀 수 없다 — 그걸 미리 세던 것이 결함 A 다.
+ *
+ * **적재 목록이 없으면 `from`/`to` 를 그대로 돌려준다** — 수량을 모르면 지어내지 않는다는
+ * 규칙 그대로다(픽스처처럼 rate 없이 팔 수만 적어 준 줄이 여기 해당한다). 그런 줄은 레인이
+ * 바뀌어도 팔 수가 안 변하므로 **오늘 동작 그대로**다.
+ *
+ * **[createLinks] 와 같은 산술을 쓴다** — 그쪽이 reach 1 로 부른 결과가 곧 `from`/`to` 이므로,
+ * `armsAt(group, side, reach1 인서터)` 는 `group[side]` 와 **같은 값**이다(`link.form.test.ts`).
+ */
+export function armsAt(
+  group: Link,
+  side: "from" | "to",
+  inserter: SpecInserter | undefined,
+): Map<number, number> {
+  if (!group.carries || !inserter) return group[side];
+  return armsFromCarries(group.carries, side, inserter);
+}
 
 /**
  * ─────────────────────────────── 판독 ───────────────────────────────

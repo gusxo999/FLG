@@ -21,9 +21,9 @@
  * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
  */
 
-import { faceSeatArms } from "../../buildSpec";
+import { faceSeatArms, inserterForReach, type SpecInserter } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
-import { machinesOn, spansAllMachines, type Link } from "../../module/link";
+import { armsAt, machinesOn, spansAllMachines, type Link } from "../../module/link";
 import type { PlannedSide } from "./clusterPortPlanner";
 import {
   claimLane, claimSeats, freeSeatRows, groupsOn, laneClear, makeFaceTable,
@@ -172,10 +172,14 @@ export interface LinkFaceContext {
    */
   ends: Map<PortFace, Set<"N" | "S">>;
   /**
-   * 쓸 수 있는 팔의 종류 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
+   * 쓸 수 있는 팔 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
    * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 레인 수다. 비면 d2 하나로 본다.
+   *
+   * **처리량까지 든다** — 레인을 고르면 그 팔의 처리량이 팔 **개수**를 정하기 때문이다
+   * ([armsAt]). 예전엔 `{ reach }` 만 받아서 개수를 못 셌고, 그래서 붓기가 reach 1 로
+   * 미리 센 수를 그대로 썼다(결함 A).
    */
-  inserters?: readonly { reach: number }[];
+  inserters?: readonly SpecInserter[];
 }
 
 /**
@@ -227,14 +231,38 @@ function beltRowSpan(
 }
 
 /**
- * 그룹이 머신마다 몇 팔을 쓰나. `side` 는 이 그룹을 **어느 쪽 관점**에서 보나다 —
- * "from"(출력, 자식 머신 하나 고정) 이면 항목이 하나뿐이고, "to"(입력, 부모 머신 여럿)
- * 이면 `taps` 를 그대로 목적지별로 편다.
+ * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`. 표 밖(기둥 위/아래)이면 뺀다.
+ *
+ * **방향이 `portEnd` 로 갈린다.** 계획서가 한동안 *"포트는 언제나 `d+1`·`d+2`"* 라고 적었는데
+ * **관통 그룹은 그렇지 않다**(2026-08-26 코드 확인):
+ *
+ * ```
+ * 옆 포트 (portEnd 없음)   벨트에서 **바깥으로**  → (topT, d+1) · (topT, d+2)
+ * 기둥 끝 (portEnd N/S)    벨트에서 **행 방향**   → (topT∓1, d) · (topT∓2, d)
+ * ```
+ *
+ * `makeLinkPortChest` 가 `trunkEnd + pfv`·`+2·pfv` 에 놓고, `pfv = faceVector(portEnd ?? face)`
+ * 이기 때문이다(`emitModule.ts:66`·`:214`·`:381`). 관통이면 그 두 칸이 기둥 **밖**이라
+ * 대개 표를 안 건드리지만, 앞선 그룹이 첫 행을 먼저 먹었으면 **표 안으로 들어온다.**
+ *
+ * `topT` 는 흐름이 향하는 끝이다 — `portEnd === "S"` 면 구간의 아래 끝, 아니면 위 끝
+ * (`emitOutputLinks:221`·`emitInputLinks:373` 이 같은 규칙을 쓴다).
  */
-function armsByMachine(group: Link, side: "from" | "to"): Map<number, number> {
-  // 구조가 대칭이라 그냥 그쪽을 본다([Link] — 2026-07-23 정의 확장 전에는
-  // fromMachine(스칼라)과 taps(배열)를 각각 풀어 Map 으로 만들어야 했다).
-  return group[side];
+function portCells(
+  cand: Pick<LinkFaceCandidate, "laneDepth" | "portEnd">,
+  span: readonly [number, number],
+  table: FaceTable,
+): Array<readonly [number, number]> {
+  const topT = cand.portEnd === "S" ? span[1] : span[0];
+  const cells: Array<readonly [number, number]> = cand.portEnd
+    ? (() => {
+        const dir = cand.portEnd === "S" ? 1 : -1;
+        return [[topT + dir, cand.laneDepth], [topT + 2 * dir, cand.laneDepth]] as const;
+      })()
+    : [[topT, cand.laneDepth + 1], [topT, cand.laneDepth + 2]];
+  // 기둥 밖 행은 표에 없다 — 아무도 청구할 수 없으니 다툴 일도 없다.
+  const last = table.rowsPerMachine * table.machineCount - 1;
+  return cells.filter(([r]) => r >= 0 && r <= last);
 }
 
 /**
@@ -283,9 +311,12 @@ function tryLinkFace(
   const pf = face === "W" || face === "E" ? ctx.pipeFaces?.get(face) : undefined;
   const opposite: PortFace = face === "W" ? "E" : "W";
   if (pf && !allowPipeFace && !ctx.pipeFaces?.has(opposite)) return undefined;
-  const arms = armsByMachine(group, side);
-  for (const mi of arms.keys()) if (mi < 0 || mi >= count) return undefined;
+  // **gap 벨트의 레인은 언제나 `LINK_LANE_DEPTH`(d2) 라 팔이 하나로 정해진다** — 깊이를
+  // 고를 여지가 없으므로 여기서 한 번만 센다. W/E 는 아래 레인 루프가 후보마다 다시 센다.
+  const gapArms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], LINK_LANE_DEPTH - 1));
+  for (const mi of gapArms.keys()) if (mi < 0 || mi >= count) return undefined;
   if (face === "N" || face === "S") {
+    const arms = gapArms;
     // **gap(가로) 벨트는 아직 머신 하나만 맡는다.** 가로 줄 하나가 위·아래 두 대를 먹이는 것은
     // 별개 능력이고(좌석이 gap 양쪽에 하나씩 앉아야 한다), 그 전엔 조용히 겹치는 대신
     // **정직하게 자리 없음**으로 떨어뜨린다.
@@ -317,9 +348,6 @@ function tryLinkFace(
   // 이제 주석이 아니라 **인자**로 드러난다.
   const table = tableOf(ctx, face);
   const seatRows = faceSeatArms(machine.h, pf?.rows.length ?? 0);
-  for (const [mi, k] of arms) {
-    if (seatsTaken(table, mi) + k > seatRows) return undefined;
-  }
   // **머신 여럿을 맡는 그룹이 여기서 통과한다**(2026-08-16 — 계획서 §19).
   //
   // 예전엔 `arms.size !== 1` 로 통째로 거절했다. 사유는 *"관통하는 순간 다른 그룹과 depth 를
@@ -328,9 +356,9 @@ function tryLinkFace(
   // 그룹끼리는 같은 깊이를 **나눠 쓴다.** 첫 칸이 언제나 포트 쪽으로 꺾여 행이 붙어도 두 벨트가
   // 이어지지 않는다([emitOutputLinks] ①).
   //
-  // 그래서 자원이 둘이다 — **좌석 행**(바로 위, 머신마다)과 **레인 × 행**(아래, 면마다).
+  // 그래서 자원이 둘이다 — **좌석 행**(머신마다)과 **레인 × 행**(면마다).
   // 관통 그룹은 사이 행까지 통으로 먹으므로 레인 하나를 통째로 청구하는 셈이 된다.
-  const span = beltRowSpan(ctx, face, arms);
+  //
   // **관통이면 기둥 끝을 청구한다**([LinkFacePlan.portEnd]). 못 받으면 옆으로 — 그때는
   // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
   const spanning = spansAllMachines(group, side, count);
@@ -338,8 +366,23 @@ function tryLinkFace(
   const portEnd = spanning
     ? (["N", "S"] as const).find((e) => !endsTaken?.has(e))
     : undefined;
+
+  // **레인마다 팔 수를 다시 센다**(계획서 §16 · 결함 A). 레인이 인서터를 정하고, 인서터가
+  // 처리량을 정하고, 처리량이 팔 **개수**를 정한다 — 그러니 좌석 검사도 레인마다 다르다.
+  // 예전엔 팔 수를 reach 1 로 못박아 미리 세고 레인만 골랐고, 그 줄이 d3 에 앉으면
+  // **센 팔과 앉는 팔이 갈렸다**(실측: 10/s 로 세고 3.6/s 가 앉았다).
   for (const laneDepth of laneDepthsOf(ctx, face)) {
+    const arms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], laneDepth - 1));
+    let seatsFit = true;
+    for (const [mi, k] of arms) if (seatsTaken(table, mi) + k > seatRows) seatsFit = false;
+    if (!seatsFit) continue; // 이 팔로는 좌석이 모자란다 — 다음 레인이 더 빠를 수 있다
+    const span = beltRowSpan(ctx, face, arms);
     if (!laneClear(table, laneDepth, span[0], span[1])) continue;
+    // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 레인
+    // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
+    // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
+    if (portCells({ laneDepth, portEnd }, span, table).some(([r, d]) => !laneClear(table, d, r, r)))
+      continue;
     return { face, arms, laneDepth, portEnd };
   }
   // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
@@ -384,7 +427,12 @@ function commitLinkFace(
   }
   // 벨트 칸 — gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
-  if (span) claimLane(table, cand.laneDepth, span[0], span[1], owner);
+  if (span) {
+    claimLane(table, cand.laneDepth, span[0], span[1], owner);
+    // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
+    // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
+    for (const [r, d] of portCells(cand, span, table)) claimLane(table, d, r, r, owner);
+  }
   if (cand.portEnd) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
     set.add(cand.portEnd);
