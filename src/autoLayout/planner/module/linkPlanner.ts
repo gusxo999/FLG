@@ -43,6 +43,15 @@ export interface LinkFacePlan {
    */
   laneDepth: number;
   /**
+   * **이 줄의 좌석에 앉을 팔** — `reach` 로 지목한다([inserterForReach]).
+   *
+   * **깊이에서 되유도하지 않는다.** 오늘은 `laneDepth = reach + 1` 이 항등이라 두 방법이
+   * 같은 답을 내지만, 축은 깊이가 아니라 `(인서터, 그 팔이 집는 타일)` 이고(계획서 §16)
+   * 그 항등이 깨지는 날(케이스 B 부활 · 유체 면 `laneCap`) **조용히 틀린다.**
+   * 그리고 팔 **개수**를 이 팔로 셌으므로([armsAt]), 놓는 팔도 이것이라야 짝이 맞는다.
+   */
+  reach: number;
+  /**
    * **반출 깊이 — gap 전용.**
    *
    * W/E 면에서는 빠져나가는 방향이 면과 **수직**이라, 벨트가 자기 좌석 구간만 덮고 끝에서
@@ -338,7 +347,10 @@ function tryLinkFace(
     // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
     // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
     const nth = groupsOn(gapTable, mi);
-    return { face, gap, arms, laneDepth: LINK_LANE_DEPTH, exitDepth: LINK_LANE_DEPTH + nth };
+    return {
+      face, gap, arms, laneDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1,
+      exitDepth: LINK_LANE_DEPTH + nth,
+    };
   }
 
   // 점프 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
@@ -371,11 +383,25 @@ function tryLinkFace(
   // 처리량을 정하고, 처리량이 팔 **개수**를 정한다 — 그러니 좌석 검사도 레인마다 다르다.
   // 예전엔 팔 수를 reach 1 로 못박아 미리 세고 레인만 골랐고, 그 줄이 d3 에 앉으면
   // **센 팔과 앉는 팔이 갈렸다**(실측: 10/s 로 세고 3.6/s 가 앉았다).
-  for (const laneDepth of laneDepthsOf(ctx, face)) {
-    const arms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], laneDepth - 1));
+  //
+  // **후보를 팔이 적게 드는 순으로 본다** — 좌석은 이 모델에서 **유일하게 못 늘리는 자원**
+  // 이라(`faceSeatArms`: 면의 d1 칸이 그것뿐), 팔이 적게 드는 레인이 그 면의 남은 예산을
+  // 가장 적게 태운다. 동률이면 **얕은 쪽** — 벨트 칸을 덜 먹고 [ClusterPipe] 를 덜 밀어낸다.
+  // `clusterPortPlanner.takeSeat`(:392)이 탭 경로에서 쓰는 규칙 **그대로**다(R3: 같은 판단을
+  // 두 곳이 다르게 하지 않는다). 예전엔 **도착 순으로 얕은 것부터**라 임의가 실패할 수 있는
+  // 자리에 있었다(R2).
+  const candidates = laneDepthsOf(ctx, face)
+    .map((laneDepth) => {
+      const arms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], laneDepth - 1));
+      let total = 0;
+      for (const k of arms.values()) total += k;
+      return { laneDepth, arms, total };
+    })
+    .sort((a, b) => a.total - b.total || a.laneDepth - b.laneDepth);
+  for (const { laneDepth, arms } of candidates) {
     let seatsFit = true;
     for (const [mi, k] of arms) if (seatsTaken(table, mi) + k > seatRows) seatsFit = false;
-    if (!seatsFit) continue; // 이 팔로는 좌석이 모자란다 — 다음 레인이 더 빠를 수 있다
+    if (!seatsFit) continue; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
     const span = beltRowSpan(ctx, face, arms);
     if (!laneClear(table, laneDepth, span[0], span[1])) continue;
     // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 레인
@@ -383,7 +409,7 @@ function tryLinkFace(
     // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
     if (portCells({ laneDepth, portEnd }, span, table).some(([r, d]) => !laneClear(table, d, r, r)))
       continue;
-    return { face, arms, laneDepth, portEnd };
+    return { face, arms, laneDepth, reach: laneDepth - 1, portEnd };
   }
   // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;

@@ -14,6 +14,7 @@ import type { PortFace } from "../../containerModel";
 const plan = (face: PortFace, laneDepth: number, exitDepth?: number): LinkFacePlan => ({
   face,
   laneDepth,
+  reach: laneDepth - 1,
   exitDepth,
   gap: face === "N" || face === "S" ? 0 : undefined,
   arms: new Map([[0, 1]]),

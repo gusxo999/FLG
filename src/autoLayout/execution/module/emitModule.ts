@@ -96,8 +96,8 @@ function makeLinkPortChest(o: {
  * 포트 인서터는 이 짝이 아니다: 벨트 바로 바깥 칸(d`laneDepth+1`)에 서서 벨트를 집으므로
  * **언제나 reach 1** 이다 — 그쪽은 `input.inserterEntityName` 을 그대로 쓴다.
  */
-function seatInserterName(input: ModuleInput, laneDepth: number): string {
-  return inserterForReach(input.inserters, laneDepth - 1)?.entityName ?? input.inserterEntityName;
+function seatInserterName(input: ModuleInput, reach: number): string {
+  return inserterForReach(input.inserters, reach)?.entityName ?? input.inserterEntityName;
 }
 
 function pushLinkPortEnd(o: {
@@ -116,6 +116,8 @@ function pushLinkPortEnd(o: {
   beltEntityName?: string;
   tapAnchor: { x: number; y: number };
   laneDepth: number;
+  /** 좌석 팔의 reach — `meta.inserter` 를 여기서 유도한다(깊이에서 되유도하지 않는다). */
+  reach: number;
   inserterEntityName: string;
   lineEnds: ModuleInput["lineEnds"];
   cells: PlacedCell[];
@@ -142,7 +144,9 @@ function pushLinkPortEnd(o: {
       // `portFace` 와 같은 값이어야 한다: gap 그룹은 서/동쪽 변으로 나가고, W/E 면 그룹은
       // 자기 면으로 나간다. 역할(출력=W·입력=E)로 찍던 옛 값은 그 둘이 늘 일치할 때만 맞았다.
       item: o.line.name, side: o.portFace, laneDepth: o.laneDepth,
-      inserter: o.laneDepth === 2 ? "normal" : "long",
+      // **계획이 지목한 팔에서 유도한다** — 예전엔 `laneDepth === 2 ? "normal" : "long"` 이라
+      // §16 이 경고한 `if (depth === 3)` 그 자체였다(깊이를 입력으로 두면 생긴다).
+      inserter: o.reach <= 1 ? "normal" : "long",
       amount: o.line.amount, endPreference: o.lineEnds?.get(`${o.role}:${o.line.name}`),
     },
   });
@@ -284,7 +288,7 @@ export function emitOutputLinks(args: {
     }
 
     // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로). 팔 종류는 [seatInserterName].
-    const seatArm = seatInserterName(input, laneDepth);
+    const seatArm = seatInserterName(input, plan.reach);
     const inward = { x: -fv.x, y: -fv.y };
     for (const s of seats) {
       for (const t of s.rows) {
@@ -313,7 +317,7 @@ export function emitOutputLinks(args: {
       tapAnchor: isGap
         ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: trunkStart.y }
         : { ...trunkStart },
-      laneDepth, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      laneDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts,
     });
   });
@@ -398,7 +402,7 @@ export function emitInputLinks(args: {
     };
     // 레인(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
     // 곧 벨트 하나라 관통 벨트가 없고, 벨트가 자기 구간만 덮으므로 다툴 depth 자체가 없다.
-    const lane = { d: plan.laneDepth, inserter: seatInserterName(input, plan.laneDepth) };
+    const lane = { d: plan.laneDepth, inserter: seatInserterName(input, plan.reach) };
     const fv = faceVector(face);
     // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
     const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
@@ -467,7 +471,7 @@ export function emitInputLinks(args: {
       tapAnchor: isGap
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },
-      laneDepth: lane.d, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      laneDepth: lane.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts,
     });
   });
