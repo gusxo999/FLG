@@ -69,6 +69,39 @@ export interface RowChannelCounters {
   needs: ReadonlyArray<string>;
 }
 
+/**
+ * **면 레인 — 좌석표 계획 Step 0 의 계측기**(`tempPlanDocs/좌석표-배정/`).
+ *
+ * 묻는 것은 둘이다. *"결함이 실물에서 발현하나"* 를 **수로** 답한다:
+ *
+ * ```
+ * deepLane / armMismatch   결함 A — 팔 개수를 센 인서터와 실제로 앉는 인서터가 다르다
+ * netTrips                 결함 B — 포트 칸이 장부에 없어 방출에서 부딪힌다
+ * ```
+ *
+ * `netTrips` 는 `emitModule` 의 두 안전망(`:278`·`:430`)이다. 그 줄들은 스스로
+ * *"구성상 발생 안 함"* 이라 적고 있고, **발동은 곧 그 구성 논증이 틀렸다는 증거**다
+ * (`module-planning.md` §5: *"착수 시점은 안전망이 실제로 발동할 때다"*).
+ *
+ * 다른 계수기와 같은 규약 — **관측만 한다.** 계산도 분기도 반환값도 안 바뀐다.
+ */
+export interface FaceLaneCounters {
+  /** 옆면(W/E)에 앉은 배정 수 — 아래 셋의 모수. gap(N/S)은 레인 개념이 없어 안 센다. */
+  assignments: number;
+  /** 그중 그 면의 **레인 후보가 둘 이상**이던 것 — 조건 ①이 서나. */
+  multiLaneFace: number;
+  /** 그중 **가장 얕은 후보가 아닌** 레인에 앉은 것 — 조건 ②가 서나(계획서의 `B수`). */
+  deepLane: number;
+  /** `deepLane` 중 그 레인의 팔 처리량이 reach-1 과 **다른** 것 — 조건 ③까지 선 것. */
+  armMismatch: number;
+  /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
+  netTrips: number;
+}
+
+const freshFaceLanes = (): FaceLaneCounters => ({
+  assignments: 0, multiLaneFace: 0, deepLane: 0, armMismatch: 0, netTrips: 0,
+});
+
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
@@ -87,10 +120,16 @@ export interface RunStats {
   perimeter: PerimeterCounters | null;
   /** 행 채널 띠. 패킹까지 갔으면 채워진다. */
   rowChannels: RowChannelCounters | null;
+  /**
+   * 면 레인. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이기 때문이다
+   * (*"둘째 레인이 한 번도 안 쓰였다"* 는 결함 A 가 도달 불가라는 뜻이다).
+   */
+  faceLanes: FaceLaneCounters;
 }
 
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
+  faceLanes: freshFaceLanes(),
 });
 
 let current: RunStats = fresh();
@@ -121,6 +160,24 @@ export function recordBeltFormStats(c: BeltFormCounters): void {
   current.beltForms = current.beltForms ? mergeBeltFormCounters(current.beltForms, c) : c;
 }
 
+/**
+ * 면 레인 계수기를 **누적**한다 — 배정마다·안전망 발동마다 한 번. 준 항목만 더한다.
+ * (배선 형태와 달리 낟알이 잘아서 `Partial` 을 받는다 — 방출은 `netTrips` 만 안다.)
+ */
+export function recordFaceLaneStats(c: Partial<FaceLaneCounters>): void {
+  const cur = current.faceLanes;
+  for (const k of Object.keys(cur) as (keyof FaceLaneCounters)[]) cur[k] += c[k] ?? 0;
+}
+
+/**
+ * 면 레인 계수기만 비운다 — [resetBeltFormStats] 와 **같은 이유·같은 자리**다.
+ * `packModuleTree` 의 1차(끝 선호 측정용) 모듈은 실제로 안 깔리므로 그것이 센 배정과
+ * 안전망 발동은 버려야 한다. 안 버리면 모든 수가 두 배로 보인다.
+ */
+export function resetFaceLaneStats(): void {
+  current.faceLanes = freshFaceLanes();
+}
+
 export function recordRowChannelStats(c: RowChannelCounters): void {
   current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs] };
 }
@@ -145,5 +202,6 @@ export function readRunStats(): RunStats {
           needs: [...current.rowChannels.needs],
         }
       : null,
+    faceLanes: { ...current.faceLanes },
   };
 }

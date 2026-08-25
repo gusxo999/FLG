@@ -119,6 +119,19 @@ export function buildReport(): string {
     ),
   );
 
+  // **면 레인** — 좌석표 계획 Step 0. `깊은레인 0` 이면 결함 A 는 도달 불가이고,
+  // `안전망 > 0` 이면 `emitModule` 이 "구성상 발생 안 함"이라 적은 그 구성이 틀린 것이다.
+  const fl = stats.faceLanes;
+  out.push(
+    line(
+      '면레인',
+      `옆면 배정 ${fl.assignments} · 후보2+ ${fl.multiLaneFace}`
+        + ` · **깊은레인 ${fl.deepLane}**`
+        + (fl.armMismatch > 0 ? `  ← **팔 어긋남 ${fl.armMismatch}건**(센 팔 ≠ 앉는 팔)` : '')
+        + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),
+    ),
+  );
+
   const rc = stats.rowChannels;
   out.push(
     line(

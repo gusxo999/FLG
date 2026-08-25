@@ -167,8 +167,11 @@ export interface LinkFaceContext {
  * **면의 레인 목록** — reach 종류에서 유도된다. 깊이는 고르는 값이 아니라 *결과*다(계획서 §16):
  * `d2` 가 관통에 먹혔으면 다음 줄은 `d3` 이고, **그러니 그 줄의 팔이 긴팔이 된다.**
  * 거꾸로 *"긴팔을 쓸까"* 를 먼저 정하는 코드는 없다.
+ *
+ * **장부를 안 읽는다** — `ctx.inserters` 와 `ctx.pipeFaces` 만 본다. 그래서 배정이 끝난 뒤
+ * 다시 불러도 같은 답이고, `planModulePorts` 의 사후 계측이 그 성질에 기대고 있다.
  */
-function laneDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
+export function laneDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
   const reaches = [...new Set((ctx.inserters ?? []).map((i) => i.reach))]
     .filter((r) => Number.isFinite(r) && r >= 1)
     .sort((a, b) => a - b);

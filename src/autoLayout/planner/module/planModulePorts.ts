@@ -45,9 +45,11 @@ import {
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
 import { externalLineGroups, readLinkRole, summarizeBeltForms, type Link } from "../../module/link";
-import { recordBeltFormStats } from "../../../debug/runStats";
+import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStats";
+import { inserterForReach } from "../../buildSpec";
 import {
   allocateLinkFaces,
+  laneDepthsOf,
   spillLinkFacesToGap,
   gapRowsFromPlans,
   gapExitSidesFromPlans,
@@ -356,6 +358,31 @@ export function planModulePorts(
   // 형태는 산출물 어디에도 안 남아서, glass 54줄(필요 5줄)을 사후에 손으로 세야 했다.
   // 내부 링크는 `modulePacking` 이 따로 센다 — 여기는 **외부 줄**(원료·완제품) 몫이다.
   // 싱크에 직접 쓰는 것은 `moduleWizard` 가 이미 하는 일과 같은 관용구다(runStats 머리말).
+  // **면 레인 — 좌석표 계획 Step 0 의 계측**(`tempPlanDocs/좌석표-배정/` §5 Step 0).
+  // 묻는 것: *"둘째 레인이 실물에서 쓰이나, 그때 팔 종류가 실제로 갈리나."*
+  // 사후에 훑기만 한다 — [laneDepthsOf] 가 장부를 안 읽어서 배정이 끝난 뒤에도 같은 답이다.
+  // (관측만 — 계산·분기·반환값은 안 바뀐다. `runStats` 머리말의 규약.)
+  for (const list of [
+    outFaces.plans, inFaces.plans, restLinks.out.plans, restLinks.in.plans,
+  ]) {
+    for (const p of list) {
+      if (!p || p.face === "N" || p.face === "S") continue; // gap 은 레인 개념이 없다
+      const lanes = laneDepthsOf(faceCtx, p.face);
+      const deep = lanes.length > 0 && p.laneDepth !== lanes[0];
+      // 팔 종류가 실제로 갈리나 — **깊이가 아니라 처리량**을 본다(§0.3: 배수는 스펙이 정한다).
+      const tpOf = (d: number) => inserterForReach(plannerInserters, d - 1)?.throughput;
+      const mismatch =
+        deep && tpOf(lanes[0]) !== undefined && tpOf(p.laneDepth) !== undefined
+          && tpOf(lanes[0]) !== tpOf(p.laneDepth);
+      recordFaceLaneStats({
+        assignments: 1,
+        multiLaneFace: lanes.length > 1 ? 1 : 0,
+        deepLane: deep ? 1 : 0,
+        armMismatch: mismatch ? 1 : 0,
+      });
+    }
+  }
+
   recordBeltFormStats(
     summarizeBeltForms(
       [...restLinks.out.groups, ...restLinks.in.groups].map((group) => ({

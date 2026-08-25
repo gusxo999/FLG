@@ -44,6 +44,9 @@ import { trunkEndKey } from "../../module/clusterModule";
 import { fluidLineOf } from "../../module/fluidPorts";
 import type { PipeFlowPipe } from "../../util/pipeFlow";
 import { inserterForReach } from "../../buildSpec";
+// 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
+// (`tempPlanDocs/좌석표-배정/` Step 0). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
+import { recordFaceLaneStats } from "../../../debug/runStats";
 
 
 /**
@@ -275,6 +278,7 @@ export function emitOutputLinks(args: {
     if (exitDepth > laneDepth)
       for (let t = topT - 1; t >= m0.origin.x && !blocked; t--) push(faceCell(mExt, face, exitDepth, t), pfv);
     if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
+      recordFaceLaneStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
       return;
     }
@@ -427,6 +431,7 @@ export function emitInputLinks(args: {
       { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }, // 포트 인서터·상자
     ];
     if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
+      recordFaceLaneStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함 — 좌석 장부가 이미 막았어야 한다)
       return;
     }

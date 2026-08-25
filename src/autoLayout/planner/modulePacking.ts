@@ -38,7 +38,7 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, resetBeltFormStats } from "../../debug/runStats";
+import { recordBeltFormStats, resetBeltFormStats, resetFaceLaneStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -540,6 +540,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // **1차가 센 형태는 버린다** — 1차 모듈은 끝 선호를 재려고 만든 것이라 실제로 안 깔린다.
   // (계측 전용. 계산·분기·반환값은 안 바뀐다.)
   resetBeltFormStats();
+  resetFaceLaneStats(); // 같은 이유 — 1차가 센 레인 배정과 안전망 발동도 버린다
   const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
   for (const s of specs) oriented.set(s.id, { module: gen(s, lineEndsById.get(s.id)), orientation: IDENTITY });
   // 내부 링크(자식→부모)의 형태 — 외부 줄은 `planModulePorts` 가 자기 몫을 센다.
