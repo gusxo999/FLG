@@ -177,7 +177,7 @@ export interface ModuleInput {
    * 예전엔 `longInserter` + `throughput{normal, long}` 이라는 **이진 필드**로 접혀 왔고
    * `planModulePorts.toPlannerInserters` 가 다시 폈다. 그 접힘이 슬롯을 **정확히 둘**로
    * 잘라, *"reach 종류가 늘면 벨트 줄도 는다"* 는 배분기의 주장을 배선이 배신하고 있었다
-   * (계획서 §18). 이제 접지 않고 그대로 통과시킨다.
+   * (`docs/용어사전.md §BuildSpec` — 유일한 출처). 이제 접지 않고 그대로 통과시킨다.
    */
   inserters: SpecInserter[];
   /** entity id 접두사(결정적). 기본 "mod". */

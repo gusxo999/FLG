@@ -154,7 +154,7 @@ export function planModulePorts(
   // 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
   // 스도쿠 원칙). 그리고 ①도 이 답을 알아야 한다: 유체가 가져간 면에 링크를 앉히면 인서터가
   // 파이프 칸에 선다. 예전엔 ①이 ② 앞에 있어 그 사실을 **모른 채** 배정했다.
-  // 슬롯 목록은 **접히지 않고 그대로 온다**(계획서 §18). 예전엔 이진 필드에서 다시 폈다.
+  // 슬롯 목록은 **접히지 않고 그대로 온다**(`docs/용어사전.md §BuildSpec`). 예전엔 이진 필드에서 다시 폈다.
   const plannerInserters = input.inserters;
   const ft = input.fluidTrunk;
   // [isJumpableToClusterPipe] — "이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".

@@ -242,7 +242,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
       seatRows: m.h,
       // **면당 레인 = 서로 다른 reach 값 개수**([laneSlots]). 예전엔 `longInserter ? 2 : 1` 로
-      // 세어 reach 3종을 골라도 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(계획서 §18).
+      // 세어 reach 3종을 골라도 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(`docs/용어사전.md §BuildSpec`).
       beltLanes: Math.min(
         Math.max(1, new Set(options.inserters.map((i) => i.reach)).size),
         recipe.ingredients.filter((i) => i.type !== 'fluid').length +
@@ -302,7 +302,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   // 동시에 쓰이기 때문이다:
   //  - **팔이 몇 개 필요한가** — 느린 값을 쓰면 8배로 세서 면을 넘친다.
   //  - **한 벨트에 몇 개 앉나**(그릇) — 느린 값을 쓰면 `45÷1.2 = 37` 이 되어 **상한이 사라진다**.
-  // 그 뒤 `reach 1` 고정으로 옮겼는데, 이번엔 **깊은 벨트를 쓰는 줄이 조용히 굶었다**(§15).
+  // 그 뒤 `reach 1` 고정으로 옮겼는데, 이번엔 **깊은 벨트를 쓰는 줄이 조용히 굶었다**(`docs/auto-layout/module/module-planning.md §4.5`).
   // 답은 "하나의 보수적인 수"가 아니라 **`(줄, 슬롯)` 마다 다른 수**다.
   const specInserters =
     options.inserters.length > 0

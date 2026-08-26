@@ -135,7 +135,7 @@ export interface PackConfig {
    * 거절 → 다이렉트).
    */
   belts?: ModuleInput["belts"];
-  /** **고른 인서터 전부** — reach 별 하나씩. `belts` 와 같은 자리(전역 선택)다(계획서 §18). */
+  /** **고른 인서터 전부** — reach 별 하나씩. `belts` 와 같은 자리(전역 선택)다(`docs/용어사전.md §BuildSpec`). */
   inserters: SpecInserter[];
   /**
    * 외부상자 perimeter exit-lane 예약을 켠다(조각 6-①). true 면 채널 폭이 납품 경로 구간에

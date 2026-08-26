@@ -19,7 +19,7 @@ const lines: IoLine[] = [
  * **다이렉트(기계별 포트)의 팔은 언제나 `reach 1`** — 인서터가 상자와 머신 **양쪽에 인접**
  * 해야 하므로 상자가 `d2`, 팔이 `d1` 이다. 깊은 벨트를 집는 것은 탭뿐이다(계획서 §16).
  *
- * 처리량이 `SupplyCapacity` 가 아니라 **인자**로 오는 이유는 §18 — 인서터는 사용자가 한 번
+ * 처리량이 `SupplyCapacity` 가 아니라 **인자**로 오는 이유는 `docs/용어사전.md §BuildSpec` — 인서터는 사용자가 한 번
  * 고르는 전역 선택이라 노드마다 실어 나르면 같은 사실이 복제된다.
  */
 const INS: SpecInserter[] = [{ entityName: "i", reach: 1, throughput: 5 }];

@@ -110,7 +110,7 @@ export interface PlannedLine {
    *
    * `reach` 에서 되유도할 수도 있지만(`reach ≥ 2 → 긴팔`) 그러면 팔을 고르는 코드가 두 곳이
    * 되고, reach 가 3종 이상인 모드팩에서 그 되유도가 틀린다. **세는 쪽이 고른 그 팔을 그대로
-   * 실어 보내면 어긋날 수가 없다**(계획서 §17.3 불변 2).
+   * 실어 보내면 어긋날 수가 없다.**
    *
    * [insertingPlanner] 가 채운다. 미지정 = 수량 미상 → 방출부의 기본 인서터.
    */
@@ -233,7 +233,7 @@ export interface PortPlannerInput {
    * 팔 개수는 스칼라가 아니라 *어느 인서터가 앉느냐*의 함수다(계획서 §16). 그리고 어느
    * 인서터가 앉느냐는 **이 배분기가 슬롯을 고르는 순간** 정해진다 — 그래서 배분기가
    * **물어봐야** 한다. 예전엔 호출부가 `reach 1` 기준으로 미리 세어 넘겼고, 그 뒤에
-   * 깊이/reach 를 재배정해서 **센 수가 무효가 됐다**(계획서 §15).
+   * 깊이/reach 를 재배정해서 **센 수가 무효가 됐다**(`docs/auto-layout/module/module-planning.md §4.5`).
    *
    * 미지정이면 [armsByPlacement] 로 폴백(= reach 무관 옛 동작).
    */
@@ -386,7 +386,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // **한 풀 안에서는 팔이 가장 적게 드는 슬롯부터 본다.** 슬롯이 곧 인서터이고(reach 는
   // 고정 거리 — 계획서 §16), 인서터가 팔 개수를 정하기 때문이다. 예전엔 near→far 로 아무거나
   // 집고 **나중에 깊이/reach 를 재배정**했는데, 그러면 좌석 장부가 예산한 팔과 실제로 앉는
-  // 팔이 어긋났다(계획서 §15). 여기서 고르면 어긋날 수가 없다.
+  // 팔이 어긋났다(`docs/auto-layout/module/module-planning.md §4.5`). 여기서 고르면 어긋날 수가 없다.
   //
   // 동률이면 near→far(풀 순서) — 얕은 쪽이 벨트 칸을 덜 먹는다.
   const takeSeat = (pools: Slot[][], line: IoLine, i: number): { slot: Slot; arms: number } | undefined => {
@@ -459,7 +459,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
    * 큰 줄이 느린 팔로 밀린다. 큰 줄부터 고르면 그 뒤집힘이 안 생긴다(재배열 부등식).
    *
    * 예전엔 배정이 끝난 뒤 *수요 ↔ 처리량* 으로 **다시 붙여** 같은 효과를 냈는데, 그때는 이미
-   * 팔을 세고 좌석을 찬 뒤라 셈이 무효가 됐다(계획서 §15).
+   * 팔을 세고 좌석을 찬 뒤라 셈이 무효가 됐다(`docs/auto-layout/module/module-planning.md §4.5`).
    * 수요 신호(`amount`)가 없으면 등장 순서 그대로다(안정 정렬).
    */
   const byDemandDesc = (ls: IoLine[]): IoLine[] =>
@@ -493,7 +493,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     return { ok: false, complex: true, reason: `seats-exceed-capacity (${overflow})` };
   }
 
-  // **깊이/reach 재배정은 여기 없다** (2026-08-15 삭제 — 계획서 §15·§16).
+  // **깊이/reach 재배정은 여기 없다** (2026-08-15 삭제 — `docs/auto-layout/module/module-planning.md §4.5`).
   //
   // 예전엔 배정이 끝난 뒤 같은 면 안에서 *수요 내림차순 ↔ 슬롯 처리량 내림차순* 으로
   // 깊이/reach 를 **다시 붙였다**. 그 자체는 옳은 짝짓기였지만 **순서가 거꾸로였다**:
@@ -614,7 +614,7 @@ export interface ArmBudget {
  * 팔이 `d1`). 탭이 깊은 벨트를 써서 팔이 더 들면 [takeSeat] 이 **그 시점에 정직하게 거절**해
  * 다이렉트로 물러나고, 그러면 이 함수가 센 수가 다시 맞는다.
  *
- * **이 정당화가 없으면 그냥 낙관이고, 낙관은 조용히 굶는다**(계획서 §15.4).
+ * **이 정당화가 없으면 그냥 낙관이고, 낙관은 조용히 굶는다**(`docs/auto-layout/module/module-planning.md §4.5`).
  *
  * @param lines 이 머신의 I/O 줄들. 유체(pipe)는 인서터가 없어 대상이 아니다.
  * @param perMachineRate 줄별 **머신 한 대의** 초당 수요/산출(items/sec). 모르면 undefined.
@@ -714,7 +714,7 @@ export function insertingPlanner(
   const linkUsedWE = Math.max(input.seatRowsUsed?.W ?? 0, input.seatRowsUsed?.E ?? 0);
   const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);
 
-  // **슬롯도 처리량도 `input.inserters` 하나에서 나온다**(계획서 §18). 예전엔 같은 자료가
+  // **슬롯도 처리량도 `input.inserters` 하나에서 나온다**(`docs/용어사전.md §BuildSpec`). 예전엔 같은 자료가
   // `SupplyCapacity` 로도 흘러 두 벌이었고, 둘이 어긋나면 *"reach 는 서는데 처리량은
   // 모르는 슬롯"* 이 생겨 [armsAt] 이 셀 수 없었다.
   const inserters = input.inserters;
@@ -869,7 +869,7 @@ export function insertingPlanner(
   //    한 줄을 넘었다는 뜻이라, 한 줄에 팔을 몰면 그 벨트가 먼저 터진다.
   //
   // **reach 마다 한 벌씩 쪼갠다.** 어느 슬롯을 받을지는 배분기가 정하므로, 미리 한 벌만
-  // 만들어 두면 그 슬롯이 아닌 팔이 앉았을 때 수가 어긋난다(계획서 §15 의 그 어긋남).
+  // 만들어 두면 그 슬롯이 아닌 팔이 앉았을 때 수가 어긋난다(`docs/auto-layout/module/module-planning.md §4.5` 의 그 어긋남).
   for (const line of input.lines) {
     if (line.kind !== "belt") continue;
     const key = `${line.role}:${line.name}`;

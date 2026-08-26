@@ -37,7 +37,7 @@ type Decision = ReturnType<typeof insertingPlanner>;
 
 /**
  * **처리량을 슬롯 목록으로 주입한다** — 실경로에서 슬롯과 처리량은 **한 목록**이다
- * ([PortPlannerInput.inserters], 계획서 §18). 픽스처는 읽기 편하게 `cap` 에 적어 두고
+ * ([PortPlannerInput.inserters], `docs/용어사전.md §BuildSpec`). 픽스처는 읽기 편하게 `cap` 에 적어 두고
  * 이 헬퍼가 그 사실을 흉내 낸다: `cap.inserters` 가 있으면 그것이 곧 슬롯 목록이다.
  */
 type Cap = SupplyCapacity & { inserters?: SpecInserter[] };
