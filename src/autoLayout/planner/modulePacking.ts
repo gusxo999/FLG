@@ -449,7 +449,17 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     if (!why?.size) continue;
     for (const [linkId, reasons] of why) {
       // 자름의 경계를 주는 것은 `blockedRows` 뿐이다 — 좌석 부족·포트 칸은 다른 칸의 일이다.
-      const rows = reasons.flatMap((r) => r.blockedRows ?? []);
+      //
+      // **가장 적게 자르는 레인 하나만 쓴다.** 사다리는 **한 칸만** 내려간다 — 후보들의
+      // 막힌 행을 합치면 얕은 레인의 *"내 구간이 통째로 먹혔다"*(수백 행)까지 경계가 되어
+      // 머신마다 한 토막, 즉 **3단(다이렉트)으로 건너뛴다.**
+      //
+      // 2026-08-26 실측이 그랬다: `stone-tablet` 이 `d2` 에서 263행, `d3` 에서 2행이 막혔는데
+      // 합쳐 잘라 **90토막**이 났다(원했던 것은 3토막). 포트가 1→90 이 되니 납품·채널이 폭발했다.
+      const best = reasons
+        .filter((r) => r.blockedRows?.length)
+        .sort((a, b) => a.blockedRows!.length - b.blockedRows!.length)[0];
+      const rows = best?.blockedRows ?? [];
       if (rows.length === 0) continue;
       // 그 줄을 쥔 캐시 항목을 찾는다(자식 id 로 저장돼 있다).
       for (const [cid, groups] of linkCache) {
