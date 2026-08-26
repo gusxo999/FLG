@@ -106,10 +106,19 @@ export interface FaceLaneCounters {
   deepLaneOtherArm: number;
   /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
   netTrips: number;
+  /**
+   * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`LaneShortage`).
+   *
+   * *"레인 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
+   * (`tempPlanDocs/트렁크벨트-경로모델/` §14-2 — *못을 피해서*). 사다리가 아직 없으므로
+   * 지금은 **관측뿐**이다.
+   */
+  shortages: ReadonlyArray<string>;
 }
 
 const freshFaceLanes = (): FaceLaneCounters => ({
   assignments: 0, multiLaneFace: 0, deepLane: 0, deepLaneOtherArm: 0, netTrips: 0,
+  shortages: [],
 });
 
 export interface RunStats {
@@ -176,7 +185,10 @@ export function recordBeltFormStats(c: BeltFormCounters): void {
  */
 export function recordFaceLaneStats(c: Partial<FaceLaneCounters>): void {
   const cur = current.faceLanes;
-  for (const k of Object.keys(cur) as (keyof FaceLaneCounters)[]) cur[k] += c[k] ?? 0;
+  for (const k of ["assignments", "multiLaneFace", "deepLane", "deepLaneOtherArm", "netTrips"] as const)
+    cur[k] += c[k] ?? 0;
+  // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
+  if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);
 }
 
 /**
@@ -212,6 +224,6 @@ export function readRunStats(): RunStats {
           needs: [...current.rowChannels.needs],
         }
       : null,
-    faceLanes: { ...current.faceLanes },
+    faceLanes: { ...current.faceLanes, shortages: [...current.faceLanes.shortages] },
   };
 }

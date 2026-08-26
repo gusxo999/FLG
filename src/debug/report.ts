@@ -132,6 +132,9 @@ export function buildReport(): string {
     ),
   );
 
+  // **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽는다. "막힌 행"이 자름의 경계다.
+  for (const w of fl.shortages) out.push(sub(w));
+
   const rc = stats.rowChannels;
   out.push(
     line(

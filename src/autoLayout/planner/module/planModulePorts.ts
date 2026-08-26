@@ -55,6 +55,7 @@ import {
   gapExitSidesFromPlans,
   linkFaceDepths,
   seatRowsByFace,
+  type LaneShortage,
   type LinkFaceContext,
   type LinkFacePlan,
 } from "./linkPlanner";
@@ -92,8 +93,8 @@ export interface ModulePortPlan {
    * 방출기가 `plans[i]` 를 그룹 순서로 읽기 때문이다.
    */
   restLinks?: {
-    out: { groups: Link[]; plans: (LinkFacePlan | undefined)[] };
-    in: { groups: Link[]; plans: (LinkFacePlan | undefined)[] };
+    out: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: LaneShortage[][] };
+    in: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: LaneShortage[][] };
   };
   /** 머신 i 와 i+1 사이를 몇 칸 벌릴까 — ①의 부산물. `layoutCluster` 로 그대로 간다. */
   rowGaps: number[];
@@ -342,8 +343,12 @@ export function planModulePorts(
           ...(input.nsExposure ?? []), "W", "E", "S", "N",
         ]);
         return {
-          out: { groups: out, plans: outPlans.plans },
-          in: { groups: [...inFed, ...inRaw], plans: [...fedPlans.plans, ...rawPlans.plans] },
+          out: { groups: out, plans: outPlans.plans, shortages: outPlans.shortages },
+          in: {
+            groups: [...inFed, ...inRaw],
+            plans: [...fedPlans.plans, ...rawPlans.plans],
+            shortages: [...fedPlans.shortages, ...rawPlans.shortages],
+          },
         };
       })();
 
@@ -380,6 +385,33 @@ export function planModulePorts(
       });
     }
   }
+
+  // **못 앉은 줄의 사유** — 선호 면에서 후보마다 왜 안 됐나. 사다리가 읽을 자료를 지금은
+  // 관측만 한다(계획서 §9.7 ⑤ · §14-2). *"레인 부족"* 이 아니라 **막힌 행**을 담는 것이
+  // 요점이다 — 그 행이 곧 자름의 경계다.
+  const said: string[] = [];
+  for (const [groups, alloc] of [
+    [outLinks, outFaces], [inLinks, inFaces],
+    [restLinks.out.groups, restLinks.out], [restLinks.in.groups, restLinks.in],
+  ] as const) {
+    alloc.plans.forEach((p, i) => {
+      if (p || said.length >= 12) return; // 앉은 줄은 사유가 없다
+      const w = alloc.shortages[i];
+      if (!w?.length) return;
+      said.push(
+        `못앉음 ${groups[i]?.item ?? "?"}: ` +
+          w.map((x: LaneShortage) => {
+            if (x.seats) return `${x.face}d${x.laneDepth} 좌석 ${x.seats.need}>${x.seats.budget}`;
+            if (x.blockedRows) {
+              const r = x.blockedRows;
+              return `${x.face}d${x.laneDepth} 막힌행 ${r.slice(0, 6).join(",")}${r.length > 6 ? `…(${r.length})` : ""}`;
+            }
+            return `${x.face}d${x.laneDepth} 포트칸 ${(x.blockedPort ?? []).map(([r, d]: readonly [number, number]) => `(${r},d${d})`).join("")}`;
+          }).join(" · "),
+      );
+    });
+  }
+  if (said.length) recordFaceLaneStats({ shortages: said });
 
   recordBeltFormStats(
     summarizeBeltForms(

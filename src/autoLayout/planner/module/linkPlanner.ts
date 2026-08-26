@@ -108,6 +108,31 @@ export interface LinkFacePlan {
 type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
 
 /**
+ * **못 앉은 이유 — 후보(면 × 레인) 하나마다 하나.** 사다리가 읽는다.
+ *
+ * **수량이 아니라 `행`을 담는 것이 요점이다.** *"레인이 하나 모자라다"* 로는 **어디서 자를지**
+ * 못 정한다. 사다리 1(구간 쪼개기)이 필요로 하는 것은 자름의 **경계**이고, 그건 막힌 행 번호다
+ * (계획서 §14-2 — *못을 피해서*).
+ *
+ * ```
+ * blockedRows [90, 180]  →  토막 [1,88] · [91,178] · [181,268]
+ * ```
+ *
+ * **못은 얕은 레인 줄의 포트에서 온다** — 포트 인서터가 `d+1` 에 서므로, 레인 `d` 에 앉으려는
+ * 줄에게는 레인 `d−1` 줄들의 진출 행이 전부 못이다. 연쇄하지만 레인 수만큼에서 멈춘다.
+ */
+export interface LaneShortage {
+  face: PortFace;
+  laneDepth: number;
+  /** 이 레인의 팔로 센 팔 수가 면 좌석 예산을 넘었다. */
+  seats?: { need: number; budget: number };
+  /** 내 구간 안에서 **이 레인이 이미 먹힌 행**들 — 곧 자름의 경계다. */
+  blockedRows?: number[];
+  /** 벨트는 지나가는데 **포트 칸**이 막혔다(`(행, 깊이)`). 쪼개면 진출 행이 옮겨간다. */
+  blockedPort?: Array<readonly [number, number]>;
+}
+
+/**
  * 링크 그룹 하나가 실제로 앉은 자리 — 면 + 머신마다 쓰는 **면 위 위치** `t`.
  * `t` 는 [faceCell] 과 같은 뜻이다: W/E 면이면 y(행), N/S 면이면 x(열).
  */
@@ -302,6 +327,8 @@ function tryLinkFace(
   side: "from" | "to",
   face: PortFace,
   allowPipeFace = false,
+  /** 못 앉으면 그 사유가 여기 쌓인다(후보마다 하나). 안 주면 안 모은다. */
+  why?: LaneShortage[],
 ): LinkFaceCandidate | undefined {
   const { machine, count } = ctx;
   // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
@@ -399,16 +426,33 @@ function tryLinkFace(
     })
     .sort((a, b) => a.total - b.total || a.laneDepth - b.laneDepth);
   for (const { laneDepth, arms } of candidates) {
+    let need = 0;
     let seatsFit = true;
-    for (const [mi, k] of arms) if (seatsTaken(table, mi) + k > seatRows) seatsFit = false;
-    if (!seatsFit) continue; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
+    for (const [mi, k] of arms) {
+      need = Math.max(need, seatsTaken(table, mi) + k);
+      if (seatsTaken(table, mi) + k > seatRows) seatsFit = false;
+    }
+    if (!seatsFit) {
+      why?.push({ face, laneDepth, seats: { need, budget: seatRows } });
+      continue; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
+    }
     const span = beltRowSpan(ctx, face, arms);
-    if (!laneClear(table, laneDepth, span[0], span[1])) continue;
+    if (!laneClear(table, laneDepth, span[0], span[1])) {
+      // **막힌 행이 곧 자름의 경계다**(계획서 §14-2). 수량이 아니라 행을 담는다.
+      const rows: number[] = [];
+      for (let r = span[0]; r <= span[1]; r++) if (!laneClear(table, laneDepth, r, r)) rows.push(r);
+      why?.push({ face, laneDepth, blockedRows: rows });
+      continue;
+    }
     // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 레인
     // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
     // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
-    if (portCells({ laneDepth, portEnd }, span, table).some(([r, d]) => !laneClear(table, d, r, r)))
+    const port = portCells({ laneDepth, portEnd }, span, table);
+    const hitPort = port.filter(([r, d]) => !laneClear(table, d, r, r));
+    if (hitPort.length > 0) {
+      why?.push({ face, laneDepth, blockedPort: hitPort });
       continue;
+    }
     return { face, arms, laneDepth, reach: laneDepth - 1, portEnd };
   }
   // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
@@ -488,15 +532,30 @@ export function allocateLinkFaces(
   groups: Link[],
   side: "from" | "to",
   prefer: PortFace,
-): { plans: (LinkFacePlan | undefined)[]; deferred: number[] } {
+): FaceAllocation {
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
+  // **선호 면의 사유만 모은다** — 사다리는 그 줄이 *원래 앉고 싶던* 면의 못으로 자른다.
+  // 다른 면으로 밀려나는 것은 넘침 단계가 이미 시도하고 실패한 뒤다(계획서 §9.7 ⑤).
+  const shortages: LaneShortage[][] = groups.map(() => []);
   groups.forEach((g, i) => {
-    const cand = tryLinkFace(ctx, g, side, prefer);
+    const cand = tryLinkFace(ctx, g, side, prefer, false, shortages[i]);
     if (cand) plans[i] = commitLinkFace(ctx, cand, side);
     else deferred.push(i);
   });
-  return { plans, deferred };
+  return { plans, deferred, shortages };
+}
+
+/**
+ * [allocateLinkFaces] 의 산출 — 배정 + 못 앉은 줄 + **왜 못 앉았나**.
+ *
+ * `shortages[i]` 는 그룹 `i` 가 **선호 면**에서 후보마다 낸 사유다. 앉은 그룹은 빈 배열이고,
+ * 넘침 단계에서 앉은 그룹은 선호 면의 사유가 남아 있다 — *"왜 밀려났나"* 가 곧 그것이다.
+ */
+export interface FaceAllocation {
+  plans: (LinkFacePlan | undefined)[];
+  deferred: number[];
+  shortages: LaneShortage[][];
 }
 
 /**
@@ -514,7 +573,7 @@ export function spillLinkFacesToGap(
   ctx: LinkFaceContext,
   groups: Link[],
   side: "from" | "to",
-  out: { plans: (LinkFacePlan | undefined)[]; deferred: number[] },
+  out: FaceAllocation,
   faces: readonly PortFace[] = ["S", "N"],
 ): void {
   for (const i of out.deferred) {
