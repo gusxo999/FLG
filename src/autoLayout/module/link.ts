@@ -318,6 +318,64 @@ export function armsAt(
 }
 
 /**
+ * **줄 하나를 못을 피해 토막낸다** — 사다리 1단.
+ * 설계는 `docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*.
+ *
+ * `nailRows` 는 배정이 낸 **막힌 행**이다([LaneShortage.blockedRows]). 행은 모듈-로컬 순번
+ * (`머신index × rowsPerMachine + 칸`)이므로 **그 행을 가진 머신 앞에서 자르면** 토막의 구간이
+ * 그 행을 안 덮는다 — 못은 언제나 먼저 앉은(= 더 얕은 칸을 쓴) 줄의 포트이기 때문이다.
+ *
+ * ```
+ * 못 [90, 180], rowsPerMachine 3   →  머신 30·60 앞에서 자른다
+ * 머신 0..89 한 줄                 →  0..29 · 30..59 · 60..89   토막 3, 포트 3
+ * ```
+ *
+ * **`carries` 가 진짜 출처다** — 토막마다 자기 몫의 적재 목록을 갖고, `from`/`to` 는 그것에
+ * 맞춰 좁힌다. 적재 목록이 없으면(수량 미상) **쪼개지 않는다** — 지어낼 수가 없다.
+ *
+ * 신원은 `${원래id}/${순번}` 이다. **양끝이 같은 객체를 보므로**(`modulePacking.linkCache`)
+ * 자식 출력과 부모 입력이 함께 갈라진다 — 한쪽만 쪼개면 [pairDeliveryPorts] 가 짝을 못 찾는다.
+ */
+export function splitLinkAtRows(
+  group: Link,
+  side: "from" | "to",
+  nailRows: readonly number[],
+  rowsPerMachine: number,
+): Link[] {
+  if (!group.carries?.length || nailRows.length === 0 || rowsPerMachine <= 0) return [group];
+  const cuts = new Set(nailRows.map((r) => Math.floor(r / rowsPerMachine)));
+  const machines = [...group[side].keys()].sort((a, b) => a - b);
+  if (machines.length <= 1) return [group]; // 쪼갤 것이 없다
+
+  // 못이 가리키는 머신 **앞에서** 자른다 — 그 머신부터 새 토막이 시작한다.
+  const segments: number[][] = [];
+  let cur: number[] = [];
+  for (const mi of machines) {
+    if (cur.length > 0 && cuts.has(mi)) { segments.push(cur); cur = []; }
+    cur.push(mi);
+  }
+  if (cur.length) segments.push(cur);
+  if (segments.length <= 1) return [group]; // 못이 구간 밖이었다
+
+  return segments.map((seg, k) => {
+    const own = new Set(seg);
+    const carries = group.carries!.filter((c) => {
+      const mi = c[side];
+      return mi !== undefined && own.has(mi);
+    });
+    const narrow = (m: Map<number, number>, s: "from" | "to") =>
+      new Map([...m].filter(([mi]) => carries.some((c) => c[s] === mi)));
+    return {
+      ...group,
+      from: narrow(group.from, "from"),
+      to: narrow(group.to, "to"),
+      carries,
+      id: group.id === undefined ? undefined : `${group.id}/${k}`,
+    };
+  });
+}
+
+/**
  * ─────────────────────────────── 판독 ───────────────────────────────
  *
  * **형태는 조건에서 나오고([edgeLinkGroups] 의 붓기), 여기서는 그것을 *읽을* 뿐이다.**

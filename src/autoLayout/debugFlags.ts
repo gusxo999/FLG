@@ -47,3 +47,20 @@ export let AUTO_LAYOUT_CHANNEL_GEOMETRY = true;
 export function setAutoLayoutChannelGeometry(v: boolean): void {
   AUTO_LAYOUT_CHANNEL_GEOMETRY = v;
 }
+
+/**
+ * AUTO_LAYOUT_LINK_LADDER — **사다리 1단**(못을 피해 링크를 토막내기) 스위치.
+ * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
+ *
+ * `false`(기본)면 배정이 못 앉은 줄을 **그대로 정직하게 실패**시킨다(오늘 동작).
+ * `true` 면 `packModuleTree` 가 1차 생성의 **막힌 행**을 읽어 그 줄을 토막내고 다시 만든다.
+ *
+ * **기본이 꺼짐인 이유는 대가가 아직 안 재졌기 때문이다** — 토막 하나가 포트 하나이고,
+ * 포트가 늘면 납품 경로·채널이 함께 는다. 큰 트리에서 그 비용이 얼마인지 세기 전에는
+ * 켜 두지 않는다. 켜고 재는 것은 `flg.flags.linkLadder(true)`.
+ */
+export let AUTO_LAYOUT_LINK_LADDER = false;
+
+export function setAutoLayoutLinkLadder(v: boolean): void {
+  AUTO_LAYOUT_LINK_LADDER = v;
+}

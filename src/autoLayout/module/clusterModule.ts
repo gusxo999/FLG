@@ -33,7 +33,7 @@ import { type Link } from "./link";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
 import { planModulePorts } from "../planner/module/planModulePorts";
-import type { LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
+import type { LaneShortage, LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
 import type { Container, ModulePortMeta, PlacedCell, PortFace } from "../containerModel";
@@ -141,6 +141,11 @@ export interface GeneratedModule {
    * 왜 탭이 안 됐는지 말하고, 그 문구가 UI 실패 라벨의 참고 사유로 나간다.
    */
   supply?: InsertingDecisionResult;
+  /**
+   * **못 앉은 내부 링크의 사유** — `linkId` → [LaneShortage]. 사다리 1단의 입력이다.
+   * 쪼개는 주체는 `modulePacking` 이다(링크 객체를 양끝이 공유하므로).
+   */
+  laneShortages?: Map<string, LaneShortage[]>;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
   /**
@@ -320,7 +325,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells, laneShortages: plan.laneShortages };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -393,6 +398,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     unroutedLines,
     supply,
     pipeCells,
+    laneShortages: plan.laneShortages,
   };
 }
 /**

@@ -29,6 +29,8 @@ import {
   AUTO_LAYOUT_COORD_DUMP,
   AUTO_LAYOUT_PERIMETER_PASS,
   setAutoLayoutChannelGeometry,
+  setAutoLayoutLinkLadder,
+  AUTO_LAYOUT_LINK_LADDER,
   setAutoLayoutCoordDump,
   setAutoLayoutPerimeterPass,
 } from '../autoLayout/debugFlags';
@@ -259,6 +261,14 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
+  linkLadder: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 사다리 1단(못을 피해 링크 토막내기). 기본 OFF',
+    fn: (v: boolean) => {
+      setAutoLayoutLinkLadder(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
   channelGeometry: {
     usage: '(true|false)', desc: '화면에 버튼이 없는 플래그 — 채널 기하 예약',
     fn: (v: boolean) => {
@@ -271,6 +281,7 @@ const flags = defineGroup('flags', {
       coordDump: AUTO_LAYOUT_COORD_DUMP,
       perimeterPass: AUTO_LAYOUT_PERIMETER_PASS,
       channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
+      linkLadder: AUTO_LAYOUT_LINK_LADDER,
       entityIds: useUiDebugStore.getState().showEntityDebugInfo,
     }),
   },

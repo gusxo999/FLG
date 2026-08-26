@@ -141,6 +141,18 @@ export interface ModulePortPlan {
    * 폴백 삭제 때 드러났다: 폴백이 가짜 줄로 그 구멍을 덮고 있었다).
    */
   unpourableLines: IoLine[];
+  /**
+   * **못 앉은 내부 링크의 사유** — `linkId` → 후보마다의 [LaneShortage].
+   *
+   * 사다리 1단(구간 쪼개기)의 입력이다. `blockedRows` 가 곧 **자름의 경계**이고, 쪼개는 일은
+   * 여기서 못 한다 — 링크는 **간선**이라 자식·부모가 같은 객체를 봐야 하고([pairDeliveryPorts]
+   * 가 `linkId` 로 짝짓는다) 그 객체를 쥔 것은 `modulePacking.linkCache` 다. 그래서 이 계층은
+   * **사유만 올려 보낸다.**
+   *
+   * 외부 줄(원료·완제품)은 신원이 없어 여기 안 담긴다 — 그쪽은 짝이 교환 가능이라 쪼갬이
+   * 국지적이고, 별개 단계다.
+   */
+  laneShortages: Map<string, LaneShortage[]>;
 }
 
 /**
@@ -413,6 +425,17 @@ export function planModulePorts(
   }
   if (said.length) recordFaceLaneStats({ shortages: said });
 
+  // **사다리로 올려 보낼 사유** — 신원이 있는(= 간선인) 줄만. 쪼갬은 양끝이 함께라야 한다.
+  const laneShortages = new Map<string, LaneShortage[]>();
+  for (const [groups, alloc] of [[outLinks, outFaces], [inLinks, inFaces]] as const) {
+    alloc.plans.forEach((p, i) => {
+      const id = groups[i]?.id;
+      const w = alloc.shortages[i];
+      if (p || id === undefined || !w?.length) return;
+      laneShortages.set(id, w);
+    });
+  }
+
   recordBeltFormStats(
     summarizeBeltForms(
       [...restLinks.out.groups, ...restLinks.in.groups].map((group) => ({
@@ -448,6 +471,7 @@ export function planModulePorts(
       ...(restLinks ? [restLinks.out.plans, restLinks.in.plans] : []),
     ]),
     linkedKeys,
+    laneShortages,
     // (나)로 갔으면 [ClusterBelt] 가 하나도 없다 — 줄들은 `restLinks` 가 들고 있고, 못 앉은
     // 그룹의 실패는 링크와 똑같이 **자기 방출에서** 갈린다(그래서 `unplaced` 가 아니다).
     // **아이템 [ClusterBelt] 가 하나도 없다** — 줄들은 전부 `restLinks` 가 들고 있고, 못 앉은

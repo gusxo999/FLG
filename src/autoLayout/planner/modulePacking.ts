@@ -30,7 +30,8 @@ import {
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { summarizeBeltForms, type Link } from "../module/link";
+import { splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
+import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planLanes, expandBbox } from "./perimeter/lanes";
 import type { LanePlan } from "./perimeterLanePlanner";
@@ -428,6 +429,44 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
   const pass1 = new Map<string, GeneratedModule>();
   for (const s of specs) pass1.set(s.id, gen(s));
+
+  // 1b) **사다리 1단 — 못을 피해 링크를 토막낸다**
+  //     (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*).
+  //
+  // 1차가 *"이 줄이 그 면에 못 앉는다"* 와 **막힌 행**을 함께 낸다([LaneShortage]). 그 행이
+  // 곧 자름의 경계다 — 못은 먼저 앉은(= 더 얕은 칸을 쓴) 줄의 포트라, 그 머신 앞에서 자르면
+  // 토막의 구간이 못을 안 덮는다.
+  //
+  // **쪼개는 곳이 여기인 이유는 신원이다.** 링크는 간선이라 자식 출력과 부모 입력이 **같은
+  // 객체**를 봐야 하고([pairDeliveryPorts] 가 `linkId` 로 짝짓는다), 그 객체를 쥔 것은
+  // `linkCache` 뿐이다. 모듈 안쪽(`planModulePorts`)에서 한쪽만 쪼개면 짝이 깨진다.
+  //
+  // 대가는 **포트 +1 씩**이고, 그게 사다리를 한 칸 내려간 값이다. 못은 레인 수만큼에서
+  // 멈추므로(가장 깊은 레인의 포트는 레인이 아닌 칸에 선다) 이 쪼갬이 무한히 돌지 않는다.
+  let laddered = 0;
+  for (const s of AUTO_LAYOUT_LINK_LADDER ? specs : []) {
+    const why = pass1.get(s.id)?.laneShortages;
+    if (!why?.size) continue;
+    for (const [linkId, reasons] of why) {
+      // 자름의 경계를 주는 것은 `blockedRows` 뿐이다 — 좌석 부족·포트 칸은 다른 칸의 일이다.
+      const rows = reasons.flatMap((r) => r.blockedRows ?? []);
+      if (rows.length === 0) continue;
+      // 그 줄을 쥔 캐시 항목을 찾는다(자식 id 로 저장돼 있다).
+      for (const [cid, groups] of linkCache) {
+        const at = groups.findIndex((g) => g.id === linkId);
+        if (at < 0) continue;
+        // 이 줄이 *부모* 입력으로 막혔으므로 부모 쪽 머신(`to`)으로 자른다.
+        const parent = byId.get(byId.get(cid)?.parentId ?? "");
+        const parts = splitLinkAtRows(groups[at], "to", rows, parent?.machine.h ?? 0);
+        if (parts.length <= 1) continue;
+        linkCache.set(cid, [...groups.slice(0, at), ...parts, ...groups.slice(at + 1)]);
+        laddered += parts.length - 1;
+        break;
+      }
+    }
+  }
+  // 쪼갰으면 1차를 다시 만든다 — 아래 tidy-tree 가 그 높이를 쓴다.
+  if (laddered > 0) for (const s of specs) pass1.set(s.id, gen(s));
 
   // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
   //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 납품 경로=raw 거리), 채널 폭(piece 5)이

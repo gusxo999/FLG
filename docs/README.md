@@ -77,7 +77,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
-| [machine-link](auto-layout/link/machine-link.md) | **[설계]** 자식→부모 연결 통일 — 논리(Flow) vs 기하 두 층. Delivery=Link, 포트=링크 끝점, gap=부산물 |
+| [machine-link](auto-layout/link/machine-link.md) | **[설계]** 자식→부모 연결 통일 — 논리(Flow) vs 기하 두 층. Delivery=Link, 포트=링크 끝점, gap=부산물 · **자리가 없으면 링크를 토막낸다**(사다리 1단, 플래그 뒤) |
 | [fluid-delivery](auto-layout/link/fluid-delivery.md) | **[동작]** 유체 납품 경로 — 자식 유체 출력→부모 유체 입력(pipe-to-pipe). v1=모듈당 유체 1줄 |
 
 #### `channel/` — 모듈 사이 통로 예약
