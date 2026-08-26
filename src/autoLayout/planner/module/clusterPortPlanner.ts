@@ -919,12 +919,12 @@ export function insertingPlanner(
   // ── 구간(§19) — 한 벨트가 클러스터 전체를 못 관통하면 **머신을 나눈다** ──────────
   //
   // `k = ⌊벨트 처리량 ÷ 머신당 수요⌋` — 벨트 하나가 먹일 수 있는 머신 수다.
-  // `g = min(k, N)` 을 **항상 최대로** 잡고(R1), `c = ⌈N/g⌉` 개 구간으로 나눈다.
+  // `g = min(k, N)` 을 **항상 최대로** 잡고(TR1), `c = ⌈N/g⌉` 개 구간으로 나눈다.
   // 쓰는 벨트는 [determineBeltCount] 가 이미 고른 것 중 **가장 느린 것**(보수적).
   //
   // **지금은 `c = 2` 까지다.** 오늘 포트는 트렁크 끝 밖에 `[인서터][상자]` 를
   // **축 방향**으로 세우므로 나갈 끝이 둘(min·max)뿐이다. 구간이 셋 이상이면 안쪽 구간이
-  // 이웃의 벨트 칸을 밟는다 — 깊이 방향 포트(R6)가 들어오면 풀린다(계획서 §19.8).
+  // 이웃의 벨트 칸을 밟는다 — 깊이 방향 포트(TR6)가 들어오면 풀린다(계획서 §19.8).
   // `c > 2` 면 **안 쪼개고 그대로 둔다**(= 오늘 동작). 지어낸 구간을 만들지 않는다.
   const splitIntervals = (): void => {
     if (!tapPlan.ok || machineCount < 2) return;
@@ -957,7 +957,7 @@ export function insertingPlanner(
         out.push(planned);
         continue;
       }
-      // 앞에서부터 g 대씩, 나머지는 뒤(R1). 둘은 **반대 끝**으로 나간다.
+      // 앞에서부터 g 대씩, 나머지는 뒤(TR1). 둘은 **반대 끝**으로 나간다.
       out.push(
         { ...planned, machineRange: { from: 0, to: g - 1 }, exitEnd: "min" },
         { ...planned, machineRange: { from: g, to: machineCount - 1 }, exitEnd: "max" },
