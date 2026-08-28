@@ -30,7 +30,7 @@ import {
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { nailsWorthCutting, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
+import { resolveSpanBlock, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planLanes, expandBbox } from "./perimeter/lanes";
@@ -448,7 +448,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     const why = pass1.get(s.id)?.laneShortages;
     if (!why?.size) continue;
     for (const [linkId, reasons] of why) {
-      // **쪼개면 실제로 앉는 후보만 자른다**([nailsWorthCutting]). 기하 판정이지 대리 지표가
+      // **쪼개면 실제로 앉는 후보만 자른다**([resolveSpanBlock]). 기하 판정이지 대리 지표가
       // 아니다 — 물음은 *"막힌 칸 사이에 내 좌석이 들어갈 빈 자리가 있나"* 하나다.
       //
       // 막힌 칸이 **점**(남의 포트 인서터)이면 사이가 비어 조각이 살고, **구간**(남의 벨트)이면
@@ -460,7 +460,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       let rows: number[] = [];
       for (const r of reasons) {
         if (!r.blockedRows?.length || !r.seatRows?.length) continue;
-        const worth = nailsWorthCutting(r.seatRows, r.blockedRows);
+        const worth = resolveSpanBlock(r.seatRows, r.blockedRows);
         if (worth.length) { rows = worth; break; }
       }
       if (rows.length === 0) continue; // 어느 레인도 쪼개서 안 풀린다 — 정직하게 그대로 둔다

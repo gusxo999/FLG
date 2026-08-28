@@ -10,7 +10,7 @@
  * ```
  */
 import { describe, it, expect } from "vitest";
-import { nailsWorthCutting, splitLinkAtRows, type Link } from "./link";
+import { resolveSpanBlock, splitLinkAtRows, type Link } from "./link";
 
 /** 부모 머신 `0..n-1` 에게 각각 `rate` 씩 주는 입력 링크 하나(팔 1개씩). */
 const inputLink = (n: number, rate = 1): Link => ({
@@ -83,32 +83,32 @@ describe("splitLinkAtRows — 자름의 경계는 못이다", () => {
 });
 
 /**
- * **[nailsWorthCutting] — 쪼개기가 이 문제를 푸나.** 대리 지표(막힌 행이 적다)가 아니라
+ * **[resolveSpanBlock] — 쪼개기가 이 문제를 푸나.** 대리 지표(막힌 행이 적다)가 아니라
  * 기하 판정이다: *"막힌 칸 사이에 내 좌석이 들어갈 빈 자리가 있나."*
  */
-describe("nailsWorthCutting — 쪼개면 실제로 앉나", () => {
+describe("resolveSpanBlock — 쪼개면 실제로 앉나", () => {
   /** 머신 90대가 각자 **칸 1** 을 쓴다(칸 0 은 먼저 앉은 줄이 먹었다). */
   const seats = Array.from({ length: 90 }, (_, mi) => mi * 3 + 1);
 
   it("막힌 칸이 **점**이면 자른다 — 남의 포트 인서터 (실측 d3)", () => {
     // 90·180 은 ≡0 (mod 3) 이라 내 좌석(≡1)이 아니다. 그래서 사이가 빈다.
-    expect(nailsWorthCutting(seats, [90, 180])).toEqual([90, 180]);
+    expect(resolveSpanBlock(seats, [90, 180])).toEqual([90, 180]);
   });
 
   it("막힌 칸이 **구간**이면 안 자른다 — 남의 벨트 (실측 d2)", () => {
     // 내 구간이 통째로 먹혔다. 조각을 내도 그 칸이 다시 막혀 있다.
     const belt = Array.from({ length: 268 }, (_, i) => i + 1);
-    expect(nailsWorthCutting(seats, belt)).toEqual([]);
+    expect(resolveSpanBlock(seats, belt)).toEqual([]);
   });
 
   it("**내 좌석 칸 자체가 막혔으면** 안 자른다 — 그 머신은 어차피 못 앉는다", () => {
-    expect(nailsWorthCutting(seats, [4])).toEqual([]); // 4 = 머신 1 의 좌석
+    expect(resolveSpanBlock(seats, [4])).toEqual([]); // 4 = 머신 1 의 좌석
   });
 
   it("**조각이 못을 덮는 일은 구성상 없다** — 두 좌석 사이의 못은 거기서 이미 잘린다", () => {
     // 87·90 둘 다 좌석(≡1 mod 3)이 아니다. 조각은 [1,85] · [91,268] 이 되고 못은 그 밖이다.
     // 그래서 자를 만하다 — *"조각이 못을 덮나"* 를 따로 물을 필요가 없다는 증거다.
-    expect(nailsWorthCutting(seats, [87, 90])).toEqual([87, 90]);
+    expect(resolveSpanBlock(seats, [87, 90])).toEqual([87, 90]);
     for (const b of [87, 90]) {
       const inFirst = b >= 1 && b <= 85;
       const inSecond = b >= 91 && b <= 268;
@@ -117,11 +117,11 @@ describe("nailsWorthCutting — 쪼개면 실제로 앉나", () => {
   });
 
   it("자를 경계가 하나면 두 조각 — 그것도 자른다", () => {
-    expect(nailsWorthCutting(seats, [90])).toEqual([90]);
+    expect(resolveSpanBlock(seats, [90])).toEqual([90]);
   });
 
   it("막힌 행이 구간 밖이면 안 자른다 — 조각이 하나뿐이다", () => {
-    expect(nailsWorthCutting(seats, [500])).toEqual([]);
-    expect(nailsWorthCutting(seats, [])).toEqual([]);
+    expect(resolveSpanBlock(seats, [500])).toEqual([]);
+    expect(resolveSpanBlock(seats, [])).toEqual([]);
   });
 });

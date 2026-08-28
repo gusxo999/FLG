@@ -318,10 +318,18 @@ export function armsAt(
 }
 
 /**
-/**
- * **이 못들을 피해 자르면 실제로 앉나** — 쪼개기 전에 묻는 기하 판정.
+ * **구간막힘(`span-blocked`)을 푼다** — 자를 경계를 내놓거나, 못 푼다고 답한다.
  *
- * 쪼개기가 푸는 문제는 하나뿐이다:
+ * 면에서 줄이 못 앉는 교착은 넷이고([LadderRung]) 이 함수는 그중 **하나만** 맡는다:
+ *
+ * ```
+ * seat-budget   좌석 예산 초과 — 면의 d1 칸이 모자라다
+ * seat-blocked  내 **좌석 칸**이 막혔다
+ * span-blocked  좌석은 비었는데 **그 사이를 잇는 구간**이 막혔다   ← 여기
+ * port-blocked  구간은 지나는데 **포트 칸**이 막혔다
+ * ```
+ *
+ * 구간막힘이 푸는 문제는 하나뿐이다:
  *
  * > **막힌 칸 *사이에* 내 좌석이 들어갈 빈 자리가 있나.**
  *
@@ -345,9 +353,10 @@ export function armsAt(
  * *"구성상 발생 안 함"* 주석을 하나 더 만들 뿐이고, 이 저장소는 그 주석이 거짓이었던 값을
  * 이미 치렀다.)
  *
- * @returns 자를 만한 경계(= 그대로 `nailRows` 로 쓸 수 있다). 소용없으면 **빈 배열**.
+ * @returns 자를 경계(= 그대로 [splitLinkAtRows] 의 `nailRows`). **못 풀면 빈 배열** —
+ *          그때 이 교착은 `span-blocked` 가 아니라 `seat-blocked` 다.
  */
-export function nailsWorthCutting(
+export function resolveSpanBlock(
   seatRows: readonly number[],
   blockedRows: readonly number[],
 ): number[] {

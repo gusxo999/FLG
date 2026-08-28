@@ -19,7 +19,7 @@
 
 import { faceSeatArms, inserterForReach, type SpecInserter } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
-import { armsAt, machinesOn, nailsWorthCutting, spansAllMachines, type Link } from "../../module/link";
+import { armsAt, machinesOn, resolveSpanBlock, spansAllMachines, type Link } from "../../module/link";
 import type { PlannedSide } from "./clusterPortPlanner";
 import {
   claimLane, claimSeats, freeSeatRows, groupsOn, laneClear, makeFaceTable,
@@ -127,7 +127,7 @@ export interface LaneShortage {
   /**
    * 이 후보로 앉았다면 내 팔이 앉았을 **좌석 행**들(모듈-로컬).
    *
-   * 사다리가 *"쪼개면 실제로 앉나"* 를 묻는 데 필요하다([nailsWorthCutting]) — 막힌 칸이
+   * 사다리가 *"쪼개면 실제로 앉나"* 를 묻는 데 필요하다([resolveSpanBlock]) — 막힌 칸이
    * **내 좌석 칸**이면 쪼개도 그 머신은 못 앉고, 막힌 칸 **사이**에 좌석이 있으면 조각이 산다.
    * 그 판정은 이 목록과 [blockedRows] 두 개만 있으면 끝난다.
    */
@@ -137,33 +137,54 @@ export interface LaneShortage {
 }
 
 /**
- * **이 실패는 사다리 어느 칸의 몫인가** — 미완성 기능의 *경계*를 실패마다 이름표로 붙인다.
- *
- * 사다리는 아직 **1단(쪼개기)뿐**이다. 그래서 못 앉은 줄이 남는 것은 정상이고, 총계를 보고
- * *"덜 됐다"* 고 읽으면 안 된다(`docs/auto-layout/link/machine-link.md` — *무엇을 재나*).
- * 물어야 할 것은 **어느 칸이 이걸 맡느냐**다:
+ * **면에서 줄이 못 앉는 교착 넷** — *무엇이* 막혔나로 가른다. 처방이 아니라 **상태**의 이름이다.
  *
  * ```
- * 쪼갬      막힌 칸 **사이**에 내 좌석이 있다      → 1단이 푼다 (켜져 있으면 여기 안 온다)
- * 포트막힘  벨트는 지나가는데 포트 칸이 막혔다      → 1단의 몫이나 **아직 안 만들었다**
- * 좌석막힘  남의 **벨트**가 내 좌석 행을 덮었다    → 2단(gap)·3단(다이렉트)의 몫
- * 좌석부족  면에 빈 좌석 자체가 모자란다           → 2단·3단의 몫
+ *   면 =  [ 좌석 d1 ][ 구간 d2… ][ 포트 d+1 ]        ← 막힌 자리가 곧 교착의 이름이다
+ *
+ *   seat-budget    좌석 예산 초과 — 면의 d1 칸(= faceSeatArms)이 애초에 모자라다
+ *   seat-blocked   내 **좌석 칸**이 남에게 먹혔다
+ *   span-blocked   좌석은 비었는데 **그 사이를 잇는 구간**이 막혔다
+ *   port-blocked   구간은 지나는데 **포트 칸**이 막혔다
  * ```
  *
- * **`쪼갬` 이 사다리가 켜진 채로 나오면 그건 분류가 아니라 버그다** — 1단이 잡았어야 할 줄을
- * 안 잡은 것이므로, 이름표가 그 자리에서 그걸 드러낸다.
+ * `seat-blocked` 와 `span-blocked` 는 둘 다 [LaneShortage.blockedRows] 에서 오지만 **기하가
+ * 다르다** — 막힌 칸이 내 좌석 위에 있으면 앞이고, 좌석 *사이*에만 있으면 뒤다. 그 갈림이
+ * 곧 [resolveSpanBlock] 이다.
+ *
+ * **해소자는 교착마다 하나씩이고, 지금 있는 것은 하나뿐이다:**
+ *
+ * | 교착 | 해소자 | 지금 |
+ * |---|---|---|
+ * | `span-blocked` | [resolveSpanBlock] → [splitLinkAtRows] | ✅ 사다리 1단 |
+ * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 |
+ * | `seat-blocked` | (없음) | ⛔ gap·다이렉트의 몫 |
+ * | `seat-budget` | (없음) | ⛔ gap·다이렉트의 몫 |
+ *
+ * 그래서 이 이름표가 곧 **미완성 기능의 경계**다 — `unrouted-lines` 이슈가 이걸 싣는다
+ * (`docs/auto-layout/link/machine-link.md` — *어디까지 작동하나*).
  */
-export type LadderRung = "쪼갬" | "포트막힘" | "좌석막힘" | "좌석부족";
+export type LadderRung = "span-blocked" | "port-blocked" | "seat-blocked" | "seat-budget";
 
-/** 싼 칸부터. 후보 여럿이 사유가 갈리면 **가장 싼 칸**이 그 줄을 맡는다. */
-const RUNG_ORDER: readonly LadderRung[] = ["쪼갬", "포트막힘", "좌석막힘", "좌석부족"];
+/** 화면에 나가는 말. 셋이 `막힘` 으로 끝나고 **어디가** 막혔는지만 다르다. */
+const RUNG_LABEL: Record<LadderRung, string> = {
+  "span-blocked": "구간막힘",
+  "port-blocked": "포트막힘",
+  "seat-blocked": "좌석막힘",
+  "seat-budget": "좌석부족",
+};
+
+/** 해소자가 있는 것부터. 후보 여럿이 사유가 갈리면 **풀 수 있는 쪽**이 그 줄을 맡는다. */
+const RUNG_ORDER: readonly LadderRung[] = [
+  "span-blocked", "port-blocked", "seat-blocked", "seat-budget",
+];
 
 function rungOf(w: LaneShortage): LadderRung {
   if (w.blockedRows?.length && w.seatRows?.length)
-    return nailsWorthCutting(w.seatRows, w.blockedRows).length > 0 ? "쪼갬" : "좌석막힘";
-  if (w.blockedPort?.length) return "포트막힘";
-  if (w.blockedRows?.length) return "좌석막힘";
-  return "좌석부족";
+    return resolveSpanBlock(w.seatRows, w.blockedRows).length > 0 ? "span-blocked" : "seat-blocked";
+  if (w.blockedPort?.length) return "port-blocked";
+  if (w.blockedRows?.length) return "seat-blocked";
+  return "seat-budget";
 }
 
 /** 줄 하나의 후보들을 한 이름표로. 후보가 없으면 `undefined` — 사유를 지어내지 않는다. */
@@ -174,7 +195,7 @@ export function rungOfLine(ws: readonly LaneShortage[]): LadderRung | undefined 
 }
 
 /**
- * 모듈 하나의 못 앉은 줄들을 **칸별로 센다** — `unrouted-lines` 이슈에 붙는 한 문장.
+ * 모듈 하나의 못 앉은 줄들을 **교착별로 센다** — `unrouted-lines` 이슈에 붙는 한 문장.
  *
  * 줄 이름과 이름표를 1:1 로 잇지 않는 것은 [GeneratedModule.laneShortages] 가 `linkId` 로만
  * 묶여 있어서다(줄 이름과의 짝은 아직 없다). **없는 대응을 지어내지 않는다.**
@@ -186,7 +207,9 @@ export function summarizeRungs(shortages: Map<string, LaneShortage[]>): string |
     if (r) tally.set(r, (tally.get(r) ?? 0) + 1);
   }
   if (tally.size === 0) return undefined;
-  return RUNG_ORDER.filter((r) => tally.has(r)).map((r) => r + " " + tally.get(r)).join(" · ");
+  return RUNG_ORDER.filter((r) => tally.has(r))
+    .map((r) => RUNG_LABEL[r] + " " + tally.get(r))
+    .join(" · ");
 }
 
 /**
@@ -496,7 +519,7 @@ function tryLinkFace(
     const span = beltRowSpan(ctx, face, arms);
     if (!laneClear(table, laneDepth, span[0], span[1])) {
       // **막힌 행이 곧 자름의 경계다.** 수량이 아니라 행을 담는다 — 그리고 사다리가
-      // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([nailsWorthCutting]).
+      // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([resolveSpanBlock]).
       const rows: number[] = [];
       for (let r = span[0]; r <= span[1]; r++) if (!laneClear(table, laneDepth, r, r)) rows.push(r);
       const seats: number[] = [];

@@ -53,7 +53,7 @@ export function setAutoLayoutChannelGeometry(v: boolean): void {
  * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
  *
  * `true`(기본, 2026-08-29)면 `packModuleTree` 가 1차 생성의 **막힌 행**을 읽어, 쪼개면
- * 실제로 앉는 줄만([nailsWorthCutting]) 토막내고 다시 만든다. `false` 면 못 앉은 줄을
+ * 실제로 앉는 줄만([resolveSpanBlock]) 토막내고 다시 만든다. `false` 면 못 앉은 줄을
  * **그대로 정직하게 실패**시킨다(사다리 이전 동작) — 회귀를 가를 때 쓴다.
  *
  * **기본이 켜짐인 이유:** 이 칸이 겨냥한 문제(*막힌 칸 사이에 빈 자리가 있다*)는 실측으로
