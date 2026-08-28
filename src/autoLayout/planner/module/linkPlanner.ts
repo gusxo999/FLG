@@ -11,11 +11,7 @@
  *
  * 그래서 이 파일은 **팔 개수만** 본다. `Container` 도 `machines[]` 도 받지 않는다.
  *
- * 장부 두 권을 쓴다(둘은 서로 유도되지 않는다):
- *  - `used`(좌석) — **팔마다** 하나. 면이 찼는지 판단
- *  - `faceGroups`(그룹 수) — **그룹마다** 하나. 막힌 면의 벨트 깊이 순번
- *
- * **셋째 장부는 없다.** 예전엔 `generateModule` 이 좌표 단계에서 `placeLedger` 라는 빈 장부를
+ * 예전엔 `generateModule` 이 좌표 단계에서 `placeLedger` 라는 빈 장부를
  * 새로 만들어 **여기서 이미 센 누적값을 처음부터 다시 셌다**. 배정이 알던 값을 계층 경계
  * 너머로 전하지 못해 생긴 중복이었다 — 이제 [commitLinkFace] 가 그 순번을
  * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
@@ -128,6 +124,14 @@ export interface LaneShortage {
   seats?: { need: number; budget: number };
   /** 내 구간 안에서 **이 레인이 이미 먹힌 행**들 — 곧 자름의 경계다. */
   blockedRows?: number[];
+  /**
+   * 이 후보로 앉았다면 내 팔이 앉았을 **좌석 행**들(모듈-로컬).
+   *
+   * 사다리가 *"쪼개면 실제로 앉나"* 를 묻는 데 필요하다([nailsWorthCutting]) — 막힌 칸이
+   * **내 좌석 칸**이면 쪼개도 그 머신은 못 앉고, 막힌 칸 **사이**에 좌석이 있으면 조각이 산다.
+   * 그 판정은 이 목록과 [blockedRows] 두 개만 있으면 끝난다.
+   */
+  seatRows?: number[];
   /** 벨트는 지나가는데 **포트 칸**이 막혔다(`(행, 깊이)`). 쪼개면 진출 행이 옮겨간다. */
   blockedPort?: Array<readonly [number, number]>;
 }
@@ -438,10 +442,14 @@ function tryLinkFace(
     }
     const span = beltRowSpan(ctx, face, arms);
     if (!laneClear(table, laneDepth, span[0], span[1])) {
-      // **막힌 행이 곧 자름의 경계다**(계획서 §14-2). 수량이 아니라 행을 담는다.
+      // **막힌 행이 곧 자름의 경계다.** 수량이 아니라 행을 담는다 — 그리고 사다리가
+      // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([nailsWorthCutting]).
       const rows: number[] = [];
       for (let r = span[0]; r <= span[1]; r++) if (!laneClear(table, laneDepth, r, r)) rows.push(r);
-      why?.push({ face, laneDepth, blockedRows: rows });
+      const seats: number[] = [];
+      for (const [mi, k] of arms)
+        for (const t of freeSeatRows(table, mi).slice(0, k)) seats.push(rowIndex(table, mi, t));
+      why?.push({ face, laneDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b) });
       continue;
     }
     // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 레인
@@ -596,16 +604,6 @@ export function spillLinkFacesToGap(
  *
  * 이 수는 방출기가 벨트를 놓을 때 쓰는 `laneDepth` **바로 그 값**이다 — 상수를 따로 적어두면
  * 방출 기하가 바뀔 때 폭이 조용히 안 따라와 벨트가 옆 머신 몸통에 놓인다.
- *
- * **더하기가 맞는 이유는 전제 하나에 달려 있다: 한 면에는 그룹이 하나뿐**([tryLinkFace] 의
- * N/S 분기가 `used > 0` 이면 거절하고, 그 장부는 출력·입력이 공유한다). 그래서 한 gap 에
- * 들어오는 계획은 최대 둘이고 그 둘은 **반드시 다른 면**(위 머신의 S, 아래 머신의 N)이라,
- * 각자 자기 쪽에서 세므로 그냥 더하면 된다.
- *
- * **그 전제를 푸는 사람에게(면당 여러 줄):** 같은 면의 둘째 그룹은 첫 그룹을 **덮는 게 아니라
- * 한 줄 더 바깥**이므로(d2 옆에 d3), 그때는 같은 면끼리 `max` 를 잡고 **면 둘을 더해야** 한다.
- * 지금처럼 전부 더하면 안 쓰는 줄만큼 클러스터가 조용히 벌어진다(2026-07-22 확인 — 지금은
- * 발현 불가라 산술을 미리 안 바꿨다).
  */
 export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
   // 같은 면의 그룹들은 **덮어쓰는 게 아니라 한 줄씩 더 깊어지므로** 가장 깊은 것 하나만

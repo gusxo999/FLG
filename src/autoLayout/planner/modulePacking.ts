@@ -30,7 +30,7 @@ import {
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
+import { nailsWorthCutting, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planLanes, expandBbox } from "./perimeter/lanes";
@@ -448,19 +448,22 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     const why = pass1.get(s.id)?.laneShortages;
     if (!why?.size) continue;
     for (const [linkId, reasons] of why) {
-      // 자름의 경계를 주는 것은 `blockedRows` 뿐이다 — 좌석 부족·포트 칸은 다른 칸의 일이다.
+      // **쪼개면 실제로 앉는 후보만 자른다**([nailsWorthCutting]). 기하 판정이지 대리 지표가
+      // 아니다 — 물음은 *"막힌 칸 사이에 내 좌석이 들어갈 빈 자리가 있나"* 하나다.
       //
-      // **가장 적게 자르는 레인 하나만 쓴다.** 사다리는 **한 칸만** 내려간다 — 후보들의
-      // 막힌 행을 합치면 얕은 레인의 *"내 구간이 통째로 먹혔다"*(수백 행)까지 경계가 되어
-      // 머신마다 한 토막, 즉 **3단(다이렉트)으로 건너뛴다.**
+      // 막힌 칸이 **점**(남의 포트 인서터)이면 사이가 비어 조각이 살고, **구간**(남의 벨트)이면
+      // 내 좌석이 그 안에 잠겨 조각을 내도 앉을 데가 없다.
       //
-      // 2026-08-26 실측이 그랬다: `stone-tablet` 이 `d2` 에서 263행, `d3` 에서 2행이 막혔는데
-      // 합쳐 잘라 **90토막**이 났다(원했던 것은 3토막). 포트가 1→90 이 되니 납품·채널이 폭발했다.
-      const best = reasons
-        .filter((r) => r.blockedRows?.length)
-        .sort((a, b) => a.blockedRows!.length - b.blockedRows!.length)[0];
-      const rows = best?.blockedRows ?? [];
-      if (rows.length === 0) continue;
+      // 2026-08-26 에 여기를 *"막힌 행이 가장 적은 레인"* 으로 골랐다가 데였다. 포트는 점이고
+      // 벨트는 구간이라 개수가 갈릴 뿐이어서 **상관이지 원인이 아니었고**, 짧은 벨트에 막힌
+      // 레인을 골라 46번 헛쪼갰다(`advanced-circuit`).
+      let rows: number[] = [];
+      for (const r of reasons) {
+        if (!r.blockedRows?.length || !r.seatRows?.length) continue;
+        const worth = nailsWorthCutting(r.seatRows, r.blockedRows);
+        if (worth.length) { rows = worth; break; }
+      }
+      if (rows.length === 0) continue; // 어느 레인도 쪼개서 안 풀린다 — 정직하게 그대로 둔다
       // 그 줄을 쥔 캐시 항목을 찾는다(자식 id 로 저장돼 있다).
       for (const [cid, groups] of linkCache) {
         const at = groups.findIndex((g) => g.id === linkId);
