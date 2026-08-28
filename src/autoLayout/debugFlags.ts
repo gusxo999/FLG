@@ -52,14 +52,16 @@ export function setAutoLayoutChannelGeometry(v: boolean): void {
  * AUTO_LAYOUT_LINK_LADDER — **사다리 1단**(못을 피해 링크를 토막내기) 스위치.
  * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
  *
- * `false`(기본)면 배정이 못 앉은 줄을 **그대로 정직하게 실패**시킨다(오늘 동작).
- * `true` 면 `packModuleTree` 가 1차 생성의 **막힌 행**을 읽어 그 줄을 토막내고 다시 만든다.
+ * `true`(기본, 2026-08-29)면 `packModuleTree` 가 1차 생성의 **막힌 행**을 읽어, 쪼개면
+ * 실제로 앉는 줄만([nailsWorthCutting]) 토막내고 다시 만든다. `false` 면 못 앉은 줄을
+ * **그대로 정직하게 실패**시킨다(사다리 이전 동작) — 회귀를 가를 때 쓴다.
  *
- * **기본이 꺼짐인 이유는 대가가 아직 안 재졌기 때문이다** — 토막 하나가 포트 하나이고,
- * 포트가 늘면 납품 경로·채널이 함께 는다. 큰 트리에서 그 비용이 얼마인지 세기 전에는
- * 켜 두지 않는다. 켜고 재는 것은 `flg.flags.linkLadder(true)`.
+ * **기본이 켜짐인 이유:** 이 칸이 겨냥한 문제(*막힌 칸 사이에 빈 자리가 있다*)는 실측으로
+ * 풀렸고(`electronic-circuit` 이슈 2→0), 안 풀리는 것들은 켜기 전과 **똑같이** 실패한다.
+ * 사다리는 아직 1단뿐이므로 **어디까지 되는지**를 알고 써야 한다 — 경계는
+ * [rungOfLine] 이 실패마다 이름표로 붙이고, 그 이름표가 `unrouted-lines` 이슈 문장에 나온다.
  */
-export let AUTO_LAYOUT_LINK_LADDER = false;
+export let AUTO_LAYOUT_LINK_LADDER = true;
 
 export function setAutoLayoutLinkLadder(v: boolean): void {
   AUTO_LAYOUT_LINK_LADDER = v;

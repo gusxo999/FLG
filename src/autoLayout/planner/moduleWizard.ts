@@ -21,6 +21,7 @@ import { useGameDataStore } from "../../UI/store/gameDataStore";
 import { EntityType } from "../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
 import type { IoLine } from "./module/clusterPortPlanner";
+import { summarizeRungs } from "./module/linkPlanner";
 import { externalLineGroups, groupRate } from "../module/link";
 import { chooseFluidTrunkPlan, fluidJumpBlocker, type FluidLineSpec } from "../module/fluidPorts";
 import {
@@ -457,7 +458,13 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     //    **벨트 티어와 무관**한데 4단계(벨트)로 보내고 있었다. 지렛대는 긴팔 인서터 → 3단계.
     //  - `belt: demand>beltCap` — 진짜 벨트 처리량 부족. 4단계가 맞는데 옛 조건
     //    (`includes('belt-demand')`)에 안 걸려 **처방이 아예 없었다**.
-    const why = pl.module.supply?.mode === "direct" ? pl.module.supply.reason : "사유 없음";
+    // **사유가 둘 있고 층이 다르다.** `supply.reason` 은 *공급 모델* 이 왜 강등됐나이고,
+    // 배정이 왜 못 앉혔나는 [LaneShortage] 에 있다. 여태 후자를 아무도 안 읽어 화면에
+    // "사유 없음" 만 떴다 — 사다리가 미완성인 지금 **어디까지 되는지**를 가리는 문장이라
+    // 특히 나빴다. 이제 [summarizeRungs] 가 그 실패를 **사다리 칸 이름표**로 세어 붙인다.
+    const rungs = pl.module.laneShortages && summarizeRungs(pl.module.laneShortages);
+    const why = pl.module.supply?.mode === "direct" ? pl.module.supply.reason
+      : rungs ? `사다리 ${rungs}` : "사유 없음";
     const fixStep = why.includes('no-inserter') || why.includes('lanes-exceed-capacity')
       ? 'inserter' as const
       : why.includes('demand>beltCap') ? 'belt' as const

@@ -55,7 +55,7 @@ execution/emitPath.ts          경로 → 셀. 방출이 덧셈인 자리       
 
 | 전제 | 확인 방법 |
 |---|---|
-| 기준선 = 타입 0 · **50파일 610테스트 · 기존 실패 2건**(`module/trunkPipe.test.ts` 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run`. **늘면 회귀다** |
+| 기준선 = 타입 0 · **52파일 631테스트 · 기존 실패 2건**(`module/trunkPipe.test.ts` 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run`. **늘면 회귀다** |
 
 ## 하지 않는 것
 
