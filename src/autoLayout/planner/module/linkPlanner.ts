@@ -401,7 +401,10 @@ const LINK_LANE_DEPTH = 2;
  *    (가로 벨트 한 줄만 깐다). 그리고 그 방향에 **gap 이 실제로 있어야** 한다: 맨 위 머신에
  *    N gap 은 없고, 맨 아래 머신에 S gap 은 없다.
  */
-function tryLinkFace(
+// **간선 축 배정이 직접 부른다**([seatLinkEdge]) — 한 링크의 양끝을 놓기 전에 둘 다
+// 물어봐야 하는데, 그 두 물음이 **서로 다른 모듈의 표**에 걸린다. 그래서 판정(try)과
+// 확정(commit)이 갈려 있는 지금 모양이 그대로 필요하다.
+export function tryLinkFace(
   ctx: LinkFaceContext,
   group: Link,
   side: "from" | "to",
@@ -553,7 +556,7 @@ function tryLinkFace(
  * 예전엔 장부 둘(`used`·`faceGroups`)을 따로 밀고 셋째(`lanes`)에 구간을 얹었다. 지금은
  * **주인을 적는 일 한 번**이고, 옛 두 수는 그 주인들을 세면 나온다([seatsTaken]·[groupsOn]).
  */
-function commitLinkFace(
+export function commitLinkFace(
   ctx: LinkFaceContext,
   cand: LinkFaceCandidate,
   side: "from" | "to",

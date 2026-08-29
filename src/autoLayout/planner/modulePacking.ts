@@ -28,7 +28,7 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import { planLinkFaces } from "./module/planModulePorts";
+import { cloneLinkFaceStage, planLinkFaces, seatLinkEdge, spillLinkEdge, type LinkFaceStage } from "./module/planModulePorts";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { resolveSpanBlock, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
@@ -417,24 +417,82 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     }
     return groups.length > 0 ? groups : undefined;
   };
-  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
-    const base: ModuleInput = {
-      ...toModuleInput(s, config, childFedItems(s)),
-      lineEnds,
-      nsExposure: nsExposureOf(s),
-      outputLinks: outputLinksOf(s),
-      inputLinks: inputLinksOf(s),
-    };
-    // **P0b — 배정을 `generateModule` 밖에서 돌린다**(`tempPlanDocs/간선-배정/` Step 1).
-    //
-    // 지금은 `gen` 바로 앞이라 결과가 전과 **글자 그대로 같다** — 같은 함수를 같은
-    // 입력으로 같은 순서로 부른다. 바뀌는 것은 **배정이 방출 밖에서 산다**는 사실 하나이고,
-    // 그것이 다음 단계들의 전제다: 루프 축을 간선으로 바꾸려면(Step 2) 배정이 먼저
-    // 모듈 밖에서 불리는 것이어야 하고, 쪼갬을 배정 안으로 넣으려면(Step 3) 그러야
-    // `linkCache` 를 밖에서 고치고 **전부 다시 만드는** 지금 구조를 지울 수 있다.
-    return generateModule({ ...base, linkFaceStage: planLinkFaces(base, Math.max(1, base.count)) });
+  /**
+   * **P0b — 간선 단위 배정** (`tempPlanDocs/간선-배정/간선-배정.md` Step 2).
+   *
+   * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
+   * 옛 축(모듈마다 자기 링크를 따로)에서는 한 링크의 두 끝을 서로 모르는 두 모듈이
+   * 따로 정했고, 그래서 **반쪽 배정**이 났다(`linkMismatches` 의 *child emitted, parent didn't*).
+   *
+   * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이고,
+   * 여기서는 축만 바꾼다. 축과 순서를 한 번에 바꾸면 무엇이 무엇을 바꿨는지 못 가른다.
+   */
+  const stageOf = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): ModuleInput => ({
+    ...toModuleInput(s, config, childFedItems(s)),
+    lineEnds,
+    nsExposure: nsExposureOf(s),
+    outputLinks: outputLinksOf(s),
+    inputLinks: inputLinksOf(s),
+  });
+
+  /** 부모의 `inputLinks` 안에서 자식 `cid` 의 그룹들이 시작하는 index. */
+  const inOffsetOf = (parentId: string, cid: string): number => {
+    let off = 0;
+    for (const k of childIdsByParent.get(parentId) ?? []) {
+      if (k === cid) return off;
+      off += linkCache.get(k)?.length ?? 0;
+    }
+    return off;
   };
 
+  /** 트리 전체의 배정 — 모듈 id → 그 모듈의 무대. `linkCache` 가 바뀌면 다시 부른다. */
+  const allocateTree = (
+    inputs: Map<string, ModuleInput>,
+  ): Map<string, LinkFaceStage> => {
+    const stages = new Map<string, LinkFaceStage>();
+    for (const s of specs)
+      stages.set(s.id, planLinkFaces(inputs.get(s.id)!, Math.max(1, s.count), "open"));
+    // 1단계 — 선호 면(출력 W · 입력 E)에 양끝을 함께.
+    for (const s of specs) {
+      if (!s.parentId) continue;
+      const groups = linkCache.get(s.id);
+      if (!groups?.length) continue;
+      const child = stages.get(s.id)!;
+      const parent = stages.get(s.parentId);
+      if (!parent) continue;
+      seatLinkEdge(child, parent, groups, inOffsetOf(s.parentId, s.id));
+    }
+    // 2단계 — 넘침. 역시 양끝을 함께 본다.
+    for (const s of specs) {
+      if (!s.parentId) continue;
+      const groups = linkCache.get(s.id);
+      if (!groups?.length) continue;
+      const child = stages.get(s.id)!;
+      const parent = stages.get(s.parentId);
+      if (!parent) continue;
+      spillLinkEdge(child, parent, groups, inOffsetOf(s.parentId, s.id));
+    }
+    return stages;
+  };
+
+  /** `gen` 이 쓸 입력 — `linkCache` 가 바뀌면 다시 만든다(`stagesRef` 와 짝). */
+  let inputsRef = new Map<string, ModuleInput>(specs.map((s) => [s.id, stageOf(s)]));
+  let stagesRef = allocateTree(inputsRef);
+  /** `linkCache` 를 고친 뒤 부른다 — **방출은 안 한다.** 배정만 다시 돈다. */
+  const reallocate = (): void => {
+    inputsRef = new Map(specs.map((s) => [s.id, stageOf(s)]));
+    stagesRef = allocateTree(inputsRef);
+  };
+
+  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
+    // 끝 선호(`lineEnds`)는 **배정을 안 바꾼다** — `ModulePortPlannerInput` 에서 빠져 있다.
+    // 그래서 2차 생성도 P0b 의 무대를 그대로 쓴다(그 사실이 Step 5 의 전제이기도 하다).
+    const base = lineEnds ? { ...inputsRef.get(s.id)!, lineEnds } : inputsRef.get(s.id)!;
+    // **사본을 준다** — ③′(기계별 포트)가 이 표에 이어서 앉으므로, 원본을 주면
+    // 두 번째 `gen` 이 ①+③′ 이 앉은 표를 보고 시작한다([cloneLinkFaceStage]).
+    const st = stagesRef.get(s.id);
+    return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
+  };
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
   const pass1 = new Map<string, GeneratedModule>();
   for (const s of specs) pass1.set(s.id, gen(s));
@@ -487,8 +545,12 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       }
     }
   }
-  // 쪼갰으면 1차를 다시 만든다 — 아래 tidy-tree 가 그 높이를 쓴다.
-  if (laddered > 0) for (const s of specs) pass1.set(s.id, gen(s));
+  // 쪼갰으면 **배정을 다시 돌리고**(방출 없음) 1차를 다시 만든다 — tidy-tree 가 그 높이를 쓴다.
+  // Step 3 이 쪼갬을 배정 안으로 옮기면 아래 재생성이 사라진다.
+  if (laddered > 0) {
+    reallocate();
+    for (const s of specs) pass1.set(s.id, gen(s));
+  }
 
   // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
   //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 납품 경로=raw 거리), 채널 폭(piece 5)이

@@ -49,6 +49,8 @@ import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStat
 import { inserterForReach } from "../../buildSpec";
 import {
   allocateLinkFaces,
+  commitLinkFace,
+  tryLinkFace,
   laneDepthsOf,
   spillLinkFacesToGap,
   gapRowsFromPlans,
@@ -60,7 +62,7 @@ import {
   type LinkFaceContext,
   type LinkFacePlan,
 } from "./linkPlanner";
-import type { FaceTable } from "./faceTable";
+import { copyFaceTable, type FaceTable } from "./faceTable";
 import type { PortFace } from "../../containerModel";
 
 /**
@@ -191,6 +193,12 @@ export interface LinkFaceStage {
 export function planLinkFaces(
   input: ModulePortPlannerInput,
   count: number,
+  /**
+   * `"seat"`(기본) — 모듈 축으로 이 모듈의 링크를 직접 앉힌다(옛 경로·단독 호출·테스트).
+   * `"open"` — **표만 차려 돌려준다.** 자리는 [seatLinkEdge] 가 **간선마다 양끝을 함께**
+   * 잡는다(Step 2) — 그래야 한 링크가 반쪽만 앉는 일이 없다.
+   */
+  mode: "seat" | "open" = "seat",
 ): LinkFaceStage {
   // ── ⓪ 유체 면 — **모든 배정보다 먼저** ──────────────────────────────────────
   // 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
@@ -251,6 +259,18 @@ export function planLinkFaces(
     machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
     ends: new Map(), inserters: input.inserters,
   };
+  const empty = (n: number): FaceAllocation => ({
+    plans: Array.from({ length: n }, () => undefined),
+    deferred: [],
+    shortages: Array.from({ length: n }, () => []),
+  });
+  if (mode === "open") {
+    return {
+      tables: faceTables, ctx: faceCtx, outLinks, inLinks,
+      out: empty(outLinks.length), in: empty(inLinks.length),
+      pipeFaces, isJumpableToClusterPipe,
+    };
+  }
   const outFaces = allocateLinkFaces(faceCtx, outLinks, "from", "W");
   const inFaces = allocateLinkFaces(faceCtx, inLinks, "to", "E");
   // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
@@ -264,6 +284,113 @@ export function planLinkFaces(
   return {
     tables: faceTables, ctx: faceCtx, outLinks, inLinks,
     out: outFaces, in: inFaces, pipeFaces, isJumpableToClusterPipe,
+  };
+}
+
+/**
+ * **간선 하나를 양끝에 함께 앉힌다** — 루프 축이 모듈이 아니라 간선이다
+ * (`tempPlanDocs/간선-배정/간선-배정.md` Step 2).
+ *
+ * `Link` 는 **두 모듈에 걸친 객체**다 — `from` 은 자식의 머신, `to` 는 부모의 머신.
+ * 그런데 옛 모듈 축에서는 자식이 `from` 만, 부모가 `to` 만, **서로 모르게** 읽었다.
+ * 그래서 셋이 불가능했고(쪼갬·끝 맞추기·순서), 지금 코드는 그 셋을 **밖에서 우회**하며
+ * 되먹임 둘을 지고 있었다.
+ *
+ * 여기서 얻는 성질은 **원자성**이다:
+ *
+ * ```
+ * 양끝이 다 되면 → 둘 다 확정
+ * 한쪽이라도 안 되면 → 둘 다 미배정          ← 반쪽 배정이 없다
+ * ```
+ *
+ * 옛 축에서는 반쪽이 실제로 났다 — `pairDeliveryPorts` 의 *"child emitted, parent didn't"*
+ * (`PackResult.linkMismatches`)가 그 증상이다.
+ *
+ * @param fromSeat 자식 쪽 무대(그 모듈의 `outputLinks` 가 `groups` 를 그대로 담는다)
+ * @param toSeat   부모 쪽 무대
+ * @param toOffset 부모의 `inputLinks` 안에서 이 간선의 그룹들이 시작하는 index
+ *                 (부모는 자식 여럿에게서 받으므로 자식마다 구간이 다르다)
+ */
+export function seatLinkEdge(
+  fromSeat: LinkFaceStage,
+  toSeat: LinkFaceStage,
+  groups: readonly Link[],
+  toOffset: number,
+): void {
+  groups.forEach((g, j) => {
+    const ti = toOffset + j;
+    // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(그게 이 원자성의 전제다).
+    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fromSeat.out.shortages[j]);
+    const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, toSeat.in.shortages[ti]);
+    if (candFrom && candTo) {
+      fromSeat.out.plans[j] = commitLinkFace(fromSeat.ctx, candFrom, "from");
+      toSeat.in.plans[ti] = commitLinkFace(toSeat.ctx, candTo, "to");
+      return;
+    }
+    // 한쪽만 됐어도 **아무것도 안 잡는다.** 넘침 단계가 양끝을 다시 함께 본다.
+    fromSeat.out.deferred.push(j);
+    toSeat.in.deferred.push(ti);
+  });
+}
+
+/**
+ * [seatLinkEdge] 의 2단계 — 선호 면이 빈손인 간선을 **다른 면으로**, 역시 **양끝 함께**.
+ *
+ * 면 순서는 옛 축과 같다(출력 `["W","S","N"]` · 입력 `["E","S","N"]`) — 선호 면이 다시
+ * 들어 있는 것은 그 면이 유체 면이면 1단계가 비켜 갔기 때문이다(`allowPipeFace`).
+ */
+export function spillLinkEdge(
+  fromSeat: LinkFaceStage,
+  toSeat: LinkFaceStage,
+  groups: readonly Link[],
+  toOffset: number,
+): void {
+  const OUT: readonly PortFace[] = ["W", "S", "N"];
+  const IN: readonly PortFace[] = ["E", "S", "N"];
+  const pending = fromSeat.out.deferred.filter((j) => fromSeat.out.plans[j] === undefined);
+  for (const j of pending) {
+    const g = groups[j];
+    if (!g) continue;
+    const ti = toOffset + j;
+    if (toSeat.in.plans[ti] !== undefined) continue; // 이미 짝이 앉았다 — 여기 올 리 없다
+    let done = false;
+    for (const ff of OUT) {
+      const candFrom = tryLinkFace(fromSeat.ctx, g, "from", ff, true);
+      if (!candFrom) continue;
+      for (const tf of IN) {
+        const candTo = tryLinkFace(toSeat.ctx, g, "to", tf, true);
+        if (!candTo) continue;
+        fromSeat.out.plans[j] = commitLinkFace(fromSeat.ctx, candFrom, "from");
+        toSeat.in.plans[ti] = commitLinkFace(toSeat.ctx, candTo, "to");
+        done = true;
+        break;
+      }
+      if (done) break;
+    }
+  }
+}
+
+/**
+ * **무대의 사본** — `gen` 이 여러 번 돌 때 **꼭 필요하다.**
+ *
+ * 배정(①)은 `P0b` 에서 한 번 끝나지만, `planModulePorts` 의 ③′(기계별 포트)가 **같은
+ * 좌석표에 이어서 앉는다.** 그래서 무대를 그대로 재사용하면 두 번째 `gen` 이
+ * **①이 아니라 ①+③′ 이 앉은 표**를 보고 시작해 자리가 조용히 줄어든다.
+ *
+ * 2026-08-29 에 실제로 그렇게 깨졌다 — 21개 테스트가 *"인서터 수 ≠ 줄 수"* 로 떨어졌다.
+ * [FaceTable] 이 값인 것([copyFaceTable])이 이 사본을 싸게 만든다.
+ *
+ * `out`/`in` 의 [LinkFacePlan] 은 확정된 결과라 **참조로 나눠 쓴다**(아무도 안 고친다).
+ */
+export function cloneLinkFaceStage(stage: LinkFaceStage): LinkFaceStage {
+  const tables = new Map([...stage.tables].map(([f, t]) => [f, copyFaceTable(t)] as const));
+  const ends = new Map([...stage.ctx.ends].map(([f, set]) => [f, new Set(set)] as const));
+  return {
+    ...stage,
+    tables,
+    ctx: { ...stage.ctx, tables, ends },
+    out: { ...stage.out, plans: [...stage.out.plans], deferred: [...stage.out.deferred] },
+    in: { ...stage.in, plans: [...stage.in.plans], deferred: [...stage.in.deferred] },
   };
 }
 

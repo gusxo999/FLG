@@ -13,7 +13,8 @@
  * **바뀌기 전이 같았다는 사실**이 잠겨 있어야 한다.
  */
 import { describe, it, expect } from "vitest";
-import { planLinkFaces, planModulePorts } from "./planModulePorts";
+import { planLinkFaces, planModulePorts, seatLinkEdge } from "./planModulePorts";
+import { tryLinkFace } from "./linkPlanner";
 import type { ModuleInput } from "../../module/clusterModule";
 import type { Link } from "../../module/link";
 
@@ -111,5 +112,43 @@ describe("planLinkFaces — 밖에서 돌린 배정을 받아도 답이 같다",
       },
     }));
     expect(b).toEqual(a);
+  });
+});
+
+/**
+ * **원자성** — 한 링크는 양끝이 다 앉거나 둘 다 안 앉는다(Step 2).
+ *
+ * 옛 모듈 축에서는 자식이 `from` 을, 부모가 `to` 를 **서로 모르게** 정해서 반쪽이 났다.
+ * 그 증상이 `PackResult.linkMismatches` 의 *"child emitted, parent didn't"* 다.
+ */
+describe("seatLinkEdge — 반쪽 배정이 없다", () => {
+  /** 자식은 자리가 넉넉하고(h=3), 부모는 **좌석이 하나뿐**(h=1)이라 팔 셋을 못 받는다. */
+  const child = base({ count: 1, outputLinks: [link("gear", [0], [0], 6)], inputLinks: [] });
+  const parent = base({
+    machine: { entityName: "tiny", w: 1, h: 1 },
+    count: 1,
+    outputLinks: [],
+    inputLinks: [link("gear", [0], [0], 6)],
+  });
+
+  it("부모가 못 앉으면 **자식도 안 앉는다**", () => {
+    const c = planLinkFaces(child, 1, "open");
+    const p = planLinkFaces(parent, 1, "open");
+    seatLinkEdge(c, p, child.outputLinks!, 0);
+    // 대조군 — 자식만 따로 물으면 **앉을 수 있다**(그래야 이 단언이 뜻을 갖는다).
+    expect(tryLinkFace(planLinkFaces(child, 1, "open").ctx, child.outputLinks![0], "from", "W")).toBeTruthy();
+    expect(tryLinkFace(planLinkFaces(parent, 1, "open").ctx, parent.inputLinks![0], "to", "E")).toBeUndefined();
+    // 그런데 간선으로 물으면 **둘 다** 비어 있다.
+    expect(c.out.plans[0]).toBeUndefined();
+    expect(p.in.plans[0]).toBeUndefined();
+  });
+
+  it("양끝이 다 되면 **둘 다** 앉는다", () => {
+    const small = link("gear", [0], [0], 1);
+    const c = planLinkFaces(base({ count: 1, outputLinks: [small], inputLinks: [] }), 1, "open");
+    const p = planLinkFaces(base({ count: 1, outputLinks: [], inputLinks: [small] }), 1, "open");
+    seatLinkEdge(c, p, [small], 0);
+    expect(c.out.plans[0]).toBeDefined();
+    expect(p.in.plans[0]).toBeDefined();
   });
 });
