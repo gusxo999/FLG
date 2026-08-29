@@ -55,6 +55,7 @@ import {
   gapExitSidesFromPlans,
   linkFaceDepths,
   seatRowsByFace,
+  type FaceAllocation,
   type LaneShortage,
   type LinkFaceContext,
   type LinkFacePlan,
@@ -159,10 +160,38 @@ export interface ModulePortPlan {
  * 한 모듈의 포트 자리를 전부 배정한다. `count` 는 호출자가 정규화한 머신 대수
  * (`layoutCluster` 가 만드는 머신 수와 **같아야** 한다 — 배정이 없는 머신을 가리키면 안 된다).
  */
-export function planModulePorts(
+/**
+ * **① 링크 면 배정의 산출** — [planLinkFaces] 가 내고 [planModulePorts] 가 받는다.
+ *
+ * 이 번들이 있는 이유는 하나다 — **배정을 `generateModule` 밖에서 돌리기 위해**
+ * (`tempPlanDocs/간선-배정/간선-배정.md` Step 1). 배정이 방출 안에 갇혀 있으면
+ * 그 결과를 보려고 방출까지 해야 하고, 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다
+ * — 그게 되먹임 A·B 의 뿌리다.
+ *
+ * `pipeFaces`·`pipeFaceRows` 까지 담는 것은 ⓪ 가 ① 뿐 아니라 ③도 먹이기 때문이다 —
+ * 둘로 나누어 각자 유도하면 **같은 사실을 두 곳이 세게 된다**(R3).
+ */
+export interface LinkFaceStage {
+  tables: Map<PortFace, FaceTable>;
+  ctx: LinkFaceContext;
+  outLinks: Link[];
+  inLinks: Link[];
+  out: FaceAllocation;
+  in: FaceAllocation;
+  pipeFaces: { side: PortSide; fluidRows: number; laneCap: number }[];
+  isJumpableToClusterPipe: (side: PortSide) => boolean;
+}
+
+/**
+ * **⓪ 유체 면 + ① 링크 면 배정** — 좌표도 방출도 안 본다.
+ *
+ * `generateModule` 밖(`modulePacking` 의 `P0b`)에서 불러도 같은 답을 낸다 — 입력이
+ * 전부 스펙과 링크이고, 그 둘은 `P0` 에 이미 확정되어 있다.
+ */
+export function planLinkFaces(
   input: ModulePortPlannerInput,
   count: number,
-): ModulePortPlan {
+): LinkFaceStage {
   // ── ⓪ 유체 면 — **모든 배정보다 먼저** ──────────────────────────────────────
   // 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
   // 스도쿠 원칙). 그리고 ①도 이 답을 알아야 한다: 유체가 가져간 면에 링크를 앉히면 인서터가
@@ -231,6 +260,29 @@ export function planModulePorts(
   // (반대 옆면은 여전히 안 쓴다 — 벨트가 채널 반대쪽에서 출발해 되돌아올 길이 없다.)
   spillLinkFacesToGap(faceCtx, outLinks, "from", outFaces, ["W", "S", "N"]);
   spillLinkFacesToGap(faceCtx, inLinks, "to", inFaces, ["E", "S", "N"]);
+
+  return {
+    tables: faceTables, ctx: faceCtx, outLinks, inLinks,
+    out: outFaces, in: inFaces, pipeFaces, isJumpableToClusterPipe,
+  };
+}
+
+/**
+ * 모듈 하나의 포트 계획 — ⓪①은 [planLinkFaces] 가 이미 끝낸 것을 **받는다.**
+ *
+ * `stage` 를 안 주면 여기서 직접 돌린다 — 그랬면 옆 경로(모듈 안에서 배정)가 생기는 게
+ * 아니라 **같은 함수를 같은 인자로** 부를 뿐이라 답이 같다(테스트·단독 호출용).
+ */
+export function planModulePorts(
+  input: ModulePortPlannerInput,
+  count: number,
+  stage?: LinkFaceStage,
+): ModulePortPlan {
+  const plannerInserters = input.inserters;
+  const st = stage ?? planLinkFaces(input, count);
+  const { tables: faceTables, ctx: faceCtx, outLinks, inLinks, pipeFaces, isJumpableToClusterPipe } = st;
+  const outFaces = st.out;
+  const inFaces = st.in;
 
   // 링크가 맡은 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
   // ③의 tap/direct 판정 대상이 아니다. ③ 입력에서 빼되, 그 줄이 먹은 좌석은 ①의 장부에

@@ -32,7 +32,7 @@ import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPort
 import { type Link } from "./link";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
-import { planModulePorts } from "../planner/module/planModulePorts";
+import { planModulePorts, type LinkFaceStage } from "../planner/module/planModulePorts";
 import type { LaneShortage, LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
@@ -194,6 +194,14 @@ export interface ModuleInput {
    */
   lineEnds?: Map<string, "min" | "max">;
   /**
+   * **밖에서 이미 끝난 링크 면 배정**(`P0b`). 없으면 [planModulePorts] 가 직접 돌린다.
+   *
+   * 배정이 `generateModule` **안에 갇혀 있으면** 그 결과를 보려고 방출까지 해야 하고,
+   * 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다 — 그게 되먹임 둘의 뿌리였다
+   * (`tempPlanDocs/간선-배정/`). 이 필드가 그 문을 열어 둔다.
+   */
+  linkFaceStage?: LinkFaceStage;
+  /**
    * 노출된 끝면(N/S, 선호 순서) — count=1 완화. external 입력이 W-spill 전에 이 면의
    * 레인을 쓴다(planner E→N/S→W). 노출 판정(열의 끝 + 전역 마진 방향)은 packModuleTree
    * 가 DFS 열-내 순서에서 유도한다. 미지정=기존 동작(W/E 만).
@@ -257,7 +265,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // 수**인데, 그 폭이 다시 머신 좌표를 정하기 때문이다(닭과 달걀을 푸는 지점).
   //
   // 아래는 전부 **방출**이다 — 계획이 못박은 자리에 놓기만 하고, 탐색이 없다.
-  const plan = planModulePorts(input, count);
+  const plan = planModulePorts(input, count, input.linkFaceStage);
 
   const layout = layoutCluster(
     { w: input.machine.w, h: input.machine.h, count },

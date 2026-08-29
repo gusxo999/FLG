@@ -28,6 +28,7 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
+import { planLinkFaces } from "./module/planModulePorts";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { resolveSpanBlock, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
@@ -417,13 +418,21 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     return groups.length > 0 ? groups : undefined;
   };
   const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
-    return generateModule({
+    const base: ModuleInput = {
       ...toModuleInput(s, config, childFedItems(s)),
       lineEnds,
       nsExposure: nsExposureOf(s),
       outputLinks: outputLinksOf(s),
       inputLinks: inputLinksOf(s),
-    });
+    };
+    // **P0b — 배정을 `generateModule` 밖에서 돌린다**(`tempPlanDocs/간선-배정/` Step 1).
+    //
+    // 지금은 `gen` 바로 앞이라 결과가 전과 **글자 그대로 같다** — 같은 함수를 같은
+    // 입력으로 같은 순서로 부른다. 바뀌는 것은 **배정이 방출 밖에서 산다**는 사실 하나이고,
+    // 그것이 다음 단계들의 전제다: 루프 축을 간선으로 바꾸려면(Step 2) 배정이 먼저
+    // 모듈 밖에서 불리는 것이어야 하고, 쪼갬을 배정 안으로 넣으려면(Step 3) 그러야
+    // `linkCache` 를 밖에서 고치고 **전부 다시 만드는** 지금 구조를 지울 수 있다.
+    return generateModule({ ...base, linkFaceStage: planLinkFaces(base, Math.max(1, base.count)) });
   };
 
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
