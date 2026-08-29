@@ -485,7 +485,7 @@ export function tryLinkFace(
   // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
   const spanning = spansAllMachines(group, side, count);
   const endsTaken = ctx.ends.get(face);
-  // **선호 끝이 있으면 그것부터**(간선-배정 Step 4). 없으면 오늘처럼 N 먼저 — 그 경우
+  // **선호 끝이 있으면 그것부터**. 없으면 오늘처럼 N 먼저 — 그 경우
   // 후보 순서가 `["N","S"]` 로 같아지므로 **한 칸도 안 달라진다**.
   const want = group.end?.[side];
   const endOrder = want ? ([want, want === "N" ? "S" : "N"] as const) : (["N", "S"] as const);

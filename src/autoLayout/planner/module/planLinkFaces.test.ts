@@ -1,5 +1,5 @@
 /**
- * **배정이 `generateModule` 밖에서 산다** — `tempPlanDocs/간선-배정/` Step 1.
+ * **배정이 `generateModule` 밖에서 산다**.
  *
  * 잠그는 것은 하나다: **밖에서 돌린 배정을 넣어도 답이 같다.**
  *

@@ -169,7 +169,7 @@ export interface ModulePortPlan {
  * **① 링크 면 배정의 산출** — [planLinkFaces] 가 내고 [planModulePorts] 가 받는다.
  *
  * 이 번들이 있는 이유는 하나다 — **배정을 `generateModule` 밖에서 돌리기 위해**
- * (`tempPlanDocs/간선-배정/간선-배정.md` Step 1). 배정이 방출 안에 갇혀 있으면
+ * 배정이 방출 안에 갇혀 있으면
  * 그 결과를 보려고 방출까지 해야 하고, 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다
  * — 그게 되먹임 A·B 의 뿌리다.
  *
@@ -292,7 +292,6 @@ export function planLinkFaces(
 
 /**
  * **간선 하나를 양끝에 함께 앉힌다** — 루프 축이 모듈이 아니라 간선이다
- * (`tempPlanDocs/간선-배정/간선-배정.md` Step 2·3).
  *
  * `Link` 는 **두 모듈에 걸친 객체**다 — `from` 은 자식의 머신, `to` 는 부모의 머신.
  * 그런데 옛 모듈 축에서는 자식이 `from` 만, 부모가 `to` 만, **서로 모르게** 읽었다.

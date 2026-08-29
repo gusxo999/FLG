@@ -400,7 +400,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 두 번 돌려 "결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 일치를 기대했다
   // (2026-07-21 이전) — 이제 한 번 계산된 같은 객체를 양쪽이 그대로 참조한다.
   /**
-   * **형제 순번이 끝을 정한다** — 좌표 없이(간선-배정 Step 4·5).
+   * **형제 순번이 끝을 정한다** — 좌표 없이.
    *
    * `layoutY` 는 자식을 **배열 순서대로 위 → 아래**로 놓고, 부모를 **첫·마지막의 중점**에
    * 둔다(`:489-501`). 그래서 좌표를 몰라도 이것만은 확정이다:
@@ -483,7 +483,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     return groups.length > 0 ? groups : undefined;
   };
   /**
-   * **P0b — 간선 단위 배정** (`tempPlanDocs/간선-배정/간선-배정.md` Step 2·3).
+   * **P0b — 간선 단위 배정**.
    *
    * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
    * 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 — 밖에서 `linkCache` 를 고치고
@@ -579,7 +579,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // (옛 `1b) 사다리 1단` 은 **배정 안으로 접혔다** — `seatLinkEdge` 가 못을 만나면
   //  그 자리에서 쪼개고 토막을 이어 앉힌다. `linkCache` 를 밖에서 고치고 1차를 통째로
   //  다시 만들던 자리가 사라졌다 = **되먹임 B 제거**
-  //  (`tempPlanDocs/간선-배정/간선-배정.md` Step 3).
 
   // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
   //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 납품 경로=raw 거리), 채널 폭(piece 5)이
@@ -664,7 +663,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // (옛 `3) 포트 끝(DOF-B)` 은 **P0 으로 옮겼다** — 형제 순번으로 정하므로 tidy-tree 가
   //  필요 없다. |Δy| 최소(거리)를 버리고 **교차 없음**을 노린다.
   //  그것이 `gen → 높이 → 끝 → gen` 고리를 여는 유일한 조건이었다 = **되먹임 A 제거**
-  //  (`tempPlanDocs/간선-배정/간선-배정.md` Step 4·5).
 
   // (옛 `4) 2차 생성` 은 **사라졌다** — 끝 선호가 `P0` 에서 확정되므로 1차가 곧 최종이다.
   //  `generateModule` 은 이제 트리마다 **한 번**만 돈다 = **되먹임 0**.

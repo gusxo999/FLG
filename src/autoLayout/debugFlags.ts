@@ -52,18 +52,23 @@ export function setAutoLayoutChannelGeometry(v: boolean): void {
  * AUTO_LAYOUT_LINK_LADDER — **구간막힘 해소**(못을 피해 링크를 토막내기) 스위치.
  * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
  *
- * `true`(기본)면 **배정이 못을 만난 그 자리에서** 쪼갠다([seatLinkEdge]) — 쪼개면 실제로
- * 앉는 줄만([resolveSpanBlock]). `false` 면 그대로 정직하게 실패시킨다(회귀를 가를 때).
+ * `true` 면 **배정이 못을 만난 그 자리에서** 쪼갠다([seatLinkEdge]) — 쪼개면 실제로
+ * 앉는 줄만([resolveSpanBlock]). `false`(현재 기본) 면 그대로 정직하게 실패시킨다.
+ *
+ * **2026-08-30 기본을 다시 꺼 둔다.** 이 칸이 푸는 문제(구간막힘)의 **전제가
+ * "관통이 깊다" 인데, 그 전제를 레인 순서 규칙이 깨다** — 긴 흐름을 얙은 레인에
+ * 두면 그 포트가 기둥 끝으로 나가 못을 찍을 자리가 없어진다. 그러므로 **쓸모를
+ * 먼저 재점검한다** — 꺼 둔 채로 순서 규칙을 넣고, 그래도 못 앜는 줄이 남는지를 본다.
  *
  * **2026-08-29 에 자리가 바뀌었다.** 예전엔 1차 생성 **뒤**에 `linkCache` 를 밖에서 고치고
  * 트리를 **통째로 다시 만들었다**(되먹임 B). 이제 배정 안에서 토막을 이어 앉히므로
- * 재생성이 없다 — `tempPlanDocs/간선-배정/` Step 3.
+ * 재생성이 없다.
  *
  * 사다리는 아직 이 한 칸뿐이므로 **어디까지 되는지**를 알고 써야 한다 — 경계는
  * [rungOfLine] 이 실패마다 이름표로 붙이고, 그 이름표가 `unrouted-lines` 이슈 문장에 나온다.
  * 쪼갠 횟수는 `flg.report()` 의 `면레인 · 쪼갬 N` 으로 본다(**0이 목표다**).
  */
-export let AUTO_LAYOUT_LINK_LADDER = true;
+export let AUTO_LAYOUT_LINK_LADDER = false;
 
 export function setAutoLayoutLinkLadder(v: boolean): void {
   AUTO_LAYOUT_LINK_LADDER = v;

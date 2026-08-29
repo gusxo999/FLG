@@ -198,7 +198,7 @@ export interface ModuleInput {
    *
    * 배정이 `generateModule` **안에 갇혀 있으면** 그 결과를 보려고 방출까지 해야 하고,
    * 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다 — 그게 되먹임 둘의 뿌리였다
-   * (`tempPlanDocs/간선-배정/`). 이 필드가 그 문을 열어 둔다.
+   * 이 필드가 그 문을 열어 둔다.
    */
   linkFaceStage?: LinkFaceStage;
   /**
