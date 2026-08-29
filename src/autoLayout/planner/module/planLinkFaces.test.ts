@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { planLinkFaces, planModulePorts, seatLinkEdge } from "./planModulePorts";
-import { tryLinkFace } from "./linkPlanner";
+import { commitLinkFace, tryLinkFace } from "./linkPlanner";
 import type { ModuleInput } from "../../module/clusterModule";
 import type { Link } from "../../module/link";
 
@@ -150,5 +150,47 @@ describe("seatLinkEdge — 반쪽 배정이 없다", () => {
     const r = seatLinkEdge(c, p, [small], { split: false });
     expect(r.fromPlans[0]).toBeDefined();
     expect(r.toPlans[0]).toBeDefined();
+  });
+});
+
+/**
+ * **끝은 짝을 본다** — 형제 순번이 정하고, 좌표는 안 본다(Step 4).
+ *
+ * 옛 규칙은 `["N","S"]` **선착순**이라 짝이 어디 있든 첫 관통이 N 을 먹었다.
+ * 거리(가장 가까운 끝)를 노리면 두 기둥의 **모서리**가 필요하고, 모서리는 높이를,
+ * 높이는 `generateModule` 을 부른다 — 그래서 **교차 없음**을 노린다.
+ */
+describe("portEnd — 선호가 있으면 그것부터", () => {
+  /** 머신 셋을 **관통**하는 출력 줄 하나(관통이라야 기둥 끝을 쓴다). */
+  const spanning = (end?: { from: "N" | "S"; to: "N" | "S" }): Link => ({
+    ...link("gear", [0, 1, 2], [0], 1),
+    ...(end ? { end } : {}),
+  });
+
+  const seat = (g: Link) => {
+    const st = planLinkFaces(base({ count: 3, outputLinks: [g], inputLinks: [] }), 3, "open");
+    return tryLinkFace(st.ctx, g, "from", "W");
+  };
+
+  it("대조군 — 선호가 없으면 **N** 이 먼저다(오늘 동작)", () => {
+    expect(seat(spanning())?.portEnd).toBe("N");
+  });
+
+  it("선호가 `S` 면 **S** 를 잡는다", () => {
+    expect(seat(spanning({ from: "S", to: "N" }))?.portEnd).toBe("S");
+  });
+
+  it("선호가 `N` 이면 오늘과 같다 — 기전: 후보 순서가 `[\"N\",\"S\"]` 로 같아진다", () => {
+    expect(seat(spanning({ from: "N", to: "S" }))?.portEnd).toBe("N");
+  });
+
+  it("선호한 끝이 이미 찼으면 **반대쪽**으로 물러난다", () => {
+    const a = spanning({ from: "S", to: "N" });
+    const b = spanning({ from: "S", to: "N" });
+    const st = planLinkFaces(base({ count: 3, outputLinks: [a, b], inputLinks: [] }), 3, "open");
+    const first = tryLinkFace(st.ctx, a, "from", "W");
+    expect(first?.portEnd).toBe("S");
+    commitLinkFace(st.ctx, first!, "from");
+    expect(tryLinkFace(st.ctx, b, "from", "W")?.portEnd).toBe("N");
   });
 });

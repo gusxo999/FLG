@@ -44,7 +44,7 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, recordFaceLaneStats, resetBeltFormStats, resetFaceLaneStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceLaneStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -399,13 +399,74 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 자식 쪽(outputLinksOf)과 부모 쪽(inputLinksOf)이 예전엔 이 계산을 각자 독립으로
   // 두 번 돌려 "결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 일치를 기대했다
   // (2026-07-21 이전) — 이제 한 번 계산된 같은 객체를 양쪽이 그대로 참조한다.
+  /**
+   * **형제 순번이 끝을 정한다** — 좌표 없이(간선-배정 Step 4·5).
+   *
+   * `layoutY` 는 자식을 **배열 순서대로 위 → 아래**로 놓고, 부모를 **첫·마지막의 중점**에
+   * 둔다(`:489-501`). 그래서 좌표를 몰라도 이것만은 확정이다:
+   *
+   * ```
+   * 앞쪽 형제 → 부모보다 위    → 자식은 **아래 끝**으로 나가고 부모는 **위 끝**에서 받는다
+   * 뒤쪽 형제 → 부모보다 아래  → 자식은 **위 끝**,           부모는 **아래 끝**
+   * ```
+   *
+   * **거리가 아니라 교차를 노린다.** *"가장 가까운 끝"* 은 두 기둥의 **모서리**(= topY + 높이)를
+   * 알아야 하고, 높이는 `gen` 이 준다 — 그 목표를 지키는 한 `gen → 높이 → 끝 → gen` 이
+   * 반드시 닫힌다(**되먹임 A**). 순서만 보면 고리가 없다.
+   *
+   * 가운데 형제는 부모 중심의 어느 쪽인지 **트리로 못 가른다**(간격 = 높이에 달렸다).
+   * 그래도 **절반으로 갈라 두면 서로 안 교차한다** — 위 절반은 부모 위 끝, 아래 절반은
+   * 아래 끝. 전부 한 끝으로 몰면 그 줄들이 서로를 건넌다.
+   *
+   * 형제가 하나뿐이면 부모가 그 위에 겹쳐 있어 선호가 없다 → `undefined`.
+   */
+  const siblingHalf = (s: NodeSpec): "top" | "bottom" | undefined => {
+    if (!s.parentId) return undefined;
+    const kids = childIdsByParent.get(s.parentId) ?? [];
+    if (kids.length < 2) return undefined;
+    const i = kids.indexOf(s.id);
+    return i < kids.length / 2 ? "top" : "bottom";
+  };
+
+  /**
+   * **트렁크 줄의 끝 선호** — 링크와 **같은 규칙**을 쓴다(`min` = 위끝 · `max` = 아래끝).
+   *
+   * 예전엔 tidy-tree 뒤에서 |Δy| 최소 조합으로 골랐고, 그 값이 `gen` 의 입력으로 돌아가
+   * **2차 생성**을 불렀다(되먹임 A). 형제 순번으로 정하면 `gen` 보다 **앞**에서 확정되므로
+   * 고리가 열린다. 대가는 거리 최적화를 버린 것이고, 대신 **교차가 없다**.
+   */
+  const lineEndsById = new Map<string, Map<string, "min" | "max">>();
+  {
+    const setEnd = (id: string, key: string, end: "min" | "max") => {
+      (lineEndsById.get(id) ?? lineEndsById.set(id, new Map()).get(id)!).set(key, end);
+    };
+    for (const s of specs) {
+      if (!s.parentId) continue;
+      const product = productOf(s);
+      if (!product) continue;
+      const half = siblingHalf(s);
+      if (!half) continue; // 형제가 하나뿐 — 선호가 없다. 방출의 기본값(`min`)을 쓴다
+      setEnd(s.id, `output:${product}`, half === "top" ? "max" : "min");
+      setEnd(s.parentId, `input:${product}`, half === "top" ? "min" : "max");
+    }
+  }
+
+  /** 링크가 들 끝 — 자식 쪽·부모 쪽이 서로 반대다. */
+  const linkEndOf = (s: NodeSpec): Link["end"] => {
+    const half = siblingHalf(s);
+    if (!half) return undefined;
+    return half === "top" ? { from: "S", to: "N" } : { from: "N", to: "S" };
+  };
+
   const linkCache = new Map<string, Link[]>();
   for (const s of specs) {
     if (!s.parentId) continue;
     const product = productOf(s);
     if (!product) continue;
     const groups = edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
-    if (groups) linkCache.set(s.id, groups);
+    // **끝은 여기서 얹는다** — `id` 와 같은 자리, 같은 규칙(위층이 채우고 module/ 은 안 만든다).
+    const end = linkEndOf(s);
+    if (groups) linkCache.set(s.id, end ? groups.map((g) => ({ ...g, end })) : groups);
   }
   // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
@@ -430,9 +491,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    *
    * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
    */
-  const moduleInputOf = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): ModuleInput => ({
+  const moduleInputOf = (s: NodeSpec): ModuleInput => ({
     ...toModuleInput(s, config, childFedItems(s)),
-    lineEnds,
+    // **끝 선호를 처음부터 싣는다** — 예전엔 tidy-tree 뒤에 알아내 2차 생성으로 다시 넣었다.
+    lineEnds: lineEndsById.get(s.id),
     nsExposure: nsExposureOf(s),
     outputLinks: outputLinksOf(s),
     inputLinks: inputLinksOf(s),
@@ -501,17 +563,16 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const stagesRef = allocated.stages;
   const inputsRef = allocated.inputs;
 
-  const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
-    // 끝 선호(`lineEnds`)는 **배정을 안 바꾼다** — `ModulePortPlannerInput` 에서 빠져 있다.
-    // 그래서 2차 생성도 P0b 의 무대를 그대로 쓴다(그 사실이 Step 5 의 전제이기도 하다).
-    const base = lineEnds ? { ...inputsRef.get(s.id)!, lineEnds } : inputsRef.get(s.id)!;
+  const gen = (s: NodeSpec): GeneratedModule => {
+    const base = inputsRef.get(s.id)!;
     // **사본을 준다** — ③′(기계별 포트)가 이 표에 이어서 앉으므로, 원본을 주면
     // 두 번째 `gen` 이 ①+③′ 이 앉은 표를 보고 시작한다([cloneLinkFaceStage]).
     const st = stagesRef.get(s.id);
     return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
   };
 
-  // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
+  // 1) **생성 — 한 번뿐이다.** 끝 선호(`lineEnds`)가 `P0` 에서 확정되므로 다시 돌 이유가 없다.
+  //    여기서 잰 높이가 곧 깔릴 높이다(tidy-tree 가 그 값을 쓴다).
   const pass1 = new Map<string, GeneratedModule>();
   for (const s of specs) pass1.set(s.id, gen(s));
 
@@ -600,40 +661,17 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     }
   }
 
-  // 3) 포트 끝(DOF-B) 의도 — 각 납품 경로에서 자식 출력끝·부모 입력끝을 |Δy| 최소 조합으로 고른다.
-  //    끝 후보는 각 기둥의 위끝(min=topY)·아래끝(max=topY+h) 둘. 부모가 자식 위에 겹쳐
-  //    중심이 같아도 같은 쪽 끝을 골라 마주 보게 한다(중심 비교는 겹침에서 degenerate).
-  //    자식별 부모 입력은 품목이 달라 서로 다른 슬롯 → 끝을 독립 선택해도 충돌 없음.
-  const ends = (id: string): Record<"min" | "max", number> => ({
-    min: topY.get(id)!,
-    max: topY.get(id)! + heightOf(id),
-  });
-  const lineEndsById = new Map<string, Map<string, "min" | "max">>();
-  const setEnd = (id: string, key: string, end: "min" | "max") => {
-    (lineEndsById.get(id) ?? lineEndsById.set(id, new Map()).get(id)!).set(key, end);
-  };
-  const EE = ["min", "max"] as const;
-  for (const s of specs) {
-    if (!s.parentId) continue;
-    const product = productOf(s);
-    if (!product) continue;
-    const c = ends(s.id), p = ends(s.parentId);
-    let bestC: "min" | "max" = "min", bestP: "min" | "max" = "min", bestD = Infinity;
-    for (const ce of EE) for (const pe of EE) {
-      const d = Math.abs(c[ce] - p[pe]);
-      if (d < bestD) { bestD = d; bestC = ce; bestP = pe; }
-    }
-    setEnd(s.id, `output:${product}`, bestC);
-    setEnd(s.parentId, `input:${product}`, bestP);
-  }
+  // (옛 `3) 포트 끝(DOF-B)` 은 **P0 으로 옮겼다** — 형제 순번으로 정하므로 tidy-tree 가
+  //  필요 없다. |Δy| 최소(거리)를 버리고 **교차 없음**을 노린다.
+  //  그것이 `gen → 높이 → 끝 → gen` 고리를 여는 유일한 조건이었다 = **되먹임 A 제거**
+  //  (`tempPlanDocs/간선-배정/간선-배정.md` Step 4·5).
 
-  // 4) 2차 생성 — 끝 선호 반영(포트가 부모↔자식 방향 끝으로 정렬).
-  // **1차가 센 형태는 버린다** — 1차 모듈은 끝 선호를 재려고 만든 것이라 실제로 안 깔린다.
-  // (계측 전용. 계산·분기·반환값은 안 바뀐다.)
-  resetBeltFormStats();
-  resetFaceLaneStats(); // 같은 이유 — 1차가 센 레인 배정과 안전망 발동도 버린다
+  // (옛 `4) 2차 생성` 은 **사라졌다** — 끝 선호가 `P0` 에서 확정되므로 1차가 곧 최종이다.
+  //  `generateModule` 은 이제 트리마다 **한 번**만 돈다 = **되먹임 0**.
+  //  그래서 *"1차가 센 형태는 버린다"* 던 계측 초기화도 필요 없다 — 잰 것이 곧 깔린 것이다.
   const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
-  for (const s of specs) oriented.set(s.id, { module: gen(s, lineEndsById.get(s.id)), orientation: IDENTITY });
+  for (const s of specs)
+    oriented.set(s.id, { module: pass1.get(s.id)!, orientation: IDENTITY });
   // 내부 링크(자식→부모)의 형태 — 외부 줄은 `planModulePorts` 가 자기 몫을 센다.
   // 대수가 끝마다 다르다(자식 count ↔ 부모 count)라 그대로 넘긴다.
   recordBeltFormStats(
