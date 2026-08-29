@@ -128,6 +128,7 @@ export function buildReport(): string {
       `옆면 배정 ${fl.assignments} · 후보2+ ${fl.multiLaneFace}`
         + ` · **깊은레인 ${fl.deepLane}**`
         + (fl.deepLaneOtherArm > 0 ? ` (다른 팔 ${fl.deepLaneOtherArm})` : '')
+        + (fl.splits > 0 ? ` · 쪼갬 ${fl.splits}` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),
     ),
   );

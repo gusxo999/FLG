@@ -49,17 +49,19 @@ export function setAutoLayoutChannelGeometry(v: boolean): void {
 }
 
 /**
- * AUTO_LAYOUT_LINK_LADDER — **사다리 1단**(못을 피해 링크를 토막내기) 스위치.
+ * AUTO_LAYOUT_LINK_LADDER — **구간막힘 해소**(못을 피해 링크를 토막내기) 스위치.
  * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
  *
- * `true`(기본, 2026-08-29)면 `packModuleTree` 가 1차 생성의 **막힌 행**을 읽어, 쪼개면
- * 실제로 앉는 줄만([resolveSpanBlock]) 토막내고 다시 만든다. `false` 면 못 앉은 줄을
- * **그대로 정직하게 실패**시킨다(사다리 이전 동작) — 회귀를 가를 때 쓴다.
+ * `true`(기본)면 **배정이 못을 만난 그 자리에서** 쪼갠다([seatLinkEdge]) — 쪼개면 실제로
+ * 앉는 줄만([resolveSpanBlock]). `false` 면 그대로 정직하게 실패시킨다(회귀를 가를 때).
  *
- * **기본이 켜짐인 이유:** 이 칸이 겨냥한 문제(*막힌 칸 사이에 빈 자리가 있다*)는 실측으로
- * 풀렸고(`electronic-circuit` 이슈 2→0), 안 풀리는 것들은 켜기 전과 **똑같이** 실패한다.
- * 사다리는 아직 1단뿐이므로 **어디까지 되는지**를 알고 써야 한다 — 경계는
+ * **2026-08-29 에 자리가 바뀌었다.** 예전엔 1차 생성 **뒤**에 `linkCache` 를 밖에서 고치고
+ * 트리를 **통째로 다시 만들었다**(되먹임 B). 이제 배정 안에서 토막을 이어 앉히므로
+ * 재생성이 없다 — `tempPlanDocs/간선-배정/` Step 3.
+ *
+ * 사다리는 아직 이 한 칸뿐이므로 **어디까지 되는지**를 알고 써야 한다 — 경계는
  * [rungOfLine] 이 실패마다 이름표로 붙이고, 그 이름표가 `unrouted-lines` 이슈 문장에 나온다.
+ * 쪼갠 횟수는 `flg.report()` 의 `면레인 · 쪼갬 N` 으로 본다(**0이 목표다**).
  */
 export let AUTO_LAYOUT_LINK_LADDER = true;
 

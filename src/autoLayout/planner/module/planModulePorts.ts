@@ -44,7 +44,10 @@ import {
 } from "./clusterPortPlanner";
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
-import { externalLineGroups, readLinkRole, summarizeBeltForms, type Link } from "../../module/link";
+import {
+  externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows, summarizeBeltForms,
+  type Link,
+} from "../../module/link";
 import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
 import {
@@ -289,85 +292,130 @@ export function planLinkFaces(
 
 /**
  * **간선 하나를 양끝에 함께 앉힌다** — 루프 축이 모듈이 아니라 간선이다
- * (`tempPlanDocs/간선-배정/간선-배정.md` Step 2).
+ * (`tempPlanDocs/간선-배정/간선-배정.md` Step 2·3).
  *
  * `Link` 는 **두 모듈에 걸친 객체**다 — `from` 은 자식의 머신, `to` 는 부모의 머신.
  * 그런데 옛 모듈 축에서는 자식이 `from` 만, 부모가 `to` 만, **서로 모르게** 읽었다.
- * 그래서 셋이 불가능했고(쪼갬·끝 맞추기·순서), 지금 코드는 그 셋을 **밖에서 우회**하며
+ * 그래서 셋이 불가능했고(쪼갬·끝 맞추기·순서), 코드는 그 셋을 **밖에서 우회**하며
  * 되먹임 둘을 지고 있었다.
  *
- * 여기서 얻는 성질은 **원자성**이다:
+ * 여기서 얻는 것이 둘이다:
  *
  * ```
- * 양끝이 다 되면 → 둘 다 확정
- * 한쪽이라도 안 되면 → 둘 다 미배정          ← 반쪽 배정이 없다
+ * ① 원자성  양끝이 다 되면 확정 · 한쪽이라도 안 되면 둘 다 미배정   ← 반쪽 배정이 없다
+ * ② 국소성  쪼갤 만하면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다  ← 밖에서 고쳐 다시 안 만든다
  * ```
  *
- * 옛 축에서는 반쪽이 실제로 났다 — `pairDeliveryPorts` 의 *"child emitted, parent didn't"*
- * (`PackResult.linkMismatches`)가 그 증상이다.
+ * ①이 없던 시절의 증상이 `PackResult.linkMismatches` 의 *"child emitted, parent didn't"* 이고,
+ * ②가 없던 시절의 대가가 **되먹임 B**(`linkCache` 를 밖에서 고치고 트리를 통째로 재생성)다.
  *
- * @param fromSeat 자식 쪽 무대(그 모듈의 `outputLinks` 가 `groups` 를 그대로 담는다)
- * @param toSeat   부모 쪽 무대
- * @param toOffset 부모의 `inputLinks` 안에서 이 간선의 그룹들이 시작하는 index
- *                 (부모는 자식 여럿에게서 받으므로 자식마다 구간이 다르다)
+ * @param toOffsetGroups 이 간선의 그룹들. **반환값의 `groups` 가 최종본**이다(쪼개졌으면 토막).
  */
 export function seatLinkEdge(
   fromSeat: LinkFaceStage,
   toSeat: LinkFaceStage,
-  groups: readonly Link[],
-  toOffset: number,
-): void {
-  groups.forEach((g, j) => {
-    const ti = toOffset + j;
-    // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(그게 이 원자성의 전제다).
-    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fromSeat.out.shortages[j]);
-    const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, toSeat.in.shortages[ti]);
+  toOffsetGroups: readonly Link[],
+  opts: { split: boolean },
+): EdgeSeatResult {
+  const groups: Link[] = [];
+  const fromPlans: (LinkFacePlan | undefined)[] = [];
+  const toPlans: (LinkFacePlan | undefined)[] = [];
+  const fromWhy: LaneShortage[][] = [];
+  const toWhy: LaneShortage[][] = [];
+  let splits = 0;
+
+  // **쪼갬 예산** — 못은 레인 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
+  // 예산 없이 두면 잘못된 판정 하나가 무한 루프가 된다. 그룹당 넷이면 넉넉하다.
+  let budget = toOffsetGroups.length * 4;
+  const queue: Link[] = [...toOffsetGroups];
+
+  const keep = (g: Link, fp?: LinkFacePlan, tp?: LinkFacePlan, fw: LaneShortage[] = [], tw: LaneShortage[] = []) => {
+    groups.push(g); fromPlans.push(fp); toPlans.push(tp); fromWhy.push(fw); toWhy.push(tw);
+  };
+
+  while (queue.length > 0) {
+    const g = queue.shift()!;
+    const fw: LaneShortage[] = [];
+    const tw: LaneShortage[] = [];
+    // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(원자성의 전제다).
+    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw);
+    const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
     if (candFrom && candTo) {
-      fromSeat.out.plans[j] = commitLinkFace(fromSeat.ctx, candFrom, "from");
-      toSeat.in.plans[ti] = commitLinkFace(toSeat.ctx, candTo, "to");
-      return;
+      keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), commitLinkFace(toSeat.ctx, candTo, "to"));
+      continue;
     }
-    // 한쪽만 됐어도 **아무것도 안 잡는다.** 넘침 단계가 양끝을 다시 함께 본다.
-    fromSeat.out.deferred.push(j);
-    toSeat.in.deferred.push(ti);
-  });
+
+    // **구간막힘이면 그 자리에서 쪼갠다**(Step 3). 막힌 쪽에서 자른다 — 자름의 경계는
+    // 그 쪽 모듈의 행이므로 `rowsPerMachine` 도 그 쪽 것이다.
+    if (opts.split && budget > 0) {
+      const cut = !candTo
+        ? { side: "to" as const, rows: cutRows(tw), h: toSeat.ctx.machine.h }
+        : { side: "from" as const, rows: cutRows(fw), h: fromSeat.ctx.machine.h };
+      if (cut.rows.length > 0) {
+        const parts = splitLinkAtRows(g, cut.side, cut.rows, cut.h);
+        if (parts.length > 1) {
+          budget -= parts.length;
+          splits += parts.length - 1;
+          queue.unshift(...parts); // 토막을 **앞에** 넣어 이어서 앉힌다 — 되돌리기가 없다
+          continue;
+        }
+      }
+    }
+
+    // 넘침 — 선호 면이 빈손이면 다른 면을, 역시 **양끝 함께**.
+    const spilled = spillPair(fromSeat, toSeat, g);
+    if (spilled) { keep(g, spilled.from, spilled.to); continue; }
+    keep(g, undefined, undefined, fw, tw); // 정직하게 자리 없음
+  }
+  return { groups, fromPlans, toPlans, fromWhy, toWhy, splits };
+}
+
+/** 후보들 중 **쪼개면 실제로 앉는** 첫 경계. 없으면 빈 배열([resolveSpanBlock]). */
+function cutRows(why: readonly LaneShortage[]): number[] {
+  for (const r of why) {
+    if (!r.blockedRows?.length || !r.seatRows?.length) continue;
+    const worth = resolveSpanBlock(r.seatRows, r.blockedRows);
+    if (worth.length > 0) return worth;
+  }
+  return [];
 }
 
 /**
- * [seatLinkEdge] 의 2단계 — 선호 면이 빈손인 간선을 **다른 면으로**, 역시 **양끝 함께**.
- *
- * 면 순서는 옛 축과 같다(출력 `["W","S","N"]` · 입력 `["E","S","N"]`) — 선호 면이 다시
- * 들어 있는 것은 그 면이 유체 면이면 1단계가 비켜 갔기 때문이다(`allowPipeFace`).
+ * 넘침 — 선호 면이 안 되면 다른 면을 본다. 면 순서는 옛 축과 같다
+ * (출력 `["W","S","N"]` · 입력 `["E","S","N"]`) — 선호 면이 다시 들어 있는 것은 그 면이
+ * 유체 면이면 1단계가 비켜 갔기 때문이다(`allowPipeFace`).
  */
-export function spillLinkEdge(
+function spillPair(
   fromSeat: LinkFaceStage,
   toSeat: LinkFaceStage,
-  groups: readonly Link[],
-  toOffset: number,
-): void {
+  g: Link,
+): { from: LinkFacePlan; to: LinkFacePlan } | undefined {
   const OUT: readonly PortFace[] = ["W", "S", "N"];
   const IN: readonly PortFace[] = ["E", "S", "N"];
-  const pending = fromSeat.out.deferred.filter((j) => fromSeat.out.plans[j] === undefined);
-  for (const j of pending) {
-    const g = groups[j];
-    if (!g) continue;
-    const ti = toOffset + j;
-    if (toSeat.in.plans[ti] !== undefined) continue; // 이미 짝이 앉았다 — 여기 올 리 없다
-    let done = false;
-    for (const ff of OUT) {
-      const candFrom = tryLinkFace(fromSeat.ctx, g, "from", ff, true);
-      if (!candFrom) continue;
-      for (const tf of IN) {
-        const candTo = tryLinkFace(toSeat.ctx, g, "to", tf, true);
-        if (!candTo) continue;
-        fromSeat.out.plans[j] = commitLinkFace(fromSeat.ctx, candFrom, "from");
-        toSeat.in.plans[ti] = commitLinkFace(toSeat.ctx, candTo, "to");
-        done = true;
-        break;
-      }
-      if (done) break;
+  for (const ff of OUT) {
+    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", ff, true);
+    if (!candFrom) continue;
+    for (const tf of IN) {
+      const candTo = tryLinkFace(toSeat.ctx, g, "to", tf, true);
+      if (!candTo) continue;
+      return {
+        from: commitLinkFace(fromSeat.ctx, candFrom, "from"),
+        to: commitLinkFace(toSeat.ctx, candTo, "to"),
+      };
     }
   }
+  return undefined;
+}
+
+/** [seatLinkEdge] 의 산출 — **`groups` 가 그 간선의 최종본**이다(쪼개졌으면 토막). */
+export interface EdgeSeatResult {
+  groups: Link[];
+  fromPlans: (LinkFacePlan | undefined)[];
+  toPlans: (LinkFacePlan | undefined)[];
+  fromWhy: LaneShortage[][];
+  toWhy: LaneShortage[][];
+  /** 쪼갠 횟수(진단). */
+  splits: number;
 }
 
 /**

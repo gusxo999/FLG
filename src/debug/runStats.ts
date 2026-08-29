@@ -107,6 +107,14 @@ export interface FaceLaneCounters {
   /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
   netTrips: number;
   /**
+   * **배정이 구간막힘을 만나 링크를 토막낸 횟수** — 옛 사다리의 `laddered`.
+   *
+   * 이제 쪼갬은 배정 **안에서** 일어난다([seatLinkEdge]) — 밖에서 `linkCache` 를 고치고
+   * 트리를 다시 만들지 않는다. 그래도 이 수는 계속 봐야 한다: **0이면 못이 안 생겼다는
+   * 뜻**이고, 그게 곧 순서 규칙(Step 6)이 값을 했다는 증거다.
+   */
+  splits: number;
+  /**
    * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`LaneShortage`).
    *
    * *"레인 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
@@ -117,7 +125,7 @@ export interface FaceLaneCounters {
 }
 
 const freshFaceLanes = (): FaceLaneCounters => ({
-  assignments: 0, multiLaneFace: 0, deepLane: 0, deepLaneOtherArm: 0, netTrips: 0,
+  assignments: 0, multiLaneFace: 0, deepLane: 0, deepLaneOtherArm: 0, netTrips: 0, splits: 0,
   shortages: [],
 });
 

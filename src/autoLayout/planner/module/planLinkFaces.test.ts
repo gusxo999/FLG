@@ -134,21 +134,21 @@ describe("seatLinkEdge — 반쪽 배정이 없다", () => {
   it("부모가 못 앉으면 **자식도 안 앉는다**", () => {
     const c = planLinkFaces(child, 1, "open");
     const p = planLinkFaces(parent, 1, "open");
-    seatLinkEdge(c, p, child.outputLinks!, 0);
+    const r = seatLinkEdge(c, p, child.outputLinks!, { split: false });
     // 대조군 — 자식만 따로 물으면 **앉을 수 있다**(그래야 이 단언이 뜻을 갖는다).
     expect(tryLinkFace(planLinkFaces(child, 1, "open").ctx, child.outputLinks![0], "from", "W")).toBeTruthy();
     expect(tryLinkFace(planLinkFaces(parent, 1, "open").ctx, parent.inputLinks![0], "to", "E")).toBeUndefined();
     // 그런데 간선으로 물으면 **둘 다** 비어 있다.
-    expect(c.out.plans[0]).toBeUndefined();
-    expect(p.in.plans[0]).toBeUndefined();
+    expect(r.fromPlans[0]).toBeUndefined();
+    expect(r.toPlans[0]).toBeUndefined();
   });
 
   it("양끝이 다 되면 **둘 다** 앉는다", () => {
     const small = link("gear", [0], [0], 1);
     const c = planLinkFaces(base({ count: 1, outputLinks: [small], inputLinks: [] }), 1, "open");
     const p = planLinkFaces(base({ count: 1, outputLinks: [], inputLinks: [small] }), 1, "open");
-    seatLinkEdge(c, p, [small], 0);
-    expect(c.out.plans[0]).toBeDefined();
-    expect(p.in.plans[0]).toBeDefined();
+    const r = seatLinkEdge(c, p, [small], { split: false });
+    expect(r.fromPlans[0]).toBeDefined();
+    expect(r.toPlans[0]).toBeDefined();
   });
 });

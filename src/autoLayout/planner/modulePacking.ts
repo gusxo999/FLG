@@ -28,10 +28,14 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import { cloneLinkFaceStage, planLinkFaces, seatLinkEdge, spillLinkEdge, type LinkFaceStage } from "./module/planModulePorts";
+import {
+  cloneLinkFaceStage, planLinkFaces, seatLinkEdge,
+  type LinkFaceStage,
+} from "./module/planModulePorts";
+import type { LaneShortage, LinkFacePlan } from "./module/linkPlanner";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { resolveSpanBlock, splitLinkAtRows, summarizeBeltForms, type Link } from "../module/link";
+import { summarizeBeltForms, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planLanes, expandBbox } from "./perimeter/lanes";
@@ -40,7 +44,7 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/clusterPortPlanner";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, resetBeltFormStats, resetFaceLaneStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceLaneStats, resetBeltFormStats, resetFaceLaneStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -418,16 +422,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     return groups.length > 0 ? groups : undefined;
   };
   /**
-   * **P0b — 간선 단위 배정** (`tempPlanDocs/간선-배정/간선-배정.md` Step 2).
+   * **P0b — 간선 단위 배정** (`tempPlanDocs/간선-배정/간선-배정.md` Step 2·3).
    *
    * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
-   * 옛 축(모듈마다 자기 링크를 따로)에서는 한 링크의 두 끝을 서로 모르는 두 모듈이
-   * 따로 정했고, 그래서 **반쪽 배정**이 났다(`linkMismatches` 의 *child emitted, parent didn't*).
+   * 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 — 밖에서 `linkCache` 를 고치고
+   * 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
    *
-   * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이고,
-   * 여기서는 축만 바꾼다. 축과 순서를 한 번에 바꾸면 무엇이 무엇을 바꿨는지 못 가른다.
+   * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
    */
-  const stageOf = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): ModuleInput => ({
+  const moduleInputOf = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): ModuleInput => ({
     ...toModuleInput(s, config, childFedItems(s)),
     lineEnds,
     nsExposure: nsExposureOf(s),
@@ -435,54 +438,68 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     inputLinks: inputLinksOf(s),
   });
 
-  /** 부모의 `inputLinks` 안에서 자식 `cid` 의 그룹들이 시작하는 index. */
-  const inOffsetOf = (parentId: string, cid: string): number => {
-    let off = 0;
-    for (const k of childIdsByParent.get(parentId) ?? []) {
-      if (k === cid) return off;
-      off += linkCache.get(k)?.length ?? 0;
-    }
-    return off;
-  };
+  /** 배정이 낸 쪼갬 수 — 진단용(옛 `laddered`). */
+  let laddered = 0;
 
-  /** 트리 전체의 배정 — 모듈 id → 그 모듈의 무대. `linkCache` 가 바뀌면 다시 부른다. */
-  const allocateTree = (
-    inputs: Map<string, ModuleInput>,
-  ): Map<string, LinkFaceStage> => {
+  /**
+   * 트리 전체 배정. **`linkCache` 를 제자리에서 최종본으로 갈아 끼우고**(쪼개졌으면 토막),
+   * 그에 맞춘 무대와 `ModuleInput` 을 돌려준다. **방출은 안 한다.**
+   */
+  const allocateTree = (): { stages: Map<string, LinkFaceStage>; inputs: Map<string, ModuleInput> } => {
     const stages = new Map<string, LinkFaceStage>();
     for (const s of specs)
-      stages.set(s.id, planLinkFaces(inputs.get(s.id)!, Math.max(1, s.count), "open"));
-    // 1단계 — 선호 면(출력 W · 입력 E)에 양끝을 함께.
+      stages.set(s.id, planLinkFaces(moduleInputOf(s), Math.max(1, s.count), "open"));
+
+    // 모듈마다 최종 링크 목록·계획을 모은다. `in` 은 자식 순서대로 이어 붙는다
+    // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
+    const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: LaneShortage[][] }>();
+    const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: LaneShortage[][] }>();
+    for (const s of specs) {
+      outOf.set(s.id, { links: [], plans: [], why: [] });
+      inOf.set(s.id, { links: [], plans: [], why: [] });
+    }
+
     for (const s of specs) {
       if (!s.parentId) continue;
       const groups = linkCache.get(s.id);
       if (!groups?.length) continue;
-      const child = stages.get(s.id)!;
+      const child = stages.get(s.id);
       const parent = stages.get(s.parentId);
-      if (!parent) continue;
-      seatLinkEdge(child, parent, groups, inOffsetOf(s.parentId, s.id));
+      if (!child || !parent) continue;
+      const r = seatLinkEdge(child, parent, groups, { split: AUTO_LAYOUT_LINK_LADDER });
+      laddered += r.splits;
+      linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
+      const o = outOf.get(s.id)!;
+      o.links.push(...r.groups); o.plans.push(...r.fromPlans); o.why.push(...r.fromWhy);
+      const i = inOf.get(s.parentId)!;
+      i.links.push(...r.groups); i.plans.push(...r.toPlans); i.why.push(...r.toWhy);
     }
-    // 2단계 — 넘침. 역시 양끝을 함께 본다.
+
+    // 무대의 링크 목록·배정을 최종본으로 갈아 끼운다 — `generateModule` 이 보는
+    // `input.outputLinks` 와 **같은 배열**이어야 방출이 index 로 짝을 찾는다.
+    const inputs = new Map<string, ModuleInput>();
     for (const s of specs) {
-      if (!s.parentId) continue;
-      const groups = linkCache.get(s.id);
-      if (!groups?.length) continue;
-      const child = stages.get(s.id)!;
-      const parent = stages.get(s.parentId);
-      if (!parent) continue;
-      spillLinkEdge(child, parent, groups, inOffsetOf(s.parentId, s.id));
+      const st = stages.get(s.id)!;
+      const o = outOf.get(s.id)!;
+      const i = inOf.get(s.id)!;
+      st.outLinks = o.links;
+      st.inLinks = i.links;
+      st.out = { plans: o.plans, deferred: [], shortages: o.why };
+      st.in = { plans: i.plans, deferred: [], shortages: i.why };
+      inputs.set(s.id, {
+        ...moduleInputOf(s),
+        outputLinks: o.links.length ? o.links : undefined,
+        inputLinks: i.links.length ? i.links : undefined,
+      });
     }
-    return stages;
+    // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
+    if (laddered > 0) recordFaceLaneStats({ splits: laddered });
+    return { stages, inputs };
   };
 
-  /** `gen` 이 쓸 입력 — `linkCache` 가 바뀌면 다시 만든다(`stagesRef` 와 짝). */
-  let inputsRef = new Map<string, ModuleInput>(specs.map((s) => [s.id, stageOf(s)]));
-  let stagesRef = allocateTree(inputsRef);
-  /** `linkCache` 를 고친 뒤 부른다 — **방출은 안 한다.** 배정만 다시 돈다. */
-  const reallocate = (): void => {
-    inputsRef = new Map(specs.map((s) => [s.id, stageOf(s)]));
-    stagesRef = allocateTree(inputsRef);
-  };
+  const allocated = allocateTree();
+  const stagesRef = allocated.stages;
+  const inputsRef = allocated.inputs;
 
   const gen = (s: NodeSpec, lineEnds?: Map<string, "min" | "max">): GeneratedModule => {
     // 끝 선호(`lineEnds`)는 **배정을 안 바꾼다** — `ModulePortPlannerInput` 에서 빠져 있다.
@@ -493,64 +510,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     const st = stagesRef.get(s.id);
     return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
   };
+
   // 1) 1차 생성(끝 무선호) — extent/높이 산정용. (높이는 끝 선호와 무관 → Y 배치는 1차로 OK.)
   const pass1 = new Map<string, GeneratedModule>();
   for (const s of specs) pass1.set(s.id, gen(s));
 
-  // 1b) **사다리 1단 — 못을 피해 링크를 토막낸다**
-  //     (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*).
-  //
-  // 1차가 *"이 줄이 그 면에 못 앉는다"* 와 **막힌 행**을 함께 낸다([LaneShortage]). 그 행이
-  // 곧 자름의 경계다 — 못은 먼저 앉은(= 더 얕은 칸을 쓴) 줄의 포트라, 그 머신 앞에서 자르면
-  // 토막의 구간이 못을 안 덮는다.
-  //
-  // **쪼개는 곳이 여기인 이유는 신원이다.** 링크는 간선이라 자식 출력과 부모 입력이 **같은
-  // 객체**를 봐야 하고([pairDeliveryPorts] 가 `linkId` 로 짝짓는다), 그 객체를 쥔 것은
-  // `linkCache` 뿐이다. 모듈 안쪽(`planModulePorts`)에서 한쪽만 쪼개면 짝이 깨진다.
-  //
-  // 대가는 **포트 +1 씩**이고, 그게 사다리를 한 칸 내려간 값이다. 못은 레인 수만큼에서
-  // 멈추므로(가장 깊은 레인의 포트는 레인이 아닌 칸에 선다) 이 쪼갬이 무한히 돌지 않는다.
-  let laddered = 0;
-  for (const s of AUTO_LAYOUT_LINK_LADDER ? specs : []) {
-    const why = pass1.get(s.id)?.laneShortages;
-    if (!why?.size) continue;
-    for (const [linkId, reasons] of why) {
-      // **쪼개면 실제로 앉는 후보만 자른다**([resolveSpanBlock]). 기하 판정이지 대리 지표가
-      // 아니다 — 물음은 *"막힌 칸 사이에 내 좌석이 들어갈 빈 자리가 있나"* 하나다.
-      //
-      // 막힌 칸이 **점**(남의 포트 인서터)이면 사이가 비어 조각이 살고, **구간**(남의 벨트)이면
-      // 내 좌석이 그 안에 잠겨 조각을 내도 앉을 데가 없다.
-      //
-      // 2026-08-26 에 여기를 *"막힌 행이 가장 적은 레인"* 으로 골랐다가 데였다. 포트는 점이고
-      // 벨트는 구간이라 개수가 갈릴 뿐이어서 **상관이지 원인이 아니었고**, 짧은 벨트에 막힌
-      // 레인을 골라 46번 헛쪼갰다(`advanced-circuit`).
-      let rows: number[] = [];
-      for (const r of reasons) {
-        if (!r.blockedRows?.length || !r.seatRows?.length) continue;
-        const worth = resolveSpanBlock(r.seatRows, r.blockedRows);
-        if (worth.length) { rows = worth; break; }
-      }
-      if (rows.length === 0) continue; // 어느 레인도 쪼개서 안 풀린다 — 정직하게 그대로 둔다
-      // 그 줄을 쥔 캐시 항목을 찾는다(자식 id 로 저장돼 있다).
-      for (const [cid, groups] of linkCache) {
-        const at = groups.findIndex((g) => g.id === linkId);
-        if (at < 0) continue;
-        // 이 줄이 *부모* 입력으로 막혔으므로 부모 쪽 머신(`to`)으로 자른다.
-        const parent = byId.get(byId.get(cid)?.parentId ?? "");
-        const parts = splitLinkAtRows(groups[at], "to", rows, parent?.machine.h ?? 0);
-        if (parts.length <= 1) continue;
-        linkCache.set(cid, [...groups.slice(0, at), ...parts, ...groups.slice(at + 1)]);
-        laddered += parts.length - 1;
-        break;
-      }
-    }
-  }
-  // 쪼갰으면 **배정을 다시 돌리고**(방출 없음) 1차를 다시 만든다 — tidy-tree 가 그 높이를 쓴다.
-  // Step 3 이 쪼갬을 배정 안으로 옮기면 아래 재생성이 사라진다.
-  if (laddered > 0) {
-    reallocate();
-    for (const s of specs) pass1.set(s.id, gen(s));
-  }
+  // (옛 `1b) 사다리 1단` 은 **배정 안으로 접혔다** — `seatLinkEdge` 가 못을 만나면
+  //  그 자리에서 쪼개고 토막을 이어 앉힌다. `linkCache` 를 밖에서 고치고 1차를 통째로
+  //  다시 만들던 자리가 사라졌다 = **되먹임 B 제거**
+  //  (`tempPlanDocs/간선-배정/간선-배정.md` Step 3).
 
   // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
   //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 납품 경로=raw 거리), 채널 폭(piece 5)이
