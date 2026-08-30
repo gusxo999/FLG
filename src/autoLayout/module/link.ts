@@ -647,7 +647,7 @@ export function readLinkRole(group: Link): "input" | "output" {
  * 있는데, 쪼갠 그룹은 애초에 한 대짜리라 그 제약에 걸릴 것이 없기 때문이다.
  *
  * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
- * @param opts.perMachine 머신마다 그룹 하나씩 낸다(기본 false = 전 머신 한 그룹).
+ * @param opts.bundle 묶음 크기 `g` — 안 주면 줄마다 `min(⌊벌트÷per⌋, N)` 으로 유도한다.
  */
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
@@ -660,7 +660,15 @@ export function externalLineGroups(
   inserters: ReadonlyArray<SpecInserter>,
   linkedKeys?: ReadonlySet<string>,
   opts?: {
-    perMachine?: boolean;
+    /**
+     * **묶음 크기를 바깥에서 못박는다** — 주면 그 값을 쓰고, 안 주면 **줄마다 유도한다**
+     * (`g = min(⌊가장 빠른 벨트 ÷ 머신 하나의 몫⌋, N)`).
+     *
+     * 옛 `perMachine: boolean` 을 대체한다. 그것은 **모듈 하나의 값이 그 모듈의 모든 줄**을
+     * 정했고, 그래서 한 줄이 안 되면 전부 `g = 1` 로 떨어졌다. 유도로 바꾸면 그 이분법이
+     * **한 공식의 두 끝**이 된다 — `per` 가 작으면 `g = N`(관통), 벨트를 넘으면 `g = 1`(다이렉트).
+     */
+    bundle?: number;
     belts?: ReadonlyArray<SpecBelt>;
     /**
      * 머신 면의 길이 방향 칸 수(W/E 면이면 `machine.h`) — **좌석 상한의 재료**다.
@@ -711,12 +719,29 @@ export function externalLineGroups(
       );
     };
 
-    // **낟알은 `perMachine` 이 정한다** — 머신마다 따로 부으면 줄이 섞이지 않는다(기계별 포트),
-    // 한꺼번에 부으면 한 줄이 여러 머신을 맡을 수 있다(트렁크). 그 하나가 모드가 남기는
-    // 전부이고, **쪼개는 일 자체는 두 경우 모두 [createLinks] 가 한다**(2026-08-23).
-    const batches: number[][] = opts?.perMachine
-      ? Array.from({ length: n }, (_, i) => [i])
-      : [Array.from({ length: n }, (_, i) => i)];
+    // **낱알은 `g`(묶음 크기) 가 정한다** — 한 벌트 줄이 몇 대를 맡나.
+    //
+    // ```
+    // g = 1     머신마다 자기 벌트            = 다이렉트
+    // g = N     벌트 하나가 기둥 전체        = 관통(트렁크)
+    // 1<g<N     **부분 트렁크** — 예전엔 없었다
+    // ```
+    //
+    // 상한은 처리량이 준다: `k = ⌊벌트 처리량 ÷ 머신 하나의 몴⌋`.
+    // 넘기면 그 벌트가 굶는다. 그래서 `g = min(k, N)` 이 **공식 하나**이고,
+    // 예전의 이분법(탭/다이렉트)이 그 **두 끕**이 된다.
+    //
+    // **쪼개는 일 자체는 여전히 [createLinks] 가 한다** — 여기서 정하는 것은
+    // *한꺼번에 몇 명씩 부을까* 뿐이고, 부은 묶음 안에서는 벌트·좌석 상한까지 채운다.
+    const beltTp = opts?.belts?.[0]?.throughput;
+    const g = opts?.bundle ?? (
+      per !== undefined && per > 0 && beltTp !== undefined && beltTp > 0
+        ? Math.min(n, Math.max(1, Math.floor(beltTp / per)))
+        : n   // 수량을 모르면 한꺼번에 — 지어내지 않는다(옛 탭 동작)
+    );
+    const batches: number[][] = [];
+    for (let i = 0; i < n; i += Math.max(1, g))
+      batches.push(Array.from({ length: Math.min(g, n - i) }, (_, j) => i + j));
     const made: Link[] = [];
     let poured = true;
     for (const batch of batches) {

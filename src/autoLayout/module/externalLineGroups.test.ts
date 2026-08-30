@@ -122,3 +122,51 @@ describe("팔 수는 requiredInserterCount 와 같은 값", () => {
     expect(externalLineGroups(lines, 3, tiny, INS, undefined, { belts: BELTS })[0].to.get(0)).toBe(1);
   });
 });
+
+/**
+ * **부분 트렁크 — `g` 가 줄마다 유도된다** (2026-08-30).
+ *
+ * 예전엔 묶음 크기가 **모듈 하나의 낱말**(`tap`/`direct`)로 정해져 두 극단뿐이었다:
+ *
+ * ```
+ * tap     → g = N   벨트 하나가 기둥 전체
+ * direct  → g = 1   머신마다 자기 벨트
+ * ```
+ *
+ * 이제 처리량이 상한을 준다 — `g = min(⌊벨트 ÷ 머신 하나의 몫⌋, N)`.
+ * **옛 이분법이 그 공식의 두 끝**이 된다.
+ */
+describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
+  const line: IoLine[] = [{ name: "x", kind: "belt", role: "input" }];
+  /** 벨트 100/s · 머신 `n` 대 · 총 수요 `total` → 머신 하나의 몫 = total/n. */
+  const run = (n: number, total: number, bundle?: number) =>
+    externalLineGroups(line, n, { lineRates: new Map([["input:x", total]]) }, INS, undefined,
+      { belts: BELTS, bundle });
+
+  it("**부분** — 벨트가 3대치면 6대가 두 토막으로 갈린다 (오늘 없던 값)", () => {
+    // per = 180/6 = 30.  k = ⌊100/30⌋ = 3  →  g = 3  →  c = ⌈6/3⌉ = 2
+    const gs = run(6, 180);
+    expect(gs).toHaveLength(2);
+    expect(gs.map((g) => [...g.to.keys()])).toEqual([[0, 1, 2], [3, 4, 5]]);
+  });
+
+  it("**관통** — 수요가 작으면 한 줄이 전부 맡는다 (옛 `tap`)", () => {
+    // per = 6/6 = 1.  k = 100  →  g = 6
+    const gs = run(6, 6);
+    expect(gs).toHaveLength(1);
+    expect([...gs[0].to.keys()]).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it("**다이렉트** — 한 대가 벨트를 넘으면 머신마다 하나 (옛 `direct`)", () => {
+    // per = 720/6 = 120 > 100  →  k = 0 → g = 1.  줄마다 벨트가 여럿 날 수 있다
+    const gs = run(6, 720);
+    expect(gs.every((g) => g.to.size === 1), "머신 하나씩 맡아야 한다").toBe(true);
+    expect(new Set(gs.flatMap((g) => [...g.to.keys()]))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+  });
+
+  it("`bundle` 을 주면 그 값이 이긴다 — gap 탈출이 필요할 때 호출부가 못박는다", () => {
+    const gs = run(6, 6, 1); // 유도했으면 g=6 인데 1 로 못박는다
+    expect(gs).toHaveLength(6);
+    expect(gs.every((g) => g.to.size === 1)).toBe(true);
+  });
+});

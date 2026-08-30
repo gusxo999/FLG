@@ -541,7 +541,23 @@ export function planModulePorts(
   // 다이렉트면 머신마다 하나. 그 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**이다(§16).
   const restLinks = (() => {
         const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, input.inserters, undefined, {
-          perMachine: supply.mode !== "tap",
+          // **모드는 아직 살아 있다 — 그것이 `gap` 탈출을 여는 유일한 스위치다.**
+          //
+          // 2026-08-30 에 이 줄을 지우고 `g` 를 줄마다 유도해 봤다(⑤ 모듈 판정 폐기).
+          // **테스트 13개가 그 판정의 진짜 내용을 드러냈다:**
+          //
+          // ```
+          // g > 1 인 그룹은 gap 으로 **못 간다** — [tryLinkFace] 의 `machinesOn !== 1`
+          // 그래서 좌석이 빡빡한 면에서는 `g = 1` 이라야 위·아래로 넘어갈 수 있다
+          // ```
+          //
+          // 즉 모듈 판정은 *"이게 트렁크가 되나"* 를 예측한 것이 아니라
+          // **"gap 탈출이 필요한가"** 를 정한 것이었다. 그러므로 ⑤는 **gap 이 머신
+          // 여러 대를 먹일 수 있게 된 뒤에야** 가능하다.
+          //
+          // 그래서 지금은 **탭일 때만** 부분 트렁크를 켜다 — 그것만으로도
+          // `g = N` 고정이 `g = min(⌊벌트÷per⌋, N)` 으로 바뀐다(③ 부분 트렁크).
+          bundle: supply.mode !== "tap" ? 1 : undefined,
           belts: input.belts,
           // **좌석 상한의 재료** — 이걸 안 주면 바깥 줄이 좌석을 안 보고 묶여, 팔이 면에
           // 안 들어가는 줄이 나서 배정에서 통째로 떨어진다(2026-08-23 실측: 40/s 원료 줄이

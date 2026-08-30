@@ -246,13 +246,13 @@ describe("③ requiredInserterCount 는 모드와 무관하다", () => {
     // 벨트 티어도 함께 준다 — 30/s 가 한 줄에 담기는 저울이라야 *줄 수* 가 이 검사에
     // 끼어들지 않는다(이 검사가 보는 것은 **팔 수**다).
     const groups = externalLineGroups(lines, 3, rates, rates.inserters ?? [], undefined, {
-      perMachine: true,
+      bundle: 1, // 머신마다 하나 — 옛 `perMachine: true`
       belts: [{ entityName: "b", throughput: 100 }],
     })
       .filter((g) => g.item === "a");
     expect(groups).toHaveLength(3);
     for (const g of groups) {
-      expect([...g.to.values()], "모드가 팔 개수를 바꾸면 안 된다").toEqual([armsOf(tap, "a")]);
+      expect([...g.to.values()], "묶음 크기가 팔 개수를 바꾸면 안 된다").toEqual([armsOf(tap, "a")]);
     }
   });
 });
