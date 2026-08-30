@@ -255,7 +255,7 @@ export interface LinkFaceContext {
    * **면마다 좌석표 한 장** — 이 배정이 아는 자리의 전부다. 없는 면은 [tableOf] 가 만든다.
    *
    * 표는 **값**이라 복사해서 채워 보고 버릴 수 있다 — 트렁크 경로 계획의 배정 3단이 요구하는
-   * 것이 그것 하나다(`tempPlanDocs/트렁크벨트-경로모델/ §9.7`).
+   * 것이 그것 하나다(`docs/auto-layout/module/trunk-assignment.md` §15).
    */
   tables: Map<PortFace, FaceTable>;
   /**
@@ -625,7 +625,7 @@ export function allocateLinkFaces(
   const plans: (LinkFacePlan | undefined)[] = groups.map(() => undefined);
   const deferred: number[] = [];
   // **선호 면의 사유만 모은다** — 사다리는 그 줄이 *원래 앉고 싶던* 면의 못으로 자른다.
-  // 다른 면으로 밀려나는 것은 넘침 단계가 이미 시도하고 실패한 뒤다(계획서 §9.7 ⑤).
+  // 다른 면으로 밀려나는 것은 넘침 단계가 이미 시도하고 실패한 뒤다(`trunk-assignment.md` §15 ⑤).
   const shortages: LaneShortage[][] = groups.map(() => []);
   groups.forEach((g, i) => {
     const cand = tryLinkFace(ctx, g, side, prefer, false, shortages[i]);

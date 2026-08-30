@@ -118,7 +118,7 @@ export interface FaceLaneCounters {
    * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`LaneShortage`).
    *
    * *"레인 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
-   * (`tempPlanDocs/트렁크벨트-경로모델/` §14-2 — *못을 피해서*). 사다리가 아직 없으므로
+   * (`docs/auto-layout/module/trunk-assignment.md` §2 — *못을 피해서*). 사다리가 아직 없으므로
    * 지금은 **관측뿐**이다.
    */
   shortages: ReadonlyArray<string>;
