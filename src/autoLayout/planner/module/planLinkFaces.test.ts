@@ -194,3 +194,46 @@ describe("portEnd — 선호가 있으면 그것부터", () => {
     expect(tryLinkFace(st.ctx, b, "from", "W")?.portEnd).toBe("N");
   });
 });
+
+/**
+ * **깊이는 처리량을 안 정한다 — 대조군.**
+ *
+ * `얕은 레인 = 빠른 팔` 은 **스펙이 그럴 때만** 참이다. 깊이가 하는 일은 `reach` 를 지목하는
+ * 것뿐이고([inserterForReach]), 그 reach 안에서 **가장 빠른 인서터**가 뽑힌다 — 빠르고
+ * 느림은 **사용자가 넣은 목록**이 정한다. 바닐라만 봐도 뒤집혀 있다:
+ *
+ * ```
+ * 실측 모드팩   reach 1  bulk 10/s   >  reach 2  kr-superior-long 3.6/s
+ * 바닐라        reach 1  inserter 0.83/s  <  reach 2  long-handed 1.2/s   ← **깊은 쪽이 빠르다**
+ * ```
+ *
+ * 그래서 이 파일의 다른 픽스처(얕은 쪽이 빠름)만으로는 *"얕은 것을 먼저 고른다"* 와
+ * *"팔이 적은 것을 먼저 고른다"* 가 **구별되지 않는다.** 뒤집힌 스펙이 그 둘을 가른다 —
+ * 누군가 깊이로 처리량을 되유도하는 코드를 넣으면 **여기서 떨어진다.**
+ *
+ * (같은 함정을 `LinkFacePlan.reach` 주석이 이미 경고한다: *"깊이에서 되유도하지 않는다 …
+ * 그 항등이 깨지는 날 조용히 틀린다"*.)
+ */
+describe("깊이 ≠ 처리량 — 깊은 팔이 더 빠른 스펙", () => {
+  /** **바닐라 방향**: reach 2 가 reach 1 보다 빠르다. */
+  const inverted = [
+    { entityName: "inserter", reach: 1, throughput: 0.83 },
+    { entityName: "long-handed-inserter", reach: 2, throughput: 1.2 },
+  ];
+
+  it("깊은 팔이 빠르면 **깊은 레인**을 고른다", () => {
+    const g = link("gear", [0], [0], 2); // 2/s — 얕은 팔로는 3개, 깊은 팔로는 2개
+    const st = planLinkFaces(base({ count: 1, inserters: inverted, outputLinks: [g], inputLinks: [] }), 1, "open");
+    const cand = tryLinkFace(st.ctx, g, "from", "W");
+    expect(cand?.laneDepth, "깊은 팔이 빠른데 얕은 레인을 골랐다").toBe(3);
+    expect(cand?.reach).toBe(2);
+  });
+
+  it("대조군 — 얕은 팔이 빠른 스펙에서는 **얕은 레인**", () => {
+    const g = link("gear", [0], [0], 2);
+    const st = planLinkFaces(base({ count: 1, outputLinks: [g], inputLinks: [] }), 1, "open");
+    const cand = tryLinkFace(st.ctx, g, "from", "W");
+    expect(cand?.laneDepth).toBe(2);
+    expect(cand?.reach).toBe(1);
+  });
+});
