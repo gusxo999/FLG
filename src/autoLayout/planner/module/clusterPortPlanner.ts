@@ -243,7 +243,13 @@ export interface PortPlannerInput {
 /** 배정 성공(줄별 결과) 또는 복잡(배정 불가 → 2D 대상). */
 export type PortPlan =
   | { ok: true; lines: PlannedLine[] }
-  | { ok: false; complex: true; reason: string };
+  | {
+      ok: false;
+      complex: true;
+      reason: string;
+      /** 자리를 못 찾은 줄들 — **줄마다** 안다. 없으면 그 실패가 줄 단위가 아니라는 뜻이다. */
+      overflowed?: IoLine[];
+    };
 
 /**
  * 탭 인서팅(Tap Inserting)의 면당 [ClusterBelt] 목록 — **고른 인서터의 reach 로 결정**.
@@ -430,14 +436,22 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
    * 줄 하나에 벨트 줄 수만큼 슬롯을 뽑아 배정을 만든다. 슬롯이든 좌석이든 모자라면 다음
    * 면으로 넘어가고, 어느 면에도 없으면 `overflow` 에 남겨 호출부가 complex 로 낸다.
    */
-  let overflow: string | undefined;
+  /**
+   * **자리를 못 찾은 줄들** — 예전엔 `string | undefined` 로 **첫 하나만** 남겼다.
+   *
+   * 계산은 *"어느 줄이 넘쳤나"* 를 알고 있었는데 산출이 낱말 하나로 접혀, 호출부가
+   * *"이 모듈은 다이렉트"* 라는 **모듈 단위 답**밖에 못 받았다. 한 줄이 안 되면 그 모듈의
+   * 모든 줄이 `g = 1` 로 떨어진 것이 그 때문이다.
+   * (`tempPlanDocs/부분-트렁크/` — *계산은 옳고 산출의 낟알이 틀렸다*)
+   */
+  const overflowed: IoLine[] = [];
   const place = (line: IoLine, pools: Slot[][]): void => {
     const n = beltCountOf(line);
     const out: PlannedLine[] = [];
     for (let i = 0; i < n; i++) {
       const taken = takeSeat(pools, line, i);
       if (!taken) {
-        overflow ??= `${line.role}:${line.name}`;
+        overflowed.push(line);
         return;
       }
       out.push({
@@ -489,8 +503,11 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   }
   // 벨트 자리는 [slotsNeeded] 게이트가 이미 봤으므로, 여기 걸리는 건 사실상 **좌석**이다 —
   // 두 면의 좌석을 다 써도 팔이 남는 레시피. 정직하게 거절하고 다이렉트로 물러난다.
-  if (overflow) {
-    return { ok: false, complex: true, reason: `seats-exceed-capacity (${overflow})` };
+  if (overflowed.length > 0) {
+    return {
+      ok: false, complex: true, overflowed,
+      reason: `seats-exceed-capacity (${overflowed.map((l) => `${l.role}:${l.name}`).join(", ")})`,
+    };
   }
 
   // **깊이/reach 재배정은 여기 없다** (2026-08-15 삭제 — `docs/auto-layout/module/module-planning.md §4.5`).
@@ -542,7 +559,15 @@ export type InsertingDecisionResult =
    * ([allocateLinkFaces])가 맡으므로 이 결과가 답하는 것은 **판정과 사유**뿐이다.
    * 배정을 두 곳이 내면 좌석 장부가 갈린다.
    */
-  | { mode: "direct"; reason: string };
+  | {
+      mode: "direct";
+      reason: string;
+      /**
+       * **어느 줄이 자리를 못 찾았나** — 있으면 그 줄들만 손보면 된다.
+       * 없으면(무인서터 등) 모듈 전체의 문제라 줄 단위 처방이 없다.
+       */
+      overflowed?: IoLine[];
+    };
 
 /**
  * **[requiredInserterCount](../../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
@@ -913,7 +938,8 @@ export function insertingPlanner(
     seatRowsPerFace: seatRows,
     armsAtReach,
   });
-  if (!tapPlan.ok) return direct(`complex: ${tapPlan.reason}`);
+  // **어느 줄이 넘쳤는지 함께 싣는다** — 계산이 이미 아는 것을 접지 않는다.
+  if (!tapPlan.ok) return { mode: "direct", reason: `complex: ${tapPlan.reason}`, overflowed: tapPlan.overflowed };
   armsOf(tapPlan);
 
   // ── 구간(§19) — 한 벨트가 클러스터 전체를 못 관통하면 **머신을 나눈다** ──────────

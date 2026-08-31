@@ -539,31 +539,44 @@ export function planModulePorts(
   //
   // 모드가 남기는 것은 **쪼개기 여부** 하나뿐이다: 탭이면 묶은 그룹(벨트 하나가 전 머신),
   // 다이렉트면 머신마다 하나. 그 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**이다(§16).
+  /**
+   * **어느 줄이 `g = 1` 로 내려가야 하나** — 계산(`planClusterPorts`)이 낸 답을 그대로 쓴다.
+   *
+   * ```
+   * 탭          아무도 안 내린다 — 전부 처리량이 준 `g` 를 쓴다
+   * 다이렉트 + 줄 이름을 안다   **그 줄만** 내린다        ← 계산이 편 산출
+   * 다이렉트 + 줄 이름을 모른다  전부 내린다(옛 동작)      ← 모듈 단위 사유(무인서터·레인 부족)
+   * ```
+   *
+   * 셋째 갈래를 남기는 것은 **모르는 것을 아는 척하지 않기 위해서**다. 모듈 단위 사유는
+   * 줄 단위 처방이 없으므로 옛 동작이 맞는 답이다.
+   */
+  const lowerAll = supply.mode === "direct" && supply.overflowed === undefined;
+  const overflowedKeys = new Set(
+    (supply.mode === "direct" ? supply.overflowed ?? [] : []).map((l) => `${l.role}:${l.name}`),
+  );
+
   const restLinks = (() => {
-        const groups = externalLineGroups(restLines, count, input.supplyCapacity ?? {}, input.inserters, undefined, {
-          // **모드는 아직 살아 있다 — 그것이 `gap` 탈출을 여는 유일한 스위치다.**
+        // **줄마다 따로 붓는다** — 묶음 크기가 줄마다 다르기 때문이다.
+        const groups = restLines.flatMap((line) =>
+          externalLineGroups([line], count, input.supplyCapacity ?? {}, input.inserters, undefined, {
+          // **넘친 줄만 `g = 1` 로 내린다** — 계산이 이미 *어느 줄이* 자리를 못 찾았는지 안다.
           //
-          // 2026-08-30 에 이 줄을 지우고 `g` 를 줄마다 유도해 봤다(⑤ 모듈 판정 폐기).
-          // **테스트 13개가 그 판정의 진짜 내용을 드러냈다:**
+          // 예전엔 `perMachine: supply.mode !== "tap"` 이라 **한 줄이 안 되면 그 모듈의
+          // 모든 줄**이 `g = 1` 로 떨어졌다. 계산은 옳았고 **산출의 낟알이 틀렸다** —
+          // `planClusterPorts` 가 `overflowed` 로 줄 이름을 들고 있는데 모듈 낱말 하나로
+          // 접혀 나왔다(`tempPlanDocs/부분-트렁크/` §2).
           //
-          // ```
-          // g > 1 인 그룹은 gap 으로 **못 간다** — [tryLinkFace] 의 `machinesOn !== 1`
-          // 그래서 좌석이 빡빡한 면에서는 `g = 1` 이라야 위·아래로 넘어갈 수 있다
-          // ```
-          //
-          // 즉 모듈 판정은 *"이게 트렁크가 되나"* 를 예측한 것이 아니라
-          // **"gap 탈출이 필요한가"** 를 정한 것이었다. 그러므로 ⑤는 **gap 이 머신
-          // 여러 대를 먹일 수 있게 된 뒤에야** 가능하다.
-          //
-          // 그래서 지금은 **탭일 때만** 부분 트렁크를 켜다 — 그것만으로도
-          // `g = N` 고정이 `g = min(⌊벌트÷per⌋, N)` 으로 바뀐다(③ 부분 트렁크).
-          bundle: supply.mode !== "tap" ? 1 : undefined,
-          belts: input.belts,
+          // `g = 1` 이 처방인 이유: 그 줄은 **gap(N/S)으로 가야** 하고, 오늘 gap 은
+          // `machinesOn !== 1` 이라 한 대짜리 그룹만 받는다([tryLinkFace]).
+          // 넘치지 않은 줄은 처리량이 준 `g` 를 그대로 쓴다 — **부분 트렁크가 살아 있다.**
+            bundle: lowerAll || overflowedKeys.has(`${line.role}:${line.name}`) ? 1 : undefined,
+            belts: input.belts,
           // **좌석 상한의 재료** — 이걸 안 주면 바깥 줄이 좌석을 안 보고 묶여, 팔이 면에
           // 안 들어가는 줄이 나서 배정에서 통째로 떨어진다(2026-08-23 실측: 40/s 원료 줄이
           // 팔 9개짜리 한 줄로 나 3칸 면에 못 앉았다).
-          machineFaceCells: input.machine.h,
-        });
+            machineFaceCells: input.machine.h,
+          }));
         const lineOfKey = new Map(restLines.map((l) => [`${l.role}:${l.name}`, l]));
         const isExternal = (g: Link): boolean =>
           lineOfKey.get(`${readLinkRole(g)}:${g.item}`)?.external ?? false;

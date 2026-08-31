@@ -170,3 +170,40 @@ describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
     expect(gs.every((g) => g.to.size === 1)).toBe(true);
   });
 });
+
+/**
+ * **넘친 줄만 내려간다** — 계산의 산출이 **줄마다**여야 성립한다(2026-08-31).
+ *
+ * 예전엔 `planClusterPorts` 가 *어느 줄이* 자리를 못 찾았는지 알면서도 모듈 하나의
+ * 낱말(`tap`/`direct`)로 접어 냈고, 그래서 **한 줄이 안 되면 그 모듈의 모든 줄**이
+ * `g = 1` 로 떨어졌다. 여기서 잠그는 것은 그 대응이다:
+ *
+ * ```
+ * 넘친 줄      bundle 1  →  머신마다 하나 (gap 으로 갈 수 있는 유일한 값)
+ * 안 넘친 줄   유도값    →  **부분 트렁크가 살아 있다**
+ * ```
+ */
+describe("줄마다 다른 묶음 크기 — 한 줄이 내려가도 남은 줄은 안 내려간다", () => {
+  const two: IoLine[] = [
+    { name: "a", kind: "belt", role: "input" },
+    { name: "b", kind: "belt", role: "input" },
+  ];
+  /** 둘 다 per = 180/6 = 30 → k = ⌊100/30⌋ = 3 → 유도값 g = 3. */
+  const rates: SupplyCapacity = { lineRates: new Map([["input:a", 180], ["input:b", 180]]) };
+  const pour = (line: IoLine, bundle?: number) =>
+    externalLineGroups([line], 6, rates, INS, undefined, { belts: BELTS, bundle });
+
+  it("`a` 만 내리면 `a` 는 6그룹 · `b` 는 **2그룹 그대로**", () => {
+    const a = pour(two[0], 1);
+    const b = pour(two[1]); // 유도값
+    expect(a).toHaveLength(6);
+    expect(a.every((g) => g.to.size === 1), "내린 줄은 머신마다 하나").toBe(true);
+    expect(b).toHaveLength(2);
+    expect(b.map((g) => [...g.to.keys()])).toEqual([[0, 1, 2], [3, 4, 5]]);
+  });
+
+  it("대조군 — 둘 다 내리면 둘 다 6그룹 (옛 모듈 단위 동작)", () => {
+    expect(pour(two[0], 1)).toHaveLength(6);
+    expect(pour(two[1], 1)).toHaveLength(6);
+  });
+});
