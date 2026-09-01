@@ -139,7 +139,7 @@ tags: [auto-layout, placement, routing]
 
 > **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 납품 경로가 "탐색 없이 순수"한 이유가 이 불변식이다.
 
-정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책([clusterPortPlanner](../../../src/autoLayout/planner/module/clusterPortPlanner.ts))의 재적용이다.
+정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책(출력→W · 입력→E — 2026-09-02 부터 `planModulePorts` 의 `allocateLinkFaces` 가 든다. 옛 `clusterPortPlanner` 는 삭제됐다)의 재적용이다.
 
 ---
 

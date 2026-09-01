@@ -9,7 +9,7 @@ tags: [auto-layout, placement, module]
 # 모듈 안쪽 계획 — 자리를 정하는 주체는 하나다
 
 > **이 문서를 읽어야 하는 때**
-> - `planner/module/planModulePorts.ts` · `linkPlanner.ts` · `clusterPortPlanner.ts` 를 수정할 때
+> - `planner/module/planModulePorts.ts` · `linkPlanner.ts` · `laneBudget.ts` 를 수정할 때
 > - `module/clusterModule.generateModule` 의 **순서**를 바꾸고 싶을 때
 > - `ModulePortPlan` · `rest.ok` · `slotIndex` · `rowGaps` 를 건드릴 때
 > - 링크 포트가 **통째로 사라지는** 증상을 조사할 때
@@ -28,7 +28,7 @@ tags: [auto-layout, placement, module]
 | 주체 | 무엇을 배정 | 어디에 있었나 |
 |---|---|---|
 | 링크 면 배정 | 자식↔부모 [[machine-link\|링크]]가 앉을 면·줄 | `clusterModule` 안 |
-| [[용어사전#insertingPlanner\|insertingPlanner]] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner` |
+| [[용어사전#insertingPlanner\|insertingPlanner]] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner`(**둘 다 2026-09-02 삭제**) |
 
 둘이 **같은 좌석을 놓고 다투므로** 손으로 조율해야 했다 — 링크 줄을 planner 입력에서 빼고,
 링크가 먹은 행을 통보하고, 방출 순서까지 맞췄다. 조율이 코드 여기저기 흩어져 있으니
@@ -47,7 +47,7 @@ tags: [auto-layout, placement, module]
 planModulePorts(input, count)              ← 좌표가 없다
   ① 링크 면 배정      allocateLinkFaces ×2 → spillLinkFacesToGap ×2
   ② 유체 줄 조립      pipePlanned · isJumpableToClusterPipe
-  ③ 나머지 줄 배정    insertingPlanner
+  ③ 나머지 줄 배정    planBundles(줄마다 `g`) → externalLineGroups → allocateLinkFaces ×3
   ④ gap 폭 산출       gapRowsFromPlans
   → ModulePortPlan
 
@@ -201,7 +201,7 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 ```
 
 그래서 **좌석 검사도 레인마다 다르고**, 후보는 **팔이 적게 드는 순**으로 본다(동률이면 얕은
-쪽 — 벨트 칸을 덜 먹는다). `clusterPortPlanner.takeSeat` 가 탭 경로에서 쓰는 규칙과 같다.
+쪽 — 벨트 칸을 덜 먹는다). 옛 `clusterPortPlanner.takeSeat`(2026-09-02 삭제)이 탭 경로에서 쓰던 규칙과 같다 — 지금은 이쪽 하나만 남았다.
 
 > **2026-08-26 이전엔 팔 수를 `reach 1` 로 못박아 붓기가 미리 셌다.** 그 줄이 `d3` 에 앉으면
 > **센 팔과 앉는 팔이 갈렸고**, 겹침도 미배치도 아니라 아무도 못 알아챘다(실측: 10/s 로 세고
@@ -342,19 +342,27 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 (실측 `electronic-circuit`: `copper-cable` 토막 4개가 `stone-tablet` 관통 90대를 막았다).
 사다리 1단은 **그 손상을 사후에 수선**하는 것이다.
 
-## 5. 남는 비대칭 — 정직하게
+## 5. 남던 비대칭 — **해소됐다** (2026-09-02)
 
-링크 쪽 장부는 표 하나로 접혔지만, **`insertingPlanner` 는 여전히 자기 모델이다.**
-합치려다 못 합쳤고, 그 이유가 중요하다:
+링크 쪽 장부는 표 하나(`FaceTable`)로 접혔는데 `insertingPlanner` 만 자기 모델을 들고 있었다.
+장부가 둘이면 **같은 사실을 두 곳이 다르게 센다**:
 
 | 장부 | 열쇠 | 낟알 |
 |---|---|---|
 | 링크 면 배정 | `FaceTable` 의 `(행, 깊이)` | **칸마다**(머신은 행 번호에 접혀 있다) |
-| `insertingPlanner` | `PlannedSide` | **면마다** |
+| ~~`insertingPlanner`~~ | ~~`PlannedSide`~~ | ~~**면마다**~~ |
 
-`insertingPlanner` 는 *"클러스터의 모든 머신이 같은 슬롯을 쓴다"* 를 전제로 한다 — 벨트 한 줄이
-머신 여럿을 훑는 [[용어사전#탭 인서팅 (Tap Inserting)|탭 인서팅]]이 그 모델 위에 서 있다.
-Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않았다.**
+옛 모델의 전제는 *"클러스터의 모든 머신이 같은 슬롯을 쓴다"* 였다 — 벨트 한 줄이 머신 여럿을
+훑는 [[용어사전#탭 인서팅 (Tap Inserting)|탭 인서팅]]이 그 위에 서 있었다. **그 전제가 먼저
+무너졌다**: 벨트 한 줄이 맡는 머신 수가 `g` 라는 **변수**가 되면서(→
+[[용어사전#묶음 크기 `g` · 기둥 길이 `N`|g · N]]) *"모든 머신이 같다"* 가 성립하지 않는다.
+
+그래서 뒤집는 대신 **없앴다.** 나머지 줄도 링크와 같은 배분기(`allocateLinkFaces` →
+`spillLinkFacesToGap`)를 타고 같은 표에 앉는다. 남은 계산은 **수를 세는 일 하나**이고
+(`laneBudget.planBundles` — 줄마다 `g`), 그건 행도 면도 안 봐서 장부가 아예 필요 없다.
+
+> **합치는 방법은 "모델을 뒤집기" 가 아니었다.** 한쪽 모델이 **틀렸다는 것**이 드러나기를
+> 기다린 것이고, 그 계기가 부분 트렁크였다.
 
 대신 `seatRowsByFace` 가 머신 축을 `max` 로 접어 낟알 차이를 흡수한다. 같은 이유로
 `linkedKeys`(링크 줄을 ③ 입력에서 빼는 필터)도 남는다 — 이건 예산 조율이 아니라
@@ -459,6 +467,7 @@ Map 을 그대로 넘기려면 그 모델을 뒤집어야 하므로 **하지 않
 ### 남긴 것 하나 — `rowsPerFace` 의 `max(W, E)`
 
 `clusterPortPlanner` 613줄. **껍데기가 아니라 살아 있는 탭 로직의 결함**이라 위 정리에서 뺐다.
+(그 탭 로직 자체가 2026-09-02 에 삭제됐고, 파일은 `ioLine.ts`·`allocateArms.ts` 로 갈렸다.)
 
 ```ts
 const linkUsedWE = Math.max(seatRowsUsed.W ?? 0, seatRowsUsed.E ?? 0);  // 더 붐비는 면 기준
@@ -474,7 +483,11 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 > 비대칭은 예외가 아니다 — 출력 링크는 W, 입력 링크는 E 를 선호하므로 한쪽에만 링크가 있는
 > 모듈이면 자동으로 어긋난다.
 
-**왜 이렇게 짜여 있나 — 닭과 달걀.** `placementsOf` 는 `planClusterPorts` **보다 먼저** 불리고,
+> **아래 절은 삭제된 코드의 이야기다**(2026-09-02). `placementsOf`·`planClusterPorts` 가 함께
+> 사라졌고, 그 순환은 **줄마다 `g` 를 먼저 정하는 것**으로 끊겼다 — 배정 수를 추측할 필요가
+> 없어졌다. 왜 그런 모양이었나의 기록으로만 읽는다.
+
+**왜 이렇게 짜여 있었나 — 닭과 달걀.** `placementsOf` 는 `planClusterPorts` **보다 먼저** 불리고,
 그 시점엔 이 줄이 어느 면에 앉을지 아직 안 정해졌다(면을 정하는 게 `planClusterPorts` 다).
 그래서 면을 모르는 채 답해야 한다. 주석의 *"보수적"* 은 **절반만 맞다**: 좌석 축에서는
 안전하지만(잘게 쪼개면 각각 더 쉽게 앉는다) **벨트 레인 축에서는 위험하다**(슬롯을 더 먹는다).
@@ -558,9 +571,11 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` · `commitLinkFace` · `portCells` · `gapRowsFromPlans` · `gapExitSidesFromPlans` |
 | ①의 자리 장부 | `planner/module/faceTable.ts` | `FaceTable` — 면마다 한 장(§4.5) |
 | ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 레인마다 다시 센다 |
-| ③ 나머지 줄 | `planner/module/clusterPortPlanner.ts` | `insertingPlanner` · `planClusterPorts` |
+| ③ 줄마다 `g` | `planner/module/laneBudget.ts` | `planBundles` — 레인 예산(§4.2 of trunk-assignment) |
+| ③ 붓기 | `module/link.ts` | `externalLineGroups` · `bundleCap` |
+| ③ 자리 | `planner/module/linkPlanner.ts` | ①과 **같은 함수**를 탄다(2026-09-02 통합) |
 | 좌표 입히기 | `module/clusterModule.ts` | `placeLinkSeats` (덧셈만) |
-| 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTapInserting` · `emitTrunkPipe` |
+| 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`(`emitTapInserting` 은 2026-08-16 삭제) |
 
 ## 7. 함정
 

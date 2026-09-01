@@ -9,9 +9,20 @@ tags: [auto-layout, placement, routing]
 
 # 트렁크 재설계 — "씨앗에서 발견"에서 "1:1 을 합친 결과"로
 
+> **이 문서는 2026-07 의 설계 기록이다.** 결정이 왜 그랬나를 읽는 곳이고, *"지금 어떻게
+> 도나"* 는 [[module-planning]] 과 [[trunk-assignment]] 가 낸다. 아래 본문에서 이름으로
+> 나오는 `insertingPlanner`·`planClusterPorts`·`emitTapInserting` 은 **전부 삭제됐다**
+> (2026-08-16 · 2026-09-02) — 그 일을 지금 하는 것은 다음 셋이다:
+>
+> ```
+> 줄마다 몇 대를 맡나   planner/module/laneBudget.planBundles   ← 레인 예산
+> 어느 면·어느 레인에   planner/module/linkPlanner             ← 링크와 같은 배분기
+> 무엇을 놓나           execution/module/emitOutputLinks · emitInputLinks
+> ```
+>
 > **상태(2026-08-05): §10 확정 설계는 구현됐다.** "경계 마샬"(면·레인 배정이 닻 →
-> 트렁크가 그 면을 훑는다 → 납품 경로가 잇는다)은 지금
-> `clusterPortPlanner.insertingPlanner` + `emitTapInserting` + `deliveryRoute` 로 돌아간다.
+> 트렁크가 그 면을 훑는다 → 납품 경로가 잇는다)은 그 시절
+> `clusterPortPlanner.insertingPlanner` + `emitTapInserting` + `deliveryRoute` 로 돌아갔다.
 >
 > 단, §10.1 의 **"납품 경로 수(품목당 1)" 은 대체됐다** — [[machine-link]] 가
 > 간선-단위 링크로 세분화했다(`edgeFlows` → `DeliverySpec.linkId`). 품목 하나가
@@ -253,9 +264,10 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 
 가장 제약 센 결정 = **어느 품목 줄이 어느 면의 어느 레인을 갖는가.** 이게 정해지면
 벨트 구간(머신 기둥의 행 범위), 포트 위치(벨트 끝), 납품 경로 수(품목당 1), 채널 폭(O(품목))이
-전부 유도된다. 배정기는 [`clusterPortPlanner`](../../../src/autoLayout/planner/module/clusterPortPlanner.ts)
-의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting) 모델이다 — 2026-08-05 rim 모드 삭제로
-`planClusterPorts` 가 아는 **유일한** 모델이 됐다.
+전부 유도된다. 배정기는 그때 `clusterPortPlanner` 의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting)
+모델이었다(2026-08-05 rim 모드 삭제로 유일한 모델이 됐다). **2026-09-02 그 배정기도 삭제됐고**,
+지금은 링크와 같은 배분기(`linkPlanner`)가 나머지 줄까지 함께 앉힌다 — 탭은 `g = N` 이라는
+[한 축의 끝](../../용어사전.md#묶음-크기-g--기둥-길이-n)일 뿐이다.
 
 ### 10.2 물리적 모양
 

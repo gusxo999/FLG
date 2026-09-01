@@ -837,7 +837,7 @@ offset 0/1 로 해도 86-87 이 붙는다
 
 ```
 지금 코드   팔 개수를 센다(reach 1 고정) → 앉힌다 → **깊이/reach 를 재배정**한다
-            (clusterPortPlanner.ts:402-427 — 수요 내림차순 ↔ throughput 내림차순 zip)
+            (옛 clusterPortPlanner.ts:402-427 — 수요 내림차순 ↔ throughput 내림차순 zip. 2026-09-02 삭제)
             ③이 ① 뒤에 있어 ①이 쓴 수가 무효가 된다
 
 새 순서    **줄마다 인서터를 고른다** → 팔 개수가 그 인서터에서 나온다 → 타일을 예약한다
