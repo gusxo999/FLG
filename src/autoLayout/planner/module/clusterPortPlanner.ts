@@ -329,30 +329,20 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 용량은 **아이템 줄만** 센다 — 유체 줄은 파이프 자리(clusterBeltDepth 1)를 따로 쓰고
   // 벨트 슬롯을 소비하지 않는다. 대신 그 면의 레인을 이미 사거리 상한으로 깎았다(slotsOf).
   const slotsNeeded = beltLines.reduce((n, l) => n + beltCountOf(l), 0);
-  if (slotsNeeded > outPool.length + inPool.length) {
-    // **이 거절은 벨트 티어와 무관하다.** 한 면이 세울 수 있는 [ClusterBelt] 수 =
-    // **서로 다른 reach 값 개수**([laneSlots]) 라, 모자란 것은 처리량이 아니라 **레인**이다.
-    // 옛 이름(`belt-demand-exceeds-capacity`)은 화면의 처방을 4단계(벨트)로 보냈는데, 벨트를
-    // 바꿔서는 절대 안 풀린다 — 오히려 [determineBeltCount] 가 줄을 늘려 더 나빠질 수 있다.
-    // 실제 지렛대는 **긴팔 인서터(reach≥2)를 고르는 것**이다(면당 레인이 1 → 2로 는다).
-    //
-    // 유체 면은 한 번 더 깎일 수 있다: 지하파이프 사거리가 얕으면 깊은 레인이 잘린다
-    // (slotsOf 의 `laneCap`). 그리고 유체는 다이렉트 폴백이 없어(planModulePorts) 그 거절이
-    // 곧 모듈 실패다 — 숫자를 문구에 담는 이유가 이것이다.
-    const faceOf = (side: PlannedSide, pool: Slot[]): string => {
-      const cap = pipeFaceOf(side)?.laneCap;
-      return `${side}${pool.length}${cap !== undefined && cap < Infinity ? `(유체·깊이≤${cap})` : ""}`;
-    };
-    const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
-    return {
-      ok: false,
-      complex: true,
-      reason:
-        `lanes-exceed-capacity (벨트 ${slotsNeeded}줄 > 레인 ` +
-        `${faceOf(outputSide, outPool)}+${faceOf(inputSide, inPool)}` +
-        `; 고른 인서터 reach [${reaches.join(",")}])`,
-    };
-  }
+  // **여기서 미리 거절하지 않는다**(2026-09-02). 예전엔 `slotsNeeded > W+E` 를 앞에서 세어
+  // 모듈을 통째로 떨어뜨렸다. 같은 사실이 아래 [place] 에서 **줄마다** 드러나는데(풀이 비면
+  // 그 줄이 못 앉는다), 앞에서 접으면 *어느 줄이* 넘쳤는지가 사라진다.
+  //
+  // **지울 수 있게 된 것은 `g` 를 여기서 안 정하게 됐기 때문이다**(2026-09-01 ⑤-2).
+  // 예전엔 이 거절이 곧 *"이 모듈의 모든 줄을 `g=1` 로"* 였다 — 그래서 지우면 넘치지 않은
+  // 줄이 관통을 되찾아 레인을 독점했다. 지금은 [planBundles] 가 레인 예산으로 `g` 를
+  // 정하므로, 여기 남는 것은 **진단**뿐이고 그건 줄마다 내는 편이 낫다.
+  //
+  // 덤으로 **노출 끝면(N/S)이 셈에 들어온다.** 옛 게이트는 그것을 일부러 뺐는데(보수 판정),
+  // 그 보수는 이 함수의 답이 **기하**이던 시절의 것이다. 지금 이 답은 진단 문자열 하나다.
+  //
+  // 수는 **문구용으로만** 남긴다 — 풀은 [takeSeat] 이 splice 로 줄이므로 처음 크기를 잡아 둔다.
+  const poolSize0 = { out: outPool.length, in: inPool.length };
 
   /** 줄 → 그 줄의 배정들(줄 수만큼). 등장 순서 보존용. */
   const assigned = new Map<IoLine, PlannedLine[]>();
@@ -395,10 +385,29 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   // 팔이 어긋났다(`docs/auto-layout/module/module-planning.md §4.5`). 여기서 고르면 어긋날 수가 없다.
   //
   // 동률이면 near→far(풀 순서) — 얕은 쪽이 벨트 칸을 덜 먹는다.
-  const takeSeat = (pools: Slot[][], line: IoLine, i: number): { slot: Slot; arms: number } | undefined => {
+  /**
+   * **못 앉은 사유** — 처방이 갈린다(`moduleWizard` 의 `fixStep`).
+   *
+   * ```
+   * "lane"  슬롯이 아예 없다          지렛대는 **긴팔 인서터** — 면당 레인 = 서로 다른 reach 수
+   * "seat"  슬롯은 있는데 팔이 안 든다  지렛대는 **면** — d1 칸은 `machine.h` 개뿐이다
+   * ```
+   *
+   * 이 갈림은 예전엔 **앞선 게이트와 못 앉힌 자리로** 나뉘어 있었다(게이트 = 레인,
+   * 못 앉음 = 좌석). 게이트를 지우면서 둘이 한 자리로 오므로 사유를 값으로 들면 된다.
+   */
+  type SeatFail = "lane" | "seat";
+  const takeSeat = (
+    pools: Slot[][],
+    line: IoLine,
+    i: number,
+  ): { slot: Slot; arms: number } | SeatFail => {
+    /** 이 줄이 볼 수 있는 슬롯이 하나라도 남았나 — 사유를 레인/좌석으로 가르는 값이다. */
+    let anySlot = false;
     /** 어느 풀에서든 셀 수 있는 슬롯을 하나라도 봤나 — **줄 전체 기준**이다(아래 참고). */
     let anyKnown = false;
     for (const pool of pools) {
+      if (pool.length > 0) anySlot = true;
       let best = -1;
       let bestArms = 0;
       for (let k = 0; k < pool.length; k++) {
@@ -422,7 +431,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
     // **다음 면에서 "못 세는 슬롯"을 만나 1개짜리로 앉아 버린다.** 그러면 좌석 예산이
     // 거절해야 할 배치가 통과하고, 그 줄은 조용히 굶는다(2026-08-15 실측: 팔 4개짜리 줄이
     // 3행 면에서 밀린 뒤 반대 면의 reach-2 슬롯에 1개로 앉았다).
-    if (anyKnown) return undefined;
+    if (anyKnown) return anySlot ? "seat" : "lane";
     for (const pool of pools) {
       const k = pool.findIndex((s) => rowsLeftOf(s.side) >= 1);
       if (k < 0) continue;
@@ -430,7 +439,7 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
       rowsLeft.set(slot.side, rowsLeftOf(slot.side) - 1);
       return { slot, arms: 1 };
     }
-    return undefined;
+    return anySlot ? "seat" : "lane";
   };
   /**
    * 줄 하나에 벨트 줄 수만큼 슬롯을 뽑아 배정을 만든다. 슬롯이든 좌석이든 모자라면 다음
@@ -445,13 +454,16 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
    * (`tempPlanDocs/부분-트렁크/` — *계산은 옳고 산출의 낟알이 틀렸다*)
    */
   const overflowed: IoLine[] = [];
+  /** 넘친 줄의 사유 — 문구가 처방을 가르므로 줄마다 든다([SeatFail]). */
+  const overflowCause = new Map<IoLine, SeatFail>();
   const place = (line: IoLine, pools: Slot[][]): void => {
     const n = beltCountOf(line);
     const out: PlannedLine[] = [];
     for (let i = 0; i < n; i++) {
       const taken = takeSeat(pools, line, i);
-      if (!taken) {
+      if (typeof taken === "string") {
         overflowed.push(line);
+        overflowCause.set(line, taken);
         return;
       }
       out.push({
@@ -501,13 +513,26 @@ export function planClusterPorts(input: PortPlannerInput): PortPlan {
   for (const line of inputsChildFedFirst) {
     place(line, line.external ? [inPool, nsPool, outPool] : [inPool, outPool]);
   }
-  // 벨트 자리는 [slotsNeeded] 게이트가 이미 봤으므로, 여기 걸리는 건 사실상 **좌석**이다 —
-  // 두 면의 좌석을 다 써도 팔이 남는 레시피. 정직하게 거절하고 다이렉트로 물러난다.
+  // **사유가 둘이고 처방이 갈린다**([SeatFail]). 하나라도 레인이면 레인으로 부른다 —
+  // 레인이 없으면 좌석은 볼 기회조차 없고, 문구가 벨트 쪽을 가리키면 화면의 처방이
+  // 4단계(벨트)로 샌다(2026-08-04 실측).
   if (overflowed.length > 0) {
-    return {
-      ok: false, complex: true, overflowed,
-      reason: `seats-exceed-capacity (${overflowed.map((l) => `${l.role}:${l.name}`).join(", ")})`,
-    };
+    const names = overflowed.map((l) => `${l.role}:${l.name}`).join(", ");
+    if ([...overflowCause.values()].includes("lane")) {
+      const faceOf = (side: PlannedSide, n: number): string => {
+        const cap = pipeFaceOf(side)?.laneCap;
+        return `${side}${n}${cap !== undefined && cap < Infinity ? `(유체·깊이≤${cap})` : ""}`;
+      };
+      const reaches = [...new Set(inserters.map((i) => i.reach))].sort((a, b) => a - b);
+      return {
+        ok: false, complex: true, overflowed,
+        reason:
+          `lanes-exceed-capacity (벨트 ${slotsNeeded}줄 > 레인 ` +
+          `${faceOf(outputSide, poolSize0.out)}+${faceOf(inputSide, poolSize0.in)}` +
+          `; 고른 인서터 reach [${reaches.join(",")}]; 넘친 줄 ${names})`,
+      };
+    }
+    return { ok: false, complex: true, overflowed, reason: `seats-exceed-capacity (${names})` };
   }
 
   // **깊이/reach 재배정은 여기 없다** (2026-08-15 삭제 — `docs/auto-layout/module/module-planning.md §4.5`).

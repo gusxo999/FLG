@@ -290,10 +290,30 @@ describe("planClusterPorts — 노출 N/S 완화 (E → N/S → W)", () => {
     expect(plan.lines.find((l) => l.line.name === "i3")!.side).toBe("W");
   });
 
-  it("N/S 는 용량 게이트에 안 들어간다 — 5 belt 는 nsFaces 있어도 complex", () => {
+  // **노출 끝면은 이제 셈에 들어간다** (2026-09-02 — 옛 제목: *"용량 게이트에 안 들어간다"*).
+  //
+  // 예전엔 앞선 게이트가 `W+E` 만 세고 N/S 를 일부러 뺐다 — *"N/S 는 배치를 개선할 뿐,
+  // 불가능하던 레시피를 가능하게 하지 않는다"* 는 **보수 판정**이었다. 그 보수는 이 함수의
+  // 답이 **기하**이던 시절의 것이고, 지금 이 답은 **진단 문자열 하나**다(`g` 는 레인 예산이
+  // 정한다 — `planner/module/laneBudget.ts`).
+  //
+  // 그리고 빼면 **두 지도가 다른 수를 센다**: 배정 쪽은 원료 입력에게 노출 끝면 완화를
+  // 이미 준다(`planModulePorts` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])`).
+  // 여기서만 빼면 배정이 앉힐 줄을 진단이 *"못 앉는다"* 고 말하게 된다.
+  it("노출 끝면이 있으면 5 belt 도 앉는다 — 진단이 배정과 같은 수를 센다", () => {
     const lines = Array.from({ length: 5 }, (_, i) => ext(`x${i}`));
     const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W", nsFaces: ["N", "S"] });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // W2+E2 로는 4줄뿐 — 다섯째는 노출 끝면(N/S)이 받는다.
+    expect(plan.lines.filter((l) => l.side === "N" || l.side === "S").length).toBeGreaterThan(0);
+  });
+
+  it("노출 끝면이 없으면 5 belt 는 그대로 못 앉는다 — 레인이 모자란다", () => {
+    const lines = Array.from({ length: 5 }, (_, i) => ext(`x${i}`));
+    const plan = planClusterPorts({ lines, inserters: longInserters, outputSide: "W" });
     expect(plan.ok).toBe(false);
+    // 사유는 **레인**이라야 한다 — 화면의 처방이 3단계(긴팔 인서터)로 가야 하기 때문이다.
     if (!plan.ok) expect(plan.reason).toMatch(/^lanes-exceed-capacity/);
   });
 
