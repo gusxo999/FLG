@@ -193,7 +193,6 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
   // depth 2(near 벨트) = x=4.
   it("고수요 입력이 머신마다 탭 인서터 2개로 집힌다", () => {
     const mod = generateModule(highDemand);
-    expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
 
     const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
@@ -254,7 +253,6 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
 
   it("다이렉트로 떨어져도 머신마다 팔 2개가 붙는다 (굶지 않는다)", () => {
     const mod = generateModule(directHighDemand);
-    expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
 
     // 입력 copper-plate 는 E 면(outputSide=W 의 반대). 좌석 열 = x=3.
@@ -316,7 +314,6 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
       },
     };
     const mod = generateModule(tooHungry);
-    expect(mod.supply?.mode).toBe("direct");
     // **아무 줄도 안 버렸다** — 못 부은 줄은 여기 이름이 뜬다([ModulePortPlan.unpourableLines]).
     expect(mod.unroutedLines).toHaveLength(0);
     // 머신 2대 × 갈라진 줄 2개 = 상자 4개(머신마다 두 면).
@@ -460,7 +457,6 @@ describe("공급 모델 통합 — 기계별 포트", () => {
   it("긴팔 없이 battery 가 선다 — 탭은 깨지고 기계별 포트로 물러난다", () => {
     const mod = generateModule(battery(2));
     // 탭은 못 선다: 짧은 팔만이면 면당 1레인인데 아이템 줄이 3개다.
-    expect(mod.supply?.mode).toBe("direct");
     // 그래도 **아무 줄도 못 놓은 게 없다** — 예전엔 유체 때문에 통째로 실패했다.
     expect(mod.unroutedLines).toHaveLength(0);
   });
@@ -509,7 +505,6 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       beltEntityName: "transport-belt",
       belts: [{ entityName: "transport-belt", throughput: 15 }],
     }));
-    expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
     // 일곱 줄 × 머신 2대 = 포트 14개. 하나도 안 잃었다.
     expect(mod.inputPorts.length + mod.outputPorts.length).toBe(14);
@@ -637,5 +632,43 @@ describe("공급 모델 통합 — 기계별 포트", () => {
     expect(mod.unroutedLines).toHaveLength(0);
     const [m0, m1] = mod.machines;
     expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **처방은 사실 옆에서 난다** (2026-09-02 — 지도 A 삭제와 함께 옮겨온 의도)
+//
+// 옛 `insertingPlanner` 는 `lanes-exceed-capacity` 같은 **문장**을 냈고, 화면이 그 문자열을
+// `includes` 로 뒤져 위저드 단계를 정했다. 사유 이름이 비슷하면 처방이 조용히 뒤집혔다
+// (2026-08-04 실측). 이제 실패를 아는 자리가 **값**으로 낸다 — [ModulePortPlan.unpourableFix].
+//
+// 여기서 잠그는 것은 그 값 하나다: *"부을 수 없던 줄이 어느 단계를 가리키나."*
+// ─────────────────────────────────────────────────────────────────────────────
+describe("부을 수 없던 줄의 처방", () => {
+  /** 긴팔(reach 2)만 고른 스펙 — 바깥 줄은 `reach 1` 팔이 있어야 상자와 머신에 함께 닿는다. */
+  const longOnly = (): ModuleInput => scaled({
+    machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
+    count: 2,
+    lines: [line("iron-plate", "input"), line("gear", "output")],
+    inserterEntityName: "long-handed-inserter",
+    inserters: [{ entityName: "long-handed-inserter", reach: 2, throughput: 5 }],
+    beltEntityName: "transport-belt",
+    belts: [{ entityName: "transport-belt", throughput: 15 }],
+  });
+
+  it("reach 1 팔이 없으면 줄이 안 나고, 처방은 **인서터**를 가리킨다", () => {
+    const mod = generateModule(longOnly());
+    // 줄이 하나도 안 났다 — 가짜 줄을 만들지 않는다(2026-08-24 `makeLink` 폴백 삭제).
+    expect(mod.unroutedLines.length).toBeGreaterThan(0);
+    for (const l of mod.unroutedLines)
+      expect(mod.unpourableFix?.get(`${l.role}:${l.name}`), `${l.role}:${l.name}`).toBe("inserter");
+  });
+
+  it("수량을 모르는 줄에는 **처방을 지어내지 않는다**", () => {
+    const base = longOnly();
+    const mod = generateModule({ ...base, supplyCapacity: { lineRates: new Map() } });
+    expect(mod.unroutedLines.length).toBeGreaterThan(0);
+    // 위저드 어느 단계로 보낼지 알 수 없다 — 비워 두는 것이 정직하다.
+    expect([...(mod.unpourableFix?.values() ?? [])]).toHaveLength(0);
   });
 });

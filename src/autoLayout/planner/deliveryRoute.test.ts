@@ -140,7 +140,6 @@ describe("routeDeliveryRoutes", () => {
 
     // 전제 — 부모는 입력 5줄이라 여전히 트렁크가 거절된다(기계별 포트). 그런데도 **두 끝 다**
     // 자기 벨트를 들고 있다. 이게 통합의 관측 가능한 결과다.
-    expect(pack.placements.find((p) => p.id === "p")!.module.supply?.mode).toBe("direct");
     expect(delivery.from.cells.length, "자식 끝이 트렁크 포트가 아님").toBeGreaterThan(0);
     expect(delivery.to.cells.length, "부모 끝이 벨트 모양이 아님").toBeGreaterThan(0);
 

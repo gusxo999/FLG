@@ -36,11 +36,9 @@
  */
 
 import {
-  insertingPlanner,
   type IoLine,
   type PlannedLine,
   type PortSide,
-  type InsertingDecisionResult,
 } from "./clusterPortPlanner";
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
@@ -61,7 +59,6 @@ import {
   gapRowsFromPlans,
   gapExitSidesFromPlans,
   linkFaceDepths,
-  seatRowsByFace,
   type FaceAllocation,
   type LaneShortage,
   type LinkFaceContext,
@@ -107,7 +104,6 @@ export interface ModulePortPlan {
   /** 머신 i 와 i+1 사이를 몇 칸 벌릴까 — ①의 부산물. `layoutCluster` 로 그대로 간다. */
   rowGaps: number[];
   /** 나머지 줄의 tap/direct 판정 + 줄별 슬롯. */
-  supply: InsertingDecisionResult;
   /** 유체 줄의 배정 — 면은 머신이 강제하므로 planner 를 안 거치고 여기서 찍는다. */
   pipePlanned: PlannedLine[];
   /** 면마다 — 파이프가 좌석을 비우고 밖으로 점프할 수 있나. 방출 기하가 이 값에 갈린다. */
@@ -472,7 +468,7 @@ export function planModulePorts(
 ): ModulePortPlan {
   const plannerInserters = input.inserters;
   const st = stage ?? planLinkFaces(input, count);
-  const { tables: faceTables, ctx: faceCtx, outLinks, inLinks, pipeFaces, isJumpableToClusterPipe } = st;
+  const { ctx: faceCtx, outLinks, inLinks, isJumpableToClusterPipe } = st;
   const outFaces = st.out;
   const inFaces = st.in;
 
@@ -506,35 +502,13 @@ export function planModulePorts(
   }
 
   // ── ③ 나머지 줄 배정 — ①이 남긴 예산 안에서 ──────────────────────────────
-  // 보장된 columnTapCapacity 슬롯을 줄마다 1:1 못박는다(natural-divergence 대체).
-  // 각 줄 → {면 W/E, 레인 near/far, 인서터}. 결과 순서가 곧 처리 순서(입력 먼저·near 면부터).
-  // complex(과용량·무인서터)면 전부 위임. 트렁크로 합칠 수 있으면 "tap", 안 되면 "direct"(1:1)
-  // — 거절은 **항상 안전**하다: 1:1 은 구성으로 성립한다.
   //
-  // 좌석 행 수(면의 둘레 칸)는 [insertingPlanner] 의 **자기 인자**로 준다. 이 수는 방출 루프의
-  // `lateral`(슬롯 상한)과 **같아야** 한다 — 어긋나면 없는 자리를 배정하거나 있는 자리를
-  // 안 쓴다. (용어: docs/용어사전.md §D)
-  //
-  // **`seatRowsUsed` 는 계층을 건너는 통보가 아니라 ① → ③ 의 내부 전달이다.** 두 배정의
-  // 장부 낟알이 다르기 때문에 Map 을 그대로 넘기지는 못한다 — ①은 (머신,면)마다 세고
-  // ③은 면마다 센다(모든 머신이 같은 행을 쓰는 것이 ③의 모델이다). [seatRowsByFace] 가
-  // 머신 축을 max 로 접어 그 낟알 차이를 흡수한다.
+  // **여기 있던 [insertingPlanner] 호출은 사라졌다**(2026-09-02). 그것이 내던 것은 모듈
+  // 하나의 낱말(`tap`/`direct`)과 사유 문장이었는데, 배치 흐름에는 그 낱말로 갈리는 분기가
+  // 하나도 없었고(방출 통합 2026-08-16), `g` 는 레인 예산이 정하고(⑤-2), 화면의 처방은
+  // 사실에서 나온다([unpourableFix]·[LaneShortage]). 남은 독자가 0이 되어 지웠다.
   const restLines = input.lines.filter(
     (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
-  );
-  const supply: InsertingDecisionResult = insertingPlanner(
-    {
-      lines: restLines,
-      inserters: plannerInserters,
-      outputSide: "W" as const, // 좌우 계층형: 부모=좌=W. 출력을 W 에 먼저 확정((B) 정책).
-      nsFaces: input.nsExposure, // 노출 끝면 — external 입력의 W-spill 완화(E→N/S→W).
-      seatRowsUsed: seatRowsByFace(faceTables), // ①이 먼저 먹은 행
-      pipeFaces, // 유체가 붙는 면들 + 그 면의 유체 행 수·점프 여부.
-      belts: input.belts,
-    },
-    count,
-    { WE: input.machine.h, NS: input.machine.w },
-    input.supplyCapacity,
   );
 
   // ── ③′ (나) 기계별 포트 — **링크와 같은 배분기로** ────────────────────────────
@@ -774,7 +748,6 @@ export function planModulePorts(
       outFaces.plans, inFaces.plans,
       ...(restLinks ? [restLinks.out.plans, restLinks.in.plans] : []),
     ]),
-    supply,
     pipePlanned,
     isJumpableToClusterPipe,
     gapExitSides: gapExitSidesFromPlans(

@@ -25,7 +25,6 @@ import {
   type PlannedLine,
   type PortSide,
   type SupplyCapacity,
-  type InsertingDecisionResult,
 } from "../planner/module/clusterPortPlanner";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
@@ -134,17 +133,6 @@ export interface GeneratedModule {
   outputPorts: ModulePort[];
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
-  /**
-   * 이 모듈의 옛 판정([insertingPlanner]) — **방출은 이 값에 안 갈린다**(2026-08-16 통합,
-   * 아래 *"아이템 줄 방출 — 갈래가 없다"* 주석). 탭과 기계별 포트는 `g = N` 과 `g = 1`
-   * 이라는 같은 축의 두 끝이고, 그 `g` 는 이제 **레인 예산**이 정한다
-   * (`planner/module/laneBudget.ts`).
-   *
-   * 그래서 여기 남는 것은 **낱말과 문장뿐**이다 — 배치 흐름에는 분기가 하나도 없다.
-   * (2026-09-02 정정: 이 주석은 *"방출이 실제로 이 값에 갈린다"* 라고 적혀 있었고,
-   *  200줄 아래 코드와 정면으로 어긋났다.)
-   */
-  supply?: InsertingDecisionResult;
   /**
    * **못 앉은 내부 링크의 사유** — `linkId` → [LaneShortage]. 사다리 1단의 입력이다.
    * 쪼개는 주체는 `modulePacking` 이다(링크 객체를 양끝이 공유하므로).
@@ -309,7 +297,6 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
 
-  const supply = plan.supply;
 
   // ── 링크 방출 — 먼저 ───────────────────────────────────────────────────────
   // 링크 줄은 계획에서 이미 자기 좌석·면·순번을 받았고([ModulePortPlan.linkFaces]), 여기서
@@ -342,7 +329,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells, laneShortages: plan.laneShortages, unpourableFix: plan.unpourableFix };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, laneShortages: plan.laneShortages, unpourableFix: plan.unpourableFix };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -413,7 +400,6 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     outputPorts,
     bbox,
     unroutedLines,
-    supply,
     pipeCells,
     laneShortages: plan.laneShortages,
     unpourableFix: plan.unpourableFix,

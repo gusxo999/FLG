@@ -47,7 +47,6 @@ function cellAt(mod: ReturnType<typeof generateModule>, x: number, y: number) {
 describe("트렁크 파이프 — 방출 기하", () => {
   it("탭 인서팅으로 판정되고, 머신이 회전한다", () => {
     const mod = generateModule(plasticBar(3));
-    expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
     // 유체 입구가 E 를 보게 하는 회전 — 아이템 전용 머신과 달리 direction 이 붙는다.
     for (const m of mod.machines) expect(m.direction).toBe(4);
@@ -97,7 +96,6 @@ describe("트렁크 파이프 — 방출 기하", () => {
   it("머신 수가 늘어도 파이프는 한 줄 — 포트는 품목당 1개", () => {
     for (const count of [1, 2, 5]) {
       const mod = generateModule(plasticBar(count));
-      expect(mod.supply?.mode).toBe("tap");
       // 줄 수 = 3(유체 입력 + 아이템 입력 + 아이템 출력). 머신 수와 무관.
       expect(mod.inputPorts.length + mod.outputPorts.length).toBe(3);
       // 유체 포트는 늘 하나.
@@ -170,7 +168,6 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
 
   it("좌석이 살아난다 — coal 이 케이스 B(d4·긴팔)가 아니라 가까운 벨트(d2·일반)로", () => {
     const mod = generateModule(plasticBarJump(3));
-    expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
     const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
     expect(coal.meta.laneDepth).toBe(2);
@@ -238,7 +235,6 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
     // 레인 용량 자체를 보는 테스트라 **방아쇠 줄을 넣지 않는다** — 넣으면 아이템 3줄이
     // reach 1 종 하나(면당 1레인)를 넘어 `lanes-exceed-capacity` 로 떨어진다.
     const mod = generateModule(plasticBarJump(3, { longInserter: false, fillOppositeFace: false }));
-    expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
   });
 
@@ -282,7 +278,6 @@ function fluidOut(count: number): ModuleInput {
 describe("유체 출력 반출 — 머신 유체 → 무한파이프", () => {
   it("탭으로 서고, 유체 출력 포트가 무한파이프다", () => {
     const mod = generateModule(fluidOut(3));
-    expect(mod.supply?.mode).toBe("tap");
     expect(mod.unroutedLines).toHaveLength(0);
     const gas = mod.outputPorts.find((p) => p.line.name === "petroleum-gas")!;
     expect(gas.chest.kind).toBe("infinity-pipe");
@@ -347,7 +342,6 @@ describe("유체 관문 — 자리를 못 잡으면 통째로 정직히 실패",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       lines: [...base.lines, inItem("iron-plate")],
     }));
-    expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
     // 유체 포트는 여전히 기둥에 **하나** — 파이프는 쪼개지지 않는다.
     const fluidPorts = mod.inputPorts.filter((p) => p.line.kind === "pipe");
@@ -567,7 +561,6 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
     it(`지하파이프가 없으면 둘째 줄이 unrouted — 기계 ${count}대에서도 같다`, () => {
       const mod = generateModule(crackingNoUnderground(count));
       // 계획은 성공한다(`mode: tap`) — 실패는 **방출에서만** 난다. 그래서 계획만 보면 안 보인다.
-      expect(mod.supply?.mode).toBe("tap");
       expect(mod.unroutedLines.map((l) => `${l.role}:${l.name}`)).toEqual(["input:heavy-oil"]);
     });
   }
@@ -734,7 +727,6 @@ describe("유체 면 회수 — 점프 면에 링크가 앉는다", () => {
 
   it("W 가 차면 유체 면에 앉는다 — **유체 상자 행만 건너뛴다**", () => {
     const mod = generateModule(crowded(4));
-    expect(mod.supply?.mode).toBe("direct");
     expect(mod.unroutedLines).toHaveLength(0);
     for (const m of mod.machines) {
       const at = (dy: number) => cellAt(mod, m.origin.x + 3, m.origin.y + dy)?.entityType;

@@ -159,9 +159,9 @@ describe("링크 방출은 tap/direct 판정과 무관하다", () => {
     outputLinks: [{ item: "gear", from: new Map([[0, 1]]), to: new Map([[0, 1]]) }],
   });
 
-  it("링크 없는 줄이 좌석을 넘겨 모듈은 direct 로 떨어진다", () => {
-    expect(mod.supply?.mode).toBe("direct");
-  });
+  // (여기 있던 *"모듈은 direct 로 떨어진다"* 는 **낱말만 재는 테스트**였다 — count=1 이라
+  //  `g = 1` 과 `g = N` 이 같은 기하라 관측되는 차이가 없었다. 그 낱말이 사라졌고,
+  //  이 픽스처가 곐눠한 것은 아래 *"그래도 링크 출력 포트는 그대로 나온다"* 다. 2026-09-02)
 
   it("그래도 링크 출력 포트는 그대로 나온다 — 개수만이 아니라 **모양**이 링크다", () => {
     const gear = mod.outputPorts.filter((p) => p.line.name === "gear");

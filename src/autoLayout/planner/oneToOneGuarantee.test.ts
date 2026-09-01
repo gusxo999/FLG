@@ -191,23 +191,30 @@ describe("공급 보장 — 탭이든 다이렉트든 성립해야 한다", () =
           expect(p.moduleWayOuts, `${p.chest.id}: 자기 face(${p.face})가 막혔다`).toContain(p.face);
     });
 
-    it(`${tag} — 공급 방식이 기하와 일치한다 (탭=트렁크 belt 있음·포트=줄 수)`, () => {
+    it(`${tag} — 공급 형태가 기하와 일치한다 (모듈 안 belt 유무 ↔ 포트 수)`, () => {
+      // **모듈 낱말(`supply.mode`)이 사라졌다**(2026-09-02). 이젠 한 모듈 안에서도 줄마다
+      // `g` 가 다를 수 있어(부분 트렁크) *탭이다/다이렉트다* 라는 낱말로는 기하를 못 말한다.
+      // 대신 **관측되는 둘이 묶여 있다**: 기둥을 훑는 belt 가 생기는 것과 포트가 접히는 것은
+      // **같은 사실의 두 얼굴**이다 — `g > 1` 인 줄이 하나라도 있으면 둘 다 참이다.
       const { pack } = run(mk(c0, c1, c2));
       const spec = new Map(mk(c0, c1, c2).map((s) => [s.id, s]));
       for (const pl of pack.placements) {
         const lines = spec.get(pl.id)!.lines.filter((l) => l.kind === "belt").length;
         const belts = pl.module.cells.filter((c) => c.cell.entityType === EntityType.Belt).length;
         const ports = pl.module.inputPorts.length + pl.module.outputPorts.length;
-        if (pl.module.supply?.mode === "tap") {
-          // 트렁크: 모듈 안에 belt 가 있고, 경계 포트는 **줄당 하나**로 접힌다.
-          expect(belts, `${pl.id}: 탭인데 트렁크 belt 가 없다`).toBeGreaterThan(0);
-          expect(ports, `${pl.id}: 탭인데 포트가 줄 수가 아니다`).toBe(lines);
+        const all = pl.module.machines.length * lines;
+        // 어떤 형태든 **줄마다 포트는 하나 이상** · **머신마다 하나 이하**다.
+        expect(ports, `${pl.id}: 포트가 줄 수보다 적다`).toBeGreaterThanOrEqual(lines);
+        expect(ports, `${pl.id}: 포트가 머신×줄을 넘는다`).toBeLessThanOrEqual(all);
+        // 머신이 한 대면 `g = 1` 과 `g = N` 이 **같은 기하**라 갈라볼 것이 없다 —
+        // 위 두 부등식이 이미 `ports === lines` 로 조이고 있다.
+        if (pl.module.machines.length < 2) continue;
+        if (belts === 0) {
+          // belt 가 없다 = 모든 줄이 `g = 1` — 머신마다 자기 상자다.
+          expect(ports, `${pl.id}: belt 가 없는데 포트가 머신×줄이 아니다`).toBe(all);
         } else {
-          // 다이렉트(1:1): 모듈 안 belt 0, 포트 = 머신 × 줄.
-          expect(belts, `${pl.id}: 다이렉트인데 belt 가 있다`).toBe(0);
-          expect(ports, `${pl.id}: 다이렉트인데 포트가 머신×줄 이 아니다`).toBe(
-            pl.module.machines.length * lines,
-          );
+          // belt 가 있다 = `g > 1` 인 줄이 있다 — 그만큼 포트가 접혔야 한다.
+          expect(ports, `${pl.id}: belt 가 있는데 포트가 안 접혔다`).toBeLessThan(all);
         }
       }
     });
