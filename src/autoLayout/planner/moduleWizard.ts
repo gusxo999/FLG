@@ -452,29 +452,33 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   for (const pl of pack.placements) {
     if (pl.module.unroutedLines.length === 0) continue;
     const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
-    // `supply.reason` 은 처방이 갈린다. **두 사유를 섞으면 안 된다** — 이름이 둘 다 "belt" 로
-    // 시작해서 예전엔 정확히 반대로 붙어 있었다(2026-08-04 실측):
-    //  - `lanes-exceed-capacity` — 면당 [ClusterBelt] 수(= 서로 다른 reach 개수)가 모자란다.
-    //    **벨트 티어와 무관**한데 4단계(벨트)로 보내고 있었다. 지렛대는 긴팔 인서터 → 3단계.
-    //  - `belt: demand>beltCap` — 진짜 벨트 처리량 부족. 4단계가 맞는데 옛 조건
-    //    (`includes('belt-demand')`)에 안 걸려 **처방이 아예 없었다**.
-    // **사유가 둘 있고 층이 다르다.** `supply.reason` 은 *공급 모델* 이 왜 강등됐나이고,
-    // 배정이 왜 못 앉혔나는 [LaneShortage] 에 있다. 여태 후자를 아무도 안 읽어 화면에
-    // "사유 없음" 만 떴다 — 사다리가 미완성인 지금 **어디까지 되는지**를 가리는 문장이라
-    // 특히 나빴다. 이제 [summarizeRungs] 가 그 실패를 **사다리 칸 이름표**로 세어 붙인다.
+    // **물음은 하나다: 이 줄이 왜 못 앉았나.** 그 답을 아는 자리에서 읽는다.
+    //
+    // 예전엔 `supply.reason`(= *"탭 계획이 왜 깨졌나"*)을 **먼저** 쓰고 [LaneShortage] 는
+    // 보지도 않았다. 두 물음이 다르고, `g` 의 주인이 레인 예산으로 바뀐 뒤로는 둘 사이에
+    // **인과도 없다** — 탭이 깨진 것과 이 줄이 못 앉은 것은 별개다.
+    //
+    // 그리고 처방을 **문장에서 읽지 않는다.** `why.includes('demand>beltCap')` 같은 검사는
+    // 사유 이름이 비슷하면 조용히 뒤집힌다(2026-08-04 실측: 정확히 반대로 붙어 있었다).
+    // 저장소는 같은 교훈을 이미 배웠다 — [LayoutIssue] 가 `RejectReason` 을 흡수하면서
+    // *어디가 막혔나* 와 *무엇을 고쳐야 하나* 가 문장에서 필드로 갈렸다. 여기가 마지막이었다.
     const rungs = pl.module.laneShortages && summarizeRungs(pl.module.laneShortages);
-    const why = pl.module.supply?.mode === "direct" ? pl.module.supply.reason
-      : rungs ? `사다리 ${rungs}` : "사유 없음";
-    const fixStep = why.includes('no-inserter') || why.includes('lanes-exceed-capacity')
-      ? 'inserter' as const
-      : why.includes('demand>beltCap') ? 'belt' as const
-      : undefined;
-    const scope: IssueScope = why.includes('no-inserter') ? '입력' : '모듈';
-    // **`supply.reason` 은 여기 오면 사인이 아니다.** 탭이 깨지는 것은 이제 실패가 아니라
-    // 기계별 포트로의 강등일 뿐이라(공급 모델 통합, 2026-08-05), 여기까지 왔다는 건 그 강등
-    // **뒤에도** 못 앉은 줄이 있다는 뜻이다 — 사유는 참고로 붙이고 처방은 그대로 둔다.
-    // (예전엔 *"유체 레시피는 1:1 폴백이 없다 → 모듈 전체 실패"* 를 덧붙였다. 그 폴백이
-    //  생겼으므로 그 문장은 삭제했다 — 남겨 두면 화면이 없는 원인을 가리킨다.)
+    /** 부을 수조차 없던 줄의 처방 — 붓기가 빈 손으로 온 사유([unpourableFix]). */
+    const pourFix = [...(pl.module.unpourableFix?.values() ?? [])][0];
+    const why = rungs
+      ? `사다리 ${rungs}` // 자리를 못 잡았다 — 어느 칸에서 막혔나
+      : pourFix
+        ? `줄을 못 부었다 (${pourFix === "belt" ? "벨트 부족" : "인서터 없음"})`
+        // 부었는데 사다리 기록도 없다 — 그럼 **방출**에서 못 놓은 것이다
+        // (`emitOutputLinks`/`emitInputLinks` 가 `unroutedLines` 에 직접 넣는다).
+        // 예전엔 여기에 `supply.reason`(= *"탭 계획이 왜 깨졌나"*)을 붙였는데,
+        // **다른 물음의 답**이라 화면이 없는 원인을 가리켰다.
+        : "부고도 못 놓았다 — 방출에서 자리가 없었다";
+    // **처방은 사실에서 나온다.** 사다리 기록이 있으면 자리가 모자란 것이고, 그 지렛대는
+    // 언제나 인서터다 — 빠른 팔은 팔 **개수**를 줄여 좌석을 아끼고, 긴팔은 면의 **레인
+    // 개수**(= 서로 다른 reach 수)를 늘린다. 셋 다(좌석·구간·포트) 같은 손잡이로 풀린다.
+    const fixStep = rungs ? ("inserter" as const) : pourFix;
+    const scope: IssueScope = "모듈";
     const carrier = pl.module.unroutedLines.some((l) => l.kind === 'pipe')
       ? ('fluid' as const)
       : ('item' as const);

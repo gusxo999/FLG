@@ -135,10 +135,14 @@ export interface GeneratedModule {
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
   /**
-   * 이 모듈의 판정([insertingPlanner]) — **방출이 실제로 이 값에 갈린다**:
-   * `"tap"`(트렁크 벨트 한 줄 + 머신별 탭) 또는 `"direct"`(기계별 포트 — 링크 배분기가
-   * 자리를 잡고 [emitOutputLinks]/[emitInputLinks] 가 놓는다). 다이렉트면 `reason` 이
-   * 왜 탭이 안 됐는지 말하고, 그 문구가 UI 실패 라벨의 참고 사유로 나간다.
+   * 이 모듈의 옛 판정([insertingPlanner]) — **방출은 이 값에 안 갈린다**(2026-08-16 통합,
+   * 아래 *"아이템 줄 방출 — 갈래가 없다"* 주석). 탭과 기계별 포트는 `g = N` 과 `g = 1`
+   * 이라는 같은 축의 두 끝이고, 그 `g` 는 이제 **레인 예산**이 정한다
+   * (`planner/module/laneBudget.ts`).
+   *
+   * 그래서 여기 남는 것은 **낱말과 문장뿐**이다 — 배치 흐름에는 분기가 하나도 없다.
+   * (2026-09-02 정정: 이 주석은 *"방출이 실제로 이 값에 갈린다"* 라고 적혀 있었고,
+   *  200줄 아래 코드와 정면으로 어긋났다.)
    */
   supply?: InsertingDecisionResult;
   /**
@@ -148,6 +152,11 @@ export interface GeneratedModule {
   laneShortages?: Map<string, LaneShortage[]>;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
+  /**
+   * **부을 수조차 없던 줄의 처방** — `${role}:${name}` → 위저드 단계
+   * ([ModulePortPlan.unpourableFix]). 화면이 *"어느 단계로 돌아가라"* 를 여기서 읽는다.
+   */
+  unpourableFix?: Map<string, "belt" | "inserter">;
   /**
    * **이 모듈이 깐 파이프류 셀 하나하나가 어느 유체를 나르나** — 트렁크·포트·점프 셀 전부.
    *
@@ -333,7 +342,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells, laneShortages: plan.laneShortages };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, supply, pipeCells, laneShortages: plan.laneShortages, unpourableFix: plan.unpourableFix };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -407,6 +416,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     supply,
     pipeCells,
     laneShortages: plan.laneShortages,
+    unpourableFix: plan.unpourableFix,
   };
 }
 /**

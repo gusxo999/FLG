@@ -50,6 +50,7 @@ import {
 } from "../../module/link";
 import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
+import { determineBeltCount } from "../../beltThroughput";
 import { planBundles } from "./laneBudget";
 import {
   allocateLinkFaces,
@@ -148,6 +149,22 @@ export interface ModulePortPlan {
    * 폴백 삭제 때 드러났다: 폴백이 가짜 줄로 그 구멍을 덮고 있었다).
    */
   unpourableLines: IoLine[];
+  /**
+   * **왜 못 부었나** — `${role}:${name}` → 고쳐야 할 위저드 단계.
+   *
+   * 원인이 셋이고 처방이 갈린다([externalLineGroups] 의 `pour`):
+   *
+   * ```
+   * 수량 미상        `lineRates` 에 그 줄이 없다        처방 없음 — **지어내지 않는다**
+   * 인서터 없음      reach 1 짜리 팔이 없다            "inserter"
+   * 벨트 못 고름     그 수요를 감당할 벨트가 없다       "belt"
+   * ```
+   *
+   * **처방은 사실 옆에 산다.** 예전엔 이 판단이 화면에서 `supply.reason` **문자열을 검사해**
+   * 나왔고(`why.includes('demand>beltCap')`), 그래서 사유 이름이 비슷하면 처방이 뒤집혔다
+   * (2026-08-04 실측). 지금은 실패를 아는 자리가 값으로 낸다.
+   */
+  unpourableFix?: Map<string, "belt" | "inserter">;
   /**
    * **못 앉은 내부 링크의 사유** — `linkId` → 후보마다의 [LaneShortage].
    *
@@ -649,6 +666,23 @@ export function planModulePorts(
   const pouredKeys = new Set(
     [...restLinks.out.groups, ...restLinks.in.groups].map((g) => `${readLinkRole(g)}:${g.item}`),
   );
+  const unpourable = restLines.filter(
+    (l) => l.kind === "belt" && !pouredKeys.has(`${l.role}:${l.name}`),
+  );
+  // **처방은 여기서 난다** — [ModulePortPlan.unpourableFix]. 붓기가 빈 손으로 돌아오는 원인
+  // 셋을 같은 입력으로 되짚는다(`externalLineGroups` 의 `pour` 와 **같은 세 물음**이다).
+  const unpourableFix = new Map<string, "belt" | "inserter">();
+  for (const l of unpourable) {
+    const key = `${l.role}:${l.name}`;
+    const rate = input.supplyCapacity?.lineRates?.get(key);
+    if (rate === undefined) continue; // 수량 미상 — 위저드 단계로 못 보낸다
+    if (!inserterForReach(input.inserters, 1)) {
+      unpourableFix.set(key, "inserter");
+      continue;
+    }
+    if (determineBeltCount(rate, [...(input.belts ?? [])]).length === 0)
+      unpourableFix.set(key, "belt");
+  }
 
   // ── 계측 — **관측만 한다**(계산도 분기도 반환값도 안 바꾼다) ──────────────────
   // 형태는 산출물 어디에도 안 남아서, glass 54줄(필요 5줄)을 사후에 손으로 세야 했다.
@@ -761,11 +795,8 @@ export function planModulePorts(
     // 유체가 못 앉으면 **유체 줄까지** 함께 낸다 — `restLines` 는 파이프를 빼고 걸러진 목록이라
     // 그것만 내면 정작 실패한 유체가 사유에서 사라진다(2026-08-16 회귀).
     // 부을 수 없어 줄이 하나도 안 난 나머지 줄 — **삼키지 않는다**(위 [unpourableLines]).
-    unpourableLines: restLines.filter(
-      (l) =>
-        l.kind === "belt" &&
-        !pouredKeys.has(`${l.role}:${l.name}`),
-    ),
+    unpourableLines: unpourable,
+    unpourableFix,
     rest: fluidUnplaceable
       ? { ok: false, unplaced: input.lines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)) }
       : { ok: true, lines: [] },
