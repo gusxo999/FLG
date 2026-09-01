@@ -6,7 +6,7 @@ import {
   type DeliveryInput,
   type ExportInput,
 } from "./channelGeometryPlanner";
-import type { IoLine } from "./module/clusterPortPlanner";
+import type { IoLine } from "./module/ioLine";
 import { EntityType } from "../../types/layout";
 
 // 유체 납품 경로가 채널 기하 장부 안에서 계획되고, 그 계획대로 깔리는지.

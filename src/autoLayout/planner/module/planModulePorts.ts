@@ -9,7 +9,7 @@
  * | 주체 | 무엇을 배정 | 어디에 |
  * |---|---|---|
  * | 링크 면 배정 | 자식↔부모 링크가 앉을 면·줄 | `clusterModule` 안 |
- * | [insertingPlanner] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner` |
+ * | [insertingPlanner] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `ioLine` |
  *
  * 둘이 같은 좌석을 놓고 다투므로 손수 조율해야 했다: 링크 줄을 planner 입력에서 **빼고**
  * (`linkedKeys`), 링크가 먹은 행을 **통보**하고(`seatRowsUsed`), 방출 순서까지 맞춰야 했다.
@@ -39,7 +39,7 @@ import {
   type IoLine,
   type PlannedLine,
   type PortSide,
-} from "./clusterPortPlanner";
+} from "./ioLine";
 import type { ModuleInput } from "../../module/clusterModule";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
 import {

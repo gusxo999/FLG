@@ -218,7 +218,8 @@ tags: [auto-layout, placement, routing]
 
 **원인:**
 - 한 면이 세울 수 있는 [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]] 수 = **서로 다른 reach 값 개수**
-  ([clusterPortPlanner.ts](../../../src/autoLayout/planner/module/clusterPortPlanner.ts) `laneSlots`).
+  (`laneSlots` — 2026-09-02 삭제. 지금 그 수를 세는 곳은
+  [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) 의 `laneDepthsOf` 다).
   같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 1레인**.
   게임 물리라 코드로 넓힐 수 없다.
 - 유체 면은 거기서 한 번 더 깎인다. 지하파이프가 없어 점프 불가면 좌석 줄 전체가 파이프라

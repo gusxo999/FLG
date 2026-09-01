@@ -39,7 +39,7 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
-npx vitest run                          # 기준선: 타입 0 · 52파일 631테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
+npx vitest run                          # 기준선: 타입 0 · 52파일 607테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
 ```
 
 ## 프로젝트 메모리

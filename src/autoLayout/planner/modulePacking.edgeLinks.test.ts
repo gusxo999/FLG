@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { edgeLinkGroups, edgeFlows, type NodeSpec, type PackConfig } from "./modulePacking";
-import type { IoLine } from "./module/clusterPortPlanner";
+import type { IoLine } from "./module/ioLine";
 import { groupRate } from "../module/link";
 
 // edgeFlows 는 논리 어댑터 — spec 의 **클러스터 전체** rate 를 대수로 나눠 머신당으로

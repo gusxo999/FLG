@@ -1,7 +1,8 @@
 import { useGameDataStore, type Entity, type Recipe } from "../UI/store/gameDataStore";
 import type { Area, ContainerWizardInput } from "./containerModel";
 import { clusterLineRate, type MachineParamsLookup } from "./recipeTree";
-import { allocateArms, type IoLine } from "./planner/module/clusterPortPlanner";
+import { allocateArms } from "./planner/module/allocateArms";
+import type { IoLine } from "./planner/module/ioLine";
 import { inserterForReach, type SpecInserter } from "./buildSpec";
 
 // ─── Area 유틸 ───────────────────────────────────────────────────────────────

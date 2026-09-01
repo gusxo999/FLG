@@ -26,7 +26,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, deliveryKey, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
-import type { IoLine } from "./module/clusterPortPlanner";
+import type { IoLine } from "./module/ioLine";
 import { scaledPack, scaledSpecs } from "../module/testScale";
 
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });

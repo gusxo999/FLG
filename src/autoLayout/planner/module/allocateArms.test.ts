@@ -9,7 +9,8 @@
  * (2026-07-16 사용자 설계).
  */
 import { describe, it, expect } from "vitest";
-import { allocateArms, type IoLine } from "./clusterPortPlanner";
+import { allocateArms } from "./allocateArms";
+import type { IoLine } from "./ioLine";
 import type { SpecInserter } from "../../buildSpec";
 
 const inL = (n: string): IoLine => ({ name: n, kind: "belt", role: "input" });

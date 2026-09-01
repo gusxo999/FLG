@@ -20,7 +20,7 @@ import { routeDeliveryRoutes } from "./deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
 import { EntityType } from "../../types/layout";
-import type { IoLine } from "./module/clusterPortPlanner";
+import type { IoLine } from "./module/ioLine";
 import type { Container, PlacedCell } from "../containerModel";
 
 const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });

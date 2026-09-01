@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planBundles, type LaneBudgetInput } from "./laneBudget";
-import type { IoLine } from "./clusterPortPlanner";
+import type { IoLine } from "./ioLine";
 
 /**
  * **레인 예산** — 관통을 *공짜일 때만* 산다는 규칙 하나를 잰다.

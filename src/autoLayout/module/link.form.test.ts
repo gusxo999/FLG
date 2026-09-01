@@ -21,7 +21,7 @@ import {
   type LinkCarry,
 } from "./link";
 import { edgeLinkGroups, type NodeSpec, type PackConfig } from "../planner/modulePacking";
-import type { IoLine } from "../planner/module/clusterPortPlanner";
+import type { IoLine } from "../planner/module/ioLine";
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });
 

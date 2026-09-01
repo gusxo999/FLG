@@ -31,7 +31,7 @@
  * 왕복 간선이 있었다(2026-08-02 해소).
  */
 
-import type { IoLine, SupplyCapacity } from "../planner/module/clusterPortPlanner";
+import type { IoLine, SupplyCapacity } from "../planner/module/ioLine";
 import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../buildSpec";
 import { determineBeltCount } from "../beltThroughput";
 
@@ -628,7 +628,7 @@ export function readLinkRole(group: Link): "input" | "output" {
  *
  * ## 여기서 벨트를 쪼개지 않는다 (일부러)
  * 그룹 하나 = 벨트 하나지만, 이 함수는 **줄 하나당 그룹 하나**만 낸다. 수요가 벨트 한 줄을
- * 넘을 때 몇 줄로 늘릴지는 이미 [determineBeltCount] 와 [clusterPortPlanner] 의 배정 수가
+ * 넘을 때 몇 줄로 늘릴지는 이미 [determineBeltCount] 와 [ioLine] 의 배정 수가
  * 정하고 있다. 여기서 또 쪼개면 **같은 수를 두 곳이 각자 유도**하게 되고, 그게 이 세션에
  * 고친 버그들의 공통 원인이었다(tapCapacity 세 출처·배정 수 두 출처). 쪼개기를 여기로
  * 옮긴다면 저쪽에서 **빼면서** 옮겨야 한다.

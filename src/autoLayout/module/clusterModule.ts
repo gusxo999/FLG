@@ -25,7 +25,7 @@ import {
   type PlannedLine,
   type PortSide,
   type SupplyCapacity,
-} from "../planner/module/clusterPortPlanner";
+} from "../planner/module/ioLine";
 import type { SpecBelt, SpecInserter } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
 import { type Link } from "./link";
@@ -246,7 +246,7 @@ export interface ModuleInput {
  * 한 클러스터를 자족 모듈로 생성. 입력 line 은 supply 트렁크, 출력 line 은 collect
  * 트렁크로 자기 ring 까지 깐다. 각 트렁크의 종착 ring 셀 = 그 line 의 포트 anchor.
  *
- * 결정적: [clusterPortPlanner] 가 줄마다 슬롯(면 W/E·레인 near/far·인서터)을 먼저
+ * 결정적: [ioLine] 가 줄마다 슬롯(면 W/E·레인 near/far·인서터)을 먼저
  * 못박고, 각 트렁크를 그 슬롯에만 가둔다(faceConstraints). 누적 occupancy 로 같은 면
  * 두 레인의 seat 행이 겹치지 않게 한다. 슬롯은 columnTapCapacity 로 보장돼 미탭 불가.
  */

@@ -103,7 +103,9 @@ autoLayout/
 ├ planner/                     계획 — 조율 주체. 아무것도 놓지 않는다
 │   ├ module/                    한 모듈 안쪽 계획
 │   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
-│   │   ├ clusterPortPlanner.ts    줄 슬롯 배정 · tap/direct 판정
+│   │   ├ ioLine.ts                줄의 낱말(IoLine·PlannedLine·SupplyCapacity)
+│   │   ├ allocateArms.ts          팔 산술(requiredInserterCount·allocateArms)
+│   │   ├ laneBudget.ts            레인 예산 — 줄마다 `g` 를 정한다
 │   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
 │   ├ link/                      모듈과 모듈을 잇는 일
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
@@ -171,7 +173,9 @@ rg "^import" src/autoLayout/planner/link/allocateFlows.ts
 |---|---|---|
 | V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `planner/perimeter/wayOuts.ts` |
 | V2 | `allocateFlows` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
-| V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/` |
+| V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/`.
+그 뒤 2026-09-02 에 그 파일의 계획기 둘(`planClusterPorts`·`insertingPlanner`)이 삭제되고
+남은 낱말·산술이 `ioLine.ts`·`allocateArms.ts` 로 갈렸다 |
 | V4 | 한 파일에 **두 관심사**가 있어 `module/ ⇄ planner/link/` 왕복 간선이 생겼다 | 둘로 가름 — 아래 |
 | V5 | `clusterModule` 이 다이렉트 인서팅 셀을 **직접 만들었다** | → `execution/module/emitDirectInserting` |
 

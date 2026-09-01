@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
-import type { IoLine } from "../planner/module/clusterPortPlanner";
+import type { IoLine } from "../planner/module/ioLine";
 import { transformModule, shiftModule, rotationToFace, type Orientation, type Rotation } from "./moduleTransform";
 import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
 import { EntityType } from "../../types/layout";

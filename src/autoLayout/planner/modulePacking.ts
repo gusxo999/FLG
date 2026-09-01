@@ -41,7 +41,7 @@ import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 import { planLanes, expandBbox } from "./perimeter/lanes";
 import type { LanePlan } from "./perimeterLanePlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
-import type { IoLine } from "./module/clusterPortPlanner";
+import type { IoLine } from "./module/ioLine";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 import { recordBeltFormStats, recordFaceLaneStats } from "../../debug/runStats";

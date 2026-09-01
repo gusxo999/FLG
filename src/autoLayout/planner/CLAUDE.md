@@ -16,7 +16,7 @@
 
 | 폴더 | 판정 | 내용 | 문서 |
 |---|---|---|---|
-| `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · `clusterPortPlanner` · `linkPlanner` | `docs/auto-layout/module/` |
+| `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · `linkPlanner` · `laneBudget` · `faceTable` | `docs/auto-layout/module/` |
 | `link/` | 두 모듈의 **식별자**를 안다 | `allocateFlows` · `edgeLinks` | `docs/auto-layout/link/` |
 | `perimeter/` | **전역 외곽**을 안다 | `wayOuts` · `lanes` | `docs/auto-layout/perimeter/` |
 | (평면) | 조율·통로·탐색 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `deliveryRoute` · `containerRouting` | `docs/auto-layout/channel/` |

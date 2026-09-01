@@ -19,7 +19,7 @@
  * (런타임 간선은 `clusterModule → emitModule` 한 방향뿐 — 순환 아님).
  */
 
-import type { IoLine, PlannedLine, PortSide } from "../../planner/module/clusterPortPlanner";
+import type { IoLine, PlannedLine, PortSide } from "../../planner/module/ioLine";
 import { groupRate, type Link } from "../../module/link";
 import type { Container, PlacedCell, PortFace, PortPair } from "../../containerModel";
 import { cellKey, faceCell, faceVector, vectorToDirection } from "../../util/helper";

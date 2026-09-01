@@ -70,7 +70,7 @@ docs/
 |------|------|
 | [module-planning](auto-layout/module/module-planning.md) | **모듈 안쪽 계획은 어떻게 도는가** — 자리를 정하는 주체는 하나(`planModulePorts`) · 순서가 제약의 세기인 이유 · 좌표의 경계 · **면의 자리는 `FaceTable` 한 장**(§4.5). **모듈 생성 순서를 바꾸기 전에 읽는다** |
 | [trunk-assignment](auto-layout/module/trunk-assignment.md) | **배정 모델 — 면 하나를 어떻게 쓰나** — 자원(좌석·레인) · 수요(`k`·`g`·`c`) · 배정 여섯 단계 · 진출이 막힐 때(TR7) · **깊이는 결과이지 입력이 아니다**. **§0 구현 상태가 모델과 코드의 차를 든다** |
-| [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 이 `insertingPlanner`+`emitTapInserting` 으로 돈다 |
+| [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 의 `insertingPlanner`+`emitTapInserting` 은 **둘 다 삭제됐다**(2026-08-16 · 2026-09-02) — 문서가 낡았다 |
 | [trunk-pipe](auto-layout/module/trunk-pipe.md) | **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전 |
 | [ns-face-relief](auto-layout/module/ns-face-relief.md) | count=1 raw 입력의 노출 N/S 면 슬롯 (W-spill 갇힘 치료) |
 

@@ -20,7 +20,7 @@
 import { faceSeatArms, inserterForReach, type SpecInserter } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
 import { armsAt, machinesOn, resolveSpanBlock, spansAllMachines, type Link } from "../../module/link";
-import type { PlannedSide } from "./clusterPortPlanner";
+import type { PlannedSide } from "./ioLine";
 import {
   claimLane, claimSeats, freeSeatRows, groupsOn, laneClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceTable,
@@ -499,7 +499,7 @@ export function tryLinkFace(
   // **후보를 팔이 적게 드는 순으로 본다** — 좌석은 이 모델에서 **유일하게 못 늘리는 자원**
   // 이라(`faceSeatArms`: 면의 d1 칸이 그것뿐), 팔이 적게 드는 레인이 그 면의 남은 예산을
   // 가장 적게 태운다. 동률이면 **얕은 쪽** — 벨트 칸을 덜 먹고 [ClusterPipe] 를 덜 밀어낸다.
-  // `clusterPortPlanner.takeSeat`(:392)이 탭 경로에서 쓰는 규칙 **그대로**다(R3: 같은 판단을
+  // `ioLine.takeSeat`(:392)이 탭 경로에서 쓰는 규칙 **그대로**다(R3: 같은 판단을
   // 두 곳이 다르게 하지 않는다). 예전엔 **도착 순으로 얕은 것부터**라 임의가 실패할 수 있는
   // 자리에 있었다(R2).
   const candidates = laneDepthsOf(ctx, face)
