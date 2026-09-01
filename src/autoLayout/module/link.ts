@@ -649,6 +649,34 @@ export function readLinkRole(group: Link): "input" | "output" {
  * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
  * @param opts.bundle 묶음 크기 `g` — 안 주면 줄마다 `min(⌊벌트÷per⌋, N)` 으로 유도한다.
  */
+/**
+ * **묶음 크기의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
+ *
+ * ```
+ * g_max = min(N, ⌊벨트 처리량 ÷ 머신 하나의 몫⌋)
+ * ```
+ *
+ * **이건 상한일 뿐 실제 `g` 가 아니다.** 자리(레인 예산)가 여기서 더 깎는다 —
+ * 관통 줄은 레인을 통째로 먹으므로 면마다 몇 줄까지 관통할 수 있는지가 따로 있다
+ * (`docs/auto-layout/module/trunk-assignment.md` §4.2, 계산은 [planBundles]).
+ *
+ * 수량을 모르면 `N` 이다 — **지어내지 않는다.** 그 값이 곧 옛 탭 동작이고,
+ * 레인 예산이 그걸 다시 깎는 것이 지금의 모양이다.
+ *
+ * 붓기와 계획이 **같은 함수를 본다**(R3). 예전엔 이 식이 [externalLineGroups] 안에만
+ * 있어서 바깥에서 `g_max` 를 알려면 베껴 쓰는 수밖에 없었다.
+ */
+export function bundleCap(
+  machineCount: number,
+  per: number | undefined,
+  beltThroughput: number | undefined,
+): number {
+  const n = Math.max(1, machineCount);
+  return per !== undefined && per > 0 && beltThroughput !== undefined && beltThroughput > 0
+    ? Math.min(n, Math.max(1, Math.floor(beltThroughput / per)))
+    : n;
+}
+
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
   machineCount: number,
@@ -733,12 +761,7 @@ export function externalLineGroups(
     //
     // **쪼개는 일 자체는 여전히 [createLinks] 가 한다** — 여기서 정하는 것은
     // *한꺼번에 몇 명씩 부을까* 뿐이고, 부은 묶음 안에서는 벌트·좌석 상한까지 채운다.
-    const beltTp = opts?.belts?.[0]?.throughput;
-    const g = opts?.bundle ?? (
-      per !== undefined && per > 0 && beltTp !== undefined && beltTp > 0
-        ? Math.min(n, Math.max(1, Math.floor(beltTp / per)))
-        : n   // 수량을 모르면 한꺼번에 — 지어내지 않는다(옛 탭 동작)
-    );
+    const g = opts?.bundle ?? bundleCap(n, per, opts?.belts?.[0]?.throughput);
     const batches: number[][] = [];
     for (let i = 0; i < n; i += Math.max(1, g))
       batches.push(Array.from({ length: Math.min(g, n - i) }, (_, j) => i + j));

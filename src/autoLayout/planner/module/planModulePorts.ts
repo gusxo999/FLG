@@ -50,6 +50,7 @@ import {
 } from "../../module/link";
 import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
+import { planBundles } from "./laneBudget";
 import {
   allocateLinkFaces,
   commitLinkFace,
@@ -540,21 +541,46 @@ export function planModulePorts(
   // 모드가 남기는 것은 **쪼개기 여부** 하나뿐이다: 탭이면 묶은 그룹(벨트 하나가 전 머신),
   // 다이렉트면 머신마다 하나. 그 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**이다(§16).
   /**
-   * **어느 줄이 `g = 1` 로 내려가야 하나** — 계산(`planClusterPorts`)이 낸 답을 그대로 쓴다.
+   * **어느 줄이 `g = 1` 로 내려가야 하나** — [planBundles] 가 **레인 예산**으로 정한다
+   * (`docs/auto-layout/module/trunk-assignment.md` §4.2). 기본값은 *"공짜일 때만 관통"* 이다.
    *
    * ```
-   * 탭          아무도 안 내린다 — 전부 처리량이 준 `g` 를 쓴다
-   * 다이렉트 + 줄 이름을 안다   **그 줄만** 내린다        ← 계산이 편 산출
-   * 다이렉트 + 줄 이름을 모른다  전부 내린다(옛 동작)      ← 모듈 단위 사유(무인서터·레인 부족)
+   * 면 f:   (g>1 줄 수)  +  (g=1 줄이 있으면 1)   ≤   R_f
    * ```
    *
-   * 셋째 갈래를 남기는 것은 **모르는 것을 아는 척하지 않기 위해서**다. 모듈 단위 사유는
-   * 줄 단위 처방이 없으므로 옛 동작이 맞는 답이다.
+   * **예전엔 이 답을 `supply`(= `planClusterPorts`)가 냈다.** 그쪽은 지도가 달라서
+   * (면 단위 슬롯 풀, 머신 축 없음) *"이 모듈은 다이렉트"* 라는 **모듈 단위 낱말**밖에 못
+   * 냈고, 2026-08-31 에 줄 단위(`overflowed`)로 폈지만 여전히 **레인을 안 셌다** —
+   * 관통이 레인을 통째로 먹는다는 것을 모른다. 그래서 한 줄이 관통을 사면 나머지가
+   * 자리를 잃는 일이 조용히 났다(2026-09-01 실측: battery 에서 copper-plate 가 못 앉았다).
+   *
+   * 이제 **같은 지도**(`FaceTable`·[laneDepthsOf])가 낸 수로 정한다. `supply` 는 진단
+   * 문자열만 남긴다 — 그 삭제는 다음 단계다(`tempPlanDocs/부분-트렁크/` §3).
    */
-  const lowerAll = supply.mode === "direct" && supply.overflowed === undefined;
-  const overflowedKeys = new Set(
-    (supply.mode === "direct" ? supply.overflowed ?? [] : []).map((l) => `${l.role}:${l.name}`),
-  );
+  const restByPriority = [
+    ...restLines.filter((l) => l.role === "output"),
+    ...restLines.filter((l) => l.role === "input" && !l.external),
+    ...restLines.filter((l) => l.role === "input" && l.external),
+  ];
+  const bundleByKey = planBundles({
+    lines: restByPriority,
+    count,
+    lineRates: input.supplyCapacity?.lineRates,
+    belts: input.belts,
+    lanesOf: (face) => laneDepthsOf(faceCtx, face).length,
+    // **①이 먼저 먹은 레인** — 링크는 자기 기하를 스스로 갖고 이미 앉았다. 좌석을
+    // `seatRowsUsed` 로 넘기는 것과 같은 이유로, 레인도 넘겨야 예산이 참이 된다.
+    taken: (face) => {
+      let spanning = 0;
+      let direct = false;
+      for (const p of [...outFaces.plans, ...inFaces.plans]) {
+        if (!p || p.face !== face) continue;
+        if (p.arms.size > 1) spanning++;
+        else direct = true;
+      }
+      return { spanning, direct };
+    },
+  });
 
   const restLinks = (() => {
         // **줄마다 따로 붓는다** — 묶음 크기가 줄마다 다르기 때문이다.
@@ -570,7 +596,7 @@ export function planModulePorts(
           // `g = 1` 이 처방인 이유: 그 줄은 **gap(N/S)으로 가야** 하고, 오늘 gap 은
           // `machinesOn !== 1` 이라 한 대짜리 그룹만 받는다([tryLinkFace]).
           // 넘치지 않은 줄은 처리량이 준 `g` 를 그대로 쓴다 — **부분 트렁크가 살아 있다.**
-            bundle: lowerAll || overflowedKeys.has(`${line.role}:${line.name}`) ? 1 : undefined,
+            bundle: bundleByKey.get(`${line.role}:${line.name}`),
             belts: input.belts,
           // **좌석 상한의 재료** — 이걸 안 주면 바깥 줄이 좌석을 안 보고 묶여, 팔이 면에
           // 안 들어가는 줄이 나서 배정에서 통째로 떨어진다(2026-08-23 실측: 40/s 원료 줄이
