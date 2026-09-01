@@ -98,12 +98,13 @@ A 를 지우면   "이 줄은 g=1" 을 앉히기 전에 알 방법이 없어진�
 ## 그래서 지우는 순서
 
 ```
-1  ① 좌석 **과 레인** 판정을 지도 B 의 자료로 옮긴다   FaceTable + laneDepthsOf
-   — 여기서 줄마다 `g` 가 정해진다(면을 알아야 레인 예산이 선다)
-2  ④ lanes-exceed-capacity 를 지운다                 ①이 대신 답하게 된 뒤
-3  ② 이름표를 나머지 줄로 넓힌다                     진단이 안 사라지게
-4  ③ 과 함께 planClusterPorts · insertingPlanner 를 지운다
-   — 13(splitIntervals)은 죽은 코드이므로 **아무것도 대신할 필요가 없다**
+1  ✅ ① 좌석 **과 레인** 판정을 지도 B 의 자료로            2026-09-01 `planBundles`
+      — 면은 안 물어도 됐다. 예산이 **모듈 전체**라 면은 배정의 몫으로 남는다
+2  ✅ ④ lanes-exceed-capacity 를 지운다                  2026-09-02
+      — 진단은 `takeSeat` 의 사유(`lane`/`seat`)가 대신 낸다
+      — 13(splitIntervals)도 함께 삭제. **죽은 코드였다**(76줄)
+3  ▫ ② 이름표를 나머지 줄로 넓힌다                     진단이 안 사라지게 (J3)
+4  ▫ ③ 과 함께 planClusterPorts · insertingPlanner 를 지운다
 ```
 
 > **2026-09-01 — 1 과 2 를 바꿨다.** 옛 순서대로 ④ 를 먼저 지워 봤더니 15개가 깨졌다.
