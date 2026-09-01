@@ -103,8 +103,12 @@ A 를 지우면   "이 줄은 g=1" 을 앉히기 전에 알 방법이 없어진�
 2  ✅ ④ lanes-exceed-capacity 를 지운다                  2026-09-02
       — 진단은 `takeSeat` 의 사유(`lane`/`seat`)가 대신 낸다
       — 13(splitIntervals)도 함께 삭제. **죽은 코드였다**(76줄)
-3  ▫ ② 이름표를 나머지 줄로 넓힌다                     진단이 안 사라지게 (J3)
-4  ▫ ③ 과 함께 planClusterPorts · insertingPlanner 를 지운다
+3  ✅ ② 진단을 사실 옆으로                              2026-09-02
+      — 이름표를 넓히는 대신 **처방을 값으로** 냈다(J3 의 (가)도 (나)도 아니다).
+        사다리 기록 → 'inserter' · `unpourableFix` → 'belt'|'inserter' · 수량 미상 → 없음
+4  ✅ ③ 과 함께 planClusterPorts · insertingPlanner 삭제     2026-09-02
+      — 978줄 → 238줄. 남은 것은 낱말(IoLine·PlannedLine·SupplyCapacity)과
+        산술(requiredInserterCount·allocateArms)뿐이다
 ```
 
 > **2026-09-01 — 1 과 2 를 바꿨다.** 옛 순서대로 ④ 를 먼저 지워 봤더니 15개가 깨졌다.
