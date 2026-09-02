@@ -161,3 +161,75 @@ describe("edgeFlows — 전제 미충족이면 undefined(지어내지 않는다)
     expect(edgeFlows(child, parent, "x", noBelt)).toBeUndefined();
   });
 });
+
+
+describe("edgeLinkGroups — 간선의 묶음(`g`) — 손잡이만 있고 정책은 없다", () => {
+  // 자식 4대(각 10/s) → 부모 4대(각 10/s). 총 40/s 는 벨트 90 한 줄에 다 들어가고
+  // 좌석(7칸 × 90)도 남아돈다 → **양으로는 쪼갤 이유가 하나도 없는** 입력이다.
+  // 그래서 여기서 갈리는 것은 오직 `bundle` 뿐이다.
+  const fast: PackConfig = {
+    inserterEntityName: "i",
+    inserters: [{ entityName: "i", reach: 1, throughput: 90 }],
+    beltEntityName: "b",
+    belts: [
+      { entityName: "b90", throughput: 90 },
+      { entityName: "b15", throughput: 15 },
+    ],
+  };
+  const child = spec("c", 4, [line("x", "output")], { "output:x": 40 });
+  const parent = spec("p", 4, [line("x", "input")], { "input:x": 40 }, "c");
+  const groupsOf = (bundle?: { side: "from" | "to"; g: number }) =>
+    edgeLinkGroups(child, parent, "x", fast, bundle)!;
+
+  it("안 주면 **오늘 동작** — 한 줄이 부모 전부를 맡는다(관통)", () => {
+    const g = groupsOf();
+    expect(g).toHaveLength(1);
+    expect(g[0].to.size).toBe(4);
+    expect(g[0].from.size).toBe(4);
+  });
+
+  it("`g = 2` 면 두 토막 — **양끝 모두 연속 구간**이다(교차가 생길 수 없다)", () => {
+    const g = groupsOf({ side: "to", g: 2 });
+    expect(g).toHaveLength(2);
+    expect([...g[0].to.keys()]).toEqual([0, 1]);
+    expect([...g[1].to.keys()]).toEqual([2, 3]);
+    // 반대쪽도 저절로 연속이다 — 흐름 수열이 양끝 단조이기 때문이다(좌표를 안 본다).
+    expect([...g[0].from.keys()]).toEqual([0, 1]);
+    expect([...g[1].from.keys()]).toEqual([2, 3]);
+  });
+
+  it("토막마다 **신원이 갈린다** — 포트 짝짓기가 조회로 성립하는 근거", () => {
+    const ids = groupsOf({ side: "to", g: 2 }).map((x) => x.id);
+    expect(ids).toEqual(["c→p:x#0", "c→p:x#1"]);
+  });
+
+  it("쪼개도 **총량이 보존된다** — 흐르다 새는 것이 없다", () => {
+    for (const g of [1, 2, 3, 4]) {
+      const carried = groupsOf({ side: "to", g }).reduce((s, x) => s + (groupRate(x) ?? 0), 0);
+      expect(carried).toBeCloseTo(40, 9);
+    }
+  });
+
+  it("`g = 1` 은 **다이렉트** — 머신마다 자기 줄", () => {
+    const g = groupsOf({ side: "to", g: 1 });
+    expect(g).toHaveLength(4);
+    for (const x of g) expect(x.to.size).toBe(1);
+  });
+
+  it("티어는 **묶음마다 다시 센다** — 작게 자르면 더 싼 벨트가 답이 된다", () => {
+    // 40/s 한 줄이면 90 짜리가 필요하지만, 10/s 씩 넷으로 자르면 15 짜리로 족하다.
+    expect(groupsOf().map((x) => x.beltEntityName)).toEqual(["b90"]);
+    expect(groupsOf({ side: "to", g: 1 }).map((x) => x.beltEntityName)).toEqual([
+      "b15", "b15", "b15", "b15",
+    ]);
+  });
+
+  it("`g ≥ N` 은 관통과 **같은 답**이다 — 손잡이의 한쪽 끝", () => {
+    expect(groupsOf({ side: "to", g: 4 })).toEqual(groupsOf());
+    expect(groupsOf({ side: "to", g: 99 })).toEqual(groupsOf());
+  });
+
+  it("`side` 를 자식으로 잡아도 같은 자름이다 — 이 간선은 대수가 같다", () => {
+    expect(groupsOf({ side: "from", g: 2 })).toEqual(groupsOf({ side: "to", g: 2 }));
+  });
+});

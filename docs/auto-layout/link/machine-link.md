@@ -5,7 +5,7 @@ tags: [auto-layout, placement, routing]
 # 자식→부모 연결의 통일 모델 — Link · 통로 · 예약
 
 > **부모 문서:** [auto-layout-wizard](../wizard.md)
-> **관련 문서:** [.trunk-redesign](../module/trunk-redesign.md) · [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) · [.ns-face-relief](../module/ns-face-relief.md)
+> **관련 문서:** [[trunk-blocked]] — 자리가 없을 때(TR7 끊기·TR8 gap) · [.trunk-redesign](../module/trunk-redesign.md) · [.channel-geometry-reservation](../channel/channel-geometry-reservation.md) · [.ns-face-relief](../module/ns-face-relief.md)
 > **용어:** [[용어사전#Flow|Flow]] · [[용어사전#allocateFlows|allocateFlows]] · [[용어사전#기둥 (column)|기둥]]
 
 ## 0. 개념 정정 — 링크는 **양이 강제할 때만** 생긴다 (2026-08-22 사장님 확정)

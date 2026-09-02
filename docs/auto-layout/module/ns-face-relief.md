@@ -5,6 +5,7 @@ tags: [auto-layout, placement, routing]
 # 노출 N/S 면 완화 — count=1 클러스터의 raw 입력 슬롯
 
 > **부모 문서:** [auto-layout-wizard.placement-search.md](../common/placement-search.md) — 모델·전략 단일 출처
+> **관련 문서:** [[trunk-blocked]] §5 — gap 을 열어 N/S 면을 되찾는 **일반 규칙**(TR8). 이 문서는 그 특수 사례다
 
 ---
 

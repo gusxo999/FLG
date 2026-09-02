@@ -2,6 +2,10 @@
 >
 > ⑤-1 · ⑤-2 · ④ 게이트 삭제 · **지도 A 삭제**까지 실행됐다.
 > **남은 것은 ⑤-3(`face`·`laneDepth`)과 ㉮** — 어디까지 왔는지는 계획서 §3.
+>
+> 링크의 `g` 는 **밸브만 뚫렸다** — `edgeLinkGroups(…, bundle?)` 는 받을 수 있는데
+> **주는 사람이 없다**(오늘 호출부는 안 준다 = 옛 동작). 무엇을 내주고 그것을 살지는
+> `judgements.md` **J13**.
 
 # 부분-트렁크 — 공통 컨텍스트
 
@@ -61,7 +65,7 @@
 | `g` 를 정하는 곳은 `planBundles` **하나**다(붓기 앞에서, 줄마다) | `laneBudget.ts` · `planModulePorts.ts` 의 유일한 호출 | 2026-09-02 ✔ |
 | `per`(머신 하나의 수요)는 `g`·`d` 와 무관하다 | `edgeFlows` 의 `childProduction`/`parentDemand` | 2026-08-30 ✔ |
 | 되먹임 0 · `generateModule` 호출 자리 하나 | `modulePacking.ts` 를 센다 | 2026-08-30 ✔ |
-| 기준선 = 타입 0 · **52파일 607테스트 · 기존 실패 2건**(trunkPipe 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run` | 2026-09-02 ✔ |
+| 기준선 = 타입 0 · **52파일 615테스트 · 기존 실패 2건**(trunkPipe 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run` | 2026-09-02 ✔ |
 
 > **테스트 수가 줄어든 것은 회귀가 아니다** — 641 → 607 은 지도 A 삭제가 그 판정만 잠그던
 > 테스트 848줄(`clusterPortPlanner.test.ts` · `insertingPlanner.test.ts`)을 함께 지운 결과다.

@@ -19,7 +19,7 @@
  */
 
 import type { GeneratedModule, ModulePort } from "../../module/clusterModule";
-import { createLinks, type Link } from "../../module/link";
+import { createLinks, type Link, type LinkCarry } from "../../module/link";
 import { allocateFlows, type Flow } from "./allocateFlows";
 import { faceSeatArms, inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";
@@ -151,6 +151,38 @@ export function edgeFlows(
 }
 
 /**
+ * **간선의 묶음 크기** — 이 쪽 머신 `g` 대를 벨트 한 줄이 맡는다(`g = N` 이면 관통).
+ *
+ * ## 왜 `side` 가 붙나 — `g` 는 모듈마다 다르다
+ *
+ * 간선의 양끝은 대수가 다르다(자식 32 · 부모 64). 그래서 *"한 줄이 몇 대를 맡나"* 는 끝마다
+ * 다른 수이고, **간선이 공유하는 낱말은 토막 수 `c`** 다:
+ *
+ * ```
+ * c = ⌈N_자식 ÷ g_자식⌉ = ⌈N_부모 ÷ g_부모⌉
+ * ```
+ *
+ * 자리가 모자란 쪽이 자기 `g` 를 말하면 반대쪽 `g` 는 **결과로** 정해진다 — 그래서 여기서
+ * 받는 것은 `(어느 끝, 그 끝의 g)` 한 쌍이다.
+ *
+ * ## 아직 아무도 안 준다 — 밸브만 먼저 뚫는다
+ *
+ * 오늘 호출부는 이 값을 **비워 둔다** → 흐름을 한 번에 붓는 옛 동작 그대로다(관통). 채울
+ * 사람은 **레인 예산**(`planner/module/laneBudget.ts` 의 `planBundles`)인데, 그쪽은 아직
+ * 나머지 줄(원료·완제품)만 본다. 그 판정을 링크까지 넓히는 자리는 `modulePacking` 의 간선
+ * 루프다 — **거기서만** 자식·부모의 좌석표를 둘 다 보고 있다(`tempPlanDocs/부분-트렁크/`).
+ *
+ * > **이 타입은 정책이 아니라 손잡이다.** *언제* 쓸지는 여기서 정하지 않는다 — 정하면
+ * > 형태가 다시 **입력**이 되고, 그것이 이 설계가 없앤 것이다(`link.ts` 의 *판독* 절).
+ */
+export interface EdgeBundle {
+  /** 기준으로 삼는 끝 — `"from"` 은 자식 머신, `"to"` 는 부모 머신. */
+  side: "from" | "to";
+  /** 그 끝의 머신 몇 대를 한 줄이 맡나. `1` = 다이렉트, `≥ N` = 관통. */
+  g: number;
+}
+
+/**
  * 한 엣지의 **흐름을 벨트 줄로 접는다**(2026-08-22 재설계 — 용어사전 §D "배선 형태 셋").
  *
  * ## 접기 하나가 형태 셋을 전부 낸다
@@ -183,6 +215,8 @@ export function edgeLinkGroups(
   parent: NodeSpec,
   item: string,
   config: PackConfig,
+  /** 이 간선의 묶음 크기([EdgeBundle]). **안 주면 한 번에 다 붓는다** = 오늘 동작(관통). */
+  bundle?: EdgeBundle,
 ): Link[] | undefined {
   // 유체는 팔로 나르지 않는다 — [externalLineGroups] 가 외부 줄에 두는 것과 **같은 가드**다.
   // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
@@ -201,28 +235,71 @@ export function edgeLinkGroups(
   const inserter = inserterForReach(config.inserters, 1);
   if (!inserter) return undefined; // 팔을 모르면 지어내지 않는다.
 
-  // 줄 수와 티어 — **수요에서** 유도한다. 자식·부모가 같은 규칙을 보므로 경계에서 안 어긋난다.
-  const tiers = determineBeltCount(
-    flows.reduce((sum, f) => sum + f.rate, 0),
-    config.belts ?? [],
-  );
-  if (tiers.length === 0) return undefined; // 벨트를 못 고름 — 없는 숫자로 깔지 않는다.
-
   // **한 줄이 머신 한 대에게 줄 수 있는 최대** — 그 면의 좌석 수 × 팔 하나.
   // 좌석 수는 [faceSeatArms] 가 낸다 — 여기서 다시 유도하지 않는다(2026-08-23).
   // `fluidRows = 0` 은 **일부러 낙관**이다: 이 함수는 간선 하나만 보고 돌아서 그 줄이 어느
   // 면에 앉을지(= 그 면의 파이프가 몇 칸을 먹었는지) 알 수 없다. 좁힐지는 계측이 답한다
   // (`tempPlanDocs/배선-형태/judgements.md` J2 — 실패 0건이면 영구 폐기).
   const seatCap = (h: number) => faceSeatArms(h, 0) * inserter.throughput;
+  const limits = {
+    inserter,
+    fromSeat: seatCap(child.machine.h),
+    toSeat: seatCap(parent.machine.h),
+  };
+  const carries: LinkCarry[] = flows.map((f) => ({
+    from: f.fromMachine,
+    to: f.toMachine,
+    rate: f.rate,
+  }));
 
   // **붓는 일 자체는 [createLinks] 가 한다** — 이 저장소에서 [Link] 를 만드는 유일한 곳이다.
-  // 여기가 하는 일은 그 앞뒤 둘뿐이다: ① 흐름을 계산하고(자식·부모를 **둘 다** 봐야 하므로
-  // planner 의 몫) ② 난 줄에 **신원**을 얹는다(간선의 양끝 id 를 아는 것도 여기뿐).
-  const links = createLinks(
-    flows.map((f) => ({ from: f.fromMachine, to: f.toMachine, rate: f.rate })),
-    item,
-    { tiers, inserter, fromSeat: seatCap(child.machine.h), toSeat: seatCap(parent.machine.h) },
-  );
+  // 여기가 하는 일은 그 앞뒤 셋뿐이다: ① 흐름을 계산하고(자식·부모를 **둘 다** 봐야 하므로
+  // planner 의 몫) ② `bundle` 이 있으면 묶음으로 잘라 **묶음마다** 붓고 ③ 난 줄에 **신원**을
+  // 얹는다(간선의 양끝 id 를 아는 것도 여기뿐).
+  //
+  // **줄 수와 티어는 묶음마다 다시 센다** — `determineBeltCount(그 묶음의 총량)`. 묶음이
+  // 없으면 목록 전체가 묶음 하나라 옛 식(`간선 총량`)과 **같은 값**이다. [externalLineGroups]
+  // 도 묶음마다 새로 세므로 두 경로가 같은 판단을 다르게 하지 않는다.
+  const pour = (part: readonly LinkCarry[]): Link[] => {
+    const tiers = determineBeltCount(
+      part.reduce((sum, c) => sum + c.rate, 0),
+      config.belts ?? [],
+    );
+    if (tiers.length === 0) return []; // 벨트를 못 고름 — 없는 숫자로 깔지 않는다.
+    return createLinks(part, item, { ...limits, tiers });
+  };
+
+  const links: Link[] = [];
+  for (const part of bundle ? batchCarries(carries, bundle) : [carries]) {
+    const got = pour(part);
+    if (got.length === 0) return undefined; // 한 묶음이라도 못 부으면 간선을 지어내지 않는다
+    links.push(...got);
+  }
   return links.map((link, gi) => ({ ...link, id: makeLinkId(child.id, parent.id, item, gi) }));
+}
+
+/**
+ * 흐름을 **한쪽 끝의 머신 `g` 대씩** 이어지는 묶음으로 자른다.
+ *
+ * **반대쪽도 저절로 연속이 된다** — [allocateFlows] 의 수열이 양끝 모두 단조라, 한쪽을
+ * 연속 구간으로 자르면 반대쪽 명단도 연속 구간이다. 그래서 이 자름은 교차를 만들 수 없고,
+ * 좌표를 한 번도 안 본다(그 성질이 [edgeLinkGroups] 머리말의 *"교차가 안 생기는 이유"* 다).
+ *
+ * 반대쪽 머신은 **묶음 둘에 걸칠 수 있다**(자식 하나가 부모 둘을 먹이는 경우). 새 형태가
+ * 아니다 — 한 흐름이 줄 여럿에 실리는 [[split belt]] 그대로다.
+ */
+function batchCarries(carries: readonly LinkCarry[], bundle: EdgeBundle): LinkCarry[][] {
+  const g = Math.max(1, Math.floor(bundle.g));
+  const machines = [...new Set(carries.map((c) => c[bundle.side]))].sort(
+    (a, b) => (a ?? 0) - (b ?? 0),
+  );
+  const parts: LinkCarry[][] = [];
+  for (let i = 0; i < machines.length; i += g) {
+    const own = new Set(machines.slice(i, i + g));
+    // `filter` 가 순서를 지키므로 묶음 안의 흐름 수열도 단조 그대로다.
+    const part = carries.filter((c) => own.has(c[bundle.side]));
+    if (part.length > 0) parts.push(part);
+  }
+  return parts;
 }
 
