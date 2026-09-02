@@ -9,7 +9,9 @@
  * | 주체 | 무엇을 배정 | 어디에 |
  * |---|---|---|
  * | 링크 면 배정 | 자식↔부모 링크가 앉을 면·줄 | `clusterModule` 안 |
- * | [insertingPlanner] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `ioLine` |
+ * | `insertingPlanner` | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner` |
+ *
+ * (2026-09-02: 그 둘 다 삭제됐다 — 나머지 줄도 ①과 **같은 배분기**를 탄다.)
  *
  * 둘이 같은 좌석을 놓고 다투므로 손수 조율해야 했다: 링크 줄을 planner 입력에서 **빼고**
  * (`linkedKeys`), 링크가 먹은 행을 **통보**하고(`seatRowsUsed`), 방출 순서까지 맞춰야 했다.
@@ -545,8 +547,8 @@ export function planModulePorts(
    * 관통이 레인을 통째로 먹는다는 것을 모른다. 그래서 한 줄이 관통을 사면 나머지가
    * 자리를 잃는 일이 조용히 났다(2026-09-01 실측: battery 에서 copper-plate 가 못 앉았다).
    *
-   * 이제 **같은 지도**(`FaceTable`·[laneDepthsOf])가 낸 수로 정한다. `supply` 는 진단
-   * 문자열만 남긴다 — 그 삭제는 다음 단계다(`tempPlanDocs/부분-트렁크/` §3).
+   * 이제 **같은 지도**(`FaceTable`·[laneDepthsOf])가 낸 수로 정한다. `supply` 는 2026-09-02 에
+   * 지도 A 와 함께 삭제됐다 — `g` 를 정하는 곳은 [planBundles] **하나**다.
    */
   const restByPriority = [
     ...restLines.filter((l) => l.role === "output"),
@@ -582,7 +584,8 @@ export function planModulePorts(
           // 예전엔 `perMachine: supply.mode !== "tap"` 이라 **한 줄이 안 되면 그 모듈의
           // 모든 줄**이 `g = 1` 로 떨어졌다. 계산은 옳았고 **산출의 낟알이 틀렸다** —
           // `planClusterPorts` 가 `overflowed` 로 줄 이름을 들고 있는데 모듈 낱말 하나로
-          // 접혀 나왔다(`tempPlanDocs/부분-트렁크/` §2).
+          // 접혀 나왔다. (그 파일은 2026-09-02 에 지워졌다 — 여기 남은 것은 *왜 낟알이
+          // 줄 단위여야 하는가* 의 근거다.)
           //
           // `g = 1` 이 처방인 이유: 그 줄은 **gap(N/S)으로 가야** 하고, 오늘 gap 은
           // `machinesOn !== 1` 이라 한 대짜리 그룹만 받는다([tryLinkFace]).
