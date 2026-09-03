@@ -22,7 +22,10 @@ const config: PackConfig = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
   beltEntityName: "transport-belt",
-  belts: [{ entityName: "transport-belt", throughput: 20 }],
+  // **벨트 처리량은 물리값(두 레인)이다** — 줄 하나가 싣는 것은 그 절반이다
+  //  (`docs/factorio/belt-lane-semantics.md` ①: 인서터는 먼 레인에만 떨군다).
+  //  아래 계산은 전부 **레인** 기준이라, 물리값을 그 두 배로 준다.
+  belts: [{ entityName: "transport-belt", throughput: 40 }], // 줄 하나가 20
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
   // 검증하지 않는다(2026-07-20 실측: planned 0 / fallback 전부).
   channelGeometry: true,
@@ -45,7 +48,7 @@ describe("그릇 — 링크 하나가 자기 벨트를 넘지 않는다", () => 
   // 실측 그대로: 벨트 45/s, fast 10/s, long-handed 1.2/s.
   const real: PackConfig = {
     ...config,
-    belts: [{ entityName: "express-transport-belt", throughput: 45 }],
+    belts: [{ entityName: "express-transport-belt", throughput: 90 }], // 줄 하나가 45
   };
   // kr-sand(자식 4대, 48/s) → kr-glass(부모 5대, 40/s).
   const child: NodeSpec = {

@@ -29,7 +29,10 @@ const config: PackConfig = {
   inserterEntityName: "i",
   inserters: [{ entityName: "i", reach: 1, throughput: 6 }],
   beltEntityName: "b",
-  belts: [{ entityName: "b", throughput: 20 }],
+  // **벨트 처리량은 물리값(두 레인)이다** — 줄 하나가 싣는 것은 그 절반이다
+  //  (`docs/factorio/belt-lane-semantics.md` ①: 인서터는 먼 레인에만 떨군다).
+  //  아래 계산은 전부 **레인** 기준이라, 물리값을 그 두 배로 준다.
+  belts: [{ entityName: "b", throughput: 40 }], // 줄 하나가 20 을 싣는다
 };
 
 describe("edgeFlows — 클러스터 rate ÷ 대수 → 용어사전 예시 재현", () => {
@@ -82,8 +85,8 @@ describe("edgeLinkGroups — 형태 셋이 접기 하나에서 나온다", () =>
     inserters: [{ entityName: "i", reach: 1, throughput: 90 }],
     beltEntityName: "b",
     belts: [
-      { entityName: "b90", throughput: 90 },
-      { entityName: "b15", throughput: 15 },
+      { entityName: "b90", throughput: 180 }, // 줄 하나가 90 을 싣는다(레인)
+      { entityName: "b15", throughput: 30 },  // 줄 하나가 15
     ],
   };
   const child = spec("c", 1, [line("sand", "output")], { "output:sand": 100 });
@@ -172,8 +175,8 @@ describe("edgeLinkGroups — 간선의 묶음(`g`) — 손잡이만 있고 정�
     inserters: [{ entityName: "i", reach: 1, throughput: 90 }],
     beltEntityName: "b",
     belts: [
-      { entityName: "b90", throughput: 90 },
-      { entityName: "b15", throughput: 15 },
+      { entityName: "b90", throughput: 180 },
+      { entityName: "b15", throughput: 30 },
     ],
   };
   const child = spec("c", 4, [line("x", "output")], { "output:x": 40 });

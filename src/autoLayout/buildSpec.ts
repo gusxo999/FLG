@@ -25,7 +25,7 @@
 import { useGameDataStore, type Entity } from "../UI/store/gameDataStore";
 import type { ContainerWizardInput } from "./containerModel";
 import { inserterReach, inserterThroughput } from "./inserterThroughput";
-import { beltThroughput } from "./beltThroughput";
+import { beltThroughput, laneCapOfTier } from "./beltThroughput";
 
 /** 사용자가 고른 인서터 하나 — 이름 + 게임데이터에서 뽑은 능력치. */
 export interface SpecInserter {
@@ -188,9 +188,12 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
   }
   const belts = [...byThroughput.values()].sort((a, b) => b.throughput - a.throughput);
 
-  // **벨트 한 줄이 나르는 양의 상한 `B`** — 가장 빠른 벨트. 벨트를 하나도 안 골랐으면
-  // 상한이 없다(0) — 지어내지 않는다.
-  const beltCeiling = belts[0]?.throughput ?? 0;
+  // **팔 하나가 실을 수 있는 양의 상한 `B`** — 가장 빠른 벨트의 **레인 하나**.
+  //
+  // 줄 전체가 아니라 레인인 이유: 인서터는 **먼 레인 하나에만** 떨군다
+  // (`docs/factorio/belt-lane-semantics.md` ①). 팔 하나가 아무리 빨라도 그 레인보다 많이
+  // 실을 수 없다. 벨트를 하나도 안 골랐으면 상한이 없다(0) — 지어내지 않는다.
+  const beltCeiling = laneCapOfTier(belts[0]);
 
   /**
    * **기본 벨트 — 이름과 저울은 함께 온다**(2026-08-24 사장님 확정).

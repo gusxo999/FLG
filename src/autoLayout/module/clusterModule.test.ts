@@ -22,7 +22,10 @@ const copperCable: ModuleInput = scaled({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
   beltEntityName: "transport-belt",
-  belts: [{ entityName: "transport-belt", throughput: 15 }],
+  // **벨트 처리량은 물리값(두 레인)이다** — 줄 하나가 싣는 것은 그 절반이다
+  //  (`docs/factorio/belt-lane-semantics.md` ①: 인서터는 먼 레인에만 떨군다).
+  //  아래 계산은 전부 **레인** 기준이라, 물리값을 그 두 배로 준다.
+  belts: [{ entityName: "transport-belt", throughput: 30 }], // 줄 하나가 15
 });
 
 /** electronic-circuit 류: 입력 2 + 출력 1, 긴팔 보유(용량 4 → 면당 2깊이). */
@@ -37,7 +40,7 @@ const electronicCircuit: ModuleInput = scaled({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  belts: [{ entityName: "transport-belt", throughput: 15 }],
+  belts: [{ entityName: "transport-belt", throughput: 30 }],
 });
 
 /** electric-motor 류: 입력 3 + 출력 1 = 정확히 용량 4(긴팔). 4스트림 스트레스. */
@@ -53,7 +56,7 @@ const electricMotor: ModuleInput = scaled({
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  belts: [{ entityName: "transport-belt", throughput: 15 }],
+  belts: [{ entityName: "transport-belt", throughput: 30 }],
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,7 +184,7 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
     inserters: [{ entityName: "inserter", reach: 1, throughput: 5 }],
     // 벨트 티어도 같은 저울(100/s)이어야 30/s 가 **한 줄**에 담긴다 — 15/s 짜리를 주면
     // 두 줄로 갈리는 게 옳은 동작이라 이 검사(줄 하나)의 전제가 깨진다.
-    belts: [{ entityName: "transport-belt", throughput: 100 }],
+    belts: [{ entityName: "transport-belt", throughput: 200 }],
     supplyCapacity: {
       beltCapacity: 100,
       // copper-plate 30 / 3대 = 10, ceil(10/5) = 탭 2개. 출력 6 / 3대 = 2 → 팔 1개.
@@ -352,7 +355,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 15 }],
+      belts: [{ entityName: "transport-belt", throughput: 30 }],
       nsExposure: ["N"],
     }));
     render(mod, "count=1, external 입력 4 (E2 E3 N2 N3)");
@@ -390,7 +393,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 15 }],
+      belts: [{ entityName: "transport-belt", throughput: 30 }],
       nsExposure: ["N"],
     }));
     render(mod, "count=1, 일반만, external 입력 2 (E2 N2)");
@@ -410,7 +413,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
       beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 15 }],
+      belts: [{ entityName: "transport-belt", throughput: 30 }],
       // nsExposure 미지정 → 기존 동작.
     }));
     const c = mod.inputPorts.find((p) => p.line.name === "c")!;
@@ -444,7 +447,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
     inserterEntityName: "inserter", // reach 1 하나뿐 — 긴팔 없음
     inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
     beltEntityName: "transport-belt",
-    belts: [{ entityName: "transport-belt", throughput: 15 }],
+    belts: [{ entityName: "transport-belt", throughput: 30 }],
     fluidTrunk: {
       direction: 4,
       pipeEntityName: "pipe",
@@ -503,7 +506,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 15 }],
+      belts: [{ entityName: "transport-belt", throughput: 30 }],
     }));
     expect(mod.unroutedLines).toHaveLength(0);
     // 일곱 줄 × 머신 2대 = 포트 14개. 하나도 안 잃었다.
@@ -627,7 +630,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
       inserterEntityName: "inserter",
       inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
       beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 15 }],
+      belts: [{ entityName: "transport-belt", throughput: 30 }],
     }));
     expect(mod.unroutedLines).toHaveLength(0);
     const [m0, m1] = mod.machines;
@@ -653,7 +656,7 @@ describe("부을 수 없던 줄의 처방", () => {
     inserterEntityName: "long-handed-inserter",
     inserters: [{ entityName: "long-handed-inserter", reach: 2, throughput: 5 }],
     beltEntityName: "transport-belt",
-    belts: [{ entityName: "transport-belt", throughput: 15 }],
+    belts: [{ entityName: "transport-belt", throughput: 30 }],
   });
 
   it("reach 1 팔이 없으면 줄이 안 나고, 처방은 **인서터**를 가리킨다", () => {

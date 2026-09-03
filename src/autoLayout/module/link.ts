@@ -33,7 +33,7 @@
 
 import type { IoLine, SupplyCapacity } from "../planner/module/ioLine";
 import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../buildSpec";
-import { determineBeltCount } from "../beltThroughput";
+import { determineBeltCount, laneCapOfTier } from "../beltThroughput";
 
 /**
  * **벨트 하나** — 이 클러스터의 머신들이 상대와 주고받는 물리 벨트 하나 = 포트 한 쌍.
@@ -232,12 +232,15 @@ export function createLinks(
   type Pour = { cap: number; used: number; belt: string; carries: LinkCarry[] };
   const lines: Pour[] = [];
   const nextTier = () => tiers[Math.min(lines.length, tiers.length - 1)];
-  const nextCap = (): number => nextTier().throughput;
+  // **줄 하나가 담을 수 있는 것은 레인 하나다** — 인서터가 먼 레인에만 싣기 때문이다
+  // (`docs/factorio/belt-lane-semantics.md` ①). [determineBeltCount] 가 줄 수를 셀 때
+  // 쓴 것과 **같은 단위**라야 붓기가 티어를 다 쓰고도 남지 않는다.
+  const nextCap = (): number => laneCapOfTier(nextTier());
   const openLine = (): Pour => {
     // `tiers` 의 합은 총량 이상이라 여기서 모자랄 일이 없다. 그래도 마지막 티어로 고정해
     // **없는 줄을 지어내는 대신** 마지막 줄에 얹는다(좌석 상한이 줄을 더 부를 수 있다).
     const tier = nextTier();
-    const line: Pour = { cap: tier.throughput, used: 0, belt: tier.entityName, carries: [] };
+    const line: Pour = { cap: laneCapOfTier(tier), used: 0, belt: tier.entityName, carries: [] };
     lines.push(line);
     return line;
   };
@@ -771,11 +774,15 @@ export function readLinkRole(group: Link): "input" | "output" {
 export function bundleCap(
   machineCount: number,
   per: number | undefined,
+  /** 그 벨트의 **물리** 처리량(두 레인 합). 안에서 레인 하나로 접는다. */
   beltThroughput: number | undefined,
 ): number {
   const n = Math.max(1, machineCount);
-  return per !== undefined && per > 0 && beltThroughput !== undefined && beltThroughput > 0
-    ? Math.min(n, Math.max(1, Math.floor(beltThroughput / per)))
+  // **레인 하나로 센다** — 인서터가 먼 레인에만 싣기 때문이다(`belt-lane-semantics` ①).
+  // 줄 전체로 세면 한 줄이 맡는 머신이 두 배가 되고, 그 줄은 게임에서 절반만 흐른다.
+  const cap = laneCapOfTier(beltThroughput !== undefined ? { throughput: beltThroughput } : undefined);
+  return per !== undefined && per > 0 && cap > 0
+    ? Math.min(n, Math.max(1, Math.floor(cap / per)))
     : n;
 }
 

@@ -31,7 +31,10 @@ const config: PackConfig = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
   beltEntityName: "transport-belt",
-  belts: [{ entityName: "transport-belt", throughput: 20 }],
+  // **벨트 처리량은 물리값(두 레인)이다** — 줄 하나가 싣는 것은 그 절반이다
+  //  (`docs/factorio/belt-lane-semantics.md` ①: 인서터는 먼 레인에만 떨군다).
+  //  아래 계산은 전부 **레인** 기준이라, 물리값을 그 두 배로 준다.
+  belts: [{ entityName: "transport-belt", throughput: 40 }], // 줄 하나가 20
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 로 나서 이 버그가 안 드러난다.
   channelGeometry: true,
   reservePerimeterTracks: true,

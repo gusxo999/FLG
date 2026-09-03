@@ -26,10 +26,14 @@ const INS: SpecInserter[] = [{ entityName: "i", reach: 1, throughput: 5 }];
 
 /**
  * **벨트도 저울과 함께 온다** — 티어 목록이 없으면 몇 줄인지 정할 수 없어 줄이 아예 안 난다.
- * 여기서는 한 줄에 다 담기는 넉넉한 티어(100/s)를 쓴다 — 이 파일이 보는 것은 *줄 수* 가
- * 아니라 **팔 배분**이라, 줄이 갈리면 검사의 초점이 흐려진다.
+ * 여기서는 한 줄에 다 담기는 넉넉한 티어를 쓴다 — 이 파일이 보는 것은 *줄 수* 가 아니라
+ * **팔 배분**이라, 줄이 갈리면 검사의 초점이 흐려진다.
+ *
+ * **줄 하나에 실리는 것은 벨트의 절반(레인 하나)이다**(2026-09-03, `belt-lane-semantics` ①).
+ * 그래서 *"한 줄이 100 을 싣는다"* 를 얻으려면 물리 처리량이 **200** 이라야 한다.
+ * 아래 주석의 계산은 전부 그 **100**(= 레인) 기준이다.
  */
-const BELTS = [{ entityName: "b", throughput: 100 }];
+const BELTS = [{ entityName: "b", throughput: 200 }]; // 레인 100
 
 /** 머신 3대, 팔 하나가 초당 5개. iron 60/3대 = 20 → ceil(20/5) = 팔 4개/머신. */
 const cap: SupplyCapacity = {
@@ -138,7 +142,7 @@ describe("팔 수는 requiredInserterCount 와 같은 값", () => {
  */
 describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
   const line: IoLine[] = [{ name: "x", kind: "belt", role: "input" }];
-  /** 벨트 100/s · 머신 `n` 대 · 총 수요 `total` → 머신 하나의 몫 = total/n. */
+  /** 줄 하나에 100(레인) · 머신 `n` 대 · 총 수요 `total` → 머신 하나의 몫 = total/n. */
   const run = (n: number, total: number, bundle?: number) =>
     externalLineGroups(line, n, { lineRates: new Map([["input:x", total]]) }, INS, undefined,
       { belts: BELTS, bundle });
