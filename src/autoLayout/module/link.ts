@@ -122,7 +122,35 @@ export interface Link {
    * 채우고, 이 폴더는 만들지 않는다.
    */
   end?: { from: "N" | "S"; to: "N" | "S" };
+  /**
+   * **이 줄이 남과 물리 벨트를 나눠 쓰나** — 같은 `lineId` 를 가진 줄과 **한 벨트의
+   * 좌/우 두 레인**에 각각 실린다([belt-lane-semantics](../../../docs/factorio/belt-lane-semantics.md)).
+   * `undefined` = 자기 벨트를 통째로 쓴다(오늘의 전부).
+   *
+   * ## 왜 [Link] 를 합치지 않고 둘로 두나
+   * [carries] 의 불변식은 *"실린 총량 ≤ 그 벨트의 처리량"* 이다. 레인 공유는 그 불변식을
+   * **깨는 게 아니라 상수만 바꾼다** — `처리량` → `처리량 ÷ 2`([laneThroughput]). 반대로
+   * `item` 을 배열로 만들면 그 불변식을 줄당/레인당 **둘로 갈라야** 하고, `item` 이 하나라는
+   * 전제가 박힌 `armsAt`·`IoLine`·포트 상자 `content`·`pairDeliveryPorts` 가 전부 따라 바뀐다.
+   *
+   * ## `side` 는 취향이 아니라 **합류 기하가 정한다**
+   * 사이드로드는 레인을 접는다 — 옆에서 들어온 벨트의 두 레인 전부가 **자기가 닿은 쪽**
+   * 레인 하나로 들어간다. 그래서 *"그 지류가 합류 칸의 어느 옆면에서 왔나"* 가 곧 레인이고,
+   * 이름은 게임 API 그대로다(`LuaEntity::pickup_from_left_lane`) — **진행 방향 기준** 좌/우.
+   *
+   * ## 좌/우 **어느 레인인지는 여기 없다**
+   * 그건 이 층이 답할 수 없다 — 사이드로드가 접는 레인은 *"그 지류가 합류 칸의 어느
+   * 옆면에서 왔나"* 이고, 그 답은 **합류 기하**(채널의 세로 주행이 위에서 오나 아래서
+   * 오나)가 정한다. 그리고 아무도 안 물어본다: 집는 팔은 **필터**로 품목을 고르지
+   * 레인을 고르지 않는다([belt-lane-semantics] ②). 그래서 필드가 하나면 족하다.
+   *
+   * 채우는 곳은 [shareLanes] 하나다. 방출기는 이 값이 같은 둘을 **한 번만** 깐다.
+   */
+  sharedLineId?: string;
 }
+
+/** 벨트 한 줄의 좌/우 레인 — **진행 방향 기준**(게임 런타임 API 와 같은 이름). */
+export type LaneSide = "left" | "right";
 
 /** [Link.carries] 의 항목 — 흐름 하나가 이 줄에 실은 몫. */
 export interface LinkCarry {
@@ -289,6 +317,80 @@ export function createLinks(
 
 /** 붓기의 부동소수 여유 — rate 가 60.5 같은 분수라 경계에서 흔들린다. */
 const POUR_EPS = 1e-9;
+
+/**
+ * **레인 공유 짝짓기** — 벨트 한 줄에 두 품목을 좌/우 레인으로 나눠 싣는다
+ * ([용어사전 §MixedItemBelt] · [belt-lane-semantics](../../../docs/factorio/belt-lane-semantics.md)).
+ *
+ * 후보를 **고르는 것은 호출자**다 — 여기 들어오는 줄들은 이미 *"같은 물리 벨트에 실려도
+ * 되는 것들"* 이라야 한다(같은 자식→부모 쌍 · 둘 다 링크 포트). 이 함수는 그 안에서
+ * **양만 보고** 짝을 짓는다. 그래야 `module/` 이 형제 모듈을 모른다는 축 2 판정을 지킨다.
+ *
+ * ## 자격 넷
+ * ```
+ * 서로 다른 품목        같은 품목 둘은 합칠 이유가 없다(한 줄에 그냥 더 실으면 된다)
+ * 같은 벨트 티어        물리 줄이 하나이므로 티어도 하나다
+ * 양을 **안다**         모르면 짝짓지 않는다 — 지어내지 않는다는 규칙 그대로
+ * 각자 ≤ 레인 용량      **물리다.** 합류를 지나면 지류는 레인 하나만 쓴다(규칙 ③)
+ * ```
+ *
+ * 마지막이 핵심이다 — 이건 최적화 판단이 아니라 **넘으면 게임에서 안 흐른다**. 넘는 줄은
+ * [split belt] 가 먼저 처리할 일이지 레인이 풀 문제가 아니다.
+ *
+ * ## 결정적이다
+ * 입력 순서를 그대로 쓰고 **앞에서부터 탐욕**으로 짝짓는다. 짝이 여럿 가능해도 같은 입력이면
+ * 같은 답이 나온다. (더 나은 짝짓기 — 이용률이 고른 쌍 고르기 — 는 실물에서 짝이 몇이나
+ * 생기는지 세어 본 뒤의 일이다.)
+ *
+ * **줄 객체를 제자리에서 고친다**(`sharedLineId` 를 얹는다) — 링크는 자식·부모 두 모듈이
+ * **같은 객체**를 참조하므로, 새 객체를 만들면 한쪽만 공유를 알게 된다.
+ *
+ * @param laneCapOf 벨트 이름 → **레인 하나**의 초당 용량([laneThroughput]). 모르면 `undefined`.
+ * @param makeLineId 물리 줄의 신원 — **불투명 토큰**이라 이 폴더는 만들지 않는다([Link.id] 와 같은 규칙).
+ * @returns 만든 짝의 수.
+ */
+export function shareLanes(
+  links: ReadonlyArray<Link>,
+  laneCapOf: (beltEntityName: string | undefined) => number | undefined,
+  makeLineId: (pairIndex: number) => string,
+): number {
+  const fits = (g: Link): boolean => {
+    const rate = groupRate(g);
+    const cap = laneCapOf(g.beltEntityName);
+    return rate !== undefined && cap !== undefined && cap > 0 && rate <= cap + POUR_EPS;
+  };
+  const open = links.filter((g) => g.sharedLineId === undefined && g.beltEntityName !== undefined && fits(g));
+  let pairs = 0;
+  const taken = new Set<Link>();
+  for (let i = 0; i < open.length; i++) {
+    const a = open[i];
+    if (taken.has(a)) continue;
+    for (let j = i + 1; j < open.length; j++) {
+      const b = open[j];
+      if (taken.has(b) || b.item === a.item || b.beltEntityName !== a.beltEntityName) continue;
+      const lineId = makeLineId(pairs);
+      a.sharedLineId = lineId;
+      b.sharedLineId = lineId;
+      taken.add(a); taken.add(b);
+      pairs += 1;
+      break;
+    }
+  }
+  return pairs;
+}
+
+/** 한 물리 줄을 쓰는 줄들 — [shareLanes] 가 얹은 신원으로 묶는다. 공유 안 하는 줄은 홀로 한 묶음. */
+export function physicalLines(links: ReadonlyArray<Link>): Link[][] {
+  const byId = new Map<string, Link[]>();
+  const out: Link[][] = [];
+  for (const g of links) {
+    if (g.sharedLineId === undefined) { out.push([g]); continue; }
+    const cur = byId.get(g.sharedLineId);
+    if (cur) cur.push(g);
+    else { const fresh = [g]; byId.set(g.sharedLineId, fresh); out.push(fresh); }
+  }
+  return out;
+}
 
 /**
  * **적재 목록 → 머신별 팔 수.** 한 머신이 이 줄에서 주고받는 rate 를 모아 **마지막에 한 번만**

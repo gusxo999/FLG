@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Entity } from '../UI/store/gameDataStore';
-import { beltThroughput, determineBeltCount } from './beltThroughput';
+import { beltThroughput, laneThroughput, determineBeltCount } from './beltThroughput';
 import type { SpecBelt } from './buildSpec';
 
 const belt = (belt_speed?: number): Entity =>
@@ -108,5 +108,28 @@ describe('determineBeltCount — 수요를 벨트 티어로 덮는다', () => {
   it('벨트를 하나도 안 골랐으면 빈 배열 — 호출부가 "못 놓는다"를 고른다', () => {
     expect(determineBeltCount(30, [])).toEqual([]);
     expect(determineBeltCount(30, [B('broken', 0)])).toEqual([]);
+  });
+});
+
+describe('laneThroughput — 줄의 정확히 절반', () => {
+  it('45/s 줄이면 레인 하나는 22.5/s', () => {
+    expect(laneThroughput(belt(0.09375))).toBeCloseTo(22.5, 6); // express
+    expect(laneThroughput(belt(0.0625))).toBeCloseTo(15, 6);    // fast
+    expect(laneThroughput(belt(0.03125))).toBeCloseTo(7.5, 6);  // transport
+  });
+
+  it('override 도 절반이 된다 — 사용자가 준 값도 줄 전체를 뜻한다', () => {
+    expect(laneThroughput(belt(0.03125), 90)).toBeCloseTo(45, 6);
+  });
+
+  it('모르면 0 — 지어내지 않는다', () => {
+    expect(laneThroughput(undefined)).toBe(0);
+    expect(laneThroughput(belt(0))).toBe(0);
+  });
+
+  it('**줄 수는 안 바뀐다** — determineBeltCount 는 여전히 줄 용량을 본다', () => {
+    // 레인 용량(22.5)으로 셌다면 40/s 는 두 줄이 됐을 것이다. 한 줄이라야 맞다.
+    const tiers: SpecBelt[] = [{ entityName: 'express', throughput: 45 }];
+    expect(determineBeltCount(40, tiers)).toHaveLength(1);
   });
 });

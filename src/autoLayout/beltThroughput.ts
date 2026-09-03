@@ -24,6 +24,25 @@ export function beltThroughput(entity: Entity | undefined, override?: number): n
 }
 
 /**
+ * **레인 하나가 나르는 양** — 줄 전체의 **정확히 절반**이다(45/s 줄이면 22.5/s).
+ *
+ * `× 480` 이 이미 `2 레인 × 4 아이템/타일 × 60 틱` 이므로 새로 잴 것이 없다. 게임 규칙과
+ * 그 근거는 [belt-lane-semantics](../../docs/factorio/belt-lane-semantics.md) §1.
+ *
+ * **줄 수를 정하는 것은 여전히 줄 용량이다**([determineBeltCount]) — 이 값은 *"한 물리
+ * 줄에 두 품목을 나눠 실을 때 품목마다 얼마까지"* 에만 쓴다. 두 축을 섞으면 줄 수가
+ * 두 배로 튄다.
+ */
+export function laneThroughput(entity: Entity | undefined, override?: number): number {
+  return beltThroughput(entity, override) / 2;
+}
+
+/** [laneThroughput] 의 `SpecBelt` 판 — 티어를 이미 고른 뒤에 쓴다. */
+export function laneCapOfTier(tier: { throughput: number } | undefined): number {
+  return tier !== undefined && tier.throughput > 0 ? tier.throughput / 2 : 0;
+}
+
+/**
  * **determineBeltCount** — 이 초당 수요를 나르려면 **벨트를 어떤 걸 몇 줄** 깔아야 하나
  * (2026-07-12 사용자 명명, [용어사전](../../../docs/용어사전.md#determinebeltcount)).
  *
