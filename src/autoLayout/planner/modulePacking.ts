@@ -734,7 +734,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
           group, fromCount: child?.count ?? 0, toCount: parent?.count ?? 0,
         }));
       }),
-      (name) => (name === undefined ? undefined : config.belts?.find((b) => b.entityName === name)?.throughput),
+      // **분모는 레인이다** — 줄 하나가 쓸 수 있는 것은 벨트의 절반뿐이므로
+      // (`docs/factorio/belt-lane-semantics.md` ①), 물리 처리량으로 재면 이용률이 **절반으로
+      // 보이고** 과적재가 안 잡힌다(레인은 넘쳤는데 줄로는 안 넘친 줄이 그렇다).
+      (name) => (name === undefined ? undefined : laneCapOfTier(config.belts?.find((b) => b.entityName === name))),
     ),
   );
 

@@ -144,10 +144,10 @@ export function buildReport(): string {
     line(
       '레인공유',
       ls.candidates === 0
-        ? '후보 0 — 위/아래 형제에서 하나씩 오는 쌍이 없다(형제가 하나뿐인 부모들)'
+        ? '후보 0 — 레인을 넘어 **갈린 줄**이 없다(또는 `레인 합류` 플래그가 꺼짐)'
         : `후보 ${ls.candidates} · **짝 ${ls.pairs}**`
           + (ls.rejected > 0 ? ` · 자격미달 ${ls.rejected}(양)` : '')
-          + '  — 표시만, 배치는 아직 안 바뀐다',
+          + '  — 짝 하나 = 아낀 물리 벨트 하나',
     ),
   );
 

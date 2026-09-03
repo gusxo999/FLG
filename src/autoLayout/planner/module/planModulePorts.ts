@@ -50,7 +50,7 @@ import {
 } from "../../module/link";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
-import { determineBeltCount } from "../../beltThroughput";
+import { determineBeltCount, laneCapOfTier } from "../../beltThroughput";
 import { planBundles } from "./depthBudget";
 import {
   allocateLinkFaces,
@@ -760,7 +760,9 @@ export function planModulePorts(
       [...restLinks.out.groups, ...restLinks.in.groups].map((group) => ({
         group, fromCount: count, toCount: count,
       })),
-      (name) => (name === undefined ? undefined : input.belts?.find((b) => b.entityName === name)?.throughput),
+      // **분모는 레인이다**(`modulePacking` 의 같은 자리와 같은 이유) — 줄 하나가 쓸 수 있는
+      // 것은 벨트의 절반뿐이라, 물리 처리량으로 재면 이용률이 절반으로 보이고 과적재가 안 잡힌다.
+      (name) => (name === undefined ? undefined : laneCapOfTier(input.belts?.find((b) => b.entityName === name))),
     ),
   );
 

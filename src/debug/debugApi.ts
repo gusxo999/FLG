@@ -33,6 +33,7 @@ import {
   AUTO_LAYOUT_LINK_LADDER,
   setAutoLayoutCoordDump,
   setAutoLayoutPerimeterPass,
+  setAutoLayoutLaneMerge,
 } from '../autoLayout/debugFlags';
 import type { CandidateLeaf } from '../autoLayout/containerModel';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
@@ -251,6 +252,14 @@ const flags = defineGroup('flags', {
     label: 'ENTITY IDS', usage: '(true|false)',
     fn: (v: boolean) => {
       useUiDebugStore.getState().setShowEntityDebugInfo(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
+  laneMerge: {
+    label: '레인 합류', usage: '(true|false)',
+    desc: '줄 둘을 한 벨트의 좌/우 레인으로 — **미완성이라 기본 꺼짐**. 짝 수는 report 의 `레인공유`',
+    fn: (v: boolean) => {
+      setAutoLayoutLaneMerge(v);
       return v ? 'ON' : 'OFF';
     },
   },
