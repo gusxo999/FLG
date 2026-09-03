@@ -101,10 +101,18 @@ describe("레인 합류 — 켜면 집는 쪽이 한 벨트가 된다", () => {
     expect(on.inAnchors.size, "물리 자리는 하나").toBe(1);
   });
 
-  it("**자식 쪽은 안 바뀐다** — 싣는 쪽은 벨트 둘이라야 두 레인이 다 찬다", () => {
+  it("**자식도 포트가 하나로 합쳐진다** — 출구 합류가 모듈 안에서 끝난다", () => {
     const on = run(true);
-    expect(on.outPorts.length).toBe(2);
-    expect(on.outAnchors.size, "자식은 여전히 벨트 둘").toBe(2);
+    // 수집 벨트는 여전히 둘이다(팔이 각자 먼 레인에 떨궈야 두 레인이 찬다). 합쳐지는 것은
+    // 그 **끝**이다 — 기둥 끝 바깥에서 마주 보게 해 한 벨트로 만든다.
+    expect(on.outPorts.length, "논리 포트는 줄마다 하나 — 짝짓기가 신원으로 조회한다").toBe(2);
+    expect(on.outAnchors.size, "물리 자리는 하나").toBe(1);
+  });
+
+  it("**합류는 빠를수록 좋다** — 끄면 자식 포트가 둘, 켜면 하나(대조군)", () => {
+    // 두 줄 구간이 한 줄로 합쳐지는 순간이 빠르면 채널·포트·납품이 전부 하나가 된다.
+    expect(run(false).outAnchors.size).toBe(2);
+    expect(run(true).outAnchors.size).toBe(1);
   });
 
   it("한 자리에 상자는 **하나**뿐이다 — 논리 포트가 둘이어도 물건은 하나다", () => {

@@ -412,6 +412,18 @@ export function tryLinkFace(
   allowPipeFace = false,
   /** 못 앉으면 그 사유가 여기 쌓인다(후보마다 하나). 안 주면 안 모은다. */
   why?: DepthShortage[],
+  /**
+   * **기둥 끝 포트를 강제한다** — 레인 합류 쌍 전용(위 `spanning` 주석).
+   * 관통이 아니어도 포트가 기둥 끝에 서야 벨트가 꺾이고, 그 꺾인 칸이 합류 칸이 된다.
+   */
+  forceEnd?: boolean,
+  /**
+   * **이 끝을 먼저 본다** — 합류 쌍 전용. `Link.end`(형제 순번)보다 우선한다.
+   *
+   * 형제 순번은 *"납품이 교차하지 않게"* 를 노리는 선호인데, 합류는 **그 자리가 아니면
+   * 도형이 아예 없다.** 대안이 없는 쪽이 이긴다(배정 순서와 같은 원칙).
+   */
+  preferEnd?: "N" | "S",
 ): LinkFaceCandidate | undefined {
   const { machine, count } = ctx;
   // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
@@ -483,11 +495,17 @@ export function tryLinkFace(
   //
   // **관통이면 기둥 끝을 청구한다**([LinkFacePlan.portEnd]). 못 받으면 옆으로 — 그때는
   // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
-  const spanning = spansAllMachines(group, side, count);
+  // **합류 쌍은 관통이 아니어도 기둥 끝 포트를 받는다**(`forceEnd`).
+  //
+  // 왜: 합류는 **뒤 유입이 없는 칸**을 필요로 하고, 그런 칸은 벨트가 **꺾이는** 자리뿐이다
+  // (`belt-lane-semantics` ⑤ — 뒤에서 온 쪽이 두 레인을 선점한다). 옆 포트는 벨트 끝 칸이
+  // 곧 포트라 꺾을 자리가 없다. 기둥 끝 포트로 만들면 벨트가 **깊은 쪽으로 한 번 꺾고**,
+  // 그 꺾인 칸이 합류 칸이 된다(도형은 `emitOutputLinks` 의 `sharedExit`).
+  const spanning = spansAllMachines(group, side, count) || forceEnd === true;
   const endsTaken = ctx.ends.get(face);
   // **선호 끝이 있으면 그것부터**. 없으면 오늘처럼 N 먼저 — 그 경우
   // 후보 순서가 `["N","S"]` 로 같아지므로 **한 칸도 안 달라진다**.
-  const want = group.end?.[side];
+  const want = preferEnd ?? group.end?.[side];
   const endOrder = want ? ([want, want === "N" ? "S" : "N"] as const) : (["N", "S"] as const);
   const portEnd = spanning ? endOrder.find((e) => !endsTaken?.has(e)) : undefined;
 
@@ -562,6 +580,26 @@ export function commitLinkFace(
   ctx: LinkFaceContext,
   cand: LinkFaceCandidate,
   side: "from" | "to",
+  /**
+   * **레인 합류의 둘째 줄** — 청구가 다르다.
+   *
+   * ```
+   * 끝        안 청구한다  물리 벨트당 하나여야 한다(첫 줄이 이미 청구했다)
+   * 포트 칸    안 청구한다  포트가 없다. 청구하면 **첫 줄의 벨트 행**을 자기 것으로 적는다
+   * 비켜 가는 열 청구한다   깊이 +2 에서 첫 줄의 포트 행까지 올라간다(그게 합류 경로다)
+   * ```
+   */
+  opts?: {
+    /** 따르는 줄 — 위 표. */
+    merged?: Record<string, never>;
+    /**
+     * **이끄는 줄** — 포트가 옆이 아니라 **깊이 +1 열**로 옮겨 간다(벨트가 거기서 꺾여
+     * 합류 칸이 되기 때문이다). 그래서 청구할 칸도 그 열이다 — 옛 [portCells] 를 쓰면
+     * **엉뚱한 열을 적어** 합류 칸이 장부에 없는 채로 남고, 방출에서 남과 부딪힌다
+     * (2026-09-04 실측: `unrouted-lines` + 안전망 1회).
+     */
+    mergeLead?: boolean;
+  },
 ): LinkFacePlan {
   const isGap = cand.face === "N" || cand.face === "S";
   const table = tableOf(ctx, cand.face);
@@ -588,11 +626,27 @@ export function commitLinkFace(
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
   if (span) {
     claimDepth(table, cand.clusterBeltDepth, span[0], span[1], owner);
-    // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
-    // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
-    for (const [r, d] of portCells(cand, span, table)) claimDepth(table, d, r, r, owner);
+    const endRow = cand.portEnd === "S" ? span[1] : span[0];
+    const dir = cand.portEnd === "S" ? 1 : -1;
+    /** 기둥 **밖** 첫 행 — 합류는 여기서 일어난다. 표 밖이라 아무도 청구할 수 없다. */
+    const outRow = dir > 0 ? table.rowsPerMachine * table.machineCount : -1;
+    if (opts?.merged) {
+      // **비켜 가는 열** — 깊이 +1 로 한 칸, 깊이 +2 를 따라 **기둥 밖**까지 내려가 합류 칸으로.
+      // 깊이 +2 는 팔이 안 닿는 열이라 벨트만 지날 수 있다.
+      claimDepth(table, cand.clusterBeltDepth + 1, endRow, endRow, owner);
+      claimDepth(table, cand.clusterBeltDepth + 2, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
+    } else if (opts?.mergeLead) {
+      // **이끄는 줄은 자기 구간을 지나 기둥 끝까지 달린다** — 합류 칸이 기둥 **밖**이라야
+      // 남의 옆 포트 자리를 안 뺏는다(2026-09-04 실측: 기둥 안에 세웠더니 `포트칸 (13,d3)`
+      // 다툼으로 남의 줄이 통째로 못 앉았다). 합류 칸·포트는 표 밖이라 청구할 것이 없다.
+      claimDepth(table, cand.clusterBeltDepth, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
+    } else {
+      // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
+      // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
+      for (const [r, d] of portCells(cand, span, table)) claimDepth(table, d, r, r, owner);
+    }
   }
-  if (cand.portEnd) {
+  if (cand.portEnd && !opts?.merged) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
     set.add(cand.portEnd);
     ctx.ends.set(cand.face, set);

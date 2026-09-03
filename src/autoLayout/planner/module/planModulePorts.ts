@@ -327,6 +327,38 @@ export function planLinkFaces(
  *
  * @param toOffsetGroups 이 간선의 그룹들. **반환값의 `groups` 가 최종본**이다(쪼개졌으면 토막).
  */
+/**
+ * **합류 쌍을 골라 이끄는 줄과 포트 끝을 정한다** — 앉히기 **전에**, 수만으로.
+ *
+ * ## 이끄는 줄 = **짧은 구간**
+ * 합류 칸은 이끄는 줄의 포트 쪽 끝에 서고, 따르는 줄이 **거기까지 비켜 올라온다.**
+ * 그 비켜 가는 길이가 곧 **이끄는 줄의 길이**다 — 그러니 짧은 쪽이 이끌어야 한다.
+ * (실측 예: 8대·3대 기둥에서 긴 쪽이 이끌면 10칸, 짧은 쪽이 이끌면 **4칸**.)
+ * *"합류는 빠를수록 좋다"* 를 코드로 옮긴 것이 이 한 줄이다 — 두 줄이 나란히 달리는
+ * 구간이 짧을수록 자리를 덜 먹는다.
+ *
+ * ## 포트 끝 = **이끄는 줄이 있는 쪽**
+ * 이끄는 줄이 기둥 **아래쪽**(머신 index 가 큰 쪽)이면 S, 아니면 N.
+ *
+ * 짝이 둘이 아닌 신원은 아예 안 담는다 — 쪼개져 하나만 남았거나 이미 풀린 것이다.
+ */
+function pairsOf(groups: readonly Link[]): Map<string, { lead: Link; follow: Link; end: "N" | "S" }> {
+  const by = new Map<string, Link[]>();
+  for (const g of groups) {
+    if (g.sharedLineId === undefined) continue;
+    (by.get(g.sharedLineId) ?? by.set(g.sharedLineId, []).get(g.sharedLineId)!).push(g);
+  }
+  const out = new Map<string, { lead: Link; follow: Link; end: "N" | "S" }>();
+  for (const [id, gs] of by) {
+    if (gs.length !== 2) continue;
+    const size = (g: Link) => g.from.size;
+    const [lead, follow] = size(gs[0]) <= size(gs[1]) ? [gs[0], gs[1]] : [gs[1], gs[0]];
+    const lo = (g: Link) => Math.min(...g.from.keys());
+    out.set(id, { lead, follow, end: lo(lead) > lo(follow) ? "S" : "N" });
+  }
+  return out;
+}
+
 export function seatLinkEdge(
   fromSeat: LinkFaceStage,
   toSeat: LinkFaceStage,
@@ -343,34 +375,91 @@ export function seatLinkEdge(
   // **쪼갬 예산** — 못은 깊이 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
   // 예산 없이 두면 잘못된 판정 하나가 무한 루프가 된다. 그룹당 넷이면 넉넉하다.
   let budget = toOffsetGroups.length * 4;
-  const queue: Link[] = [...toOffsetGroups];
+
+  // ── 배정 순서 — **제약이 센 것부터**(스도쿠 원칙) ──────────────────────────────
+  //
+  // `planModulePorts` ⓪ 이 유체 면에 쓰는 그 원칙이다. 순위는 **대안이 있느냐**로 갈린다:
+  //
+  // ```
+  // ① 유체 면    머신이 정한다. 협상 불가                    (여기 오기 전에 끝났다)
+  // ② 합류 쌍    기둥 끝 + 비켜 가는 열. **대안이 없다**      ← 이 정렬이 넣는 자리
+  // ③ 관통 줄    끝을 원한다. 못 받으면 **옆 포트로 저하 가능**
+  // ④ 구간 줄    옆 포트. 깊이·행이 자유로워 가장 헐겁다
+  // ```
+  //
+  // **이 순서면 「양보하나 포기하나」를 따로 판단할 필요가 없다.** 합류가 먼저 앉고, 그래도
+  // 자리가 없으면 그건 모듈에 **진짜로** 자리가 없는 것이라 정직하게 포기하면 된다 —
+  // 남이 뺏은 것이 아니다. (2026-09-04 사장님과 정한 기준.)
+  const mergePairs = pairsOf(toOffsetGroups);
+  const queue: Link[] = [
+    ...[...mergePairs.values()].flatMap((p) => [p.lead, p.follow]),
+    ...toOffsetGroups.filter((g) => !(g.sharedLineId && mergePairs.has(g.sharedLineId))),
+  ];
 
   const keep = (g: Link, fp?: LinkFacePlan, tp?: LinkFacePlan, fw: DepthShortage[] = [], tw: DepthShortage[] = []) => {
     groups.push(g); fromPlans.push(fp); toPlans.push(tp); fromWhy.push(fw); toWhy.push(tw);
   };
 
   /**
-   * **레인 공유** — 같은 물리 벨트를 쓰는 줄들의 **집는 쪽** 계획(`sharedLineId` → 첫 줄의 계획).
+   * **레인 공유 — 양끝이 서로 다르게 다뤄진다.**
    *
-   * 비대칭이 요점이다: **싣는 쪽은 벨트 둘**(팔이 각자 먼 레인에 떨궈야 두 레인이 찬다),
-   * **집는 쪽은 벨트 하나**(합류한 벨트가 벽의 한 칸으로 들어온다). 그래서 `from` 은
-   * 오늘처럼 각자 앉고, `to` 만 첫 줄의 벨트에 얹는다([seatOnSharedBelt]).
+   * ```
+   * 싣는 쪽(from)   벨트 **둘**  — 팔이 각자 먼 레인에 떨궈야 두 레인이 찬다.
+   *                 다만 **같은 끝 · 인접 깊이**라야 기둥 끝 바깥 한 행에서 만난다
+   * 집는 쪽(to)     벨트 **하나** — 합류한 벨트가 벽의 한 칸으로 들어온다
+   * ```
+   *
+   * 그래서 장부도 둘이다: `sharedFrom` 은 *"둘째 줄이 나란히 앉을 자리"* 를 재고,
+   * `sharedTo` 는 *"둘째 줄이 얹힐 벨트"* 를 든다.
    */
   const sharedTo = new Map<string, LinkFacePlan>();
+  const sharedFrom = new Map<string, LinkFacePlan>();
 
   while (queue.length > 0) {
     const g = queue.shift()!;
     const fw: DepthShortage[] = [];
     const tw: DepthShortage[] = [];
     // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(원자성의 전제다).
-    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw);
+    // 합류 쌍은 **양쪽 줄 다** 기둥 끝 포트로 앉힌다(따르는 줄은 포트를 안 갖지만, 같은 끝·
+    // 같은 `topT` 규약을 써야 방출이 합류 칸을 계산할 수 있다).
+    const pair = g.sharedLineId !== undefined ? mergePairs.get(g.sharedLineId) : undefined;
+    const inPair = pair !== undefined;
+    let candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw, inPair, pair?.end);
 
-    // **짝의 둘째 줄이면 집는 쪽을 안 고른다** — 첫 줄이 잡은 벨트에 좌석만 얹는다.
+    // **싣는 쪽 — 짝의 둘째 줄은 첫 줄과 같은 끝을 써야 한다.**
+    //
+    // 출구 합류는 기둥 끝 **바깥 한 행**에서 일어난다(`emitOutputLinks`). 두 줄이 서로 다른
+    // 끝으로 나가면 그 행에서 만날 수가 없다. 그런데 기둥 끝 장부(`ctx.ends`)는 기본적으로
+    // **반대 끝**을 준다(먼저 앉은 줄이 N 을 잡으면 다음은 S) — 그래서 여기서 덮어쓴다.
+    //
+    // 깊이가 **인접**하지 않거나 면이 다르면 그 도형이 안 선다 → **짝을 푼다.**
+    // (배정 단계라 아직 풀 수 있다 — 납품이 하나로 접히는 것은 이 뒤다.)
+    const fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
+    let merged: Record<string, never> | undefined;
+    if (candFrom && fromPartner) {
+      // **같은 면 · 같은 깊이 · 끝이 있다.** 구간 줄 둘은 구간이 안 겹쳐 **한 깊이를 나눠
+      // 쓴다** — 그래서 같은 열에 위/아래로 쌓이고, 따르는 줄이 그 열 밖(깊이 +2)으로
+      // 비켜 이끄는 줄의 합류 칸까지 올라온다.
+      const ok =
+        candFrom.face === fromPartner.face
+        && fromPartner.portEnd !== undefined
+        && candFrom.portEnd !== undefined // 끝을 아예 못 받으면(양쪽 다 찼다) 기하가 없다
+        && candFrom.clusterBeltDepth === fromPartner.clusterBeltDepth;
+      if (ok) {
+        // **같은 끝으로 나가야 한 행에서 만난다** — 끝 장부는 기본적으로 반대 끝을 준다.
+        candFrom = { ...candFrom, portEnd: fromPartner.portEnd };
+        merged = {};
+      } else {
+        g.sharedLineId = undefined;
+      }
+    }
+
+    // **집는 쪽 — 짝의 둘째 줄은 자리를 안 고른다.** 첫 줄이 잡은 벨트에 좌석만 얹는다.
     const partner = g.sharedLineId !== undefined ? sharedTo.get(g.sharedLineId) : undefined;
     if (candFrom && partner) {
       const onShared = seatOnSharedBelt(toSeat.ctx, g, "to", partner);
       if (onShared) {
-        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), onShared);
+        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: inPair && !merged }), onShared);
         continue;
       }
       // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
@@ -380,10 +469,12 @@ export function seatLinkEdge(
     const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
     if (candFrom && candTo) {
       const toPlan = commitLinkFace(toSeat.ctx, candTo, "to");
+      const fromPlan = commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: inPair && !merged });
       if (g.sharedLineId !== undefined && !sharedTo.has(g.sharedLineId)) {
         sharedTo.set(g.sharedLineId, toPlan); // 첫 줄 — 다음 줄이 이 벨트에 얹힌다
+        sharedFrom.set(g.sharedLineId, fromPlan); // 〃 — 다음 줄이 이 옆에 나란히 앉는다
       }
-      keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), toPlan);
+      keep(g, fromPlan, toPlan);
       continue;
     }
 

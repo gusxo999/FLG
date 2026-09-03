@@ -124,8 +124,17 @@ function pushLinkPortEnd(o: {
   chests: Container[];
   occupancy: Set<string>;
   ports: ModulePort[];
-  /** 이미 놓인 물리 벨트에 **논리 포트만** 더 얹나(레인 공유). 기본 `false`. */
-  reuse?: boolean;
+  /**
+   * **레인 공유 — 무엇을 다시 놓지 않나.** 둘은 따로 온다:
+   * ```
+   * reuseBelt   벨트 셀이 첫 줄의 것이다        집는 쪽(입력) — 벨트가 **하나**다
+   * reusePort   포트 인서터·상자가 첫 줄의 것이다  양쪽 다 — 포트는 언제나 하나다
+   * ```
+   * **싣는 쪽(출력)은 벨트가 둘**이라 `reuseBelt` 를 안 쓴다 — 자기 벨트는 자기가 놓고,
+   * 출구에서 합류해 포트만 나눠 쓴다.
+   */
+  reuseBelt?: boolean;
+  reusePort?: boolean;
   /** 이 줄이 남과 나눠 쓰는 물리 벨트의 신원([Link.sharedLineId]) — 채널이 합류를 안다. */
   sharedLineId?: string;
 }): void {
@@ -138,13 +147,15 @@ function pushLinkPortEnd(o: {
   // **그래서 상자 객체는 줄마다 자기 것(자기 id)이되, `chests` 에 들어가는 것은 하나다** —
   // 같은 객체를 공유하면 먼저 짝지은 줄이 그 id 를 `usedIn` 에 넣어 **나머지가 영영 짝을
   // 못 찾는다.**
-  if (!o.reuse) {
+  if (!o.reuseBelt) {
+    o.cells.push(...o.beltCells);
+    for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
+  }
+  if (!o.reusePort) {
     o.cells.push(
-      ...o.beltCells,
       makeInserterCell(o.seatCell, pickup, o.inserterEntityName, o.portPair),
       makeContainerCell(o.chest, o.chestAt),
     );
-    for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
     o.occupancy.add(cellKey(o.seatCell.x, o.seatCell.y));
     o.occupancy.add(cellKey(o.chestAt.x, o.chestAt.y));
     o.chests.push(o.chest);
@@ -188,6 +199,44 @@ export function emitOutputLinks(args: {
   unroutedLines: IoLine[];
 }): void {
   const { groups, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines } = args;
+  /**
+   * **출구 합류** — 먼저 나온 줄(`sharedLineId` → 그 줄의 합류 칸·포트).
+   *
+   * 싣는 쪽은 벨트가 **둘**이라야 두 레인이 다 찬다(팔이 각자 먼 레인에 떨군다). 그 둘을
+   * **기둥 끝 바깥 한 행**에서 마주 보게 해 합친다 — 자리가 규칙적이라 좌표로 계산된다
+   * (`docs/factorio/belt-lane-semantics.md` ③ · `tempPlanDocs/벨트-레인/` ㉡-3):
+   *
+   * **갈린 두 줄은 같은 깊이에 위/아래로 쌓인다** — 구간이 안 겹쳐 한 깊이를 나눠 쓰기
+   * 때문이다. 그래서 도형이 이렇게 된다(포트가 위쪽 끝, `d` = 둘의 공통 깊이):
+   *
+   * ```
+   *  행 tL-1                [ 포트 ]                      ← 인서터·상자는 d+1 열에서 나간다
+   *  행 tL      L(d) →깊게→ [ M(d+1) ] ←얕게← (d+2)       M = 합류 칸, 포트 쪽으로 나간다
+   *  …          L 수집(d)                     (d+2) ↑     F 가 d+2 를 따라 올라온다
+   *  행 tF      F(d) →깊게→ (d+1) →깊게→      (d+2) ↑
+   *  …          F 수집(d)
+   * ```
+   *
+   * **왜 꺾어야 하나** — 합류 칸은 **뒤 유입이 없어야** 한다(⑤: 뒤에서 온 쪽이 두 레인을
+   * 선점하고 옆 쪽을 굶긴다). 옆 포트는 벨트 끝 칸이 곧 포트라 꺾을 자리가 없어서, 배정이
+   * 합류 쌍에는 **기둥 끝 포트를 강제한다**(`tryLinkFace` 의 `forceEnd`). 그러면 벨트가
+   * 깊은 쪽으로 한 번 꺾고 **그 꺾인 칸(M)** 이 합류 칸이 된다 — `M` 의 뒤(`d+1`, 행 tL+1)는
+   * 비어 있다.
+   *
+   * **`d+2` 는 팔이 안 닿는 열이라 아무도 안 쓴다**(깊이 = 1 + reach). 배정이 그 구간을
+   * 미리 청구한다(`commitLinkFace` 의 `merged`).
+   *
+   * **왜 모듈 안인가** — 두 줄 구간이 한 줄로 합쳐지는 순간이 **빠를수록** 공간을 아낀다
+   * (2026-09-04 사장님). 채널은 통로일 뿐이고, 합류는 여기서 끝나야 포트·트랙·납품이 전부
+   * 하나가 된다.
+   */
+  const sharedExit = new Map<string, {
+    trunkStart: { x: number; y: number };
+    portPair: PortPair; seatCell: { x: number; y: number };
+    chestAt: { x: number; y: number }; chest: Container;
+    /** 이끄는 줄의 **포트 쪽 끝 행** — 따르는 줄이 여기까지 비켜 올라온다. */
+    topT: number;
+  }>();
   const ext = {
     x0: Math.min(...machines.map((m) => m.origin.x)),
     y0: Math.min(...machines.map((m) => m.origin.y)),
@@ -244,13 +293,41 @@ export function emitOutputLinks(args: {
     const belt0 = faceCell(mExt, face, clusterBeltDepth, topT); // 벨트 줄의 **포트 쪽** 끝 칸
     // 트렁크 끝(= 납품 경로 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
     // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
-    const trunkStart = isGap
-      ? { x: m0.origin.x, y: faceCell(mExt, face, exitDepth, topT).y }
-      : belt0;
+    // ── 출구 합류 ─────────────────────────────────────────────────────────────
+    // 짝의 **둘째** 줄이면 첫 줄이 만든 합류 칸·포트를 그대로 쓴다. 첫 줄이면 합류 칸을
+    // 새로 만든다. 기하가 안 서면(gap · 끝 없음 · 반출 줄로 내려감) 합류하지 않는다 —
+    // 그런 짝은 배정이 이미 풀었으므로 정상 경로에선 여기 오지 않는다.
+    const followed = group.sharedLineId !== undefined ? sharedExit.get(group.sharedLineId) : undefined;
+    const canMerge = group.sharedLineId !== undefined && !isGap
+      && plan.portEnd !== undefined && exitDepth === clusterBeltDepth;
+    /**
+     * **기둥 밖 첫 행** — 합류는 여기서 일어난다.
+     *
+     * 벨트 끝 바로 옆(기둥 **안**)에 세웠더니 그 칸이 곧 **남의 옆 포트 자리**였다
+     * (2026-09-04 실측: `못앉음 copper-cable: Wd2 포트칸 (13,d3)` — 합류 셋을 얻고
+     * 줄 하나를 통째로 잃었다). 표 밖 행은 아무도 청구하지 않으니 다툴 것이 없다.
+     */
+    const outT = pfv.y > 0 ? mExt.y1 + 1 : mExt.y0 - 1;
+    /** 합류 칸 — 기둥 밖 첫 행에서 **깊은 쪽 한 칸**. 그 칸이 포트 쪽으로 나간다. */
+    const mergeCell = canMerge
+      ? faceCell(mExt, face, clusterBeltDepth + 1, outT)
+      : { x: belt0.x + fv.x, y: belt0.y + fv.y };
+
+    const trunkStart = followed
+      ? followed.trunkStart
+      : canMerge
+        ? mergeCell
+        : isGap
+          ? { x: m0.origin.x, y: faceCell(mExt, face, exitDepth, topT).y }
+          : belt0;
     const chestId = `${prefix}-output-${line.name}-${seq++}`;
-    const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
+    const made = makeLinkPortChest({
       role: "output", trunkEnd: trunkStart, portFace, pfv, line, machineId: m0.id, chestId,
     });
+    // 물리 자리(벨트 끝·인서터·상자)는 첫 줄의 것을 그대로 쓰되 **상자 객체는 자기 것**이다
+    // (`usedIn` 이 상자 id 로 짝짓기를 세므로 — [pushLinkPortEnd] 의 `reuse` 주석).
+    const { portPair, seatCell, chestAt } = followed ?? made;
+    const chest = made.chest;
 
     // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W/E 면은 위로, N/S 면은 서쪽으로.
     const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? 1 : -1 };
@@ -283,8 +360,30 @@ export function emitOutputLinks(args: {
     for (let t = loT; t <= hiT; t++) {
       if (blocked) break;
       // 끝 칸: 자기 줄로 내려가야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
-      const turn = exitDepth > clusterBeltDepth ? fv : pfv;
+      // **출구 합류의 따르는 줄은 늘 깊은 쪽**이다 — 포트 쪽으로 꺾으면 합류 칸을 **뒤에서**
+      // 먹여(⑤) 자기가 두 레인을 선점하고 이끄는 줄이 조용히 굶는다.
+      // **이끄는 줄은 여기서 안 꺾는다** — 기둥 밖까지 더 달려야 합류 칸이 표 밖에 선다.
+      const turn = followed ? fv : canMerge ? beltDirV : exitDepth > clusterBeltDepth ? fv : pfv;
       push(faceCell(mExt, face, clusterBeltDepth, t), t === topT ? turn : beltDirV);
+    }
+    // **출구 합류** — 위 `sharedExit` 주석의 그림. `outT` 가 늘 `step` 쪽에 있으므로
+    // 아래 두 루프는 반드시 끝난다(`segment` 가 축이 안 맞을 때 힙을 4GB 태운 그 함정).
+    const step = pfv.y !== 0 ? Math.sign(pfv.y) : Math.sign(pfv.x);
+    if (followed) {
+      // 따르는 줄: `d+1` 로 한 칸, `d+2` 로 또 한 칸 비킨 뒤 **그 열을 따라 이끄는 줄의
+      // 포트 행까지** 올라와, 마지막에 **얕은 쪽**(= 합류 칸)으로 꺾어 들어간다.
+      push(faceCell(mExt, face, clusterBeltDepth + 1, topT), fv);
+      const lane = clusterBeltDepth + 2;
+      for (let t = topT; t !== outT && !blocked; t += step)
+        push(faceCell(mExt, face, lane, t), pfv);
+      // 기둥 밖 행에서 **얕은 쪽**으로 꺾어 합류 칸의 옆구리를 친다 — 사이드로드(③).
+      push(faceCell(mExt, face, lane, outT), { x: -fv.x, y: -fv.y });
+    } else if (canMerge) {
+      // 이끄는 줄: 자기 구간을 지나 **기둥 밖**까지 달린 뒤 거기서 깊은 쪽으로 꺾는다.
+      for (let t = topT + step; t !== outT && !blocked; t += step)
+        push(faceCell(mExt, face, clusterBeltDepth, t), beltDirV);
+      push(faceCell(mExt, face, clusterBeltDepth, outT), fv);
+      push(mergeCell, pfv); // 여기서부터 두 레인이 한 벨트로 포트를 향해 나간다
     }
     // ② **자기 줄로 내려가기** — 막힌 면이라 벨트가 깊이로 갈린다([[ParallelBelt]]). 내려가는
     // 건 **벨트가 벨트를 먹이는** 것이라 팔 길이와 무관하다(팔은 수집 줄 d`clusterBeltDepth` 까지만).
@@ -295,7 +394,7 @@ export function emitOutputLinks(args: {
     // 열보다 **동쪽에서** 출발하므로 남의 줄을 밟지 않는다.
     if (exitDepth > clusterBeltDepth)
       for (let t = topT - 1; t >= m0.origin.x && !blocked; t--) push(faceCell(mExt, face, exitDepth, t), pfv);
-    if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
+    if (blocked || (!followed && (occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
       return;
@@ -333,7 +432,12 @@ export function emitOutputLinks(args: {
         : { ...trunkStart },
       clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts,
+      // 벨트는 **자기 것**이라 늘 놓는다(싣는 쪽은 벨트가 둘이다). 포트만 나눠 쓴다.
+      reusePort: followed !== undefined, sharedLineId: group.sharedLineId,
     });
+    if (canMerge && !followed && group.sharedLineId !== undefined) {
+      sharedExit.set(group.sharedLineId, { trunkStart, portPair, seatCell, chestAt, chest, topT });
+    }
   });
 }
 
@@ -483,7 +587,7 @@ export function emitInputLinks(args: {
           // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
           makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
         );
-    if (!reuse) for (const c of beltCells) occupancy.add(cellKey(c.x, c.y));
+
     for (const s of seats) {
       for (const t of s.rows) {
         const seat = faceCell(geomExt, face, 1, t);
@@ -504,7 +608,8 @@ export function emitInputLinks(args: {
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },
       clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
-      cells, chests, occupancy, ports: inputPorts, reuse: reuse !== undefined,
+      cells, chests, occupancy, ports: inputPorts,
+      reuseBelt: reuse !== undefined, reusePort: reuse !== undefined,
       sharedLineId: group.sharedLineId,
     });
     if (group.sharedLineId !== undefined && !reuse) {
