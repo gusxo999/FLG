@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "./module/ioLine";
+import { readRunStats } from "../../debug/runStats";
 
 // 실제 트리(advanced-circuit, count=1)가 링크 기반 새 경로로 라우팅되는지 — 토이 2노드가
 // 아니라 다-노드·다-품목·내부간선+external 혼합 트리. production(브라우저)이 rate 를 채우면
@@ -57,6 +58,22 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
   // linkId 짝짓기가 자식·부모 양쪽에서 독립으로 재현되는지 — 실측 트리로 확인.
   it("링크 신원이 전부 짝을 찾는다 (linkMismatches 0)", () => {
     expect(pack.linkMismatches).toEqual([]);
+  });
+
+  /**
+   * **레인 공유** — n0 의 두 자식(n1 = kr-ec 위, n2 = ec 아래)이 서로 다른 품목을 각각
+   * 2/s 로 보낸다. 벨트 20/s 면 레인은 10/s 라 둘 다 여유가 있고, 위/아래 형제라
+   * 채널의 세로 주행이 합류 칸에 **양옆에서** 닿는다 → 자격 통과.
+   *
+   * **오늘은 표시만이다** — `sharedLineId` 를 읽는 방출기가 없어 배치는 안 바뀐다.
+   * 이 테스트가 재는 것은 *"기하 자격이 실물 트리에서 실제로 성립하나"* 다.
+   */
+  it("**형제 둘이 한 물리 줄을 나눠 쓴다** — 위/아래에서 하나씩", () => {
+    const share = readRunStats().laneShare;
+    expect(share.candidates).toBe(1);
+    expect(share.pairs).toBe(1);
+
+    expect(share.rejected).toBe(0);
   });
 
   it("deliveryRoute 이 충돌 없이 잇는다 (실패 0)", () => {

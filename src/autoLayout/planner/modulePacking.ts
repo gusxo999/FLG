@@ -20,6 +20,7 @@ import type { SpecInserter } from "../buildSpec";
  */
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
+import { laneCapOfTier } from "../beltThroughput";
 import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
 import {
   planChannelGeometry,
@@ -35,7 +36,7 @@ import {
 import type { DepthShortage, LinkFacePlan } from "./module/linkPlanner";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { summarizeBeltForms, type Link } from "../module/link";
+import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planTracks, expandBbox } from "./perimeter/tracks";
@@ -44,7 +45,7 @@ import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/ioLine";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats, recordLaneShareStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -468,6 +469,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     const end = linkEndOf(s);
     if (groups) linkCache.set(s.id, end ? groups.map((g) => ({ ...g, end })) : groups);
   }
+
   // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
   const outputLinksOf = (s: NodeSpec): Link[] | undefined => linkCache.get(s.id);
@@ -560,6 +562,57 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   };
 
   const allocated = allocateTree();
+
+  // ── 레인 공유 짝짓기 ───────────────────────────────────────────────────────
+  //
+  // 벨트 한 줄이 가진 **좌/우 두 레인**에 두 품목을 나눠 싣는다
+  // (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
+  //
+  // **후보를 고르는 것이 여기다** — [shareLanes] 는 양만 본다(형제 모듈을 모른다).
+  // 자격의 기하 절반은 이 자리에서만 답할 수 있다:
+  //
+  //   ⑴ 같은 **부모**로 들어간다        물리 줄이 하나라 부모 포트도 하나가 된다
+  //   ⑵ **위 형제와 아래 형제**에서 온다  그래야 채널의 세로 주행이 합류 칸에 **양옆**으로 닿는다
+  //
+  // ⑵ 가 핵심이다. 채널의 납품 경로는 계단꼴이라 세로 주행이 `endY` 에서 가로로 꺾는데,
+  // 두 지류가 **위·아래에서** 그 칸에 닿으면 유입이 둘 다 옆이라 **둘 다 접힌다**(각자
+  // 한 레인). 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 두 레인을 선점하고,
+  // 아래쪽은 벨트가 멀쩡히 이어진 채 **조용히 굶는다**(규칙 ⑤⑦).
+  //
+  // **자식이 달라야 하는 것은 제약이 아니다** — 자식 하나는 출력 품목이 하나뿐이라
+  // (`productOf`), 서로 다른 품목은 애초에 서로 다른 자식에서만 온다.
+  //
+  // 오늘은 **표시만 남는다.** `sharedLineId` 를 읽는 방출기가 아직 없어 배치가 안 바뀐다 —
+  // 세는 것이 목적이다(*"실물 트리에서 자격을 통과하는 쌍이 몇인가"*가 곧 그 계획의 값이다).
+  //
+  // **[allocateTree] **뒤**라야 한다** — 그 단계가 `linkCache` 를 최종본으로 갈아 끼운다
+  // (쪼개졌으면 토막). 앞에서 표시하면 그 교체가 표시를 **조용히 버린다**.
+  {
+    const laneCapOf = (n: string | undefined): number | undefined => {
+      const tier = config.belts?.find((b) => b.entityName === n);
+      return tier ? laneCapOfTier(tier) : undefined;
+    };
+    const share = { candidates: 0, pairs: 0, rejected: 0 };
+    for (const [parentId, kids] of childIdsByParent) {
+      const top: Link[] = [];
+      const bottom: Link[] = [];
+      for (const cid of kids) {
+        const spec = byId.get(cid);
+        const half = spec && siblingHalf(spec);
+        const gs = linkCache.get(cid);
+        if (!gs || !half) continue;
+        (half === "top" ? top : bottom).push(...gs);
+      }
+      const n = Math.min(top.length, bottom.length);
+      for (let i = 0; i < n; i++) {
+        share.candidates += 1;
+        const made = shareLanes([top[i], bottom[i]], laneCapOf, () => `${parentId}#lane${i}`);
+        share.pairs += made;
+        share.rejected += made === 0 ? 1 : 0;
+      }
+    }
+    recordLaneShareStats(share);
+  }
   const stagesRef = allocated.stages;
   const inputsRef = allocated.inputs;
 

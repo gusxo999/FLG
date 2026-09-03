@@ -124,6 +124,24 @@ export interface FaceDepthCounters {
   shortages: ReadonlyArray<string>;
 }
 
+/**
+ * **레인 공유** — 벨트 한 줄에 두 품목을 좌/우 레인으로 실은 횟수
+ * (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
+ *
+ * **이 수가 그 계획의 값이다.** 기하를 만들기 전에 *"실물 트리에서 자격을 통과하는 쌍이
+ * 몇이나 되나"* 를 먼저 세려고 둔다 — 0에 가까우면 뒤 단계를 지을 이유가 없다.
+ */
+export interface LaneShareCounters {
+  /** 위/아래 형제에서 하나씩 고른 쌍 — **자격 판정 전**의 후보 수. */
+  candidates: number;
+  /** 그중 자격 넷을 통과해 실제로 한 물리 줄이 된 쌍. */
+  pairs: number;
+  /** 떨어진 쌍 — 사유는 거의 언제나 **양**이다(각자 ≤ 레인 용량). */
+  rejected: number;
+}
+
+const freshLaneShare = (): LaneShareCounters => ({ candidates: 0, pairs: 0, rejected: 0 });
+
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
   shortages: [],
@@ -152,11 +170,16 @@ export interface RunStats {
    * (*"둘째 깊이가 한 번도 안 쓰였다"* 는 결함 A 가 도달 불가라는 뜻이다).
    */
   faceDepths: FaceDepthCounters;
+  /**
+   * 레인 공유. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이기 때문이다
+   * (*"자격을 통과하는 쌍이 한 건도 없다"* 는 그 기능을 지을 이유가 없다는 뜻이다).
+   */
+  laneShare: LaneShareCounters;
 }
 
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
-  faceDepths: freshFaceDepths(),
+  faceDepths: freshFaceDepths(), laneShare: freshLaneShare(),
 });
 
 let current: RunStats = fresh();
@@ -164,6 +187,11 @@ let current: RunStats = fresh();
 /** 실행 1회 시작 — `runModulePipeline` 진입에서 부른다. */
 export function beginRunStats(): void {
   current = { ...fresh(), startedAt: Date.now() };
+}
+
+/** 레인 공유 짝짓기 결과 — `packModuleTree` 가 링크 캐시를 다 만든 뒤 한 번 부른다. */
+export function recordLaneShareStats(c: LaneShareCounters): void {
+  current.laneShare = c;
 }
 
 export function recordDeliveryStats(c: DeliveryCounters): void {
@@ -220,6 +248,7 @@ export function recordPerimeterStats(c: PerimeterCounters): void {
 export function readRunStats(): RunStats {
   return {
     startedAt: current.startedAt,
+    laneShare: { ...current.laneShare },
     beltForms: current.beltForms ? { ...current.beltForms } : null,
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter

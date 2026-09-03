@@ -136,6 +136,21 @@ export function buildReport(): string {
   // **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽는다. "막힌 행"이 자름의 경계다.
   for (const w of fl.shortages) out.push(sub(w));
 
+  // **레인 공유** — 벨트 한 줄에 두 품목(좌/우 레인). 아직 **표시만** 하고 배치는 안 바뀐다.
+  // 읽는 법: `짝` 이 곧 아낄 수 있는 물리 줄 수다. `후보` 대비 `짝` 이 0에 가까우면
+  // 자격에서 떨어진 것이고, 사유는 거의 언제나 **양**이다(각자 ≤ 레인 용량 = 줄의 절반).
+  const ls = stats.laneShare;
+  out.push(
+    line(
+      '레인공유',
+      ls.candidates === 0
+        ? '후보 0 — 위/아래 형제에서 하나씩 오는 쌍이 없다(형제가 하나뿐인 부모들)'
+        : `후보 ${ls.candidates} · **짝 ${ls.pairs}**`
+          + (ls.rejected > 0 ? ` · 자격미달 ${ls.rejected}(양)` : '')
+          + '  — 표시만, 배치는 아직 안 바뀐다',
+    ),
+  );
+
   const rc = stats.rowChannels;
   out.push(
     line(
