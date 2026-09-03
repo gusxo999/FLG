@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { shareLanes, physicalLines, type Link } from "./link";
+import { determineBeltCount } from "../beltThroughput";
 
 /**
- * **레인 공유 짝짓기** — 벨트 한 줄에 두 품목을 좌/우 레인으로.
+ * **레인 공유 짝짓기** — 줄 **둘**을 한 물리 벨트의 좌/우 레인에 하나씩.
  * 모델은 `docs/factorio/belt-lane-semantics.md`, 계획은 `tempPlanDocs/벨트-레인/`.
+ *
+ * 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
+ * 줄 둘이 되고, 합류가 그 둘을 벨트 하나로 되돌린다 — **처리량은 안 늘고 물리 벨트 수가 준다.**
  *
  * 여기서 재는 것은 **자격 판정**뿐이다. 실제로 두 줄이 한 벨트가 되는 기하(채널 계단꼴의
  * 합류)는 별개 단계이고, 이 함수는 *"합쳐도 되는 쌍인가"* 만 답한다.
@@ -23,8 +27,8 @@ const laneCapOf = (n: string | undefined) =>
   n === "express" ? 22.5 : n === "fast" ? 15 : undefined;
 const ids = (i: number) => `L#${i}`;
 
-describe("shareLanes — 자격 넷", () => {
-  it("서로 다른 품목이 둘 다 레인 용량 안이면 짝이 된다", () => {
+describe("shareLanes — 자격 셋", () => {
+  it("둘 다 레인 용량 안이면 짝이 된다 — **품목은 안 본다**", () => {
     const a = line("iron-gear-wheel", 2);
     const b = line("copper-cable", 5);
     expect(shareLanes([a, b], laneCapOf, ids)).toBe(1);
@@ -32,11 +36,13 @@ describe("shareLanes — 자격 넷", () => {
     expect(b.sharedLineId).toBe("L#0");
   });
 
-  it("**같은 품목은 안 짝짓는다** — 한 줄에 그냥 더 실으면 되는 것이지 레인이 풀 문제가 아니다", () => {
-    const a = line("iron-plate", 2);
-    const b = line("iron-plate", 3);
-    expect(shareLanes([a, b], laneCapOf, ids)).toBe(0);
-    expect(a.sharedLineId).toBeUndefined();
+  it("**같은 품목이 주력이다** — 레인 하나가 다 차서 갈린 줄 둘을 한 벨트로 되돌린다", () => {
+    // 45/s 수요는 레인(22.5)을 넘어 줄 둘이 된다. 그 둘이 합류하면 벨트 하나로 돌아온다.
+    // 예전엔 여기서 *"한 줄에 그냥 더 실으면 된다"* 며 막았는데 — **더 실을 수가 없다.**
+    const a = line("iron-plate", 22.5);
+    const b = line("iron-plate", 22.5);
+    expect(shareLanes([a, b], laneCapOf, ids)).toBe(1);
+    expect(a.sharedLineId).toBe(b.sharedLineId);
   });
 
   it("**레인 용량을 넘으면 안 짝짓는다** — 합류를 지나면 지류는 레인 하나만 쓴다(규칙 ③)", () => {
@@ -118,5 +124,27 @@ describe("physicalLines — 물리 줄 단위로 묶는다", () => {
   it("공유가 하나도 없으면 줄 수 = 물리 줄 수 (오늘 동작)", () => {
     const ls = [line("a", 1), line("b", 1)];
     expect(physicalLines(ls)).toHaveLength(2);
+  });
+});
+
+/**
+ * **㉠ + ㉡ 이 한 문장이다** — 갈라 놓고 되돌린다.
+ *
+ * 이 저장소가 가장 헷갈리기 쉬운 자리라 두 함수를 나란히 세워 잠근다: 줄 수는 **레인**이
+ * 정하고([determineBeltCount]), 물리 벨트 수는 **합류**가 정한다([shareLanes]).
+ * 둘을 한 축으로 착각하면 *"합류하면 줄이 줄어든다"* 는 잘못된 기대가 생긴다.
+ */
+describe("줄 수와 물리 벨트 수는 다른 축이다", () => {
+  it("45/s 수요 → 줄 **둘** → 합류 → 물리 벨트 **하나**", () => {
+    const tiers = determineBeltCount(45, [{ entityName: "express", throughput: 45 }]);
+    expect(tiers, "레인 22.5 이므로 두 줄").toHaveLength(2);
+
+    const ls = tiers.map(() => line("iron-plate", 22.5));
+    expect(shareLanes(ls, laneCapOf, ids)).toBe(1);
+    expect(physicalLines(ls), "물리 벨트는 하나").toHaveLength(1);
+
+    // **줄 수는 그대로다** — 합류가 되찾는 것은 자리이지 처리량이 아니다.
+    expect(ls).toHaveLength(2);
+    expect(ls.reduce((n, l) => n + (l.carries?.[0].rate ?? 0), 0)).toBe(45);
   });
 });

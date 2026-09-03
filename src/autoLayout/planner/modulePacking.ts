@@ -565,27 +565,29 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
   // ── 레인 공유 짝짓기 ───────────────────────────────────────────────────────
   //
-  // 벨트 한 줄이 가진 **좌/우 두 레인**에 두 품목을 나눠 싣는다
+  // **줄 둘을 한 물리 벨트의 좌/우 레인에 하나씩** 싣는다
   // (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
   //
-  // **후보를 고르는 것이 여기다** — [shareLanes] 는 양만 본다(형제 모듈을 모른다).
-  // 자격의 기하 절반은 이 자리에서만 답할 수 있다:
+  // ## 무엇을 되찾나
+  // 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
+  // [determineBeltCount] 가 줄 **둘**로 낸다. 합류시키면 벨트가 하나로 돌아온다 —
+  // **처리량은 안 늘고 물리 벨트 수가 준다.**
   //
-  //   ⑴ 같은 **부모**로 들어간다        물리 줄이 하나라 부모 포트도 하나가 된다
-  //   ⑵ **위 형제와 아래 형제**에서 온다  그래야 채널의 세로 주행이 합류 칸에 **양옆**으로 닿는다
+  // ## 후보 = **같은 간선의 두 줄** (v1 = 같은 품목)
+  // `linkCache` 의 한 항목이 곧 간선 하나(자식→부모, 품목 하나)이고, 그 안에 줄이 여럿이면
+  // 그것이 곧 *"수요가 레인 하나를 넘어 갈린 줄들"* 이다. 그 둘이 짝의 자연스러운 단위다.
   //
-  // ⑵ 가 핵심이다. 채널의 납품 경로는 계단꼴이라 세로 주행이 `endY` 에서 가로로 꺾는데,
-  // 두 지류가 **위·아래에서** 그 칸에 닿으면 유입이 둘 다 옆이라 **둘 다 접힌다**(각자
-  // 한 레인). 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 두 레인을 선점하고,
-  // 아래쪽은 벨트가 멀쩡히 이어진 채 **조용히 굶는다**(규칙 ⑤⑦).
+  // **기하가 공짜로 성립한다** — 관통 줄은 기둥 끝에 포트를 세우는데(`LinkFacePlan.portEnd`),
+  // 그 끝은 면마다 장부(`ctx.ends`)로 관리돼 **먼저 앉은 줄이 N 을 잡으면 다음 줄은 S** 를
+  // 잡는다. 즉 같은 간선의 두 줄은 기둥의 **위·아래 끝**에서 나가고, 채널에서 그 둘의 세로
+  // 주행은 도착 행에 **양옆으로** 닿는다 → 유입이 둘 다 옆이라 **둘 다 접힌다**(각자 한 레인).
+  // 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 아래쪽이 조용히 굶는다(규칙 ⑤⑦).
   //
-  // **자식이 달라야 하는 것은 제약이 아니다** — 자식 하나는 출력 품목이 하나뿐이라
-  // (`productOf`), 서로 다른 품목은 애초에 서로 다른 자식에서만 온다.
+  // **같은 품목이라 필터가 필요 없다** — 집는 팔이 뭘 집든 같은 품목이다(승인 Q1).
   //
-  // 오늘은 **표시만 남는다.** `sharedLineId` 를 읽는 방출기가 아직 없어 배치가 안 바뀐다 —
-  // 세는 것이 목적이다(*"실물 트리에서 자격을 통과하는 쌍이 몇인가"*가 곧 그 계획의 값이다).
+  // 오늘은 **표시만 남는다.** `sharedLineId` 를 읽는 방출기·기하가 아직 없어 배치가 안 바뀐다.
   //
-  // **[allocateTree] **뒤**라야 한다** — 그 단계가 `linkCache` 를 최종본으로 갈아 끼운다
+  // **[allocateTree] 뒤라야 한다** — 그 단계가 `linkCache` 를 최종본으로 갈아 끼운다
   // (쪼개졌으면 토막). 앞에서 표시하면 그 교체가 표시를 **조용히 버린다**.
   {
     const laneCapOf = (n: string | undefined): number | undefined => {
@@ -593,20 +595,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       return tier ? laneCapOfTier(tier) : undefined;
     };
     const share = { candidates: 0, pairs: 0, rejected: 0 };
-    for (const [parentId, kids] of childIdsByParent) {
-      const top: Link[] = [];
-      const bottom: Link[] = [];
-      for (const cid of kids) {
-        const spec = byId.get(cid);
-        const half = spec && siblingHalf(spec);
-        const gs = linkCache.get(cid);
-        if (!gs || !half) continue;
-        (half === "top" ? top : bottom).push(...gs);
-      }
-      const n = Math.min(top.length, bottom.length);
-      for (let i = 0; i < n; i++) {
+    for (const [childId, groups] of linkCache) {
+      // 줄이 하나면 갈린 적이 없다 — 되찾을 절반도 없다.
+      for (let i = 0; i + 1 < groups.length; i += 2) {
         share.candidates += 1;
-        const made = shareLanes([top[i], bottom[i]], laneCapOf, () => `${parentId}#lane${i}`);
+        const made = shareLanes(
+          [groups[i], groups[i + 1]],
+          laneCapOf,
+          () => `${childId}#lane${i / 2}`,
+        );
         share.pairs += made;
         share.rejected += made === 0 ? 1 : 0;
       }
