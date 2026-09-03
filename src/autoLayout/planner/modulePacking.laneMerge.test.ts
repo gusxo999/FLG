@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
+import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "./module/ioLine";
 import { setAutoLayoutLaneMerge } from "../debugFlags";
 import { readRunStats } from "../../debug/runStats";
@@ -60,6 +61,7 @@ const run = (merge: boolean) => {
   const child = pack.placements.find((pl) => pl.id === "c")!;
   const key = (c: { x: number; y: number }) => `${c.x},${c.y}`;
   return {
+    pack,
     share,
     /** 부모가 품목 x 로 받는 논리 포트들. */
     inPorts: parent.module.inputPorts.filter((q) => q.line.name === "x"),
@@ -111,9 +113,49 @@ describe("레인 합류 — 켜면 집는 쪽이 한 벨트가 된다", () => {
     expect(on.parentChestsAt(at)).toBe(1);
   });
 
+  it("채널 지시가 둘로 갈린다 — 이끄는 줄은 계단꼴, 따르는 줄은 `mergeTail`", () => {
+    const on = run(true);
+    const kinds = [...(on.pack.channelGeometry?.deliveries.values() ?? [])].map((d) => d.kind);
+    expect([...kinds].sort()).toEqual(["mergeTail", "staircase"]);
+  });
+
   it("**상자 id 는 서로 다르다** — 같으면 먼저 짝지은 줄이 나머지를 영영 못 짝짓게 한다", () => {
     const on = run(true);
     // `pairDeliveryPorts` 의 `usedIn` 이 상자 id 로 *"이미 썼다"* 를 센다.
     expect(new Set(on.inPorts.map((q) => q.chest.id)).size).toBe(2);
+  });
+});
+
+describe("레인 합류 — 채널이 두 납품을 한 줄로 잇는다", () => {
+  const route = (merge: boolean) => {
+    const r = run(merge);
+    const delivery = routeDeliveryRoutes(r.pack, {
+      beltEntityName: "b",
+      undergroundBeltEntityName: "underground-belt",
+      beltMaxUndergroundDistance: 4,
+    });
+    return { ...r, delivery };
+  };
+
+  it("**따르는 줄은 합류 칸 직전에서 멈춘다** — 그 한 칸의 어긋남이 사이드로드다", () => {
+    const on = route(true);
+    const kinds = [...(on.pack.channelGeometry?.deliveries.values() ?? [])].map((d) => d.kind);
+    expect(kinds.filter((k) => k === "mergeTail"), "따르는 줄 하나").toHaveLength(1);
+    // 이끄는 줄은 평범한 계단꼴 — 합류 칸에서 부모 벽으로 나간다.
+    expect(kinds.filter((k) => k === "staircase" || k === "straight").length).toBeGreaterThan(0);
+  });
+
+  it("두 납품 다 **장부가 계획한다** — 탐색 폴백 0 · 실패 0", () => {
+    const on = route(true);
+    // 도형이 칸을 안 나눠 쓰므로(끝이 한 칸 어긋난다) 같은 트랙에 둘이 앉아도 다툼이 없다.
+    expect(on.delivery.failures, "실패 0").toBe(0);
+    expect(on.delivery.dijkstraFallback, "탐색 폴백 0 — 길이 났다가 아니라 **누가 냈나**").toBe(0);
+    expect(on.delivery.planned).toBeGreaterThan(0);
+  });
+
+  it("[대조군] 끄면 둘 다 평범한 납품이다", () => {
+    const off = route(false);
+    expect([...(off.pack.channelGeometry?.deliveries.values() ?? [])].some((d) => d.kind === "mergeTail")).toBe(false);
+    expect(off.delivery.failures).toBe(0);
   });
 });

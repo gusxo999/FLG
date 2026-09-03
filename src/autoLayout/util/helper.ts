@@ -37,6 +37,12 @@ export function vectorToDirection(dx: number, dy: number): Direction {
 }
 
 /** 두 축정렬 점 사이를 단위 셀로 확장(start 제외, end 포함). */
+/**
+ * > **축 정렬이 아니면 끝나지 않는다.** `dx`·`dy` 가 둘 다 0이 아니면 대각선으로 걸어가며
+ * > 목표를 **영영 못 만나** 배열이 무한히 자란다(2026-09-03 실측: 힙 4GB 소진 후 크래시).
+ * > 호출자의 연속성 검증은 **그 뒤**에 있어서 못 잡는다 — 축이 맞는지는 **부르기 전에**
+ * > 확인해야 한다.
+ */
 export function segment(
   from: { x: number; y: number },
   to: { x: number; y: number },

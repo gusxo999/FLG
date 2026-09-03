@@ -225,6 +225,12 @@ export interface RowChannelEntry {
 export type DeliveryGeometry =
   | { kind: "straight" }
   | { kind: "staircase"; trackX: number }
+  /**
+   * **레인 합류의 따르는 줄** — 계단꼴이되 `stopY` 에서 **멈춘다**(가로 진출 없음).
+   * 그 칸이 이끄는 줄의 합류 칸을 향해 사이드로드한다
+   * (`docs/factorio/belt-lane-semantics.md` ③).
+   */
+  | { kind: "mergeTail"; trackX: number; stopY: number }
   | {
       /**
        * **되꺾기 — 계단꼴의 전치(轉置)다.** 계단꼴이 *가로→세로(트랙)→가로* 라면 이쪽은
@@ -761,12 +767,19 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     eligible: boolean;
     /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
     fluid?: string;
+    /**
+     * **레인 합류 — 이끄는 납품의 키.** 부모 포트가 같은 물리 벨트를 쓰는 둘 중 **뒤에 온 쪽**이
+     * 든다([ModulePort.sharedLineId]). 채널이 이 값을 보고 트랙을 물려주고 도형을 자른다.
+     */
+    mergeWith?: string;
     /** 자식 쪽 끝의 띠 접근(있으면). */
     fromRowChannel?: RowChannelEntry;
     /** 부모 쪽 끝의 띠 접근(있으면). */
     toRowChannel?: RowChannelEntry;
   }[] = [];
   const pairedChestIds = new Set<string>();
+  /** 물리 벨트 신원 → **이끄는** 납품 키(레인 합류). 뒤에 온 납품이 그 트랙에 얹힌다. */
+  const mergeLeaderOf = new Map<string, string>();
   const usedParentIn = new Map<string, Set<string>>();
   /** [pairDeliveryPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
   const linkMismatches: string[] = [];
@@ -842,9 +855,18 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       // **띠 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
       // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromRowChannel`/`toRowChannel` 를 덮어쓴다.
       const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
+      // **레인 합류** — 부모 포트 둘이 같은 물리 벨트를 쓰면(같은 `sharedLineId`, 같은 칸),
+      // 납품도 하나로 합쳐져야 한다. 먼저 온 쪽이 **이끌고**, 뒤에 온 쪽이 그 트랙에 얹힌다.
+      let mergeWith: string | undefined;
+      if (inp.sharedLineId !== undefined) {
+        const lead = mergeLeaderOf.get(inp.sharedLineId);
+        if (lead === undefined) mergeLeaderOf.set(inp.sharedLineId, dkey);
+        else mergeWith = lead;
+      }
       deliverySeeds.push({
         depth: s.depth,
         key: dkey,
+        mergeWith,
         startY: cy,
         endY: py,
         // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
@@ -939,7 +961,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const reserve: Interval[] = [];
       for (const seed of deliverySeeds) {
         if (seed.depth !== d) continue;
-        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid });
+        if (seed.eligible)
+          dels.push({
+            id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid,
+            // 이끄는 줄이 **부적격**이면 얹을 곳이 없다 — 그때는 합류를 안 건다(각자 간다).
+            mergeWith: deliverySeeds.some((o) => o.key === seed.mergeWith && o.eligible)
+              ? seed.mergeWith
+              : undefined,
+          });
         else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
       }
       const exps: ExportInput[] = [];
@@ -1043,6 +1072,8 @@ function materializeChannelGeometry(args: {
   geometryPlans: Map<number, ChannelGeometryPlan>;
   deliverySeeds: {
     depth: number; key: string; eligible: boolean; fluid?: string;
+    /** 합류의 멈춤 행을 여기서 유도한다(`mergeTail`) — 계획이 쓴 것과 **같은 행**이라야 한다. */
+    startY: number; endY: number;
     fromRowChannel?: RowChannelEntry; toRowChannel?: RowChannelEntry;
   }[];
   trackPlan: TrackPlan;
@@ -1084,6 +1115,14 @@ function materializeChannelGeometry(args: {
     }
     const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
     if (plan.kind === "straight") deliveries.set(seed.key, { kind: "straight", ...bands });
+    else if (plan.kind === "mergeTail")
+      deliveries.set(seed.key, {
+        ...bands,
+        kind: "mergeTail",
+        trackX: tx(plan.track),
+        // 합류 칸의 **이웃**에서 멈춘다 — 그 한 칸의 어긋남이 곧 사이드로드다.
+        stopY: seed.startY < seed.endY ? seed.endY - 1 : seed.endY + 1,
+      });
     else if (plan.kind === "staircase")
       deliveries.set(seed.key, { kind: "staircase", trackX: tx(plan.track), ...bands });
     else if (plan.kind === "columnSwitch")

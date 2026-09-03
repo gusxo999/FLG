@@ -55,6 +55,29 @@ export interface DeliveryInput {
    *    지하 횡단을 안 쓴다. 대신 **지상 우선권**을 준다(배정 순서 맨 앞).
    */
   fluid?: string;
+  /**
+   * **레인 합류 — 이 납품은 저 납품에 「얹힌다」**(`docs/factorio/belt-lane-semantics.md`).
+   *
+   * 값 = **이끄는 납품의 id**. 둘은 같은 부모 포트 칸(`endY`)으로 들어가는데, 물리 벨트는
+   * 하나다(집는 쪽은 벨트 하나 — 그 비대칭이 이 기능의 핵심이다).
+   *
+   * ## 도형은 「합치기」가 아니라 「따르는 쪽을 자르기」다
+   * ```
+   * 이끄는 줄   startY → 트랙 T → endY → 부모 벽      (평범한 계단꼴)
+   * 따르는 줄   startY → 트랙 T → **endY 직전까지**    가로 진출이 없다
+   * ```
+   * 따르는 줄의 세로 주행이 `endY` 의 **이웃 칸**에서 끝나고 그 칸이 `endY` 를 향한다 —
+   * 그게 곧 사이드로드다. 이끄는 줄의 `(T, endY)` 칸은 **위·아래 두 유입 + 진출 하나**가
+   * 되어 유입이 둘 다 옆이라 **둘 다 한 레인으로 접힌다**(규칙 ③⑥).
+   *
+   * **두 도형이 칸을 하나도 안 나눠 쓴다**(끝이 한 칸 어긋난다) — 그래서 [shapesConflict]
+   * 를 고칠 일이 없다. 그리고 따르는 줄은 트랙을 **고르지 않고 받는다**.
+   *
+   * 전제: 두 `startY` 가 `endY` 를 **사이에 두고** 갈려 있어야 한다. 같은 쪽이면 세로
+   * 주행이 겹쳐 위쪽이 아래쪽의 **뒤 유입**이 되고, 그러면 아래쪽이 조용히 굶는다(⑤⑦).
+   * 그 갈림은 기둥 끝 장부가 이미 보장한다(`linkPlanner` 의 `ctx.ends`).
+   */
+  mergeWith?: string;
 }
 
 /** 반출 경로 입력 — 벽의 한 점에서 열린 N/S 변으로. */
@@ -130,6 +153,11 @@ export type DeliveryPlan =
       track: number;
       jumps: Jump[];
     }
+  /**
+   * **레인 합류의 따르는 줄** — 계단꼴이되 `endY` **직전에서 멈춘다**(가로 진출 없음).
+   * 마지막 칸이 `endY` 를 향해 사이드로드하고, 이끄는 줄이 그 칸에서 밖으로 나간다.
+   */
+  | { kind: "mergeTail"; track: number; leader: string }
   | { kind: "fallback"; reason: string };
 
 export type ExportPlan =
@@ -188,6 +216,20 @@ function hseg(row: number, a: number, b: number): HSeg {
 }
 function vseg(col: number, a: number, b: number): VSeg {
   return { col, r1: Math.min(a, b), r2: Math.max(a, b) };
+}
+
+/**
+ * **레인 합류의 따르는 줄 도형** — 계단꼴에서 **가로 진출을 뺀** 것.
+ *
+ * 세로 주행이 `endY` 의 **이웃 칸**에서 멈춘다. 그 한 칸이 이끄는 줄의 합류 칸이고,
+ * 멈춘 칸이 그쪽을 향하는 것이 곧 사이드로드다.
+ */
+function mergeTailShape(d: DeliveryInput, track: number, capCol: number): Shape {
+  const stopY = d.startY < d.endY ? d.endY - 1 : d.endY + 1;
+  return {
+    h: [hseg(d.startY, capCol, track)], // 자식 벽(E) → 트랙
+    v: [vseg(track, d.startY, stopY)],
+  };
 }
 
 /** 두 도형이 셀을 공유하나 — 문서 §9 불변식 (a)의 계획 시점 버전. */
@@ -535,7 +577,13 @@ export function planChannelGeometry(
         { id: d.id, candidates: () => straightShape(d, capCol), max: 1, fluid: d.fluid }
       : { id: d.id, candidates: (t) => staircaseShape(d, t, capCol), max: cap, fluid: d.fluid };
 
-  const surfaceDels = deliveries.filter((d) => !cutOff.has(d.id));
+  /**
+   * **레인 합류의 따르는 줄은 탐색에 안 들어간다** — 트랙을 고르지 않기 때문이다.
+   * 이끄는 줄이 자리를 잡은 뒤 그 트랙에 **잘린 도형**으로 얹는다(아래 ②.5).
+   */
+  const followers = deliveries.filter((d) => d.mergeWith !== undefined);
+  const followerIds = new Set(followers.map((d) => d.id));
+  const surfaceDels = deliveries.filter((d) => !cutOff.has(d.id) && !followerIds.has(d.id));
   // 순서 = 실패 비용 순(위 주석). 탐욕 폴백에서 앞선 것이 자리를 먼저 가진다.
   const items: Item[] = [];
   for (const d of surfaceDels) if (d.fluid !== undefined) items.push(delItem(d));
@@ -626,6 +674,35 @@ export function planChannelGeometry(
     } else {
       deliveryPlans.set(d.id, { kind: "staircase", track: a.track! });
     }
+  }
+
+  // ── ②.5 레인 합류 — 따르는 줄을 이끄는 줄의 트랙에 얹는다 ──────────────────
+  //
+  // 트랙을 **고르지 않는다.** 물리 벨트가 하나이므로 이끄는 줄이 쓰는 트랙이 곧 답이다.
+  // 도형은 `endY` **직전까지**라 이끄는 줄과 칸을 하나도 안 나눠 쓴다 — 그 한 칸의 어긋남이
+  // 곧 사이드로드이고, 그래서 [shapesConflict] 를 그대로 쓴다.
+  for (const d of followers) {
+    const lead = deliveryPlans.get(d.mergeWith!);
+    const track =
+      lead?.kind === "staircase" || lead?.kind === "undergroundCrossing" ? lead.track : undefined;
+    if (track === undefined) {
+      // 이끄는 줄이 트랙을 못 잡았다(직선이거나 폴백) — 얹을 곳이 없다. 정직하게 폴백.
+      deliveryPlans.set(d.id, { kind: "fallback", reason: "merge-leader-has-no-track" });
+      continue;
+    }
+    if (d.startY === d.endY) {
+      // 따르는 줄이 도착 행과 같은 행에서 온다 = 세로 주행이 0칸이라 **접힐 방향이 없다.**
+      deliveryPlans.set(d.id, { kind: "fallback", reason: "merge-tail-degenerate" });
+      continue;
+    }
+    const shape = mergeTailShape(d, track, capCol);
+    const cand = placedOf(shape, d.fluid);
+    if (conflictsAny(cand, placedShapes)) {
+      deliveryPlans.set(d.id, { kind: "fallback", reason: "merge-tail-blocked" });
+      continue;
+    }
+    deliveryPlans.set(d.id, { kind: "mergeTail", track, leader: d.mergeWith! });
+    placedShapes.push(cand);
   }
 
   // ── ③ 지하 횡단(사다리 2단) — 지상에 자리가 없는 납품은 막힌 셀 **밑으로** 건넌다 ──

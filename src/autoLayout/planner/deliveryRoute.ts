@@ -311,7 +311,9 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       : null;
     if (chain && blockedBy === null) {
       // 계획 체인은 품목-무관하다([buildPlannedChain]) — 갈리는 곳은 방출 하나뿐이다.
-      route = isFluid ? finishFluidChain(delivery, chain, config) : finishChain(delivery, chain, config);
+      route = isFluid
+        ? finishFluidChain(delivery, chain, config)
+        : finishChain(delivery, chain, config, geo?.deliveries.get(k)?.kind === "mergeTail");
       planned += 1;
     } else if (isFluid && geo) {
       // **유체엔 탐색 폴백이 없다**(결정 D3). 원칙이 "모든 배치는 처음에 계획할 수 있어야
@@ -323,6 +325,18 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       route = {
         item: delivery.item, ok: false, cells: [], corridors: [],
         reason: chain ? "fluid-planned-chain-blocked" : "fluid-unplannable",
+      };
+    } else if (geo?.deliveries.get(k)?.kind === "mergeTail") {
+      // **레인 합류의 따르는 줄에는 탐색 폴백이 없다.**
+      //
+      // 이 줄의 목적지는 부모 포트가 아니라 **이끄는 줄의 합류 칸**이다. dijkstra 는 그
+      // 사실을 모르고 부모까지 길을 찾으려 들며, 찾아 봐야 합류가 아니라 **같은 칸을 두고
+      // 다투는** 두 번째 벨트가 된다(그러면 배치는 성공이라 말하고 한쪽이 조용히 굶는다).
+      //
+      // 그래서 계획이 못 서면 **정직하게 실패시킨다** — 유체와 같은 이유, 같은 관용구다.
+      route = {
+        item: delivery.item, ok: false, cells: [], corridors: [],
+        reason: chain ? "merge-tail-chain-blocked" : "merge-tail-unplannable",
       };
     } else if (isFluid) {
       // 장부 자체가 꺼진 모드(AUTO_LAYOUT_CHANNEL_GEOMETRY off) — 아이템도 전부 탐색으로
@@ -506,7 +520,17 @@ function routeOneFluidDelivery(
  * 체인(chest_from..chest_to) 공통 마무리 — seat 이음, 연속성 불변식, emit.
  * dijkstra 결과와 기하 예약의 결정적 체인이 같은 꼬리를 탄다(단일 출처).
  */
-function finishChain(delivery: DeliverySpec, result: DijkstraResult, config: DeliveryConfig): Omit<DeliveryRoute, "key"> {
+function finishChain(
+  delivery: DeliverySpec,
+  result: DijkstraResult,
+  config: DeliveryConfig,
+  /**
+   * **레인 합류의 따르는 줄인가** — 그렇다면 이 체인은 부모에 **안 닿는다.**
+   * 합류 칸의 이웃에서 멈추고 그 뒤는 이끄는 줄의 벨트다. 그래서 부모 쪽 좌석을 안 잇는다 —
+   * 이으면 체인이 텔레포트해 `isContinuous` 가 잡고, 그 실패가 탐색 폴백을 불러 폭주한다.
+   */
+  mergeTail = false,
+): Omit<DeliveryRoute, "key"> {
   const fvTo = faceVector(delivery.to.face);
 
   // 체인의 몸통은 chest_from … chest_to. 양 끝은 **그 끝의 좌석이 무엇이냐**에 따라 갈린다
@@ -517,7 +541,7 @@ function finishChain(delivery: DeliverySpec, result: DijkstraResult, config: Del
   //  - 1:1 다이렉트 인서팅 좌석 = 인서터가 그대로 남아 있으므로 덮지 않는다. 출력 인서터가
   //    chest_from 자리 belt 에 놓고, 입력 인서터가 chest_to 자리 belt 에서 집어 넣는다.
   const headSeat = seatIsBeltFeeder(delivery.from) ? portGeometry(delivery.from).seat : null;
-  const tailSeat = seatIsBeltFeeder(delivery.to) ? portGeometry(delivery.to).seat : null;
+  const tailSeat = !mergeTail && seatIsBeltFeeder(delivery.to) ? portGeometry(delivery.to).seat : null;
   const ext: DijkstraResult =
     headSeat || tailSeat
       ? {
@@ -633,6 +657,13 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryDirective): Dijkst
       push({ x: g.trackX, y: e.y });
       push(e);
       break;
+    case "mergeTail":
+      // **레인 합류의 따르는 줄** — 계단꼴이되 합류 칸의 **이웃**에서 멈춘다. 가로 진출이
+      // 없다: 그 뒤는 이끄는 줄의 벨트다. 마지막 칸이 합류 칸을 향하는 것이 곧 사이드로드이고
+      // (`docs/factorio/belt-lane-semantics.md` ③), 두 줄이 각자 한 레인으로 접힌다.
+      push({ x: g.trackX, y: s.y });
+      push({ x: g.trackX, y: g.stopY });
+      break;
     case "wrapAround":
       // **ㄱ자** — 자기 행을 따라 가로로 간 뒤 목표 열에서 세로로. 상자는 면 위에 있어
       // 자기 **열**은 늘 붐비고(같은 면의 다른 포트들) 자기 **행**은 대개 비어 있다.
@@ -692,7 +723,12 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryDirective): Dijkst
     }
   }
   // 띠 트랙 행 → 부모 상자(세로). 띠를 안 쓰면 0칸이다.
-  if (g.toRowChannel) push(e0);
+  //
+  // **합류의 따르는 줄은 여기 오면 안 된다** — 그 체인은 부모에 안 닿고 합류 칸의 이웃에서
+  // 끝난다. 그런데 그 끝은 부모 상자와 **축이 안 맞아서**, 이으려 들면 [segment] 가
+  // 대각선으로 걸어가며 목표를 영영 못 만난다 = **무한 루프**(실측: 힙 4GB 소진).
+  // 연속성 검증은 그 뒤에 있어서 못 잡는다 — 여기서 안 부르는 것이 유일한 방어다.
+  if (g.toRowChannel && g.kind !== "mergeTail") push(e0);
 
 
   // segment() 는 축 정렬 입력만 안전 — 연속성 검증에 실패한 지시는 폐기(폴백).
