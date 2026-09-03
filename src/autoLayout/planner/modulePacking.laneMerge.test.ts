@@ -113,10 +113,10 @@ describe("레인 합류 — 켜면 집는 쪽이 한 벨트가 된다", () => {
     expect(on.parentChestsAt(at)).toBe(1);
   });
 
-  it("채널 지시가 둘로 갈린다 — 이끄는 줄은 계단꼴, 따르는 줄은 `mergeTail`", () => {
+  it("부모 포트 둘이 **같은 물리 벨트의 신원**을 든다 — 채널·납품이 그걸로 안다", () => {
     const on = run(true);
-    const kinds = [...(on.pack.channelGeometry?.deliveries.values() ?? [])].map((d) => d.kind);
-    expect([...kinds].sort()).toEqual(["mergeTail", "staircase"]);
+    expect(new Set(on.inPorts.map((q) => q.sharedLineId)).size).toBe(1);
+    expect(on.inPorts.every((q) => q.sharedLineId !== undefined)).toBe(true);
   });
 
   it("**상자 id 는 서로 다르다** — 같으면 먼저 짝지은 줄이 나머지를 영영 못 짝짓게 한다", () => {
@@ -126,7 +126,7 @@ describe("레인 합류 — 켜면 집는 쪽이 한 벨트가 된다", () => {
   });
 });
 
-describe("레인 합류 — 채널이 두 납품을 한 줄로 잇는다", () => {
+describe("레인 합류 — 납품은 하나뿐이다", () => {
   const route = (merge: boolean) => {
     const r = run(merge);
     const delivery = routeDeliveryRoutes(r.pack, {
@@ -137,25 +137,26 @@ describe("레인 합류 — 채널이 두 납품을 한 줄로 잇는다", () =>
     return { ...r, delivery };
   };
 
-  it("**따르는 줄은 합류 칸 직전에서 멈춘다** — 그 한 칸의 어긋남이 사이드로드다", () => {
-    const on = route(true);
-    const kinds = [...(on.pack.channelGeometry?.deliveries.values() ?? [])].map((d) => d.kind);
-    expect(kinds.filter((k) => k === "mergeTail"), "따르는 줄 하나").toHaveLength(1);
-    // 이끄는 줄은 평범한 계단꼴 — 합류 칸에서 부모 벽으로 나간다.
-    expect(kinds.filter((k) => k === "staircase" || k === "straight").length).toBeGreaterThan(0);
+  /**
+   * **합류를 출구에서 계산하면 채널이 그 사실을 몰라도 된다.**
+   *
+   * 부모가 한 벨트로 받으므로 그 벨트로 들어가는 물리 경로도 **하나**다. 채널은 평범한
+   * 계단꼴 하나만 보면 되고, 합류를 아예 모른다.
+   *
+   * > **아직 절반이다 — 자식 쪽 출구 합류가 없다.** 지금은 자식이 여전히 벨트 둘·포트 둘을
+   * > 내는데 납품은 하나뿐이라, **둘째 벨트가 갈 곳이 없다.** 켠 배치는 여기까지로는
+   * > 완성이 아니다(그래서 플래그가 꺼져 있다). 이 describe 가 재는 것은 *"납품이 물리
+   * > 벨트마다 하나로 접힌다"* 하나뿐이다 — 총계로 완성을 재지 않는다.
+   */
+  it("**켜면 납품이 하나** — 끄면 둘(대조군)", () => {
+    expect(route(true).pack.deliveries.length, "합쳐진 벨트 하나").toBe(1);
+    expect(route(false).pack.deliveries.length, "각자 가면 둘").toBe(2);
   });
 
-  it("두 납품 다 **장부가 계획한다** — 탐색 폴백 0 · 실패 0", () => {
+  it("그 하나를 **장부가 계획한다** — 탐색 폴백 0 · 실패 0", () => {
     const on = route(true);
-    // 도형이 칸을 안 나눠 쓰므로(끝이 한 칸 어긋난다) 같은 트랙에 둘이 앉아도 다툼이 없다.
     expect(on.delivery.failures, "실패 0").toBe(0);
-    expect(on.delivery.dijkstraFallback, "탐색 폴백 0 — 길이 났다가 아니라 **누가 냈나**").toBe(0);
-    expect(on.delivery.planned).toBeGreaterThan(0);
-  });
-
-  it("[대조군] 끄면 둘 다 평범한 납품이다", () => {
-    const off = route(false);
-    expect([...(off.pack.channelGeometry?.deliveries.values() ?? [])].some((d) => d.kind === "mergeTail")).toBe(false);
-    expect(off.delivery.failures).toBe(0);
+    expect(on.delivery.dijkstraFallback, "탐색 폴백 0").toBe(0);
+    expect(on.delivery.planned).toBe(1);
   });
 });

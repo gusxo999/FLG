@@ -225,12 +225,6 @@ export interface RowChannelEntry {
 export type DeliveryGeometry =
   | { kind: "straight" }
   | { kind: "staircase"; trackX: number }
-  /**
-   * **레인 합류의 따르는 줄** — 계단꼴이되 `stopY` 에서 **멈춘다**(가로 진출 없음).
-   * 그 칸이 이끄는 줄의 합류 칸을 향해 사이드로드한다
-   * (`docs/factorio/belt-lane-semantics.md` ③).
-   */
-  | { kind: "mergeTail"; trackX: number; stopY: number }
   | {
       /**
        * **되꺾기 — 계단꼴의 전치(轉置)다.** 계단꼴이 *가로→세로(트랙)→가로* 라면 이쪽은
@@ -767,19 +761,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     eligible: boolean;
     /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
     fluid?: string;
-    /**
-     * **레인 합류 — 이끄는 납품의 키.** 부모 포트가 같은 물리 벨트를 쓰는 둘 중 **뒤에 온 쪽**이
-     * 든다([ModulePort.sharedLineId]). 채널이 이 값을 보고 트랙을 물려주고 도형을 자른다.
-     */
-    mergeWith?: string;
     /** 자식 쪽 끝의 띠 접근(있으면). */
     fromRowChannel?: RowChannelEntry;
     /** 부모 쪽 끝의 띠 접근(있으면). */
     toRowChannel?: RowChannelEntry;
   }[] = [];
   const pairedChestIds = new Set<string>();
-  /** 물리 벨트 신원 → **이끄는** 납품 키(레인 합류). 뒤에 온 납품이 그 트랙에 얹힌다. */
-  const mergeLeaderOf = new Map<string, string>();
+  /** 이미 납품을 낸 물리 벨트 신원(레인 공유) — 같은 벨트에 두 번 납품을 내지 않는다. */
+  const mergeDoneFor = new Set<string>();
   const usedParentIn = new Map<string, Set<string>>();
   /** [pairDeliveryPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
   const linkMismatches: string[] = [];
@@ -855,18 +844,21 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       // **띠 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
       // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromRowChannel`/`toRowChannel` 를 덮어쓴다.
       const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
-      // **레인 합류** — 부모 포트 둘이 같은 물리 벨트를 쓰면(같은 `sharedLineId`, 같은 칸),
-      // 납품도 하나로 합쳐져야 한다. 먼저 온 쪽이 **이끌고**, 뒤에 온 쪽이 그 트랙에 얹힌다.
-      let mergeWith: string | undefined;
+      // **레인 합류 — 납품은 하나뿐이다.**
+      //
+      // 두 줄은 **모듈 출구에서 이미 한 벨트로 합쳐졌고**(`emitOutputLinks` 의 합류 칸),
+      // 부모도 한 벨트로 받는다(`seatOnSharedBelt`). 양끝이 각각 **한 칸**이므로 그 사이를
+      // 잇는 물리 경로도 하나다 — 뒤에 온 줄은 납품을 **안 만든다**.
+      //
+      // 채널이 두 경로를 만나게 하던 옛 안(`mergeTail`)은 이것으로 대체됐다: 합류를 자리가
+      // 규칙적인 **출구**에서 계산하면 채널이 그 사실을 아예 몰라도 된다.
       if (inp.sharedLineId !== undefined) {
-        const lead = mergeLeaderOf.get(inp.sharedLineId);
-        if (lead === undefined) mergeLeaderOf.set(inp.sharedLineId, dkey);
-        else mergeWith = lead;
+        if (mergeDoneFor.has(inp.sharedLineId)) return;
+        mergeDoneFor.add(inp.sharedLineId);
       }
       deliverySeeds.push({
         depth: s.depth,
         key: dkey,
-        mergeWith,
         startY: cy,
         endY: py,
         // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
@@ -961,14 +953,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const reserve: Interval[] = [];
       for (const seed of deliverySeeds) {
         if (seed.depth !== d) continue;
-        if (seed.eligible)
-          dels.push({
-            id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid,
-            // 이끄는 줄이 **부적격**이면 얹을 곳이 없다 — 그때는 합류를 안 건다(각자 간다).
-            mergeWith: deliverySeeds.some((o) => o.key === seed.mergeWith && o.eligible)
-              ? seed.mergeWith
-              : undefined,
-          });
+        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid });
         else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
       }
       const exps: ExportInput[] = [];
@@ -1026,12 +1011,25 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     const mod = absById.get(s.id)!;
     for (const p of [...mod.inputPorts, ...mod.outputPorts]) portByChestId.set(p.chest.id, p);
   }
+  /**
+   * **레인 공유 — 납품은 물리 벨트마다 하나다.**
+   *
+   * 두 줄이 한 물리 벨트를 쓰면(`sharedLineId`) 양끝이 각각 **한 칸**이다 — 자식은 출구에서
+   * 이미 합쳐졌고 부모도 한 벨트로 받는다. 그 사이를 잇는 물리 경로도 하나여야 한다.
+   * 두 번째 줄까지 납품을 내면 **같은 두 칸 사이에 벨트를 두 번 깔려 든다.**
+   */
+  const deliveredLines = new Set<string>();
   for (const s of specs) {
     for (const [i, pr] of (deliveryPairs.get(s.id) ?? []).entries()) {
       const from = portByChestId.get(pr.outId);
       const to = portByChestId.get(pr.inId);
-      if (from && to)
-        deliveries.push({ item: pr.item, from, to, fromId: s.id, toId: s.parentId!, seq: i, linkId: pr.linkId });
+      if (!from || !to) continue;
+      const shared = to.sharedLineId;
+      if (shared !== undefined) {
+        if (deliveredLines.has(shared)) continue;
+        deliveredLines.add(shared);
+      }
+      deliveries.push({ item: pr.item, from, to, fromId: s.id, toId: s.parentId!, seq: i, linkId: pr.linkId });
     }
   }
   for (const s of specs) {
@@ -1115,14 +1113,6 @@ function materializeChannelGeometry(args: {
     }
     const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
     if (plan.kind === "straight") deliveries.set(seed.key, { kind: "straight", ...bands });
-    else if (plan.kind === "mergeTail")
-      deliveries.set(seed.key, {
-        ...bands,
-        kind: "mergeTail",
-        trackX: tx(plan.track),
-        // 합류 칸의 **이웃**에서 멈춘다 — 그 한 칸의 어긋남이 곧 사이드로드다.
-        stopY: seed.startY < seed.endY ? seed.endY - 1 : seed.endY + 1,
-      });
     else if (plan.kind === "staircase")
       deliveries.set(seed.key, { kind: "staircase", trackX: tx(plan.track), ...bands });
     else if (plan.kind === "columnSwitch")
