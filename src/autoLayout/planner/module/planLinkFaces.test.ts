@@ -58,8 +58,8 @@ const shape = (input: ModuleInput) => {
   const dump = (x: ReturnType<typeof planModulePorts>) => ({
     rowGaps: x.rowGaps,
     linkFaceDepths: x.linkFaceDepths,
-    out: x.linkFaces.out.map((f) => f && { face: f.face, d: f.laneDepth, reach: f.reach, end: f.portEnd, slots: [...f.slotIndex] }),
-    in: x.linkFaces.in.map((f) => f && { face: f.face, d: f.laneDepth, reach: f.reach, end: f.portEnd, slots: [...f.slotIndex] }),
+    out: x.linkFaces.out.map((f) => f && { face: f.face, d: f.clusterBeltDepth, reach: f.reach, end: f.portEnd, slots: [...f.slotIndex] }),
+    in: x.linkFaces.in.map((f) => f && { face: f.face, d: f.clusterBeltDepth, reach: f.reach, end: f.portEnd, slots: [...f.slotIndex] }),
     pipe: x.pipePlanned.map((l) => ({ name: l.line.name, side: l.side, d: l.clusterBeltDepth })),
     gapExit: [...x.gapExitSides].sort(),
     linked: [...x.linkedKeys].sort(),
@@ -67,7 +67,7 @@ const shape = (input: ModuleInput) => {
       out: x.restLinks.out.groups.map((g) => g.item),
       in: x.restLinks.in.groups.map((g) => g.item),
     },
-    shortages: [...x.laneShortages.keys()].sort(),
+    shortages: [...x.depthShortages.keys()].sort(),
   });
   return [dump(p), dump(q)] as const;
 };

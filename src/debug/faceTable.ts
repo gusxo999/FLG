@@ -118,7 +118,7 @@ export function renderFace(
     .map((p) => {
       const d = depthOf(box, face, p.x, p.y);
       const meta = p.meta
-        ? ` [${p.meta.item} d${p.meta.laneDepth}${p.meta.inserter ? ` ${p.meta.inserter}` : ''}]`
+        ? ` [${p.meta.item} d${p.meta.clusterBeltDepth}${p.meta.inserter ? ` ${p.meta.inserter}` : ''}]`
         : '';
       return `  (${p.x},${p.y}) ${d !== null ? `d${d}` : '?'} ${p.role === 'input' ? '←' : '→'} ${p.peerId}${meta}`;
     });

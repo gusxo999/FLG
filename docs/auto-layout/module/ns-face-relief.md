@@ -11,15 +11,15 @@ tags: [auto-layout, placement, routing]
 
 ## 0. 한 줄 요약
 
-count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 레인이 넘칠 때 W-spill 대신 **노출된
-끝면(N/S)의 레인**을 받는다(E → N/S → W) — 상자가 부모-납품 경로가 붐비는 채널 쪽에 태어나
+count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 깊이가 넘칠 때 W-spill 대신 **노출된
+끝면(N/S)의 깊이**을 받는다(E → N/S → W) — 상자가 부모-납품 경로가 붐비는 채널 쪽에 태어나
 ⑥C perimeter 재배치에서 갇히는 문제(kr-glass 사례)의 원인 치료.
 
 ## 1. 문제/배경
 
 모듈 파이프라인의 슬롯 배정(그때는 `clusterPortPlanner` — 2026-09-02 삭제, 지금은
 [linkPlanner](../../../src/autoLayout/planner/module/linkPlanner.ts) 의 `spillLinkFacesToGap`)은
-기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 레인은 기둥 축을 따라 달려야 N대
+기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 깊이는 기둥 축을 따라 달려야 N대
 전부를 서빙하므로 N/S(축의 끝면)는 스케일이 안 되기 때문이다. 그러나 count=1이면
 이 논리가 퇴화한다 — 4면이 전부 동등한데 관례상 2면을 버리고, 입력 3개 레시피에서
 마지막 입력이 W로 spill 된다.
@@ -27,7 +27,7 @@ count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 레인이 넘칠 때 W-sp
 **실측 사례 (advanced-circuit 트리, 2026-07-07):** kr-electronic-components(count=1)의
 kr-glass 입력이 W depth3/긴팔로 spill → 상자가 W면 anchor 에 생성 → 같은 모듈의 출력
 납품 경로가 채널의 모듈-인접 열을 관통(row 전체 차단) → ⑥C 채널 스캔 16오프셋 전부 첫 칸에서
-실패(`no free lane track in channel`) → 상자가 블루프린트 내부에 잔류.
+실패(`no free track in channel`) → 상자가 블루프린트 내부에 잔류.
 
 ## 2. 결정
 
@@ -49,7 +49,7 @@ kr-glass 입력이 W depth3/긴팔로 spill → 상자가 W면 anchor 에 생성
    > **W/E 가 다 차면 gap 으로 넘어간다**(링크가 원래 하던 `spillLinkFacesToGap` 을 그대로 탄다).
    > 탭은 여전히 W/E 뿐이고, 여기 §2의 `nsExposure`(count=1 완화)도 탭 경로 그대로다.
    > → [[machine-link]] · `clusterModule.test.ts` "W/E 가 다 차면 위/아래로 넘어가고…"
-5. **⑥A 변 판정 = `meta.side` 단일 출처.** N/S 레인의 chest 는 트렁크가 레인을 따라
+5. **⑥A 변 판정 = `meta.side` 단일 출처.** N/S 깊이의 chest 는 트렁크가 깊이를 따라
    수평으로 자라 **코너 어깨**(x·y 둘 다 bbox 밖)에 앉을 수 있어, 기하 추측(X변 우선)이
    W/E 로 오분류 → self-N 직진 대신 채널 우회로 배정되는 낭비/실패. planner 슬롯을
    그대로 쓴다.
@@ -71,7 +71,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
 - [modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정),
-  `planLanes` 의 변 판정을 `meta.side` 로 교체.
+  `planTracks` 의 변 판정을 `meta.side` 로 교체.
 - [containerModel.ts](../../../src/autoLayout/containerModel.ts) —
   `ModulePortMeta.side` 확장('W'|'E'|'N'|'S').
 
@@ -92,11 +92,11 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   대기 상태이고, 처리량 모드의 kr-glass 갇힘은 조각 B 가 치료 대상.
 - **⑥C+ (조각 B) — 해결(2026-07-11):** count≥2 기둥의 끝단 상자(face N/S)가 채널 우회
   미지원으로 skip 되던 문제를 방출 단계에서 두 부분으로 치료했다. **planner 는 그대로**
-  (planPerimeterLanes 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
+  (planPerimeterTracks 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
   알 수 없기 때문. 대신 occ 를 아는 ⑥C 방출기를 고쳤다:
-  1. **laneX 구동 jog**([perimeterRouter.ts](../../../src/autoLayout/planner/perimeterRouter.ts)):
-     채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `laneX−anchor.x` 부호로
-     정한다. face 가 N/S(fv.x=0)여도 laneX 가 있으면 elbow 를 그대로 재생 — 옛
+  1. **trackX 구동 jog**([perimeterRouter.ts](../../../src/autoLayout/planner/perimeterRouter.ts)):
+     채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `trackX−anchor.x` 부호로
+     정한다. face 가 N/S(fv.x=0)여도 trackX 가 있으면 elbow 를 그대로 재생 — 옛
      `N/S-side channel divert unsupported` 무조건 거부 제거(kr-glass 류 해소).
   2. **auto 폴백**([modulePerimeterPass.ts](../../../src/autoLayout/execution/modulePerimeterPass.ts)):
      예약 배정이 실제로 막힌 경우(코너 어깨 상자의 채널 우회가 **자기 트렁크를 관통** —

@@ -59,17 +59,17 @@ export function screenState(): string {
 }
 
 /**
- * 모듈별 **면별 레인 점유** — `W d2←iron-ore d3←water · E d2→concrete`.
+ * 모듈별 **면별 깊이 점유** — `W d2←iron-ore d3←water · E d2→concrete`.
  *
- * 채널·납품 조사에서 가장 자주 묻는 것이 *"이 모듈이 어느 면 몇 번 레인을 쓰나"* 인데,
- * 그 답은 포트마다 흩어져 있다(`ModulePortMeta.side`·`laneDepth`). 한 줄로 접어 둔다.
+ * 채널·납품 조사에서 가장 자주 묻는 것이 *"이 모듈이 어느 면 몇 번 깊이를 쓰나"* 인데,
+ * 그 답은 포트마다 흩어져 있다(`ModulePortMeta.side`·`clusterBeltDepth`). 한 줄로 접어 둔다.
  */
-function moduleLanes(view: LayoutView): string[] {
+function moduleDepths(view: LayoutView): string[] {
   return view.modules.map((m) => {
     const bySide = new Map<string, string[]>();
-    for (const p of [...m.ports].sort((a, b) => (a.meta?.laneDepth ?? 0) - (b.meta?.laneDepth ?? 0))) {
+    for (const p of [...m.ports].sort((a, b) => (a.meta?.clusterBeltDepth ?? 0) - (b.meta?.clusterBeltDepth ?? 0))) {
       const side = p.meta?.side ?? '?';
-      const d = p.meta?.laneDepth !== undefined ? `d${p.meta.laneDepth}` : 'd?';
+      const d = p.meta?.clusterBeltDepth !== undefined ? `d${p.meta.clusterBeltDepth}` : 'd?';
       const arrow = p.role === 'input' ? '←' : '→';
       bySide.set(side, [...(bySide.get(side) ?? []), `${d}${arrow}${p.meta?.item ?? '?'}`]);
     }
@@ -119,15 +119,15 @@ export function buildReport(): string {
     ),
   );
 
-  // **면 레인** — 좌석표 계획. 읽는 법: `깊은레인` 은 긴팔이 값을 하는 정도이고(정상),
+  // **면 깊이** — 좌석표 계획. 읽는 법: `깊은줄` 은 긴팔이 값을 하는 정도이고(정상),
   // **`안전망 > 0` 이 유일한 경보**다 — 포트 칸 다툼이 배정을 빠져나가 방출까지 갔다는 뜻.
-  const fl = stats.faceLanes;
+  const fl = stats.faceDepths;
   out.push(
     line(
-      '면레인',
-      `옆면 배정 ${fl.assignments} · 후보2+ ${fl.multiLaneFace}`
-        + ` · **깊은레인 ${fl.deepLane}**`
-        + (fl.deepLaneOtherArm > 0 ? ` (다른 팔 ${fl.deepLaneOtherArm})` : '')
+      '면깊이',
+      `옆면 배정 ${fl.assignments} · 후보2+ ${fl.multiDepthFace}`
+        + ` · **깊은줄 ${fl.deepBelt}**`
+        + (fl.deepBeltOtherArm > 0 ? ` (다른 팔 ${fl.deepBeltOtherArm})` : '')
         + (fl.splits > 0 ? ` · 쪼갬 ${fl.splits}` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),
     ),
@@ -169,9 +169,9 @@ export function buildReport(): string {
     const ports = view.modules.reduce((n, m) => n + m.ports.length, 0);
     // **미라우팅(unroutedLines)은 성공 배치에 있을 수 없다** — 하나라도 있으면
     // `moduleWizard` 가 `unrouted-lines` 이슈를 내고 abort 한다. 그래서 세지 않고,
-    // 대신 위 "이슈" 절에서 보인다. 여기 실을 값은 **면별 레인 점유**다.
+    // 대신 위 "이슈" 절에서 보인다. 여기 실을 값은 **면별 깊이 점유**다.
     out.push(line('모듈', `${view.modules.length}개 · 머신 ${machines}대 · 포트 ${ports}`));
-    for (const l of moduleLanes(view)) out.push(sub(l));
+    for (const l of moduleDepths(view)) out.push(sub(l));
     out.push(
       line('크기', `셀 ${view.cells.size} · penalty ${view.leaf.squarenessPenalty}`
         + ` · bbox ${view.bbox.w}×${view.bbox.h} @(${view.bbox.x},${view.bbox.y})`),

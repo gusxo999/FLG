@@ -50,7 +50,7 @@ const config: PackConfig = {
   ],
   beltEntityName: "transport-belt",
   belts: [{ entityName: "transport-belt", throughput: 15 }],
-  reservePerimeterLanes: true,
+  reservePerimeterTracks: true,
   channelGeometry: true,
   beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
@@ -156,7 +156,7 @@ describe("공급 보장 — 탭이든 다이렉트든 성립해야 한다", () =
           expect(inserters.length, `${m.id}: 인서터 수 ≠ 줄 수`).toBe(lineCount);
 
           // 인서터는 머신 바로 옆(1칸)에 앉으므로, 손이 닿는 바깥 칸은 **1~2칸 더 밖**이다
-          // (일반=1칸 = 가까운 레인, 긴팔=2칸 = 먼 레인). 거기 벨트나 상자가 있어야 한다 —
+          // (일반=1칸 = 가까운 깊이, 긴팔=2칸 = 먼 깊이). 거기 벨트나 상자가 있어야 한다 —
           // 허공에 집어넣으면 물류가 끊긴다.
           for (const ins of inserters) {
             const fed = [1, 2].some((step) => {

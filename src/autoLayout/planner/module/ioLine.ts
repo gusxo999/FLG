@@ -15,8 +15,8 @@
  *  - 1칸 = 좌석 줄. 인서터가 여기 앉는다. 유체 파이프는 머신 fluid_box 에 닿아야 하므로
  *    **여기 온다**(팔이 없어 머신에 닿아야 한다).
  *  - 2..(1+최대 reach)칸 = [ClusterBelt] 자리. reach `r` 인서터가 좌석(1칸)에 앉아 `1+r`칸의
- *    벨트를 집는다. 그래서 한 면의 레인 수 = **고른 인서터들의 서로 다른 reach 값 개수**
- *    (하드코딩 아님 — 그 수를 세는 곳은 `linkPlanner.laneDepthsOf` 다).
+ *    벨트를 집는다. 그래서 한 면의 깊이 수 = **고른 인서터들의 서로 다른 reach 값 개수**
+ *    (하드코딩 아님 — 그 수를 세는 곳은 `linkPlanner.clusterBeltDepthsOf` 다).
  */
 
 /** 컬럼의 좌/우 면. */
@@ -24,7 +24,7 @@ export type PortSide = "W" | "E";
 
 /**
  * 배정 결과가 가리킬 수 있는 면 — 좌/우(W/E) + **노출된 끝면(N/S)**.
- * N/S 는 count=1(퇴화 기둥)의 raw 입력 전용 완화다: 기둥에서 N/S 레인은 끝 머신
+ * N/S 는 count=1(퇴화 기둥)의 raw 입력 전용 완화다: 기둥에서 N/S 깊이는 끝 머신
  * 1대만 서빙 가능해 일반화가 안 되지만, 머신이 1대면 4면이 전부 동등하다. 노출
  * 여부(열의 끝 + 그 방향 전역 마진)는 호출자(packModuleTree)가 판정해 넘긴다.
  */
@@ -41,7 +41,7 @@ export interface IoLine {
   role: "input" | "output";
   /**
    * craft당 수량 = 운반량(throughput) 프록시. 한 클러스터 내 모든 라인은 같은 craft
-   * 속도라 amount 비율이 곧 throughput 비율 → depth(레인) 배정 기준. 미지정=0.
+   * 속도라 amount 비율이 곧 throughput 비율 → depth 배정 기준. 미지정=0.
    */
   amount?: number;
   /**

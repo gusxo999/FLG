@@ -11,9 +11,9 @@ tags: [auto-layout, placement, routing]
 # perimeter 반출 — 살아남은 무한상자를 전역 외곽으로
 
 > **이 문서를 읽어야 하는 때**
-> - `execution/modulePerimeterPass.ts` · `planner/perimeterLanePlanner.ts` · `planner/perimeterRouter.ts` ·
+> - `execution/modulePerimeterPass.ts` · `planner/perimeterTrackPlanner.ts` · `planner/perimeterRouter.ts` ·
 > `planner/perimeter/{wayOuts,lanes}.ts` 를 수정할 때
-> - `PERIMETER_MARGIN` · `reservedExportCells` · `LaneAssignment` · `rePathToPerimeter` 를 건드릴 때
+> - `PERIMETER_MARGIN` · `reservedExportCells` · `TrackAssignment` · `rePathToPerimeter` 를 건드릴 때
 > - 무한상자가 배치 **안쪽에 남아 있다**는 증상을 조사할 때 (콘솔 `[perimeterPass] SKIP`)
 > - "상자를 바깥으로 빼는 탐색 로직을 새로 짜자"는 생각이 들 때 → **§4 를 먼저 읽을 것**
 
@@ -94,10 +94,10 @@ tags: [auto-layout, placement, routing]
 
 ### ② 예약 — 자리를 먼저 잡는다
 
-**구현:** [`planner/perimeterLanePlanner.ts`](../../../src/autoLayout/planner/perimeterLanePlanner.ts) `planPerimeterLanes`
+**구현:** [`planner/perimeterTrackPlanner.ts`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts) `planPerimeterTracks`
 + [`planner/modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) `packModuleTree`
 
-상자마다 **어느 변으로, 어느 통로를 타고** 나갈지 배정한다. 통로(`LaneHost`)는 세 가지:
+상자마다 **어느 변으로, 어느 통로를 타고** 나갈지 배정한다. 통로(`TrackHost`)는 세 가지:
 
 | host | 경로 | 채널 트랙 소비 |
 |---|---|---|
@@ -105,7 +105,7 @@ tags: [auto-layout, placement, routing]
 | `margin` | 최좌(depth 0)/최우(maxDepth) 열이면 바깥 W/E 마진으로 **직출** | 없음 |
 | `channel` | 인접 채널로 **가로 jog** → 채널 안에서 가까운 N/S 변으로 **세로 주행**(ㄱ자) | **1** |
 
-배정은 하나로 못박지 않고 **선호 순 후보 목록**(`LaneAssignment.options`)으로 남긴다. 뒤에
+배정은 하나로 못박지 않고 **선호 순 후보 목록**(`TrackAssignment.options`)으로 남긴다. 뒤에
 더 센 제약을 가진 장부가 **양보를 요구**할 수 있기 때문이다(스도쿠: 제약 센 곳부터).
 모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
 
@@ -128,7 +128,7 @@ tags: [auto-layout, placement, routing]
 > **이 값은 세 곳이 공유한다**: `modulePacking` 의 `expandBbox` · `seatRow/seatCol`,
 > `modulePerimeterPass` 의 `perimeterOf`. 어긋나면 예약과 방출이 다른 변을 가리킨다.
 
-이 단계는 **좌표 계획서(`LanePlan`)만 만든다. 셀은 하나도 안 놓는다.**
+이 단계는 **좌표 계획서(`TrackPlan`)만 만든다. 셀은 하나도 안 놓는다.**
 
 ### ③ 방출 — 계획서대로 그린다
 
@@ -139,7 +139,7 @@ tags: [auto-layout, placement, routing]
 1. 점유 셀 지도(occ) + 전역 외곽 사각형(perimeter) 계산
 2. 살아남은 포트를 상자 id 순 정렬            ← 결정적 결과 보장
 3. 포트마다:
-     a. ②의 배정(exitEdge·host·laneX)을 hint 로 넘겨 경로 재생   ← 탐색 없음
+     a. ②의 배정(exitEdge·host·trackX)을 hint 로 넘겨 경로 재생   ← 탐색 없음
      b. 옛 상자 자리(anchor)·옛 feeder 를 "뗄 목록"에 등록
      c. 경로에 belt + feeder 인서터 + 상자를 놓는다
      d. 실패 → 그 상자만 skip
@@ -224,9 +224,9 @@ tags: [auto-layout, placement, routing]
 |---|---|---|
 | ① 계약 | `module/clusterModule.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
 | ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다 |
-| ② 배정 | `planner/perimeterLanePlanner.ts` | `planPerimeterLanes` · `LaneHost` · `LaneAssignment` · `LanePlan` |
-| ② 폭 반영 | `planner/modulePacking.ts` | `planLanes` · `expandBbox` · `reservedExportCells` |
-| ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `laneX` 배정 |
+| ② 배정 | `planner/perimeterTrackPlanner.ts` | `planPerimeterTracks` · `TrackHost` · `TrackAssignment` · `TrackPlan` |
+| ② 폭 반영 | `planner/modulePacking.ts` | `planTracks` · `expandBbox` · `reservedExportCells` |
+| ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
 | ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |
 | 적용 | `planner/moduleWizard.ts` | `droppedCellKeys` · `relocOrigin` 반영 |

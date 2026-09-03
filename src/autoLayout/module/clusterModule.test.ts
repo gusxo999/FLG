@@ -25,7 +25,7 @@ const copperCable: ModuleInput = scaled({
   belts: [{ entityName: "transport-belt", throughput: 15 }],
 });
 
-/** electronic-circuit 류: 입력 2 + 출력 1, 긴팔 보유(용량 4 → 면당 2레인). */
+/** electronic-circuit 류: 입력 2 + 출력 1, 긴팔 보유(용량 4 → 면당 2깊이). */
 const electronicCircuit: ModuleInput = scaled({
   machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
   count: 4,
@@ -121,7 +121,7 @@ describe("generateModule", () => {
     }
   });
 
-  it("electronic-circuit: 입력 2 + 출력 1, 긴팔로 면당 2레인 (용량 4)", () => {
+  it("electronic-circuit: 입력 2 + 출력 1, 긴팔로 면당 2깊이 (용량 4)", () => {
     const mod = generateModule(electronicCircuit);
     render(mod, "electronic-circuit ×4 (용량 4, 긴팔)");
 
@@ -339,11 +339,11 @@ describe("다이렉트 인서팅 — 팔 개수만큼 상자·인서터", () => 
 describe("generateModule — 노출 N/S 완화 (count=1)", () => {
   const ext = (name: string): IoLine => ({ name, kind: "belt", role: "input", external: true });
 
-  // **자원이 레인이 아니라 행이다**(2026-08-17 — 계획서 §14). 옛 답은 `E2 · E3 · N2 · N3` 로,
-  // *"줄 하나가 레인 하나를 통째로 먹는다"* 는 모델이었다. 지금은 벨트가 **자기 좌석 구간만**
+  // **자원이 깊이가 아니라 행이다**(2026-08-17 — 계획서 §14). 옛 답은 `E2 · E3 · N2 · N3` 로,
+  // *"줄 하나가 깊이 하나를 통째로 먹는다"* 는 모델이었다. 지금은 벨트가 **자기 좌석 구간만**
   // 덮으므로 3×3 머신의 E 면 세 행에 줄 셋이 같은 `d2` 로 앉고, 넷째만 노출 N 으로 넘어간다.
   // 그래서 긴팔(`d3`)을 쓸 일이 아예 없다 — 깊이는 고르는 값이 아니라 **자리가 없을 때의 결과**다.
-  it("한 면의 **행**을 나눠 쓴다 — 셋이 같은 레인에 앉고 넷째만 노출 N 으로", () => {
+  it("한 면의 **행**을 나눠 쓴다 — 셋이 같은 깊이에 앉고 넷째만 노출 N 으로", () => {
     // external 입력 4개. E 면 좌석 3행 → 셋이 E2 를 나눠 쓰고, 넷째가 N 으로 넘어간다.
     const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
@@ -359,11 +359,11 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
 
     expect(mod.unroutedLines).toHaveLength(0);
     expect(mod.inputPorts).toHaveLength(4);
-    // 넷이 다 얕은 레인(d2)·일반 팔이다 — 깊은 레인을 쓸 이유가 없었다.
-    const slots = mod.inputPorts.map((p) => `${p.meta.laneDepth}/${p.meta.inserter}`);
+    // 넷이 다 얕은 줄(d2)·일반 팔이다 — 깊은 줄을 쓸 이유가 없었다.
+    const slots = mod.inputPorts.map((p) => `${p.meta.clusterBeltDepth}/${p.meta.inserter}`);
     expect(slots).toEqual(["2/normal", "2/normal", "2/normal", "2/normal"]);
 
-    // 면 교차 충돌 0 — E 레인(세로)과 N 레인(가로)이 코너에서 겹치지 않는다.
+    // 면 교차 충돌 0 — E 깊이(세로)과 N 깊이(가로)이 코너에서 겹치지 않는다.
     const seen = new Set<string>();
     for (const c of mod.cells) {
       const k = `${c.x},${c.y}`;
@@ -379,9 +379,9 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
     expect(north).toHaveLength(1);
   });
 
-  // 옛 답은 `E2 · N2` — *"긴팔이 없으면 면당 레인 1개"* 라 둘째 줄이 곧바로 다른 면으로 갔다.
+  // 옛 답은 `E2 · N2` — *"긴팔이 없으면 면당 깊이 1개"* 라 둘째 줄이 곧바로 다른 면으로 갔다.
   // 행 모델에서는 **팔 길이가 면 용량을 안 정한다**: E 면 3행에 둘 다 앉으므로 노출 N 을 쓸
-  // 일이 없다. 긴팔 유무는 *"얕은 레인이 다 찼을 때 하나 더 열 수 있나"* 만 정한다.
+  // 일이 없다. 긴팔 유무는 *"얕은 줄이 다 찼을 때 하나 더 열 수 있나"* 만 정한다.
   it("긴팔이 없어도 한 면에 두 줄 — 면 용량은 팔 길이가 아니라 **행 수**다", () => {
     const mod = generateModule(scaled({
       machine: { entityName: "assembling-machine-2", w: 3, h: 3 },
@@ -396,7 +396,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
     render(mod, "count=1, 일반만, external 입력 2 (E2 N2)");
 
     expect(mod.unroutedLines).toHaveLength(0);
-    const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.laneDepth}/${p.meta.inserter}`);
+    const slots = mod.inputPorts.map((p) => `${p.meta.side}${p.meta.clusterBeltDepth}/${p.meta.inserter}`);
     expect(slots).toEqual(["E2/normal", "E2/normal"]);
     // 둘 다 머신 옆(E)이다 — 노출 N 으로 넘어간 줄이 없다.
     expect(mod.inputPorts.every((p) => p.anchor.y >= 0)).toBe(true);
@@ -417,7 +417,7 @@ describe("generateModule — 노출 N/S 완화 (count=1)", () => {
     // 옛 답은 `W`(W-spill)였다. E 면 좌석이 3행이라 셋째 원료가 **아직 E 에 앉는다** —
     // 반대 면으로 밀 이유가 생기지 않았다.
     expect(c.meta.side).toBe("E");
-    expect(c.meta.laneDepth).toBe(2);
+    expect(c.meta.clusterBeltDepth).toBe(2);
   });
 });
 
@@ -456,7 +456,7 @@ describe("공급 모델 통합 — 기계별 포트", () => {
 
   it("긴팔 없이 battery 가 선다 — 탭은 깨지고 기계별 포트로 물러난다", () => {
     const mod = generateModule(battery(2));
-    // 탭은 못 선다: 짧은 팔만이면 면당 1레인인데 아이템 줄이 3개다.
+    // 탭은 못 선다: 짧은 팔만이면 면당 1깊이인데 아이템 줄이 3개다.
     // 그래도 **아무 줄도 못 놓은 게 없다** — 예전엔 유체 때문에 통째로 실패했다.
     expect(mod.unroutedLines).toHaveLength(0);
   });

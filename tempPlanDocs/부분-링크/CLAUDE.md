@@ -34,7 +34,7 @@ c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자
 
 - `planner/link/edgeLinks.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle`
 - `planner/modulePacking.ts` 의 간선 루프 — **거기서만** 자식·부모의 좌석표를 둘 다 본다
-- `planner/module/laneBudget.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
+- `planner/module/depthBudget.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
 - `planner/module/linkPlanner.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다)
 
 ## 하지 않는 것

@@ -242,9 +242,9 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       undergroundPipeEntityName: options.undergroundPipeEntityName,
       pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
       seatRows: m.h,
-      // **면당 레인 = 서로 다른 reach 값 개수**([laneSlots]). 예전엔 `longInserter ? 2 : 1` 로
+      // **면당 깊이 = 서로 다른 reach 값 개수**([depthSlots]). 예전엔 `longInserter ? 2 : 1` 로
       // 세어 reach 3종을 골라도 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(`docs/용어사전.md §BuildSpec`).
-      beltLanes: Math.min(
+      beltDepths: Math.min(
         Math.max(1, new Set(options.inserters.map((i) => i.reach)).size),
         recipe.ingredients.filter((i) => i.type !== 'fluid').length +
           recipe.products.filter((p) => p.type !== 'fluid').length,
@@ -361,8 +361,8 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     // 고른 벨트 전부 — determineBeltCount 가 수요를 이 티어들로 나눠 덮는다.
     belts: options.belts,
     inserters: specInserters,
-    // 외부상자 perimeter exit-lane 예약(조각 6-①) — 채널 폭에 lane 세로 구간 합산.
-    reservePerimeterLanes: AUTO_LAYOUT_PERIMETER_PASS,
+    // 외부상자 perimeter 반출 트랙 예약(조각 6-①) — 채널 폭에 트랙 세로 구간 합산.
+    reservePerimeterTracks: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
     channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
     // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeDeliveryRoutes 의
@@ -454,15 +454,15 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     const names = pl.module.unroutedLines.map((l) => `${l.role}:${l.name}`).join(", ");
     // **물음은 하나다: 이 줄이 왜 못 앉았나.** 그 답을 아는 자리에서 읽는다.
     //
-    // 예전엔 `supply.reason`(= *"탭 계획이 왜 깨졌나"*)을 **먼저** 쓰고 [LaneShortage] 는
-    // 보지도 않았다. 두 물음이 다르고, `g` 의 주인이 레인 예산으로 바뀐 뒤로는 둘 사이에
+    // 예전엔 `supply.reason`(= *"탭 계획이 왜 깨졌나"*)을 **먼저** 쓰고 [DepthShortage] 는
+    // 보지도 않았다. 두 물음이 다르고, `g` 의 주인이 깊이 예산으로 바뀐 뒤로는 둘 사이에
     // **인과도 없다** — 탭이 깨진 것과 이 줄이 못 앉은 것은 별개다.
     //
     // 그리고 처방을 **문장에서 읽지 않는다.** `why.includes('demand>beltCap')` 같은 검사는
     // 사유 이름이 비슷하면 조용히 뒤집힌다(2026-08-04 실측: 정확히 반대로 붙어 있었다).
     // 저장소는 같은 교훈을 이미 배웠다 — [LayoutIssue] 가 `RejectReason` 을 흡수하면서
     // *어디가 막혔나* 와 *무엇을 고쳐야 하나* 가 문장에서 필드로 갈렸다. 여기가 마지막이었다.
-    const rungs = pl.module.laneShortages && summarizeRungs(pl.module.laneShortages);
+    const rungs = pl.module.depthShortages && summarizeRungs(pl.module.depthShortages);
     /** 부을 수조차 없던 줄의 처방 — 붓기가 빈 손으로 온 사유([unpourableFix]). */
     const pourFix = [...(pl.module.unpourableFix?.values() ?? [])][0];
     const why = rungs
@@ -475,7 +475,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         // **다른 물음의 답**이라 화면이 없는 원인을 가리켰다.
         : "부고도 못 놓았다 — 방출에서 자리가 없었다";
     // **처방은 사실에서 나온다.** 사다리 기록이 있으면 자리가 모자란 것이고, 그 지렛대는
-    // 언제나 인서터다 — 빠른 팔은 팔 **개수**를 줄여 좌석을 아끼고, 긴팔은 면의 **레인
+    // 언제나 인서터다 — 빠른 팔은 팔 **개수**를 줄여 좌석을 아끼고, 긴팔은 면의 **깊이
     // 개수**(= 서로 다른 reach 수)를 늘린다. 셋 다(좌석·구간·포트) 같은 손잡이로 풀린다.
     const fixStep = rungs ? ("inserter" as const) : pourFix;
     const scope: IssueScope = "모듈";
@@ -611,8 +611,8 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   }
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
-  //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A lanePlan 배정대로 예약된
-  //     lane 안에 결정적 belt(직선 or ㄱ자)를 깔아 전역 외곽으로 옮긴다(탐색 없음). lane 이
+  //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A trackPlan 배정대로 예약된
+  //     트랙 안에 결정적 belt(직선 or ㄱ자)를 깔아 전역 외곽으로 옮긴다(탐색 없음). 트랙이
   //     막히거나 미지원 배정(형제에 막힌 N/S 변→채널)인 상자만 건너뛰어 로컬 ring 에 남기고
   //     트리는 모듈 경로를 유지한다(회귀 0).
   // rePathToPerimeter 는 deliveryRoute 처럼 **순수**하다(pack 미변형) — 무엇을 떼고

@@ -21,8 +21,8 @@ tags: [auto-layout, placement, routing]
 예약의 목적은 "깔기 전에 자리를 잡아 나중에 막히는 일을 없애는 것"이다
 ([.channel-geometry-reservation §1](../channel/channel-geometry-reservation.md)).
 
-그런데 반출 경로 예약([`perimeterLanePlanner`](../../../src/autoLayout/planner/perimeterLanePlanner.ts))은
-상자의 **`meta.side`**(포트 계획기가 배정한 레인 면) 만 보고 출구를 정했다. 모듈 내부는
+그런데 반출 경로 예약([`perimeterTrackPlanner`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts))은
+상자의 **`meta.side`**(포트 계획기가 배정한 깊이 면) 만 보고 출구를 정했다. 모듈 내부는
 안 본다는 원칙(블랙박스) 때문이다. 문제는 **그 방향이 실제로 뚫려 있는지 아무도 확인하지
 않았다**는 것이다.
 
@@ -43,17 +43,17 @@ tags: [auto-layout, placement, routing]
 ```
 
 - copper-cable 상자는 **코너 어깨**에 앉는다(`face=S` 인데 `meta.side=E`). count≥2 기둥에서
-  트렁크가 레인을 따라 자라며 상자가 끝면으로 밀려난 결과다([.ns-face-relief](../module/ns-face-relief.md)).
+  트렁크가 깊이를 따라 자라며 상자가 끝면으로 밀려난 결과다([.ns-face-relief](../module/ns-face-relief.md)).
 - 예약기는 `side=E` 만 보고 **"동쪽 채널로 우회"** 로 배정하고, 채널에 트랙 x=10 을 잡아
   **복도를 한 칸 넓혔다.**
 - 그런데 동쪽으로 가는 가로 진입은 **형제 포트(electronic-circuit)의 세로 트렁크**에 막혀 있다.
-  (자기 트렁크가 아니다 — 같은 레인의 바깥쪽 형제다.)
+  (자기 트렁크가 아니다 — 같은 깊이의 바깥쪽 형제다.)
 - 결과: 방출 단계가 예약을 못 쓰고 **탐색(routeAuto)으로 우회**해 남쪽으로 내보냈고,
   예약된 트랙 x=10 은 **영원히 빈 채** 남아 폭만 낭비됐다.
 
-**핵심 진단:** 정보가 없어서가 아니었다. `planLanes` 가 불리는 시점엔 **모듈들이 이미 생성돼
+**핵심 진단:** 정보가 없어서가 아니었다. `planTracks` 가 불리는 시점엔 **모듈들이 이미 생성돼
 있고**([`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) —
-`planLanes(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
+`planTracks(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
 몰라도 판정할 수 있었다. 예약기가 **일부러 안 보고 있었을 뿐**이다.
 
 ## 2. 결정 — 모듈이 자기 자신에 대해 답한다
@@ -77,7 +77,7 @@ tags: [auto-layout, placement, routing]
 
 ## 3. 출구 선택은 자유도다 — 하나로 못박지 않는다
 
-예약기는 이제 각 상자마다 **쓸 수 있는 출구 후보(`LaneOption[]`)** 를 나열하고
+예약기는 이제 각 상자마다 **쓸 수 있는 출구 후보(`TrackOption[]`)** 를 나열하고
 `options[0]` 을 기본 확정으로 삼는다. 모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
 
 **왜 후보를 남기나 (사용자 지시):** 출구 선택 자체는 어느 걸 골라도 정합성이 안 깨지는
@@ -86,7 +86,7 @@ tags: [auto-layout, placement, routing]
 느슨한 결정은 느슨하게 두고, 제약이 센 쪽이 먼저 고르게 한다(스도쿠 원리 —
 [.priority-ordering](../common/priority-ordering.md)).
 
-`LaneAssignment` 의 평평한 필드(`exitEdge`/`host`/`interval`/`entry`)는 **현재 확정**이고,
+`TrackAssignment` 의 평평한 필드(`exitEdge`/`host`/`interval`/`entry`)는 **현재 확정**이고,
 `options` 가 **남은 자유도**다. 장부가 제약 때문에 다른 후보로 양보시킬 수 있다.
 
 > 현재 상태: 자유도는 **표현·보존**되고 있으나(후보 목록), 장부가 아직 이 목록에서 능동적으로
@@ -130,8 +130,8 @@ advanced-circuit 동형 트리, count 1~8 실측:
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `fillModuleWayOuts` — 전 포트 emit 후(몸통 확정 후) 일괄 계산 |
-| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planLanes` 가 `LanePortInput.wayOuts` 로 전달 |
-| 소비 | [`perimeterLanePlanner.ts`](../../../src/autoLayout/planner/perimeterLanePlanner.ts) | `LaneOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
+| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planTracks` 가 `TrackPortInput.wayOuts` 로 전달 |
+| 소비 | [`perimeterTrackPlanner.ts`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts) | `TrackOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
 ## 7. 함정 (다음 사람에게)

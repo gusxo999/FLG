@@ -11,13 +11,13 @@
  * ```
  * used       "${머신}:${면}" → 수        →  seatsTaken   (d1 열에서 찬 칸의 수)
  * faceGroups 같은 열쇠 → 수              →  groupsOn     (d1 열의 서로 다른 주인 수)
- * lanes      "${면}|${깊이}" → 구간들     →  laneClear    (그 깊이 열에서 찬 행)
+ * lanes      "${면}|${깊이}" → 구간들     →  depthClear    (그 깊이 열에서 찬 행)
  * skipFluidRows(논리 순번 → 실제 행)      →  freeSeatRows (빈 칸을 앞에서부터)
  * ```
  */
 import { describe, it, expect } from "vitest";
 import {
-  claimLane, claimSeats, freeSeatRows, groupsOn, laneClear,
+  claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear,
   makeFaceTable, rowIndex, seatsTaken, takeOwner,
 } from "./faceTable";
 
@@ -108,26 +108,26 @@ describe("FaceTable — 옛 장부와 동치", () => {
     expect(groupsOn(t, 0)).toBe(2);
   });
 
-  it("laneClear ≡ 옛 구간 겹침 판정 — 전수 대조", () => {
+  it("depthClear ≡ 옛 구간 겹침 판정 — 전수 대조", () => {
     // 옛 코드는 구간 목록을 들고 물었고, 표는 칸으로 묻는다. 구간이 곧 그 칸들이라 답이 같다.
     const t = makeFaceTable(4, 3); // 행 0..11
     const taken: [number, number][] = [];
     const put = (lo: number, hi: number) => {
-      claimLane(t, 2, lo, hi, takeOwner(t));
+      claimDepth(t, 2, lo, hi, takeOwner(t));
       taken.push([lo, hi]);
     };
     put(0, 2);
     put(7, 9);
     for (let lo = 0; lo < 12; lo++)
       for (let hi = lo; hi < 12; hi++)
-        expect(laneClear(t, 2, lo, hi), `[${lo},${hi}]`).toBe(!oldOverlaps(taken, lo, hi));
+        expect(depthClear(t, 2, lo, hi), `[${lo},${hi}]`).toBe(!oldOverlaps(taken, lo, hi));
   });
 
-  it("깊이가 다르면 안 다툰다 — 레인 장부의 열쇠가 `면|깊이` 였던 것과 같다", () => {
+  it("깊이가 다르면 안 다툰다 — 깊이 장부의 열쇠가 `면|깊이` 였던 것과 같다", () => {
     const t = makeFaceTable(4, 2);
-    claimLane(t, 2, 0, 7, takeOwner(t)); // d2 를 통째로
-    expect(laneClear(t, 2, 0, 0)).toBe(false);
-    expect(laneClear(t, 3, 0, 7)).toBe(true); // d3 은 그대로 비어 있다
+    claimDepth(t, 2, 0, 7, takeOwner(t)); // d2 를 통째로
+    expect(depthClear(t, 2, 0, 0)).toBe(false);
+    expect(depthClear(t, 3, 0, 7)).toBe(true); // d3 은 그대로 비어 있다
   });
 
   it("행 번호는 `머신 × 칸수 + 칸` — 옛 `mi * machine.h + t` 그대로", () => {

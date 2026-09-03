@@ -104,7 +104,7 @@ export default function ModuleInfoPanel() {
 
 /**
  * 포트 하나의 산출 근거 카드 — 좌표(현재 라우팅 끝점, 그리드) + 생성 시점 결정
- * (planner 슬롯 3축: 면/레인/인서터, 끝 선호, 트렁크 seed 점수). meta 없는 포트
+ * (planner 슬롯 3축: 면/깊이/인서터, 끝 선호, 트렁크 seed 점수). meta 없는 포트
  * (비모듈 폴백 경로)는 좌표만 표시.
  */
 function PortCard({ port }: { port: ModulePortCell }) {
@@ -126,9 +126,9 @@ function PortCard({ port }: { port: ModulePortCell }) {
         <>
           <MiniRow
             k="슬롯 배정"
-            v={`면 ${m.side} · 레인 depth ${m.laneDepth} · ${m.inserter === 'long' ? '긴팔' : '일반'} 인서터`}
+            v={`면 ${m.side} · 깊이 depth ${m.clusterBeltDepth} · ${m.inserter === 'long' ? '긴팔' : '일반'} 인서터`}
           />
-          {m.amount !== undefined && <MiniRow k="운반량" v={`${m.amount}/craft (레인 매칭 수요)`} />}
+          {m.amount !== undefined && <MiniRow k="운반량" v={`${m.amount}/craft (깊이 매칭 수요)`} />}
           <MiniRow
             k="끝 선호"
             v={m.endPreference ? (m.endPreference === 'min' ? 'min (위)' : 'max (아래)') : '없음'}

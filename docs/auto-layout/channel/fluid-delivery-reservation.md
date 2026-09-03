@@ -84,7 +84,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 
 `routeOneFluidDelivery` 의 금지 집합은 `base + deliveryBelts + fluidBlocked` 뿐이다
 ([deliveryRoute.ts:411-415](../../../src/autoLayout/planner/deliveryRoute.ts#L411-L415)).
-아이템 쪽이 쓰는 `reservedExport`(반출 레인)·`reservedDelivery`(다른 납품 경로의 계획 칸)이 빠져 있다.
+아이템 쪽이 쓰는 `reservedExport`(반출 트랙)·`reservedDelivery`(다른 납품 경로의 계획 칸)이 빠져 있다.
 
 ### 1.4 결론 — 손해가 두 번 난다
 

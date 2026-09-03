@@ -132,7 +132,7 @@ tags: [auto-layout, planning, routing]
           → B 는 협상 상대를 만난 적이 없다.  여기가 밀리는 자리
 ```
 
-**계측기가 이미 있는데 죽어 있다.** `perimeterLanePlanner.LaneAssignment.options: LaneOption[]`
+**계측기가 이미 있는데 죽어 있다.** `perimeterTrackPlanner.TrackAssignment.options: TrackOption[]`
 — 주석이 의도까지 적어 뒀다(*"장부가 양보를 요구할 수 있으므로 후보를 남겨 고르게 한다.
 스도쿠: 제약 센 곳부터"*). **읽는 코드가 0곳**이다. `options[0]` 이 박히고 끝난다.
 
@@ -275,7 +275,7 @@ dogleg 로도 안 풀리거나 트랙이 너무 늘면 → 교차 지점을 지�
 넘침 순서   선호 면 → 반대 면 → 유체 면 → gap
 ```
 
-**외부상자 위치를 정하는 규칙 (확인됨 — `planner/perimeter/lanes.ts`)**
+**외부상자 위치를 정하는 규칙 (확인됨 — `planner/perimeter/tracks.ts`)**
 
 ```
 대상        납품으로 **짝 못 지은 포트 전부** (입력=공급 상자 · 출력=sink)

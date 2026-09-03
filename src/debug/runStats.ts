@@ -70,12 +70,12 @@ export interface RowChannelCounters {
 }
 
 /**
- * **면 레인 — 좌석표 배정의 계측기**(`docs/auto-layout/module/module-planning.md §4.5`).
+ * **면 깊이 — 좌석표 배정의 계측기**(`docs/auto-layout/module/module-planning.md §4.5`).
  *
  * 묻는 것은 둘이다. *"결함이 실물에서 발현하나"* 를 **수로** 답한다:
  *
  * ```
- * deepLane / deepLaneOtherArm   둘째 레인이 쓰이나, 그 팔이 얕은 레인과 다른가
+ * deepBelt / deepBeltOtherArm   둘째 깊이가 쓰이나, 그 팔이 얕은 줄과 다른가
  * netTrips                      **경보** — 포트 칸 다툼이 방출까지 갔다(결함 B)
  * ```
  *
@@ -85,25 +85,25 @@ export interface RowChannelCounters {
  *
  * 다른 계수기와 같은 규약 — **관측만 한다.** 계산도 분기도 반환값도 안 바뀐다.
  */
-export interface FaceLaneCounters {
-  /** 옆면(W/E)에 앉은 배정 수 — 아래 셋의 모수. gap(N/S)은 레인 개념이 없어 안 센다. */
+export interface FaceDepthCounters {
+  /** 옆면(W/E)에 앉은 배정 수 — 아래 셋의 모수. gap(N/S)은 깊이 개념이 없어 안 센다. */
   assignments: number;
-  /** 그중 그 면의 **레인 후보가 둘 이상**이던 것 — 조건 ①이 서나. */
-  multiLaneFace: number;
-  /** 그중 **가장 얕은 후보가 아닌** 레인에 앉은 것 — 조건 ②가 서나(계획서의 `B수`). */
-  deepLane: number;
+  /** 그중 그 면의 **깊이 후보가 둘 이상**이던 것 — 조건 ①이 서나. */
+  multiDepthFace: number;
+  /** 그중 **가장 얕은 후보가 아닌** 깊이에 앉은 것 — 조건 ②가 서나(계획서의 `B수`). */
+  deepBelt: number;
   /**
-   * `deepLane` 중 그 레인의 팔 처리량이 가장 얕은 레인과 **다른** 것.
+   * `deepBelt` 중 그 깊이의 팔 처리량이 가장 얕은 줄과 **다른** 것.
    *
-   * **뜻이 Step 2 에서 뒤집혔다.** 예전엔 이 수가 곧 결함 A 였다 — 팔 개수를 얕은 레인
-   * 기준으로 세 놓고 깊은 레인의 느린 팔을 앉혔으니, 갈리는 만큼 그 줄이 굶었다.
-   * 지금은 [armsAt] 이 **그 레인의 팔로 개수를 다시 세므로** 갈려도 맞는 값이고,
+   * **뜻이 Step 2 에서 뒤집혔다.** 예전엔 이 수가 곧 결함 A 였다 — 팔 개수를 얕은 줄
+   * 기준으로 세 놓고 깊은 줄의 느린 팔을 앉혔으니, 갈리는 만큼 그 줄이 굶었다.
+   * 지금은 [armsAt] 이 **그 깊이의 팔로 개수를 다시 세므로** 갈려도 맞는 값이고,
    * 이 수는 *"긴팔이 실제로 값을 하고 있다"* 는 관측치다.
    *
    * 결함 A 는 이제 **구성상 발생할 수 없다**(세는 곳과 앉는 곳이 같은 인서터를 본다).
    * 그래서 이 수를 경보로 읽지 않는다 — 경보는 [netTrips] 하나다.
    */
-  deepLaneOtherArm: number;
+  deepBeltOtherArm: number;
   /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
   netTrips: number;
   /**
@@ -115,17 +115,17 @@ export interface FaceLaneCounters {
    */
   splits: number;
   /**
-   * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`LaneShortage`).
+   * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`DepthShortage`).
    *
-   * *"레인 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
+   * *"깊이 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
    * (`docs/auto-layout/module/trunk-assignment.md` §2 — *못을 피해서*). 사다리가 아직 없으므로
    * 지금은 **관측뿐**이다.
    */
   shortages: ReadonlyArray<string>;
 }
 
-const freshFaceLanes = (): FaceLaneCounters => ({
-  assignments: 0, multiLaneFace: 0, deepLane: 0, deepLaneOtherArm: 0, netTrips: 0, splits: 0,
+const freshFaceDepths = (): FaceDepthCounters => ({
+  assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
   shortages: [],
 });
 
@@ -148,15 +148,15 @@ export interface RunStats {
   /** 행 채널 띠. 패킹까지 갔으면 채워진다. */
   rowChannels: RowChannelCounters | null;
   /**
-   * 면 레인. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이기 때문이다
-   * (*"둘째 레인이 한 번도 안 쓰였다"* 는 결함 A 가 도달 불가라는 뜻이다).
+   * 면 깊이. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이기 때문이다
+   * (*"둘째 깊이가 한 번도 안 쓰였다"* 는 결함 A 가 도달 불가라는 뜻이다).
    */
-  faceLanes: FaceLaneCounters;
+  faceDepths: FaceDepthCounters;
 }
 
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
-  faceLanes: freshFaceLanes(),
+  faceDepths: freshFaceDepths(),
 });
 
 let current: RunStats = fresh();
@@ -188,24 +188,24 @@ export function recordBeltFormStats(c: BeltFormCounters): void {
 }
 
 /**
- * 면 레인 계수기를 **누적**한다 — 배정마다·안전망 발동마다 한 번. 준 항목만 더한다.
+ * 면 깊이 계수기를 **누적**한다 — 배정마다·안전망 발동마다 한 번. 준 항목만 더한다.
  * (배선 형태와 달리 낟알이 잘아서 `Partial` 을 받는다 — 방출은 `netTrips` 만 안다.)
  */
-export function recordFaceLaneStats(c: Partial<FaceLaneCounters>): void {
-  const cur = current.faceLanes;
-  for (const k of ["assignments", "multiLaneFace", "deepLane", "deepLaneOtherArm", "netTrips"] as const)
+export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
+  const cur = current.faceDepths;
+  for (const k of ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips"] as const)
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);
 }
 
 /**
- * 면 레인 계수기만 비운다 — [resetBeltFormStats] 와 **같은 이유·같은 자리**다.
+ * 면 깊이 계수기만 비운다 — [resetBeltFormStats] 와 **같은 이유·같은 자리**다.
  * `packModuleTree` 의 1차(끝 선호 측정용) 모듈은 실제로 안 깔리므로 그것이 센 배정과
  * 안전망 발동은 버려야 한다. 안 버리면 모든 수가 두 배로 보인다.
  */
-export function resetFaceLaneStats(): void {
-  current.faceLanes = freshFaceLanes();
+export function resetFaceDepthStats(): void {
+  current.faceDepths = freshFaceDepths();
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
@@ -232,6 +232,6 @@ export function readRunStats(): RunStats {
           needs: [...current.rowChannels.needs],
         }
       : null,
-    faceLanes: { ...current.faceLanes, shortages: [...current.faceLanes.shortages] },
+    faceDepths: { ...current.faceDepths, shortages: [...current.faceDepths.shortages] },
   };
 }

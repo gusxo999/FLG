@@ -246,15 +246,15 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 | 통합 장부 | `channelGeometryPlanner.ts` (신규) | 납품·반출을 한 장부에서 배정. 같은 쪽 판정 → 해소 사다리(①진출 변 뒤집기 ②지하 횡단 — 세로/가로 두 변형 ③fallback 마킹). 지상 배정은 반복 심화 백트래킹(폭 최소 우선, 결정적), 실패 시 탐욕+열 갈아타기. fallback 경로도 폭은 phantom 트랙으로 예약 |
 | 장부 호출·폭 역전 | `modulePacking.ts` | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로·N/S 우회 반출)은 폭만 예약 |
 | 납품 경로 좌표 방출 | `deliveryRoute.ts` | 계획 납품 경로는 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 납품 경로) 침범 금지** |
-| 반출 경로 재생 | `perimeterLanePlanner.ts` / `perimeterRouter.ts` / `modulePerimeterPass.ts` | `LaneAssignment.entry`(진입 벽)·`laneX`(확정 트랙 x) 추가. ⑥C 는 `laneX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). self/margin 직선 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
+| 반출 경로 재생 | `perimeterTrackPlanner.ts` / `perimeterRouter.ts` / `modulePerimeterPass.ts` | `TrackAssignment.entry`(진입 벽)·`trackX`(확정 트랙 x) 추가. ⑥C 는 `trackX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). self/margin 직선 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
 
 미지원(폭만 예약, 기존 경로 유지): 스필로 채널을 정면으로 안 건너는 납품 경로(planner 면 개선이
 근본 치료).
 
 > **갱신(2026-07-11) — N/S 변 포트의 채널 우회 반출 해결.** 이 경로는 사실 장부가 이미
 > 계획하고 있었다(코너 어깨 상자는 face 가 N/S여도 `meta.side`=E/W 라 exportRoute 로
-> 정상 배정 + laneX·예약셀 생성). 유일한 구멍은 방출기가 `port.face` 로 진입 방향을 정하다
-> fv.x=0 에서 거부한 것뿐 — laneX 로 구동하게 바꿔 elbow 를 그대로 재생한다. 예약된 채널
+> 정상 배정 + trackX·예약셀 생성). 유일한 구멍은 방출기가 `port.face` 로 진입 방향을 정하다
+> fv.x=0 에서 거부한 것뿐 — trackX 로 구동하게 바꿔 elbow 를 그대로 재생한다. 예약된 채널
 > 트랙이 상자 자신의 트렁크를 관통하는 드문 케이스(copper-cable)는 ⑥C 가 occ 기반 auto
 > 탐색으로 폴백해 뚫린 face 로 내보낸다(dijkstra 최후폴백과 대칭). 상세: [.ns-face-relief §5](../module/ns-face-relief.md).
 
@@ -263,7 +263,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 | 문서 용어 | 현 코드 | 개명 목표 |
 |---|---|---|
 | 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan` | `deliveryRoute` |
-| 반출 경로 | lane (`perimeterLanePlanner.ts`) / 신규 `ExportInput`·`ExportPlan` | `exportRoute` |
+| 반출 경로 | lane (`perimeterTrackPlanner.ts`) / 신규 `ExportInput`·`ExportPlan` | `exportRoute` |
 | 절단선 | (개념 — sameSideOfCut 내부) | `cut` / `cutLine` |
 | 같은 쪽 판정 | `sameSideOfCut` ✓ | `sameSideOfCut` |
 | 열 갈아타기 | `columnSwitch` ✓ (`tryColumnSwitch`) | `columnSwitch` |
@@ -276,7 +276,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 ## 9. 검증 계획 · 결과 (2026-07-09)
 
 1. **골든 스냅샷** — `modulePipeline.golden.test.ts` 의 구현 전 스냅샷 대비, 의도된 diff 만 확인:
-   **relocated 5→7, skipped 2→0, reason null** — 옛 skip 2건(kr-glass "no free lane track",
+   **relocated 5→7, skipped 2→0, reason null** — 옛 skip 2건(kr-glass "no free track"— 당시 문자열은 "no free lane track",
    n0 출력 "straight blocked to W") 모두 전역 외곽 도달. hopFailures 0 유지.
 2. **불변식 테스트** — `channelGeometryPlanner.test.ts` (15 케이스): (a) 납품 경로 belt 와 모듈
    셀(strip 제외)·다른 납품 경로의 셀 서로소, (b) 지상 계획 납품 경로는 corridor 0(판정-일치), (c) 결정성

@@ -11,14 +11,14 @@
  * ```
  */
 import { describe, it, expect } from "vitest";
-import { rungOfLine, summarizeRungs, type LaneShortage } from "./linkPlanner";
+import { rungOfLine, summarizeRungs, type DepthShortage } from "./linkPlanner";
 
 /** 머신 90대가 각자 **칸 1** 을 쓴다 — 실측(electronic-circuit)의 `stone-tablet` 이 이 꼴이다. */
 const seatRows = Array.from({ length: 90 }, (_, mi) => mi * 3 + 1);
 const belt = Array.from({ length: 268 }, (_, i) => i + 1);
 
-const at = (w: Partial<LaneShortage>): LaneShortage =>
-  ({ face: "W", laneDepth: 3, ...w });
+const at = (w: Partial<DepthShortage>): DepthShortage =>
+  ({ face: "W", clusterBeltDepth: 3, ...w });
 
 describe("rungOfLine — 이 실패는 어느 칸의 몫인가", () => {
   it("막힌 칸이 **점**이면 `span-blocked` — 1단이 맡는다 (실측 d3: 못 90·180)", () => {
@@ -26,7 +26,7 @@ describe("rungOfLine — 이 실패는 어느 칸의 몫인가", () => {
   });
 
   it("막힌 칸이 **구간**이면 `seat-blocked` — 2·3단의 몫이다 (실측 d2: 남의 벨트)", () => {
-    expect(rungOfLine([at({ laneDepth: 2, seatRows, blockedRows: belt })])).toBe("seat-blocked");
+    expect(rungOfLine([at({ clusterBeltDepth: 2, seatRows, blockedRows: belt })])).toBe("seat-blocked");
   });
 
   it("좌석 예산이 모자라면 `seat-budget` — 자를 것이 있고 없고의 문제가 아니다", () => {
@@ -39,8 +39,8 @@ describe("rungOfLine — 이 실패는 어느 칸의 몫인가", () => {
 
   it("후보가 갈리면 **가장 싼 칸**이 맡는다 — 하나라도 쪼개지면 1단의 일이다", () => {
     expect(rungOfLine([
-      at({ laneDepth: 2, seatRows, blockedRows: belt }),   // seat-blocked
-      at({ laneDepth: 3, seatRows, blockedRows: [90] }),   // span-blocked
+      at({ clusterBeltDepth: 2, seatRows, blockedRows: belt }),   // seat-blocked
+      at({ clusterBeltDepth: 3, seatRows, blockedRows: [90] }),   // span-blocked
     ])).toBe("span-blocked");
   });
 
@@ -51,9 +51,9 @@ describe("rungOfLine — 이 실패는 어느 칸의 몫인가", () => {
 
 describe("summarizeRungs — 모듈 한 개의 경계를 한 문장으로", () => {
   it("**교착별로** 세고, 풀 수 있는 것부터 적는다(화면 말로)", () => {
-    const m = new Map<string, LaneShortage[]>([
-      ["a→b:x#0", [at({ laneDepth: 2, seatRows, blockedRows: belt })]],
-      ["a→b:y#0", [at({ laneDepth: 2, seatRows, blockedRows: belt })]],
+    const m = new Map<string, DepthShortage[]>([
+      ["a→b:x#0", [at({ clusterBeltDepth: 2, seatRows, blockedRows: belt })]],
+      ["a→b:y#0", [at({ clusterBeltDepth: 2, seatRows, blockedRows: belt })]],
       ["a→b:z#0", [at({ seatRows, blockedRows: [90, 180] })]],
     ]);
     expect(summarizeRungs(m)).toBe("구간막힘 1 · 좌석막힘 2");

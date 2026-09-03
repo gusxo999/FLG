@@ -82,7 +82,7 @@ const packCfg: PackConfig = {
   beltEntityName: "transport-belt",
   belts: [{ entityName: "transport-belt", throughput: 20 }],
   channelGeometry: true,
-  reservePerimeterLanes: true,
+  reservePerimeterTracks: true,
   beltMaxUndergroundDistance: 4,
 };
 

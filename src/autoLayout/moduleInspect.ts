@@ -89,7 +89,7 @@ export interface ModuleInfo {
   /**
    * 모듈 영역의 외접 사각형 — 그리드 좌표(칸 단위).
    * 머신 footprint ∪ 포트 셀의 합집합. 포트(tapAnchor/링 anchor)는 머신 옆
-   * 레인·링 위에 있으므로 머신 bbox 만으로는 포트가 테두리 밖으로 나간다 —
+   * 깊이·링 위에 있으므로 머신 bbox 만으로는 포트가 테두리 밖으로 나간다 —
    * 합집합이 곧 "포트를 포함하는 모듈 경계". (모듈 상자는 ⑥C 재배치로 외곽까지
    * 이동할 수 있어 의도적으로 제외 — 포함하면 테두리가 레이아웃 외곽까지 부푼다.)
    */
@@ -151,7 +151,7 @@ export function collectModules(src: ModuleSource | null): ModuleInfo[] {
   }
 
   // 포트 셀: 라우팅의 머신 쪽 끝점. 머신이 소비자(to)면 입력, 생산자(from)면 출력.
-  // 포트는 레인/링 위 셀이므로 bbox 도 함께 확장 — 포트는 항상 테두리 안(구성적 보장).
+  // 포트는 깊이/링 위 셀이므로 bbox 도 함께 확장 — 포트는 항상 테두리 안(구성적 보장).
   const addPort = (
     key: string,
     cell: { x: number; y: number },

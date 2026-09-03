@@ -115,6 +115,7 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 | 문서 | 주제 |
 |------|------|
 | [pipe-semantics](factorio/pipe-semantics.md) | **파이프의 작동 방식 — 벨트와 항목별 대조**(방향 없음·처리량 무한·합류 가드) |
+| [belt-lane-semantics](factorio/belt-lane-semantics.md) | **벨트의 좌/우 두 레인** — 45/s = 22.5 + 22.5 · 사이드로드가 레인을 접는다 · **곡선은 「유입 하나」의 이름** |
 | [fluid-box-semantics](factorio/fluid-box-semantics.md) | `production_type` vs `flow_direction`, 상자의 **면**과 **받는 유체 이름** |
 | [map-position-parsing](factorio/map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태와 3중 방어 정규화 |
 | [direction-encoding](factorio/direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향으로 통일 (1.x ×2 업그레이드) |

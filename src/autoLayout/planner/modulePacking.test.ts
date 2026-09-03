@@ -127,14 +127,14 @@ describe("packModuleTree", () => {
     expect(sig(b)).toEqual(sig(a));
   });
 
-  it("exit-lane 예약(조각 6-①) — lanePlan 항상 emit, reserve 시 bbox 마진 프레임 확장", () => {
+  it("반출 트랙 예약(조각 6-①) — trackPlan 항상 emit, reserve 시 bbox 마진 프레임 확장", () => {
     const off = packModuleTree(specs, config);
-    const on = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
+    const on = packModuleTree(specs, { ...config, reservePerimeterTracks: true });
 
-    // lanePlan 은 off 경로에서도 계산돼 실린다(②③ 소비용). 살아남은 상자마다 배정 1개.
+    // trackPlan 은 off 경로에서도 계산돼 실린다(②③ 소비용). 살아남은 상자마다 배정 1개.
     // rawPorts 가 **루트 출력까지 포함**하므로(짝 없는 포트 전부) 여기 +1 은 없다.
-    expect(off.lanePlan.assignments.length).toBeGreaterThan(0);
-    expect(off.lanePlan.assignments).toHaveLength(off.rawPorts.length);
+    expect(off.trackPlan.assignments.length).toBeGreaterThan(0);
+    expect(off.trackPlan.assignments).toHaveLength(off.rawPorts.length);
 
     // off 는 배치/ bbox 무변(게이트 off → 현행 유지).
     expect(off.bbox).toEqual(unionOf(off));
@@ -142,7 +142,7 @@ describe("packModuleTree", () => {
     // reserve 시 marginNeeds 만큼 bbox 프레임이 정확히 넓어진다.
     // 한 변당 [PERIMETER_MARGIN] 칸 — 벨트 1칸 + 인서터 1칸. 상자 자리 인서터는 머신을
     // 먹이는 상주 인서터라 벨트로 재사용할 수 없어서 2다(옛 트렁크 시절엔 1이었다).
-    const m = on.lanePlan.marginNeeds;
+    const m = on.trackPlan.marginNeeds;
     const g = PERIMETER_MARGIN;
     const u = unionOf(on); // 마진 제외 모듈 union
     expect(on.bbox.x).toBe(u.x - (m.W ? g : 0));
@@ -154,7 +154,7 @@ describe("packModuleTree", () => {
   it("포트 tapAnchor(⑥B) — machine 끝점 = anchor−2·faceVector, anchor 와 겹치지 않음", () => {
     // machine-side Routing 끝점으로 anchor(=chest 자리)를 쓰면 chest 끝점과 겹쳐
     // from==to 가 된다. tapAnchor 가 항상 anchor 에서 2칸 안쪽(≠anchor)이어야 한다.
-    for (const res of [packModuleTree(specs, config), packModuleTree(specs, { ...config, reservePerimeterLanes: true })])
+    for (const res of [packModuleTree(specs, config), packModuleTree(specs, { ...config, reservePerimeterTracks: true })])
       for (const pl of res.placements)
         for (const p of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
           const fv = faceVector(p.face);

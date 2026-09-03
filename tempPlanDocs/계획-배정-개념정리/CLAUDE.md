@@ -29,7 +29,7 @@
 - `docs/auto-layout/module/module-planning.md` §4.5(면 좌석표) · §4.6(포트 위치) ·
   **§5(남는 비대칭 — 장부 낟알이 다르다)**
 - 코드 — **머리말 주석이 설계 의도의 단일 출처다.** 본문보다 먼저 읽는다
-  - 처방 1: `planner/channelPlanner.ts` · `planner/perimeterLanePlanner.ts`
+  - 처방 1: `planner/channelPlanner.ts` · `planner/perimeterTrackPlanner.ts`
   - 처방 2: `planner/channelGeometryPlanner.ts` (폭 역전)
   - 처방 3: `planner/rowChannelPlanner.ts` (순환 · 축 가르기 · 두 패스)
   - 처방 없음: `planner/module/planModulePorts.ts` · `module/link.ts`
@@ -50,10 +50,10 @@
 
 | 전제 | 확인 방법 | 확인일 |
 |---|---|---|
-| 채널·반출은 **폭까지만** 세고 트랙 index 는 라우터가 정한다 | `channelPlanner` · `perimeterLanePlanner` 머리말 | 2026-09-01 ✔ |
+| 채널·반출은 **폭까지만** 세고 트랙 index 는 라우터가 정한다 | `channelPlanner` · `perimeterTrackPlanner` 머리말 | 2026-09-01 ✔ |
 | 채널 기하는 **배정을 먼저 하고 폭을 결과로** 낸다(폭 역전) | `channelGeometryPlanner` 머리말 §6 | 2026-09-01 ✔ |
 | 행 채널은 **순환**을 알고 두 패스로 끊기로 적어 뒀다 | `rowChannelPlanner` 머리말 | 2026-09-01 ✔ |
-| 벨트는 **자기 좌석 구간만** 덮고 끝에서 꺾는다 → 행이 안 겹치면 레인 공유 | `LinkFacePlan.laneDepth` 머리말 · `laneClear` | 2026-09-01 ✔ |
+| 벨트는 **자기 좌석 구간만** 덮고 끝에서 꺾는다 → 행이 안 겹치면 레인 공유 | `LinkFacePlan.clusterBeltDepth` 머리말 · `depthClear` | 2026-09-01 ✔ |
 | 팔 수는 `g` 와 **무관**하다 | `armsFromCarries` | 2026-08-31 ✔ |
 | `PlannedLine[]`(지도 A 의 산출)은 **아무도 안 읽는다** | `rest: { ok:true, lines: [] }` | 2026-08-30 ✔ |
 | gap 은 `g = 1` 만 받는다 | `tryLinkFace` 의 `machinesOn !== 1` | 2026-08-30 ✔ |

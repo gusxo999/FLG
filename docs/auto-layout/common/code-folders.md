@@ -69,7 +69,7 @@ tags: [auto-layout, placement, routing]
 > ## 차이가 **값**이면 데이터. 차이가 **먹는 자원의 종류**이면 분기.
 
 - *저쪽 끝*이 접힌 이유: 상대가 안이든 밖이든 **이 모듈이 하는 일이 똑같다** — 면에 팔 k개를 앉히고 벨트 한 줄을 뽑는다. 먹는 자원(좌석 k칸)도 절차도 같다.
-- *이쪽 끝*이 안 접힌 이유: 1대짜리 벨트는 **좌석 하나**만 다투는데(자기 구간만 덮고 꺾는다), N대짜리는 **좌석 + 레인**을 다툰다(면을 따라 끝까지 달린다). **자원의 가짓수가 다르다.**
+- *이쪽 끝*이 안 접힌 이유: 1대짜리 벨트는 **좌석 하나**만 다투는데(자기 구간만 덮고 꺾는다), N대짜리는 **좌석 + 깊이**을 다툰다(면을 따라 끝까지 달린다). **자원의 가짓수가 다르다.**
 
 ### 새 축이 들어올 때 — 세 질문
 
@@ -105,19 +105,19 @@ autoLayout/
 │   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
 │   │   ├ ioLine.ts                줄의 낱말(IoLine·PlannedLine·SupplyCapacity)
 │   │   ├ allocateArms.ts          팔 산술(requiredInserterCount·allocateArms)
-│   │   ├ laneBudget.ts            레인 예산 — 줄마다 `g` 를 정한다
+│   │   ├ depthBudget.ts            깊이 예산 — 줄마다 `g` 를 정한다
 │   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
 │   ├ link/                      모듈과 모듈을 잇는 일
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
-│   │   └ lanes.ts                 반출 예약의 입력 준비 (프레임 확장 · 대상 포트 수집)
+│   │   └ tracks.ts                반출 예약의 입력 준비 (프레임 확장 · 대상 포트 수집)
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점
 │   ├ modulePacking.ts             조율자 — 모듈 배열 + 위 관심사들을 순서대로 엮는다
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
-│   ├ perimeterLanePlanner.ts      반출 출구 배정
+│   ├ perimeterTrackPlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
 │   ├ deliveryRoute.ts                 자식 출력 → 부모 입력 잇기
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)

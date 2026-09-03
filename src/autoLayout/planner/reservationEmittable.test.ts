@@ -3,7 +3,7 @@
  *
  * 채널 기하 예약의 철학(docs/auto-layout-wizard.channel-geometry-reservation.md §1):
  * "충돌은 계획 시점에 전부 보이고, 해소도 계획 시점에 끝난다 — 탐색은 최후 폴백."
- * 예전엔 planPerimeterLanes 가 `meta.side` 만 보고 배정해서, 코너 어깨 상자처럼 그 방향이
+ * 예전엔 planPerimeterTracks 가 `meta.side` 만 보고 배정해서, 코너 어깨 상자처럼 그 방향이
  * **형제 트렁크에 막힌** 경우에도 못 쓰는 채널 우회를 예약했다. 그래서 방출 단계가 탐색
  * (routeAuto)으로 우회해야 했고 — 예약한 채널 트랙은 아무도 안 써서 **폭만 낭비**됐다.
  *
@@ -36,7 +36,7 @@ const config: PackConfig = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  reservePerimeterLanes: true,
+  reservePerimeterTracks: true,
   channelGeometry: true,
   beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
@@ -76,7 +76,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
         maxX = Math.max(maxX, e.x + e.w - 1); maxY = Math.max(maxY, e.y + e.h - 1);
       }
       const perimeter = { minX: minX - 1, minY: minY - 1, maxX: maxX + 1, maxY: maxY + 1 };
-      const asg = new Map(pack.lanePlan.assignments.map((a) => [a.id, a]));
+      const asg = new Map(pack.trackPlan.assignments.map((a) => [a.id, a]));
 
       for (const pl of pack.placements)
         for (const p of [...pl.module.inputPorts, ...pl.module.outputPorts]) {
@@ -93,7 +93,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
             face: p.face,
             perimeter,
             obstacles: occ,
-            hint: { exitEdge: a!.exitEdge, host: a!.host, laneX: a!.laneX },
+            hint: { exitEdge: a!.exitEdge, host: a!.host, trackX: a!.trackX },
           });
           expect(r.ok, `${p.chest.id}: 예약이 방출 불가 — ${r.ok ? "" : r.reason}`).toBe(true);
         }
@@ -105,7 +105,7 @@ describe("예약 불변식 — 탐색 없이 방출 가능", () => {
     // 옛 코드는 그래도 채널 트랙을 예약해 폭만 먹었다. 이제는 채널을 예약한 상자가
     // **정말로 채널로 나가는 상자뿐**이어야 한다.
     const pack = packModuleTree(mk(4, 4, 2), config);
-    for (const a of pack.lanePlan.assignments) {
+    for (const a of pack.trackPlan.assignments) {
       if (a.host.kind !== "channel") continue;
       // 채널을 예약했다면, 그 채널로 들어가는 진출 방향(W/E)이 실제로 뚫려 있어야 한다.
       const port = pack.placements

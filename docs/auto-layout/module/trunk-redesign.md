@@ -15,12 +15,12 @@ tags: [auto-layout, placement, routing]
 > (2026-08-16 · 2026-09-02) — 그 일을 지금 하는 것은 다음 셋이다:
 >
 > ```
-> 줄마다 몇 대를 맡나   planner/module/laneBudget.planBundles   ← 레인 예산
-> 어느 면·어느 레인에   planner/module/linkPlanner             ← 링크와 같은 배분기
+> 줄마다 몇 대를 맡나   planner/module/depthBudget.planBundles   ← 깊이 예산
+> 어느 면·어느 깊이에   planner/module/linkPlanner             ← 링크와 같은 배분기
 > 무엇을 놓나           execution/module/emitOutputLinks · emitInputLinks
 > ```
 >
-> **상태(2026-08-05): §10 확정 설계는 구현됐다.** "경계 마샬"(면·레인 배정이 닻 →
+> **상태(2026-08-05): §10 확정 설계는 구현됐다.** "경계 마샬"(면·깊이 배정이 닻 →
 > 트렁크가 그 면을 훑는다 → 납품 경로가 잇는다)은 그 시절
 > `clusterPortPlanner.insertingPlanner` + `emitTapInserting` + `deliveryRoute` 로 돌아갔다.
 >
@@ -49,7 +49,7 @@ tags: [auto-layout, placement, routing]
 > **해소됨(2026-08-05).** 진단 대상이던 코드는 둘 다 없다: 씨앗 그리디 본체
 > (`trunkPath` · `trunkEmit`)는 삭제됐고, "뒤 줄이 앞 줄을 피한다"던 누적 occupancy 는
 > [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) 에서 **슬롯을 먼저
-> 못박은 뒤 같은 면 두 레인의 좌석이 겹치지 않게 하는** 검사로 바뀌었다. 아래는 전환의
+> 못박은 뒤 같은 면 두 깊이의 좌석이 겹치지 않게 하는** 검사로 바뀌었다. 아래는 전환의
 > 근거 기록이다.
 
 ### 그 결과 (실측)
@@ -164,7 +164,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 ```
 
 트렁크 = 머신 옆 **세로 벨트 기둥**. 상자는 그 기둥 **끝(N/S)** 에 달린다.
-면당 **3칸**(인서터 열 + 가까운 레인 + 먼 레인). 용량 = 면당 레인 2 × 2면 = **4줄**.
+면당 **3칸**(인서터 열 + 가까운 깊이 + 먼 깊이). 용량 = 면당 깊이 2 × 2면 = **4줄**.
 
 ### 1:1 — 벨트가 아예 없다
 
@@ -243,9 +243,9 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
     인서터로 나눠 집음) / **[[용어사전#기계별 포트 (구 "다이렉트 인서팅")|기계별 포트]]**
     (머신마다 자기 포트 — 옛 이름 "다이렉트 인서팅").
   - (2026-07-12) 판정 함수 = **[insertingPlanner](../../용어사전.md#insertingplanner)**, 결과 타입 =
-    **[InsertingDecisionResult](../../용어사전.md#insertingdecisionresult)**. "레인 개수 검사"는
+    **[InsertingDecisionResult](../../용어사전.md#insertingdecisionresult)**. "깊이 개수 검사"는
     별도 이름을 붙이지 않는다 — [간단한 레시피](../../용어사전.md#간단한-레시피) 판별이 곧 그 검사다
-    (§10.3 참고, 사용자가 직접 지적: "레인 갯수 검사는 존재해서는 안 된다"). 벨트·인서터
+    (§10.3 참고, 사용자가 직접 지적: "깊이 갯수 검사는 존재해서는 안 된다"). 벨트·인서터
     처리량 검사 = **[determineBeltCount](../../용어사전.md#determinebeltcount)**.
     (옛 [머지 그룹핑 게이트](../../용어사전.md#머지-그룹핑-게이트)는 **다른 코드 경로**였고
     재사용하지 않았다 — 혼동 정정. 그 경로는 이후 코드에서 삭제됐다.)
@@ -260,9 +260,9 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 > §1~8 은 원칙(전환 당시 기록)이고, 이 절은 그 원칙을 **구현 가능한 수준**으로 확정한 것이다.
 > 세 갈림길은 사용자가 결정했다(§10.4).
 
-### 10.1 닻 — 면·레인 배정이 모든 것을 유도한다
+### 10.1 닻 — 면·깊이 배정이 모든 것을 유도한다
 
-가장 제약 센 결정 = **어느 품목 줄이 어느 면의 어느 레인을 갖는가.** 이게 정해지면
+가장 제약 센 결정 = **어느 품목 줄이 어느 면의 어느 깊이를 갖는가.** 이게 정해지면
 벨트 구간(머신 기둥의 행 범위), 포트 위치(벨트 끝), 납품 경로 수(품목당 1), 채널 폭(O(품목))이
 전부 유도된다. 배정기는 그때 `clusterPortPlanner` 의 [탭 인서팅](../../용어사전.md#탭-인서팅-tap-inserting)
 모델이었다(2026-08-05 rim 모드 삭제로 유일한 모델이 됐다). **2026-09-02 그 배정기도 삭제됐고**,
@@ -279,16 +279,16 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
  y=3    B   I  M  M  M  I  B
  y=4    B   .  M  M  M  .  B      머신당 인서터 1개(그 머신의 행 3개 중 하나)
  y=5    B   I  M  M  M  I  B↓
-       포트↑              포트↑   (count=2, 3×3 머신, near 레인만 쓴 경우)
+       포트↑              포트↑   (count=2, 3×3 머신, near 깊이만 쓴 경우)
 ```
 
 - **면은 고정이 아니다** — 출력이 앉는 면은 `PortPlannerInput.outputSide` 가 정하고 입력은
   그 반대 면이다(위 그림은 `outputSide="W"` 인 경우).
-- **폭이 1:1 과 같다** — 면당 2칸(인서터+벨트 vs 인서터+상자). far 레인(긴팔)을 쓰면 3칸.
+- **폭이 1:1 과 같다** — 면당 2칸(인서터+벨트 vs 인서터+상자). far 깊이(긴팔)을 쓰면 3칸.
 - 벨트가 기둥 전체를 **직선**으로 지나므로 옛 트렁크의 [untapped](../../용어사전.md#untapped)
   (둘러싸여 탭 불가)는 **구성상 발생 불가** — 모든 머신의 행이 벨트와 접한다.
-- 면당 레인 수 = 인서터 종류 수(탭 인서팅의 정의): normal=near(depth 2), long=far(depth 3).
-  모듈 용량 = W/E 2면 × 레인 수. 긴팔 포함 시 4줄 — advanced-circuit(입력 3+출력 1)이 정확히
+- 면당 깊이 수 = 인서터 종류 수(탭 인서팅의 정의): normal=near(depth 2), long=far(depth 3).
+  모듈 용량 = W/E 2면 × 깊이 수. 긴팔 포함 시 4줄 — advanced-circuit(입력 3+출력 1)이 정확히
   들어간다. **2면 전제는 그 뒤 완화됐다** — 노출 끝면(N/S)도 external 입력을 받는다([[ns-face-relief]]).
 
 ### 10.3 파이프라인 — §4 의 순서를 코드에 매핑
@@ -296,18 +296,18 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 | §4 단계 | 내용 | 코드 |
 |---|---|---|
 | ① 규범 경로 | (머신,품목)→면·행 슬롯 — 현행 1:1 유지 | `planModulePorts` 의 기계별 포트 배분(`restLinks`) |
-| ② 병합 판정 | 간단한 레시피인가(=레인 자리 있나)? `determineBeltCount` OK? 안 되면 **거절** | `insertingPlanner`(✅ 구현) |
+| ② 병합 판정 | 간단한 레시피인가(=깊이 자리 있나)? `determineBeltCount` OK? 안 되면 **거절** | `insertingPlanner`(✅ 구현) |
 | ③ 폭 확정 | 병합 결과의 트랙 수로 채널 폭 유도 | `modulePacking` 폭 역전(기존) |
 | ④ emit | **직선 벨트 + 머신당 인서터 — 탐색 없음** | `clusterModule` 새 방출 분기 |
 
-> **② 판정 순서 정정(2026-07-12):** "레인 관문 → 용량 관문" 두 개의 대등한 관문으로 처음
-> 짰다가 사용자가 바로잡았다 — 레인 자리 검사는 **독립된 검사가 아니라**, "이 레시피가
+> **② 판정 순서 정정(2026-07-12):** "깊이 관문 → 용량 관문" 두 개의 대등한 관문으로 처음
+> 짰다가 사용자가 바로잡았다 — 깊이 자리 검사는 **독립된 검사가 아니라**, "이 레시피가
 > 기둥 클러스터로 표현되는 [간단한 레시피](../../용어사전.md#간단한-레시피)인가"라는 **선행 분류**
-> 자체다. 간단하다고 판명나면 레인 자리는 정의상 이미 있다. `planClusterPorts` 의
+> 자체다. 간단하다고 판명나면 깊이 자리는 정의상 이미 있다. `planClusterPorts` 의
 > `ok`/`complex` 가 그 분류를 이미 하고 있었으므로 새 검사를 만들지 않고 재사용했다.
 
 - 옛 트렁크에서 버린 것 = **seed 그리디 성장**(`trunkPath.ts`)과 **사후 병합**
-  (`clusterTrunkMerge`/`externalMergePass`) — 셋 다 코드에서 삭제됐다. 되살린 것 = planner 의 레인 배정.
+  (`clusterTrunkMerge`/`externalMergePass`) — 셋 다 코드에서 삭제됐다. 되살린 것 = planner 의 깊이 배정.
 - 납품 경로 페어링: k↔m zip → 품목당 1↔1 로 자연 축소. `dKey` 의 `seq` 는 용량 분할(§10.4-⑵) 대비로 유지.
 - raw 입력은 트렁크 끝 무한상자 1개 → 반출 수요도 O(머신×품목)→O(품목)으로 준다.
 
@@ -320,7 +320,7 @@ advanced-circuit 동형 트리, count 4/4/2 에서 copper-cable 상자의
 2. ~~**용량 초과 품목(N대 합산 수요 > 벨트용량) = 1차는 거절(→1:1 잔류)**~~ — **분할이 구현됐다.**
    `determineBeltCount` 가 수요에서 줄 수를 유도하고 `planClusterPorts` 가 그만큼 슬롯을 먹으며,
    `insertingPlanner` 의 `placementsOf`/`armsByPlacement` 가 배정과 팔까지 쪼갠다. 그래서 지금
-   탭이 거절되는 사유는 용량이 아니라 **레인 부족**(`lanes-exceed-capacity`)이다.
+   탭이 거절되는 사유는 용량이 아니라 **깊이 부족**(`lanes-exceed-capacity`)이다.
 3. **검증 도구 = 비교 계측기 먼저.** 같은 트리로 1:1 vs 새 트렁크의 폭·벨트 수·납품 경로 수·skip 을
    나란히 재는 하네스. 갈아타기 근거를 숫자로 남긴다(지난 대량 롤백 전례의 재발 방지).
    → **그 하네스는 역할을 마치고 2026-07-25 삭제됐다**(부르는 코드 0개).

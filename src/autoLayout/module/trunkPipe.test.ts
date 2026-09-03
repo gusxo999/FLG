@@ -74,7 +74,7 @@ describe("트렁크 파이프 — 방출 기하", () => {
   // **③ 케이스 B 테스트는 삭제됐다**(2026-08-16). 케이스 B(좌석을 d2 로 밀고 긴팔이 파이프를
   // 넘어 d4 에서 집기)는 파이프가 점프를 못 할 때의 폴백이었는데, 그 경우가 **도달 불가능**해졌다:
   // 지하파이프 없는 유체 스펙은 UI 가 막고(사용자 결정), 사거리가 짧은 것은 거절이 아니라
-  // 레인 깊이 상한으로 나타난다. → trunk-pipe.md §4.1
+  // 깊이 상한으로 나타난다. → trunk-pipe.md §4.1
   //
   // 이 픽스처(지하파이프 없음)가 남아 있는 이유는 `no-underground` **방어 경로**의 회귀
   // 테스트이기 때문이다 — 위 ①② 가 스파인 기하를 계속 지킨다.
@@ -170,7 +170,7 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
     const mod = generateModule(plasticBarJump(3));
     expect(mod.unroutedLines).toHaveLength(0);
     const coal = mod.inputPorts.find((p) => p.line.name === "coal")!;
-    expect(coal.meta.laneDepth).toBe(2);
+    expect(coal.meta.clusterBeltDepth).toBe(2);
     expect(coal.meta.inserter).toBe("normal");
     // 탭 인서터가 depth 1(x3)에 앉는다 — 옛 스파인에선 그 자리가 파이프라 불가능했다.
     for (const m of mod.machines) {
@@ -217,11 +217,11 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
     }
   });
 
-  it("유체 포트는 ClusterPipe 끝의 무한파이프 — laneDepth 가 실제 깊이(d6)", () => {
+  it("유체 포트는 ClusterPipe 끝의 무한파이프 — clusterBeltDepth 가 실제 깊이(d6)", () => {
     const mod = generateModule(plasticBarJump(3));
     const gas = mod.inputPorts.find((p) => p.line.name === "petroleum-gas")!;
     expect(gas.chest.kind).toBe("infinity-pipe");
-    expect(gas.meta.laneDepth).toBe(6);
+    expect(gas.meta.clusterBeltDepth).toBe(6);
     // 포트 계약 불변: anchor − 2·ev = tapAnchor(트렁크 끝), 가운데는 파이프.
     const ev = { x: gas.anchor.x - gas.tapAnchor.x, y: gas.anchor.y - gas.tapAnchor.y };
     expect(Math.abs(ev.x) + Math.abs(ev.y)).toBe(2);
@@ -232,8 +232,8 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
   it("긴팔 없이도(reach {1}) 유체 레시피가 탭 인서팅으로 선다 — 케이스 B 의존 제거", () => {
     // 옛 모델: 케이스 B 는 긴팔 전용 → 긴팔 없으면 E 면 벨트 0 → complex → 다이렉트조차
     // 유체 불가(fluid-requires-trunk-pipe). 점프 모드가 이 계급을 통째로 구한다.
-    // 레인 용량 자체를 보는 테스트라 **방아쇠 줄을 넣지 않는다** — 넣으면 아이템 3줄이
-    // reach 1 종 하나(면당 1레인)를 넘어 `lanes-exceed-capacity` 로 떨어진다.
+    // 깊이 용량 자체를 보는 테스트라 **방아쇠 줄을 넣지 않는다** — 넣으면 아이템 3줄이
+    // reach 1 종 하나(면당 깊이 1칸)를 넘어 `lanes-exceed-capacity` 로 떨어진다.
     const mod = generateModule(plasticBarJump(3, { longInserter: false, fillOppositeFace: false }));
     expect(mod.unroutedLines).toHaveLength(0);
   });
@@ -248,8 +248,8 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
   });
 
   // **"사거리 0 → 옛 스파인 폴백" 테스트는 삭제됐다**(2026-08-16). 케이스 B(coal 이 d4·긴팔)를
-  // 단언하던 것인데 그 형태가 없어졌고, 사거리가 짧은 것은 이제 폴백이 아니라 **레인 깊이 상한**
-  // 으로 나타난다(trunk-pipe.md §4.1) — 그 축은 fluidPorts.test.ts 의 [laneDepthCap] 이 덮는다.
+  // 단언하던 것인데 그 형태가 없어졌고, 사거리가 짧은 것은 이제 폴백이 아니라 **깊이 상한**
+  // 으로 나타난다(trunk-pipe.md §4.1) — 그 축은 fluidPorts.test.ts 의 [clusterBeltDepthCap] 이 덮는다.
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -481,7 +481,7 @@ describe("다중 유체 — 한 면에 유체 두 줄(단계 B)", () => {
     const mod = generateModule(cracking(3));
     // 머신 x=0..2 → E 면 d1 = x3. base=1 이므로 D_0 = 1+2 = 3(x5) · D_1 = 5(x7).
     const depthOf = (name: string) =>
-      mod.inputPorts.find((p) => p.line.name === name)!.meta.laneDepth;
+      mod.inputPorts.find((p) => p.line.name === name)!.meta.clusterBeltDepth;
     expect(depthOf("water")).toBe(3);
     expect(depthOf("heavy-oil")).toBe(5);
   });

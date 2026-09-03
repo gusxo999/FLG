@@ -9,7 +9,7 @@ tags: [auto-layout, placement, module]
 # 모듈 안쪽 계획 — 자리를 정하는 주체는 하나다
 
 > **이 문서를 읽어야 하는 때**
-> - `planner/module/planModulePorts.ts` · `linkPlanner.ts` · `laneBudget.ts` 를 수정할 때
+> - `planner/module/planModulePorts.ts` · `linkPlanner.ts` · `depthBudget.ts` 를 수정할 때
 > - `module/clusterModule.generateModule` 의 **순서**를 바꾸고 싶을 때
 > - `ModulePortPlan` · `rest.ok` · `slotIndex` · `rowGaps` 를 건드릴 때
 > - 링크 포트가 **통째로 사라지는** 증상을 조사할 때
@@ -28,7 +28,7 @@ tags: [auto-layout, placement, module]
 | 주체 | 무엇을 배정 | 어디에 있었나 |
 |---|---|---|
 | 링크 면 배정 | 자식↔부모 [[machine-link\|링크]]가 앉을 면·줄 | `clusterModule` 안 |
-| [[용어사전#insertingPlanner\|insertingPlanner]] | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner`(**둘 다 2026-09-02 삭제**) |
+| [[용어사전#insertingPlanner\|insertingPlanner]] | 나머지 줄(원료·완제품)이 앉을 면·깊이 | `clusterPortPlanner`(**둘 다 2026-09-02 삭제**) |
 
 둘이 **같은 좌석을 놓고 다투므로** 손으로 조율해야 했다 — 링크 줄을 planner 입력에서 빼고,
 링크가 먹은 행을 통보하고, 방출 순서까지 맞췄다. 조율이 코드 여기저기 흩어져 있으니
@@ -81,7 +81,7 @@ gap 으로 넘어간 링크는 gap 안에 **가로 벨트**를 놓는다. 그래
 > *"배정"* 이라 불렀는데, 그 낱말이 **계산과 기록을 섮고 있었다.**
 
 ```
-계획   무엇을 · 몇 줄로 · 어느 면 · 어느 레인 · 팔 몇 개      ← **전부 수로 계산된다**
+계획   무엇을 · 몇 줄로 · 어느 면 · 어느 깊이 · 팔 몇 개      ← **전부 수로 계산된다**
 배치   그 계획대로 표에 칸을 청구한다 — 순번 · 폭             ← 계산이 아니라 **기록**
 방출   좌표를 더해 놓는다                                     ← **덧셈만**
 ```
@@ -108,7 +108,7 @@ const t = (isGap ? m.origin.x : m.origin.y) + slotIndex;
 | `item` · `carries` · `from`/`to` · 벨트 티어 | 레시피 · 대수 · 벨트 용량 | **계획** |
 | **`g`**(묶음 크기) | `min(⌊벨트 ÷ per⌋, N)` + 자리 사정 | **계획** |
 | `face` | 역할(출력 W·입력 E) + `Σ팔 ≤ h` 넘침 | **계획** |
-| `laneDepth` · `reach` | `a(j,d) = ⌈per_j ÷ tp(d)⌉` 로 후보 거르기 | **계획** |
+| `clusterBeltDepth` · `reach` | `a(j,d) = ⌈per_j ÷ tp(d)⌉` 로 후보 거르기 | **계획** |
 | `arms` | `⌈per ÷ tp(reach)⌉` | **계획** |
 | `portEnd` | 관통인가 + 형제 순서 | **계획** |
 | `gap` | 머신 index 에서 유도 | **계획** |
@@ -152,7 +152,7 @@ W면 (머신 3×3, reach {1,2})
 ```
 
 **줄 카드([LinkFacePlan])는 이 표를 *읽어서* 만든다** — 팔 수는 그 줄이 쓴 칸의 수,
-레인은 그 칸에 적힌 팔의 `reach + 1`, 구간은 첫 행~끝 행, 좌석 정원은 표의 행 수다.
+깊이는 그 칸에 적힌 팔의 `reach + 1`, 구간은 첫 행~끝 행, 좌석 정원은 표의 행 수다.
 
 ### 왜 표인가 — 장부 셋이 하던 일이다
 
@@ -163,14 +163,14 @@ W면 (머신 3×3, reach {1,2})
 |---|---|---|
 | `used`(`${머신}:${면}` → 수) | 그 머신 면에 몇 칸 찼나 | `d1` 열에서 찬 칸의 수(`seatsTaken`) |
 | `faceGroups`(같은 열쇠 → 수) | 그 면에 그룹이 몇이냐 | `d1` 열의 **서로 다른 주인** 수(`groupsOn`) |
-| `lanes`(`${면}\|${깊이}` → 구간들) | 그 깊이에서 어느 행이 먹혔나 | 그 깊이 열에서 찬 행(`laneClear`) |
+| `lanes`(`${면}\|${깊이}` → 구간들) | 그 깊이에서 어느 행이 먹혔나 | 그 깊이 열에서 찬 행(`depthClear`) |
 | `skipFluidRows`(논리 순번 → 실제 행) | 유체 상자 행 건너뛰기 | **미리 찬 칸** — 빈 칸을 앞에서부터 집으면 저절로 나온다 |
 
 **흩어져 있어서 새던 자리가 둘이었다:**
 
 ```
 포트 칸이 어느 장부에도 없었다   벨트 깊이만 실었으므로, 이 줄의 포트 인서터·상자가
-                                 남의 레인 한복판에 서는데 배정이 그걸 몰랐다
+                                 남의 깊이 한복판에 서는데 배정이 그걸 몰랐다
                                  → 방출에서 부딪혀 한쪽 줄이 통째로 사라진다
 배정을 되돌릴 수 없었다          `Map` 셋을 순서대로 미는 구조라 취소 지점이 없다
                                  → 사다리(배정을 다시 부르는 일)를 아예 못 얹는다
@@ -179,8 +179,8 @@ W면 (머신 3×3, reach {1,2})
 > **표는 값이다.** 복사해서 채워 보고 버릴 수 있다(`copyFaceTable`) — 트렁크 경로 계획의
 > 배정 3단이 요구하는 것이 그것 하나다.
 
-> **이 표는 낟알의 한쪽 끝이다** — 반대쪽 끝이 레인 예산(`planBundles`)의 스칼라이고,
-> 그 사이가 비어 있다. *"앉혀 보지 않고 어느 레인이 어느 행에서 비었는지"* 를 물을 때는
+> **이 표는 낟알의 한쪽 끝이다** — 반대쪽 끝이 깊이 예산(`planBundles`)의 스칼라이고,
+> 그 사이가 비어 있다. *"앉혀 보지 않고 어느 깊이가 어느 행에서 비었는지"* 를 물을 때는
 > [[face-occupancy]].
 
 ### 포트가 먹는 칸 — **방향이 `portEnd` 로 갈린다**
@@ -195,16 +195,16 @@ W면 (머신 3×3, reach {1,2})
 표를 안 건드리지만, 앞선 그룹이 첫 행을 먼저 먹었으면 **안으로 든다** — 그때 그 칸을 안 세면
 `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한다(2026-08-26 이전에 실제로 발동했다).
 
-### 레인이 팔을 정한다 — 그래서 **팔 수는 레인마다 다시 센다**
+### 깊이가 팔을 정한다 — 그래서 **팔 수는 깊이마다 다시 센다**
 
 축은 깊이가 아니라 `(인서터, 그 팔이 집는 타일)` 이다([[trunk-redesign]] · 계획서 §16).
-레인을 고르면 인서터가 정해지고, 인서터가 처리량을 정하고, 처리량이 팔 **개수**를 정한다.
+깊이를 고르면 인서터가 정해지고, 인서터가 처리량을 정하고, 처리량이 팔 **개수**를 정한다.
 
 ```
 a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`armsAt`)
 ```
 
-그래서 **좌석 검사도 레인마다 다르고**, 후보는 **팔이 적게 드는 순**으로 본다(동률이면 얕은
+그래서 **좌석 검사도 깊이마다 다르고**, 후보는 **팔이 적게 드는 순**으로 본다(동률이면 얕은
 쪽 — 벨트 칸을 덜 먹는다). 옛 `clusterPortPlanner.takeSeat`(2026-09-02 삭제)이 탭 경로에서 쓰던 규칙과 같다 — 지금은 이쪽 하나만 남았다.
 
 > **2026-08-26 이전엔 팔 수를 `reach 1` 로 못박아 붓기가 미리 셌다.** 그 줄이 `d3` 에 앉으면
@@ -218,7 +218,7 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 ### 한 포트의 자리 = **다섯 수**
 
 ```
-                 d1     d2     d3          ← 면 바깥으로 나가는 깊이(레인)
+                 d1     d2     d3          ← 면 바깥으로 나가는 깊이(깊이)
         ┌──────┬──────┬──────┬──────┐
  머신 0 │  ●   │  ▓   │      │      │       ● 좌석(팔이 서는 칸) — 언제나 d1
         │  ●   │  ▓   │      │      │       ▓ 이 줄의 벨트가 덮는 구간
@@ -232,7 +232,7 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 | | 수 | 어디에 사나 |
 |---|---|---|
 | ① | **면** — W/E(머신 옆면) 인가 N/S(gap) 인가 | `LinkFacePlan.face` |
-| ② | **레인 깊이** — 면에서 몇 칸 바깥에 벨트가 눕나 | `.laneDepth` |
+| ② | **깊이** — 면에서 몇 칸 바깥에 벨트가 눕나 | `.clusterBeltDepth` |
 | ③ | **행** — 그 벨트가 어느 행을 덮나 | `.slotIndex` |
 | ④ | **끝** — 포트가 **옆**이냐 **기둥 끝**이냐 | `.portEnd` |
 | ⑤ | **머신 원점** — 위 넷을 절대 좌표로 바꾸는 값 | 배치 단계 |
@@ -248,10 +248,10 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 |---|---|
 | `machine.h` · `machine.w` | 면의 좌석 개수 = ③이 쓸 수 있는 행 수 ([faceSeatArms]) |
 | `count`(머신 대수) | 좌석표의 전체 행 수 ([makeFaceTable]) |
-| `inserters` 의 **reach 종류** | ②가 고를 수 있는 **레인 목록** ([laneDepthsOf]) |
+| `inserters` 의 **reach 종류** | ②가 고를 수 있는 **깊이 목록** ([clusterBeltDepthsOf]) |
 | `inserters` 의 **처리량** | 팔 개수 → ③의 구간 길이 ([armsAt]) |
 | `belts` 티어 | 줄 수 = **포트 개수** ([determineBeltCount] → [edgeLinkGroups]) |
-| `fluidTrunk` | 유체 상자 행이 좌석에서 빠짐 + `laneCap`(레인 상한) |
+| `fluidTrunk` | 유체 상자 행이 좌석에서 빠짐 + `depthCap`(깊이 상한) |
 
 ### 다섯 수를 누가 쓰나 — **쓰기는 한 번뿐이다**
 
@@ -284,7 +284,7 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 | 수 | 쓰는 곳 | **무엇을 보고** | **무엇을 안 보고** |
 |---|---|---|---|
 | ① 면 | 1단계 `prefer` → 2단계 넘침 | 역할(출력 W·입력 E) · 그 면 좌석표의 남은 칸 · 유체 면인가 | **짝(부모·자식)이 어디 있나** |
-| ② 깊이 | [tryLinkFace] 후보 루프 | 레인마다 팔 수를 다시 세어 **적은 순 → 얕은 순**. 좌석 예산·레인 겹침·포트 칸을 차례로 검사 | — (정렬돼 있다 ✔ R2) |
+| ② 깊이 | [tryLinkFace] 후보 루프 | 깊이마다 팔 수를 다시 세어 **적은 순 → 얕은 순**. 좌석 예산·깊이 겹침·포트 칸을 차례로 검사 | — (정렬돼 있다 ✔ R2) |
 | ③ 행 | [commitLinkFace] | 그 머신 면의 **빈 좌석을 앞에서부터**(gap 면은 동쪽 끝에서부터). 유체 행은 표에 미리 찍혀 저절로 건너뛴다 | — (결정적 ✔) |
 | ④ 끝 | [tryLinkFace] | 관통인가([spansAllMachines]) + 그 면의 N/S 가 이미 찼나 → `["N","S"]` **선착순** | **짝이 어디 있나** |
 | ⑤ 좌표 | 배치 단계 | gap 폭 · tidy-tree Y · 채널 폭 | — |
@@ -292,7 +292,7 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 그리고 표 어디에도 안 적히지만 **다섯 수 전부를 흔드는 것**이 하나 있다:
 
 > **그룹 도착 순서.** `groups.forEach` 순으로 앉으므로 **먼저 온 줄이 좋은 자리를 먹고,
-> 그 줄의 포트가 다음 줄에게 못이 된다.** 정렬이 없다 — 레인 후보는 정렬해 놓고(R2)
+> 그 줄의 포트가 다음 줄에게 못이 된다.** 정렬이 없다 — 깊이 후보는 정렬해 놓고(R2)
 > **줄 사이는 도착 순**이다.
 
 ### 다 쓰고 난 뒤 — **파생**과 **되먹임**
@@ -312,7 +312,7 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 
 ```
 A  gen ─→ moduleExtent ─→ tidy-tree topY ─→ lineEnds ─→ **gen**   (2026-07-11~)
-B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**         (2026-08-26~)
+B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ **gen**         (2026-08-26~)
 ```
 
 **둘 다 `gen` 으로 닫힌다.** 파이프라인의 다른 모든 단계는 **정확히 한 번씩** 불린다
@@ -341,8 +341,8 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 같은 물음을 두 곳이 다르게 답하고 한쪽만 짝을 보는 것이라 R3 에 걸린다. 부모가 아래에 있어도
 첫 관통 그룹은 N 을 잡는다.
 
-**(2) 못은 도착 순서가 만든다.** 짧은 줄이 먼저 앉아 얕은 레인을 조각내면, 그 토막들의 포트가
-깊은 레인에 못이 된다 — 그리고 **연속 구간이 필요한 긴 줄**이 나중에 와서 갈 곳을 잃는다
+**(2) 못은 도착 순서가 만든다.** 짧은 줄이 먼저 앉아 얕은 줄을 조각내면, 그 토막들의 포트가
+깊은 줄에 못이 된다 — 그리고 **연속 구간이 필요한 긴 줄**이 나중에 와서 갈 곳을 잃는다
 (실측 `electronic-circuit`: `copper-cable` 토막 4개가 `stone-tablet` 관통 90대를 막았다).
 사다리 1단은 **그 손상을 사후에 수선**하는 것이다.
 
@@ -363,7 +363,7 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 
 그래서 뒤집는 대신 **없앴다.** 나머지 줄도 링크와 같은 배분기(`allocateLinkFaces` →
 `spillLinkFacesToGap`)를 타고 같은 표에 앉는다. 남은 계산은 **수를 세는 일 하나**이고
-(`laneBudget.planBundles` — 줄마다 `g`), 그건 행도 면도 안 봐서 장부가 아예 필요 없다.
+(`depthBudget.planBundles` — 줄마다 `g`), 그건 행도 면도 안 봐서 장부가 아예 필요 없다.
 
 > **합치는 방법은 "모델을 뒤집기" 가 아니었다.** 한쪽 모델이 **틀렸다는 것**이 드러나기를
 > 기다린 것이고, 그 계기가 부분 트렁크였다.
@@ -390,7 +390,7 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 | 벨트 깊이 | ~~상수 `LINK_LANE_DEPTH = 2`~~ → **reach 로 유도**(2026-08-26) | reach 로 유도(`1+r`) |
 | 한 면의 줄 수 | 좌석 칸 수(그룹마다 자기 행) | **reach 종류 수** |
 | 같은 면 둘째 줄 | `exitDepth` 로 한 칸 더 깊게([[용어사전#ParallelBelt\|ParallelBelt]]) | 수요 순 depth 재배정 |
-| 유체 면 | ~~통째로 비켜 준다~~ → **표에 미리 찬 칸** + `laneCap` | 케이스 B 로 깎아서 쓴다 |
+| 유체 면 | ~~통째로 비켜 준다~~ → **표에 미리 찬 칸** + `depthCap` | 케이스 B 로 깎아서 쓴다 |
 | stagger·ClusterPipe 깊이 | 개념 없음 | `buildTrunkContext` 가 함께 본다 |
 
 즉 남은 통합은 **링크 배분기에 탭 모델 전체를 가르치는 일**이고, 합격 기준이 *"공유 벨트
@@ -399,8 +399,8 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 
 다음 중 하나가 생기면 그때가 착수 시점이다:
 - 탭 경로에도 gap 이 필요해질 때(= 공유 벨트가 W/E 를 다 쓰는 레시피가 실물로 나올 때),
-- ~~링크 벨트가 긴팔 레인(d3)을 써야 할 때~~ — **당겨졌다(2026-08-26).** 상수는 깨졌고
-  링크 배분기가 reach 로 깊이를 유도하며 **팔 수까지 레인마다 다시 센다**(§4.5). 그런데도
+- ~~링크 벨트가 긴팔 깊이(d3)을 써야 할 때~~ — **당겨졌다(2026-08-26).** 상수는 깨졌고
+  링크 배분기가 reach 로 깊이를 유도하며 **팔 수까지 깊이마다 다시 센다**(§4.5). 그런데도
   통합은 안 됐다 — 남은 차이는 **낟알**(칸 ↔ 면)이지 깊이 모델이 아니었기 때문이다.
 
 #### 자료구조부터 합치는 길은 없다 (2026-08-08 검토)
@@ -411,7 +411,7 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 
 | # | 위험 | 왜 나쁜가 |
 |---|---|---|
-| ① | `laneDepth` ↔ `clusterBeltDepth` 가 **다른 뜻**이 된다 | 링크는 좌석이 언제나 d1, 탭은 케이스 B 면 d2. 한 필드가 그 전제를 하는 코드와 안 하는 코드 양쪽에서 읽힌다 |
+| ① | `clusterBeltDepth` ↔ `clusterBeltDepth` 가 **다른 뜻**이 된다 | 링크는 좌석이 언제나 d1, 탭은 케이스 B 면 d2. 한 필드가 그 전제를 하는 코드와 안 하는 코드 양쪽에서 읽힌다 |
 | ② | **낟알이 다른데 타입이 같아진다** | `LinkFacePlan` 하나 = 기계 하나, `PlannedLine` 하나 = 줄 하나(전 기계). 가르는 건 `arms.size` 뿐인데 타입에 안 나타난다 |
 | ③ | `undefined` 의 두 뜻이 겹친다 | `requiredInserterCount === undefined` 는 이미 *"수량 미상 = 판정 보류"* 다. 여기에 *"탭엔 개념이 없다"* 를 섞으면 [[용어사전#InsertingDecisionResult\|InsertingDecisionResult]] 에서 판별 유니온으로 갈랐던 실수를 되풀이한다 |
 
@@ -453,7 +453,7 @@ B  gen ─→ laneShortages ─→ 사다리 ─→ linkCache ─→ **gen**    
 **새 추상화를 만든 것이 아니라, 기존 추상화가 받아들일 수 있는 모양으로 입력을 바꿨다.**
 `perMachine` 플래그 하나가 한 일이 그것이다. → [[용어사전#낟알 (granularity)]]
 
-다만 *"링크 쪽을 확장한다"* 는 **방향은 맞다.** 넣어야 할 것(`reach` · 가변 `laneDepth` ·
+다만 *"링크 쪽을 확장한다"* 는 **방향은 맞다.** 넣어야 할 것(`reach` · 가변 `clusterBeltDepth` ·
 케이스 B 의 좌석 깊이)이 정확히 위 표의 차이들이므로, 이 제안은 **"링크 벨트에 탭 깊이
 모델을 가르치는 일을 먼저 하자"와 같은 말**이다. 그게 되기 전엔 순서가 뒤집힌 작업이다.
 
@@ -494,7 +494,7 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 **왜 이렇게 짜여 있었나 — 닭과 달걀.** `placementsOf` 는 `planClusterPorts` **보다 먼저** 불리고,
 그 시점엔 이 줄이 어느 면에 앉을지 아직 안 정해졌다(면을 정하는 게 `planClusterPorts` 다).
 그래서 면을 모르는 채 답해야 한다. 주석의 *"보수적"* 은 **절반만 맞다**: 좌석 축에서는
-안전하지만(잘게 쪼개면 각각 더 쉽게 앉는다) **벨트 레인 축에서는 위험하다**(슬롯을 더 먹는다).
+안전하지만(잘게 쪼개면 각각 더 쉽게 앉는다) **벨트 깊이 축에서는 위험하다**(슬롯을 더 먹는다).
 
 **세 갈래 — 어느 쪽도 우월하지 않다:**
 
@@ -532,7 +532,7 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | 2 | 어느 기계 | `arms` 의 **키** | **없음**(전 기계 암묵) |
 | 3 | 팔 개수 | `arms` 의 **값** | `groupOf[key]` 조회 ∥ `requiredInserterCount` |
 | 4 | 면 위 몇 번째 칸 | `slotIndex` | ⚠ `slotOnFace` — **방출 시점 누적** |
-| 5 | 벨트 깊이 | `laneDepth` — **reach 에서 유도** | `clusterBeltDepth` → ⚠ `emitDepthOf()` 보정 |
+| 5 | 벨트 깊이 | `clusterBeltDepth` — **reach 에서 유도** | `clusterBeltDepth` → ⚠ `emitDepthOf()` 보정 |
 | 6 | 팔 길이 | `reach` — **계획이 지목한다**(2026-08-26) | `reach` |
 | 7 | 벨트 종류 | 개념 없음(기본값) | `beltEntityName` |
 | 8 | 벨트 끝 | `exitDepth`(gap 전용) | ⚠ `maxDepthAtEnd` + `lineEnds` → stagger |
@@ -574,8 +574,8 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | 진입점 | `planner/module/planModulePorts.ts` | `planModulePorts` · `ModulePortPlan` |
 | ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` · `commitLinkFace` · `portCells` · `gapRowsFromPlans` · `gapExitSidesFromPlans` |
 | ①의 자리 장부 | `planner/module/faceTable.ts` | `FaceTable` — 면마다 한 장(§4.5) |
-| ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 레인마다 다시 센다 |
-| ③ 줄마다 `g` | `planner/module/laneBudget.ts` | `planBundles` — 레인 예산(§4.2 of trunk-assignment) |
+| ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
+| ③ 줄마다 `g` | `planner/module/depthBudget.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |
 | ③ 붓기 | `module/link.ts` | `externalLineGroups` · `bundleCap` |
 | ③ 자리 | `planner/module/linkPlanner.ts` | ①과 **같은 함수**를 탄다(2026-09-02 통합) |
 | 좌표 입히기 | `module/clusterModule.ts` | `placeLinkSeats` (덧셈만) |

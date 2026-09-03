@@ -1,12 +1,12 @@
 /**
- * perimeterLanePlanner — 모듈 외부상자를 전역 perimeter 로 빼기 위한 **exit-lane 예약**
+ * perimeterTrackPlanner — 모듈 외부상자를 전역 perimeter 로 빼기 위한 ****반출 트랙** 예약**
  * (조각 6-①, 순수·좌표 산정만).
  *
  * ## 무엇을/왜
  * 모듈 파이프라인은 살아남은 외부상자(raw 입력 + 루트 출력)를 각자의 **로컬 모듈 ring**
  * 에 둔다. depth 열 타일링 후엔 그 ring 들이 조립 블루프린트의 **내부**로 들어가 상자가
- * 흩어진다. 해법은 각 상자를 **인접 gap(모듈 사이 채널 / 바깥 마진) 안의 lane** 으로 빼
- * 가장 가까운 전역 외곽 변으로 보내는 것 — 그러려면 채널 폭 계산처럼 **lane 공간을 패킹
+ * 흩어진다. 해법은 각 상자를 **인접 gap(모듈 사이 채널 / 바깥 마진) 안의 트랙** 으로 빼
+ * 가장 가까운 전역 외곽 변으로 보내는 것 — 그러려면 채널 폭 계산처럼 **트랙 공간을 패킹
  * 단계에서 미리 예약**해야 한다.
  *
  * ## 일반화 (black box)
@@ -15,7 +15,7 @@
  * 인접한가"에서 나온다. N/S 우세는 가로 타일링의 *결과*지 가정이 아니다.
  *
  * ## (A) 폭만 예약 — 트랙 index 는 못박지 않음
- * 채널로 들어가는 lane 은 자기 **세로 점유 구간**만 내놓고, packModuleTree 가 이를 납품 경로
+ * 채널로 들어가는 트랙은 자기 **세로 점유 구간**만 내놓고, packModuleTree 가 이를 납품 경로
  * 구간과 **합쳐** [channelPlanner.assignTracksLeftEdge] 로 트랙 수(=폭)만 산정한다. 실제
  * 몇 번째 트랙에 깔릴지는 검증된 라우터가 정한다(납품 경로와 동일 관행).
  *
@@ -34,14 +34,14 @@ import type { PortFace } from "../containerModel";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
-/** lane 이 지나갈 통로. */
-export type LaneHost =
+/** 트랙이 지나갈 통로. */
+export type TrackHost =
   | { kind: "self" } // 자기 열 직진(N/S 마진 행만 소비)
   | { kind: "channel"; depth: number } // 채널 depth 안에서 세로 주행(트랙 1 소비)
   | { kind: "margin"; edge: "W" | "E" }; // 바깥 W/E 마진으로 직출
 
 /** 살아남은 외부상자 포트 하나 — 모듈 내부를 안 보는 최소 입력. */
-export interface LanePortInput {
+export interface TrackPortInput {
   /** 안정 식별자(상자 id). */
   id: string;
   role: "input" | "output";
@@ -69,9 +69,9 @@ export interface LanePortInput {
  * (절단선이 납품 경로를 가둠·채널 트랙 부족 등)을 가진 장부가 **양보를 요구**할 수 있으므로,
  * planner 가 하나로 못박지 않고 후보를 남겨 장부가 고르게 한다(스도쿠: 제약 센 곳부터).
  */
-export interface LaneOption {
+export interface TrackOption {
   exitEdge: ExitEdge;
-  host: LaneHost;
+  host: TrackHost;
   /** 이 출구가 모듈을 빠져나가는 방향 — 반드시 wayOuts 에 포함. */
   wayOut: PortFace;
   /** channel host 일 때의 세로 점유 구간(트랙 풀 합류용). */
@@ -99,7 +99,7 @@ export interface ModuleSpan {
   bottom: number;
 }
 
-export interface LaneContext {
+export interface TrackContext {
   /** 전역 세로 범위(모듈 union). */
   globalY: { min: number; max: number };
   maxDepth: number;
@@ -107,7 +107,7 @@ export interface LaneContext {
   spansByDepth: Map<number, ModuleSpan[]>;
 }
 
-export interface LaneAssignment {
+export interface TrackAssignment {
   id: string;
   role: "input" | "output";
   /**
@@ -115,9 +115,9 @@ export interface LaneAssignment {
    * (exitEdge/host/interval/entry)는 **현재 확정** = 기본값 `options[0]`.
    * 장부가 제약 때문에 다른 후보로 **양보**시킬 수 있다 — 그때 확정 필드도 함께 갱신한다.
    */
-  options: LaneOption[];
+  options: TrackOption[];
   exitEdge: ExitEdge;
-  host: LaneHost;
+  host: TrackHost;
   /** host 가 channel 일 때의 세로 점유 구간(트랙 풀 합류용). */
   interval?: Interval;
   /**
@@ -130,13 +130,13 @@ export interface LaneAssignment {
    * 기하 예약이 확정한 세로 주행 열(절대 x) — modulePacking 이 배정 후 기록하고
    * ⑥C(perimeterRouter)가 스캔 없이 그대로 재생한다.
    */
-  laneX?: number;
+  trackX?: number;
 }
 
-export interface LanePlan {
-  assignments: LaneAssignment[];
-  /** 채널 depth → 그 채널에 더할 lane 세로 구간들(납품 경로 구간과 합쳐 폭 산정). */
-  channelLaneIntervals: Map<number, Interval[]>;
+export interface TrackPlan {
+  assignments: TrackAssignment[];
+  /** 채널 depth → 그 채널에 더할 트랙 세로 구간들(납품 경로 구간과 합쳐 폭 산정). */
+  channelTrackIntervals: Map<number, Interval[]>;
   /** 바깥/변 마진 수요. N/S = 상자 seat 행 필요 여부, W/E = 마진 열 필요 여부. */
   marginNeeds: { N: boolean; S: boolean; W: boolean; E: boolean };
 }
@@ -160,7 +160,7 @@ function selfBlocked(
   depth: number,
   anchorY: number,
   edge: "N" | "S",
-  ctx: LaneContext,
+  ctx: TrackContext,
 ): boolean {
   const bands = ctx.spansByDepth.get(depth) ?? [];
   const mine = bands.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
@@ -184,19 +184,19 @@ function selfBlocked(
  * 옛 규칙(side 기반)을 1순위로 재현하고, 그게 막혔을 때 나머지 가능한 출구로 흘린다.
  * 나중에 폭 최소화 등 다른 기준으로 재정렬해도 되고, 장부가 뒤 후보로 양보시켜도 된다.
  */
-function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
+function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
   const gy = ctx.globalY;
   const can = (d: PortFace) => p.wayOuts.includes(d);
-  const opts: LaneOption[] = [];
+  const opts: TrackOption[] = [];
 
   /** 자기 열 직진(N/S 마진 행으로). 채널 트랙 안 먹음. */
-  const selfOpt = (e: "N" | "S"): LaneOption | null =>
+  const selfOpt = (e: "N" | "S"): TrackOption | null =>
     can(e) && !selfBlocked(p.depth, p.anchorY, e, ctx)
       ? { exitEdge: e, host: { kind: "self" }, wayOut: e, usesChannelTrack: false }
       : null;
 
   /** 바깥 W/E 마진 직출 — 끝 열에서만. 채널 트랙 안 먹음. */
-  const marginOpt = (e: "W" | "E"): LaneOption | null => {
+  const marginOpt = (e: "W" | "E"): TrackOption | null => {
     if (!can(e)) return null;
     if (e === "W" && p.depth !== 0) return null;
     if (e === "E" && p.depth !== ctx.maxDepth) return null;
@@ -208,7 +208,7 @@ function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
    * wayOut=W 면 왼쪽 채널(depth), wayOut=E 면 오른쪽 채널(depth+1).
    * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 wayOut 의 반대.
    */
-  const channelOpts = (wayOut: "W" | "E"): LaneOption[] => {
+  const channelOpts = (wayOut: "W" | "E"): TrackOption[] => {
     if (!can(wayOut)) return [];
     const depth = wayOut === "W" ? p.depth : p.depth + 1;
     if (wayOut === "W" && p.depth < 1) return []; // 최좌 열의 왼쪽엔 채널이 없다(마진).
@@ -218,7 +218,7 @@ function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
     const far: "N" | "S" = near === "N" ? "S" : "N";
     return [near, far].map((e) => ({
       exitEdge: e,
-      host: { kind: "channel", depth } as LaneHost,
+      host: { kind: "channel", depth } as TrackHost,
       wayOut,
       interval: {
         lo: Math.min(p.anchorY, edgeY(e, gy)),
@@ -231,23 +231,23 @@ function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
 
   // ── 1순위: 옛 규칙 재현(회귀 최소) ──
   if (p.side === "N" || p.side === "S") {
-    opts.push(...[selfOpt(p.side)].filter((o): o is LaneOption => !!o));
+    opts.push(...[selfOpt(p.side)].filter((o): o is TrackOption => !!o));
     // 막히면 채널 우회 — 옛 divertChannel: depth≥1 이면 왼쪽, 아니면 오른쪽.
     opts.push(...(p.depth >= 1 ? channelOpts("W") : channelOpts("E")));
-    opts.push(...[selfOpt(p.side === "N" ? "S" : "N")].filter((o): o is LaneOption => !!o));
+    opts.push(...[selfOpt(p.side === "N" ? "S" : "N")].filter((o): o is TrackOption => !!o));
   } else if (p.side === "W") {
-    opts.push(...[marginOpt("W")].filter((o): o is LaneOption => !!o));
+    opts.push(...[marginOpt("W")].filter((o): o is TrackOption => !!o));
     opts.push(...channelOpts("W"));
   } else {
-    opts.push(...[marginOpt("E")].filter((o): o is LaneOption => !!o));
+    opts.push(...[marginOpt("E")].filter((o): o is TrackOption => !!o));
     opts.push(...channelOpts("E"));
   }
 
   // ── 2순위: 그래도 없거나 부족하면, 남은 모든 가능한 출구(자유도 최대화·고립 방지) ──
   // 코너 어깨 상자(face 가 N/S인데 side 가 E/W)가 여기서 구제된다 — 옛 규칙의 채널
   // 우회는 wayOuts 에 막혀 후보가 안 되고, 뚫린 face 쪽 self/margin 이 잡힌다.
-  for (const e of ["N", "S"] as const) opts.push(...[selfOpt(e)].filter((o): o is LaneOption => !!o));
-  for (const e of ["W", "E"] as const) opts.push(...[marginOpt(e)].filter((o): o is LaneOption => !!o));
+  for (const e of ["N", "S"] as const) opts.push(...[selfOpt(e)].filter((o): o is TrackOption => !!o));
+  for (const e of ["W", "E"] as const) opts.push(...[marginOpt(e)].filter((o): o is TrackOption => !!o));
   opts.push(...channelOpts("W"), ...channelOpts("E"));
 
   // 중복 제거(선호 순 보존).
@@ -261,7 +261,7 @@ function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
 }
 
 /**
- * exit-lane 배정. 순수·결정적. 모듈 내부를 안 본다(모듈이 답해준 `wayOuts` 만 믿는다).
+ * 반출 트랙 배정. 순수·결정적. 모듈 내부를 안 본다(모듈이 답해준 `wayOuts` 만 믿는다).
  *
  * 각 상자마다 **쓸 수 있는 출구 후보**를 나열하고 `options[0]` 을 기본 확정으로 삼는다.
  * 폭/마진 수요는 **확정된 출구 하나**에서만 계산한다(후보 전부가 아니라) — 안 쓸 출구를
@@ -270,9 +270,9 @@ function enumerateOptions(p: LanePortInput, ctx: LaneContext): LaneOption[] {
  * 나갈 길이 하나도 없는 상자는 **배정을 만들지 않는다** → 예약도 0, 재배치도 skip(로컬 ring
  * 유지). 못 쓸 경로를 예약해 폭만 잡아먹는 것보다 정직하다.
  */
-export function planPerimeterLanes(ports: ReadonlyArray<LanePortInput>, ctx: LaneContext): LanePlan {
-  const assignments: LaneAssignment[] = [];
-  const channelLaneIntervals = new Map<number, Interval[]>();
+export function planPerimeterTracks(ports: ReadonlyArray<TrackPortInput>, ctx: TrackContext): TrackPlan {
+  const assignments: TrackAssignment[] = [];
+  const channelTrackIntervals = new Map<number, Interval[]>();
   const marginNeeds = { N: false, S: false, W: false, E: false };
 
   // 결정적: id 오름차순.
@@ -284,7 +284,7 @@ export function planPerimeterLanes(ports: ReadonlyArray<LanePortInput>, ctx: Lan
 
     if (chosen.host.kind === "channel" && chosen.interval) {
       const d = chosen.host.depth;
-      (channelLaneIntervals.get(d) ?? channelLaneIntervals.set(d, []).get(d)!).push(chosen.interval);
+      (channelTrackIntervals.get(d) ?? channelTrackIntervals.set(d, []).get(d)!).push(chosen.interval);
       marginNeeds[chosen.exitEdge] = true; // 상자 seat 는 N/S 마진 행.
     } else {
       marginNeeds[chosen.exitEdge] = true;
@@ -301,5 +301,5 @@ export function planPerimeterLanes(ports: ReadonlyArray<LanePortInput>, ctx: Lan
     });
   }
 
-  return { assignments, channelLaneIntervals, marginNeeds };
+  return { assignments, channelTrackIntervals, marginNeeds };
 }

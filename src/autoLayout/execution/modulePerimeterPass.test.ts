@@ -63,8 +63,8 @@ function effectiveCells(
 
 describe("rePathToPerimeter", () => {
   it("순수 — pack 미변형(chest.origin·mod.cells 그대로), 이사 결과는 relocations 로 반환", () => {
-    // 예약 on — 채널이 lane 만큼 넓어져야 channel-host 상자도 통로가 난다.
-    const pack = packModuleTree(specs, { ...config, reservePerimeterLanes: true });
+    // 예약 on — 채널이 트랙 만큼 넓어져야 channel-host 상자도 통로가 난다.
+    const pack = packModuleTree(specs, { ...config, reservePerimeterTracks: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);
 
@@ -209,10 +209,10 @@ describe("rePathToPerimeter", () => {
   });
 
   it("count≥2 코너 어깨(face=N/S) 상자가 채널로 우회한다 — 그 사유의 skip 이 0", () => {
-    // 분기 트리 n0←{n1,n2}, count=2. count≥2 기둥에선 트렁크가 레인을 따라 수평으로
+    // 분기 트리 n0←{n1,n2}, count=2. count≥2 기둥에선 트렁크가 깊이를 따라 수평으로
     // 자라 상자가 코너 어깨(face=N/S, metaSide=E/W)에 앉는다. 옛 코드는 이 상자의 채널
     // 우회를 fv.x=0 로 무조건 거부(`N/S-side channel divert unsupported`)했고, 예약된
-    // 채널 트랙이 자기 트렁크를 관통하는 상자(copper-cable)도 skip 됐다. laneX 구동 +
+    // 채널 트랙이 자기 트렁크를 관통하는 상자(copper-cable)도 skip 됐다. trackX 구동 +
     // auto 폴백으로 전부 열린 외곽(대개 face 직진)으로 나가야 한다.
     const bin = (name: string, amount: number): IoLine => ({ name, kind: "belt", role: "input", amount });
     const bout = (name: string, amount: number): IoLine => ({ name, kind: "belt", role: "output", amount });
@@ -222,7 +222,7 @@ describe("rePathToPerimeter", () => {
       { id: "n1", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("plastic-bar", 4), bin("kr-silicon", 2), bin("kr-glass", 2), bout("kr-components", 4)] },
       { id: "n2", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("copper-cable", 3), bin("stone-tablet", 1), bout("electronic-circuit", 2)] },
     ]);
-    const pack = packModuleTree(branch, { ...config, reservePerimeterLanes: true, channelGeometry: true });
+    const pack = packModuleTree(branch, { ...config, reservePerimeterTracks: true, channelGeometry: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);
     const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {

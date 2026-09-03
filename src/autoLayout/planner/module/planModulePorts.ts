@@ -9,7 +9,7 @@
  * | 주체 | 무엇을 배정 | 어디에 |
  * |---|---|---|
  * | 링크 면 배정 | 자식↔부모 링크가 앉을 면·줄 | `clusterModule` 안 |
- * | `insertingPlanner` | 나머지 줄(원료·완제품)이 앉을 면·레인 | `clusterPortPlanner` |
+ * | `insertingPlanner` | 나머지 줄(원료·완제품)이 앉을 면·깊이 | `clusterPortPlanner` |
  *
  * (2026-09-02: 그 둘 다 삭제됐다 — 나머지 줄도 ①과 **같은 배분기**를 탄다.)
  *
@@ -43,26 +43,26 @@ import {
   type PortSide,
 } from "./ioLine";
 import type { ModuleInput } from "../../module/clusterModule";
-import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, laneDepthCap } from "../../module/fluidPorts";
+import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, clusterBeltDepthCap } from "../../module/fluidPorts";
 import {
   externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows, summarizeBeltForms,
   type Link,
 } from "../../module/link";
-import { recordBeltFormStats, recordFaceLaneStats } from "../../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";
-import { planBundles } from "./laneBudget";
+import { planBundles } from "./depthBudget";
 import {
   allocateLinkFaces,
   commitLinkFace,
   tryLinkFace,
-  laneDepthsOf,
+  clusterBeltDepthsOf,
   spillLinkFacesToGap,
   gapRowsFromPlans,
   gapExitSidesFromPlans,
   linkFaceDepths,
   type FaceAllocation,
-  type LaneShortage,
+  type DepthShortage,
   type LinkFaceContext,
   type LinkFacePlan,
 } from "./linkPlanner";
@@ -100,8 +100,8 @@ export interface ModulePortPlan {
    * 방출기가 `plans[i]` 를 그룹 순서로 읽기 때문이다.
    */
   restLinks?: {
-    out: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: LaneShortage[][] };
-    in: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: LaneShortage[][] };
+    out: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
+    in: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
   };
   /** 머신 i 와 i+1 사이를 몇 칸 벌릴까 — ①의 부산물. `layoutCluster` 로 그대로 간다. */
   rowGaps: number[];
@@ -164,7 +164,7 @@ export interface ModulePortPlan {
    */
   unpourableFix?: Map<string, "belt" | "inserter">;
   /**
-   * **못 앉은 내부 링크의 사유** — `linkId` → 후보마다의 [LaneShortage].
+   * **못 앉은 내부 링크의 사유** — `linkId` → 후보마다의 [DepthShortage].
    *
    * 사다리 1단(구간 쪼개기)의 입력이다. `blockedRows` 가 곧 **자름의 경계**이고, 쪼개는 일은
    * 여기서 못 한다 — 링크는 **간선**이라 자식·부모가 같은 객체를 봐야 하고([pairDeliveryPorts]
@@ -174,7 +174,7 @@ export interface ModulePortPlan {
    * 외부 줄(원료·완제품)은 신원이 없어 여기 안 담긴다 — 그쪽은 짝이 교환 가능이라 쪼갬이
    * 국지적이고, 별개 단계다.
    */
-  laneShortages: Map<string, LaneShortage[]>;
+  depthShortages: Map<string, DepthShortage[]>;
 }
 
 /**
@@ -199,7 +199,7 @@ export interface LinkFaceStage {
   inLinks: Link[];
   out: FaceAllocation;
   in: FaceAllocation;
-  pipeFaces: { side: PortSide; fluidRows: number; laneCap: number }[];
+  pipeFaces: { side: PortSide; fluidRows: number; depthCap: number }[];
   isJumpableToClusterPipe: (side: PortSide) => boolean;
 }
 
@@ -235,15 +235,15 @@ export function planLinkFaces(
     undergroundPipeEntityName: ft?.undergroundPipeEntityName,
     pipeMaxUndergroundDistance: ft?.pipeMaxUndergroundDistance,
     seatRows: input.machine.h,
-    beltLanes: Math.min(plannerInserters.length, input.lines.filter((l) => l.kind !== "pipe").length),
+    beltDepths: Math.min(plannerInserters.length, input.lines.filter((l) => l.kind !== "pipe").length),
   };
   /**
-   * 이 면의 **레인 깊이 상한** — 지하파이프 사거리가 정한다([laneDepthCap]). 유체가 없는 면은
+   * 이 면의 **깊이 상한** — 지하파이프 사거리가 정한다([clusterBeltDepthCap]). 유체가 없는 면은
    * 상한이 없다. *"사거리가 짧으면 파이프 배치를 우선한다"* 가 이 한 줄이다(2026-08-16).
    */
-  const laneCapOf = (side: PortSide): number => {
+  const depthCapOf = (side: PortSide): number => {
     const n = fluidLinesOnSide(ft, side).length;
-    return n === 0 ? Infinity : laneDepthCap(n, ft?.pipeMaxUndergroundDistance);
+    return n === 0 ? Infinity : clusterBeltDepthCap(n, ft?.pipeMaxUndergroundDistance);
   };
   const isJumpableToClusterPipe = (side: PortSide): boolean => {
     const n = fluidLinesOnSide(ft, side).length;
@@ -252,16 +252,16 @@ export function planLinkFaces(
   };
   /** ③ 이 보는 면별 요약 — 유체 행 수와 점프 여부. 없는 면은 목록에 안 넣는다. */
   const pipeFaces = (["W", "E"] as const)
-    .map((side) => ({ side, fluidRows: fluidLinesOnSide(ft, side).length, laneCap: laneCapOf(side) }))
+    .map((side) => ({ side, fluidRows: fluidLinesOnSide(ft, side).length, depthCap: depthCapOf(side) }))
     .filter((f) => f.fluidRows > 0);
   /**
    * ① 이 보는 같은 사실 — 다만 **행 번호까지** 필요하다(③ 은 개수만 쓴다). 링크는 점프 면의
    * 유체 상자 행을 건너뛰고 앉아야 하므로 `fluidboxOffset` 을 그대로 넘긴다.
    */
-  const pipeFaceRows = new Map<PortFace, { rows: readonly number[]; laneCap: number }>(
+  const pipeFaceRows = new Map<PortFace, { rows: readonly number[]; depthCap: number }>(
     pipeFaces.map((f) => [
       f.side as PortFace,
-      { rows: fluidLinesOnSide(ft, f.side).map((l) => l.fluidboxOffset), laneCap: f.laneCap },
+      { rows: fluidLinesOnSide(ft, f.side).map((l) => l.fluidboxOffset), depthCap: f.depthCap },
     ]),
   );
 
@@ -335,23 +335,23 @@ export function seatLinkEdge(
   const groups: Link[] = [];
   const fromPlans: (LinkFacePlan | undefined)[] = [];
   const toPlans: (LinkFacePlan | undefined)[] = [];
-  const fromWhy: LaneShortage[][] = [];
-  const toWhy: LaneShortage[][] = [];
+  const fromWhy: DepthShortage[][] = [];
+  const toWhy: DepthShortage[][] = [];
   let splits = 0;
 
-  // **쪼갬 예산** — 못은 레인 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
+  // **쪼갬 예산** — 못은 깊이 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
   // 예산 없이 두면 잘못된 판정 하나가 무한 루프가 된다. 그룹당 넷이면 넉넉하다.
   let budget = toOffsetGroups.length * 4;
   const queue: Link[] = [...toOffsetGroups];
 
-  const keep = (g: Link, fp?: LinkFacePlan, tp?: LinkFacePlan, fw: LaneShortage[] = [], tw: LaneShortage[] = []) => {
+  const keep = (g: Link, fp?: LinkFacePlan, tp?: LinkFacePlan, fw: DepthShortage[] = [], tw: DepthShortage[] = []) => {
     groups.push(g); fromPlans.push(fp); toPlans.push(tp); fromWhy.push(fw); toWhy.push(tw);
   };
 
   while (queue.length > 0) {
     const g = queue.shift()!;
-    const fw: LaneShortage[] = [];
-    const tw: LaneShortage[] = [];
+    const fw: DepthShortage[] = [];
+    const tw: DepthShortage[] = [];
     // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(원자성의 전제다).
     const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw);
     const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
@@ -386,7 +386,7 @@ export function seatLinkEdge(
 }
 
 /** 후보들 중 **쪼개면 실제로 앉는** 첫 경계. 없으면 빈 배열([resolveSpanBlock]). */
-function cutRows(why: readonly LaneShortage[]): number[] {
+function cutRows(why: readonly DepthShortage[]): number[] {
   for (const r of why) {
     if (!r.blockedRows?.length || !r.seatRows?.length) continue;
     const worth = resolveSpanBlock(r.seatRows, r.blockedRows);
@@ -427,8 +427,8 @@ export interface EdgeSeatResult {
   groups: Link[];
   fromPlans: (LinkFacePlan | undefined)[];
   toPlans: (LinkFacePlan | undefined)[];
-  fromWhy: LaneShortage[][];
-  toWhy: LaneShortage[][];
+  fromWhy: DepthShortage[][];
+  toWhy: DepthShortage[][];
   /** 쪼갠 횟수(진단). */
   splits: number;
 }
@@ -507,8 +507,8 @@ export function planModulePorts(
   //
   // **여기 있던 [insertingPlanner] 호출은 사라졌다**(2026-09-02). 그것이 내던 것은 모듈
   // 하나의 낱말(`tap`/`direct`)과 사유 문장이었는데, 배치 흐름에는 그 낱말로 갈리는 분기가
-  // 하나도 없었고(방출 통합 2026-08-16), `g` 는 레인 예산이 정하고(⑤-2), 화면의 처방은
-  // 사실에서 나온다([unpourableFix]·[LaneShortage]). 남은 독자가 0이 되어 지웠다.
+  // 하나도 없었고(방출 통합 2026-08-16), `g` 는 깊이 예산이 정하고(⑤-2), 화면의 처방은
+  // 사실에서 나온다([unpourableFix]·[DepthShortage]). 남은 독자가 0이 되어 지웠다.
   const restLines = input.lines.filter(
     (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
   );
@@ -534,7 +534,7 @@ export function planModulePorts(
   // 모드가 남기는 것은 **쪼개기 여부** 하나뿐이다: 탭이면 묶은 그룹(벨트 하나가 전 머신),
   // 다이렉트면 머신마다 하나. 그 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**이다(§16).
   /**
-   * **어느 줄이 `g = 1` 로 내려가야 하나** — [planBundles] 가 **레인 예산**으로 정한다
+   * **어느 줄이 `g = 1` 로 내려가야 하나** — [planBundles] 가 **깊이 예산**으로 정한다
    * (`docs/auto-layout/module/trunk-assignment.md` §4.2). 기본값은 *"공짜일 때만 관통"* 이다.
    *
    * ```
@@ -543,11 +543,11 @@ export function planModulePorts(
    *
    * **예전엔 이 답을 `supply`(= `planClusterPorts`)가 냈다.** 그쪽은 지도가 달라서
    * (면 단위 슬롯 풀, 머신 축 없음) *"이 모듈은 다이렉트"* 라는 **모듈 단위 낱말**밖에 못
-   * 냈고, 2026-08-31 에 줄 단위(`overflowed`)로 폈지만 여전히 **레인을 안 셌다** —
-   * 관통이 레인을 통째로 먹는다는 것을 모른다. 그래서 한 줄이 관통을 사면 나머지가
+   * 냈고, 2026-08-31 에 줄 단위(`overflowed`)로 폈지만 여전히 **깊이를 안 셌다** —
+   * 관통이 깊이를 통째로 먹는다는 것을 모른다. 그래서 한 줄이 관통을 사면 나머지가
    * 자리를 잃는 일이 조용히 났다(2026-09-01 실측: battery 에서 copper-plate 가 못 앉았다).
    *
-   * 이제 **같은 지도**(`FaceTable`·[laneDepthsOf])가 낸 수로 정한다. `supply` 는 2026-09-02 에
+   * 이제 **같은 지도**(`FaceTable`·[clusterBeltDepthsOf])가 낸 수로 정한다. `supply` 는 2026-09-02 에
    * 지도 A 와 함께 삭제됐다 — `g` 를 정하는 곳은 [planBundles] **하나**다.
    */
   const restByPriority = [
@@ -560,9 +560,9 @@ export function planModulePorts(
     count,
     lineRates: input.supplyCapacity?.lineRates,
     belts: input.belts,
-    lanesOf: (face) => laneDepthsOf(faceCtx, face).length,
-    // **①이 먼저 먹은 레인** — 링크는 자기 기하를 스스로 갖고 이미 앉았다. 좌석을
-    // `seatRowsUsed` 로 넘기는 것과 같은 이유로, 레인도 넘겨야 예산이 참이 된다.
+    depthsOf: (face) => clusterBeltDepthsOf(faceCtx, face).length,
+    // **①이 먼저 먹은 깊이** — 링크는 자기 기하를 스스로 갖고 이미 앉았다. 좌석을
+    // `seatRowsUsed` 로 넘기는 것과 같은 이유로, 깊이도 넘겨야 예산이 참이 된다.
     taken: (face) => {
       let spanning = 0;
       let direct = false;
@@ -665,33 +665,33 @@ export function planModulePorts(
   // 형태는 산출물 어디에도 안 남아서, glass 54줄(필요 5줄)을 사후에 손으로 세야 했다.
   // 내부 링크는 `modulePacking` 이 따로 센다 — 여기는 **외부 줄**(원료·완제품) 몫이다.
   // 싱크에 직접 쓰는 것은 `moduleWizard` 가 이미 하는 일과 같은 관용구다(runStats 머리말).
-  // **면 레인 계측** — 설계는 `docs/auto-layout/module/module-planning.md §4.5`.
-  // 묻는 것: *"둘째 레인이 실물에서 쓰이나, 그때 팔 종류가 실제로 갈리나."*
-  // 사후에 훑기만 한다 — [laneDepthsOf] 가 장부를 안 읽어서 배정이 끝난 뒤에도 같은 답이다.
+  // **면 깊이 계측** — 설계는 `docs/auto-layout/module/module-planning.md §4.5`.
+  // 묻는 것: *"둘째 깊이가 실물에서 쓰이나, 그때 팔 종류가 실제로 갈리나."*
+  // 사후에 훑기만 한다 — [clusterBeltDepthsOf] 가 장부를 안 읽어서 배정이 끝난 뒤에도 같은 답이다.
   // (관측만 — 계산·분기·반환값은 안 바뀐다. `runStats` 머리말의 규약.)
   for (const list of [
     outFaces.plans, inFaces.plans, restLinks.out.plans, restLinks.in.plans,
   ]) {
     for (const p of list) {
-      if (!p || p.face === "N" || p.face === "S") continue; // gap 은 레인 개념이 없다
-      const lanes = laneDepthsOf(faceCtx, p.face);
-      const deep = lanes.length > 0 && p.laneDepth !== lanes[0];
+      if (!p || p.face === "N" || p.face === "S") continue; // gap 은 깊이 개념이 없다
+      const depths = clusterBeltDepthsOf(faceCtx, p.face);
+      const deep = depths.length > 0 && p.clusterBeltDepth !== depths[0];
       // 팔 종류가 실제로 갈리나 — **깊이가 아니라 처리량**을 본다(§0.3: 배수는 스펙이 정한다).
       const tpOf = (d: number) => inserterForReach(plannerInserters, d - 1)?.throughput;
       const mismatch =
-        deep && tpOf(lanes[0]) !== undefined && tpOf(p.laneDepth) !== undefined
-          && tpOf(lanes[0]) !== tpOf(p.laneDepth);
-      recordFaceLaneStats({
+        deep && tpOf(depths[0]) !== undefined && tpOf(p.clusterBeltDepth) !== undefined
+          && tpOf(depths[0]) !== tpOf(p.clusterBeltDepth);
+      recordFaceDepthStats({
         assignments: 1,
-        multiLaneFace: lanes.length > 1 ? 1 : 0,
-        deepLane: deep ? 1 : 0,
-        deepLaneOtherArm: mismatch ? 1 : 0,
+        multiDepthFace: depths.length > 1 ? 1 : 0,
+        deepBelt: deep ? 1 : 0,
+        deepBeltOtherArm: mismatch ? 1 : 0,
       });
     }
   }
 
   // **못 앉은 줄의 사유** — 선호 면에서 후보마다 왜 안 됐나. 사다리가 읽을 자료를 지금은
-  // 관측만 한다(계획서 §9.7 ⑤ · §14-2). *"레인 부족"* 이 아니라 **막힌 행**을 담는 것이
+  // 관측만 한다(계획서 §9.7 ⑤ · §14-2). *"깊이 부족"* 이 아니라 **막힌 행**을 담는 것이
   // 요점이다 — 그 행이 곧 자름의 경계다.
   const said: string[] = [];
   for (const [groups, alloc] of [
@@ -704,27 +704,27 @@ export function planModulePorts(
       if (!w?.length) return;
       said.push(
         `못앉음 ${groups[i]?.item ?? "?"}: ` +
-          w.map((x: LaneShortage) => {
-            if (x.seats) return `${x.face}d${x.laneDepth} 좌석 ${x.seats.need}>${x.seats.budget}`;
+          w.map((x: DepthShortage) => {
+            if (x.seats) return `${x.face}d${x.clusterBeltDepth} 좌석 ${x.seats.need}>${x.seats.budget}`;
             if (x.blockedRows) {
               const r = x.blockedRows;
-              return `${x.face}d${x.laneDepth} 막힌행 ${r.slice(0, 6).join(",")}${r.length > 6 ? `…(${r.length})` : ""}`;
+              return `${x.face}d${x.clusterBeltDepth} 막힌행 ${r.slice(0, 6).join(",")}${r.length > 6 ? `…(${r.length})` : ""}`;
             }
-            return `${x.face}d${x.laneDepth} 포트칸 ${(x.blockedPort ?? []).map(([r, d]: readonly [number, number]) => `(${r},d${d})`).join("")}`;
+            return `${x.face}d${x.clusterBeltDepth} 포트칸 ${(x.blockedPort ?? []).map(([r, d]: readonly [number, number]) => `(${r},d${d})`).join("")}`;
           }).join(" · "),
       );
     });
   }
-  if (said.length) recordFaceLaneStats({ shortages: said });
+  if (said.length) recordFaceDepthStats({ shortages: said });
 
   // **사다리로 올려 보낼 사유** — 신원이 있는(= 간선인) 줄만. 쪼갬은 양끝이 함께라야 한다.
-  const laneShortages = new Map<string, LaneShortage[]>();
+  const depthShortages = new Map<string, DepthShortage[]>();
   for (const [groups, alloc] of [[outLinks, outFaces], [inLinks, inFaces]] as const) {
     alloc.plans.forEach((p, i) => {
       const id = groups[i]?.id;
       const w = alloc.shortages[i];
       if (p || id === undefined || !w?.length) return;
-      laneShortages.set(id, w);
+      depthShortages.set(id, w);
     });
   }
 
@@ -762,7 +762,7 @@ export function planModulePorts(
       ...(restLinks ? [restLinks.out.plans, restLinks.in.plans] : []),
     ]),
     linkedKeys,
-    laneShortages,
+    depthShortages,
     // (나)로 갔으면 [ClusterBelt] 가 하나도 없다 — 줄들은 `restLinks` 가 들고 있고, 못 앉은
     // 그룹의 실패는 링크와 똑같이 **자기 방출에서** 갈린다(그래서 `unplaced` 가 아니다).
     // **아이템 [ClusterBelt] 가 하나도 없다** — 줄들은 전부 `restLinks` 가 들고 있고, 못 앉은

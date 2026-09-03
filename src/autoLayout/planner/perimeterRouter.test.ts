@@ -75,12 +75,12 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
     if (!r.ok) return;
     expect(r.exitEdge).toBe("N");
     expect(r.seat.y).toBe(-1);
-    expect(r.seat.x).toBeGreaterThan(5); // E 방향으로 jog 한 lane
+    expect(r.seat.x).toBeGreaterThan(5); // E 방향으로 jog 한 트랙
     // 경로 전부 비어 있어야.
     for (const c of r.path) expect(occ.has(key(c))).toBe(false);
   });
 
-  it("channel + face 세로(N) + laneX 없음 → 진입 방향 불명이라 거부.", () => {
+  it("channel + face 세로(N) + trackX 없음 → 진입 방향 불명이라 거부.", () => {
     const r = routePortToPerimeter({
       anchor: { x: 5, y: 3 },
       face: "N",
@@ -90,23 +90,23 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.reason).toMatch(/without laneX/);
+    expect(r.reason).toMatch(/without trackX/);
   });
 
-  it("channel + face 세로(N) + laneX 있음 → 코너 어깨 상자도 예약 트랙 재생.", () => {
-    // face 가 N(fv.x=0)이라 옛 코드는 무조건 거부했으나, laneX 가 확정돼 있으면 가로
-    // 진입 방향(laneX−anchor.x)이 정해지므로 elbow 를 그대로 재생한다.
+  it("channel + face 세로(N) + trackX 있음 → 코너 어깨 상자도 예약 트랙 재생.", () => {
+    // face 가 N(fv.x=0)이라 옛 코드는 무조건 거부했으나, trackX 가 확정돼 있으면 가로
+    // 진입 방향(trackX−anchor.x)이 정해지므로 elbow 를 그대로 재생한다.
     const r = routePortToPerimeter({
       anchor: { x: 5, y: 3 },
       face: "N",
       perimeter,
       obstacles: new Set(),
-      hint: { exitEdge: "N", host: { kind: "channel", depth: 1 }, laneX: 8 },
+      hint: { exitEdge: "N", host: { kind: "channel", depth: 1 }, trackX: 8 },
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.exitEdge).toBe("N");
-    expect(r.seat).toEqual({ x: 8, y: -1 }); // laneX=8, N 변(perimeter.minY)
+    expect(r.seat).toEqual({ x: 8, y: -1 }); // trackX=8, N 변(perimeter.minY)
     expect(r.path[0]).toEqual({ x: 6, y: 3 }); // 가로 진입 시작
     expect(r.path.at(-1)).toEqual({ x: 8, y: -1 }); // 세로 주행 끝(N 변)
   });

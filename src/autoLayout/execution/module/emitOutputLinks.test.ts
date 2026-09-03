@@ -394,7 +394,7 @@ describe("ParallelBelt(막힌 면) — 한 면에 벨트 여러 줄, 합류 없�
   });
 });
 
-// gap 폭과 방출 기하가 **같은 값**(LinkFacePlan.laneDepth)에서 나온다는 걸 구조로 확인한다.
+// gap 폭과 방출 기하가 **같은 값**(LinkFacePlan.clusterBeltDepth)에서 나온다는 걸 구조로 확인한다.
 // 상수 재확인이 아니라 결과 좌표를 본다 — 둘이 어긋나면 벨트가 옆 머신 몸통 위에 놓인다.
 describe("gap 그룹의 벨트는 gap 안에 있다", () => {
   const mod = generateModule({

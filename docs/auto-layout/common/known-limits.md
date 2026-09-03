@@ -26,7 +26,7 @@ tags: [auto-layout, placement, routing]
 - **아이템 줄의 상한은 면당 [[용어사전#ClusterBelt|ClusterBelt]] 수 = 인서터 reach 종류 수**(현재 2)다. 두 면이면 4줄이 상한이고, 유체가 그 면의 좌석 행을 먹으면 더 줄어든다. 유체는 여기서 안 걸린다 — 유체 줄은 깊이로 겹쳐 쌓이므로 면 수가 아니라 지하파이프 사거리가 상한이다([[trunk-pipe]] §5.1).
 
 **원인:**
-- [module/clusterLayout.ts](../../../src/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+레인 타일 등 다른 형태가 없다.
+- [module/clusterLayout.ts](../../../src/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+깊이 타일 등 다른 형태가 없다.
 - [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
@@ -64,6 +64,11 @@ tags: [auto-layout, placement, routing]
 
 **해결 방향:**
 - belt-route 셀에 운반 item 종류 태깅 → 같은/호환 종류 통과 허용. fluid 는 같은 fluid 파이프 공유. C3 mixing 검사와 함께 도입.
+
+> **이 항목 아래에 문제가 둘 있다.** 위 처방은 *"같은 품목이 이미 깔린 벨트에 올라탄다"*
+> 이고, 증상에 적힌 *"벨트 2-lane 혼류"* 는 **다른 기전**이다 — 두 품목을 좌/우 레인에
+> 갈라 싣는 것이고, 그건 인서터가 아니라 **합류 기하**가 정한다 → [[belt-lane-semantics]].
+> 하나를 고쳐도 다른 하나는 안 풀린다.
 
 ---
 
@@ -205,7 +210,7 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 10. 탭 레인 수 = 서로 다른 reach 개수 — 긴팔을 안 고르면 모듈이 커진다
+## 10. 탭 깊이 수 = 서로 다른 reach 개수 — 긴팔을 안 고르면 모듈이 커진다
 
 **우선순위: P3** (2026-08-05 공급 모델 통합으로 **치명성이 사라졌다** — 아래 이력)
 
@@ -218,16 +223,16 @@ tags: [auto-layout, placement, routing]
 
 **원인:**
 - 한 면이 세울 수 있는 [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]] 수 = **서로 다른 reach 값 개수**
-  (`laneSlots` — 2026-09-02 삭제. 지금 그 수를 세는 곳은
-  [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) 의 `laneDepthsOf` 다).
-  같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 1레인**.
+  (`depthSlots` — 2026-09-02 삭제. 지금 그 수를 세는 곳은
+  [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) 의 `clusterBeltDepthsOf` 다).
+  같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 깊이 1칸**.
   게임 물리라 코드로 넓힐 수 없다.
 - 유체 면은 거기서 한 번 더 깎인다. 지하파이프가 없어 점프 불가면 좌석 줄 전체가 파이프라
-  [[용어사전#케이스 B (파이프 넘김 레인)|케이스 B]](reach≥2 전용)가 되어 **그 면 레인이 0**.
+  [[용어사전#케이스 B (파이프 넘김 줄)|케이스 B]](reach≥2 전용)가 되어 **그 면 깊이가 0**.
 
 **해결 방향:**
-1. **처방은 위저드 선택이다** — 3단계에서 긴팔 인서터를 고르면 면당 레인이 2가 되고 유체 면도
-   케이스 B 로 1레인을 낸다. 화면이 그 처방을 가리킨다(`fixStep`).
+1. **처방은 위저드 선택이다** — 3단계에서 긴팔 인서터를 고르면 면당 깊이가 2가 되고 유체 면도
+   케이스 B 로 깊이 1칸을 낸다. 화면이 그 처방을 가리킨다(`fixStep`).
 2. 근본은 §1 과 같다 — 면이 모자란 것이므로 형태 선택기가 들어오면 함께 풀린다.
 
 > **이력 ① (2026-08-04):** 이 거절의 옛 이름은 `belt-demand-exceeds-capacity` 였고 화면 처방이
@@ -237,7 +242,7 @@ tags: [auto-layout, placement, routing]
 > `includes('belt-demand')` 에 안 걸려 처방이 **아예 없던** 것도 4단계로 붙였다.
 >
 > **이력 ② (2026-08-05) — 치명성 제거.** 당시 이 항목의 증상 첫 줄은 *"유체 레시피 대부분이
-> 통째로 미생성"* 이었다. 원인은 레인 수가 아니라 **물러설 곳이 없다는 것**이었다:
+> 통째로 미생성"* 이었다. 원인은 깊이 수가 아니라 **물러설 곳이 없다는 것**이었다:
 > `planModulePorts` 의 `fluidNeedsTap` 이 *"유체가 있는데 1:1 로 떨어지면 실패"* 로 막고 있었고,
 > 그 근거는 파이프 방출이 tap 가지 **안에만** 있어서 물러나면 유체가 조용히 사라진다는 것이었다.
 > 방출을 갈래 밖으로 꺼내고([clusterModule](../../../src/autoLayout/module/clusterModule.ts)) 기계별
@@ -254,7 +259,7 @@ tags: [auto-layout, placement, routing]
 |----------|------|
 | **P1** | §1 클러스터 형태 기둥 고정 |
 | **P2** | §2 belt/pipe mixing · §3 아이템 머신 회전 미지원 · §9 Deprecated Dijkstra Guard(드래그) |
-| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 · §10 탭 레인 수(치명성 해소) |
+| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 · §10 탭 깊이 수(치명성 해소) |
 
 > **해소되어 삭제된 항목 (2026-07-25 감사):**
 > - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).

@@ -26,7 +26,7 @@
  * |---|---|---|
  * | `used`(`${머신}:${면}` → 수) | 그 머신 면에 몇 칸 찼나 | `d1` 열에서 찬 칸의 수([seatsTaken]) |
  * | `faceGroups`(같은 열쇠 → 수) | 그 면에 그룹이 몇이냐 | `d1` 열의 **서로 다른 주인** 수([groupsOn]) |
- * | `lanes`(`${면}\|${깊이}` → 구간들) | 그 깊이에서 어느 행이 먹혔나 | 그 깊이 열에서 찬 행([laneClear]) |
+ * | `lanes`(`${면}\|${깊이}` → 구간들) | 그 깊이에서 어느 행이 먹혔나 | 그 깊이 열에서 찬 행([depthClear]) |
  *
  * **유체 상자 행도 표의 칸이다** — 미리 `"pipe"` 로 차 있다. 그래서 옛
  * `skipFluidRows`(논리 순번 ↔ 실제 행 되사상)가 필요 없어졌다: 빈 칸을 앞에서부터 집으면
@@ -137,12 +137,12 @@ export function groupsOn(t: FaceTable, mi: number): number {
  * 같다 — 구간이 곧 그 칸들이기 때문이다. 그리고 이쪽은 **벨트가 아닌 것**(포트 칸 등)이
  * 같은 깊이에 들어와도 그대로 잡힌다.
  */
-export function laneClear(t: FaceTable, depth: number, lo: number, hi: number): boolean {
+export function depthClear(t: FaceTable, depth: number, lo: number, hi: number): boolean {
   for (let r = lo; r <= hi; r++) if (t.cells.has(key(r, depth))) return false;
   return true;
 }
 
-/** 그룹 하나에게 순번을 발급한다 — [claimSeats]·[claimLane] 이 같은 값을 써야 한다. */
+/** 그룹 하나에게 순번을 발급한다 — [claimSeats]·[claimDepth] 이 같은 값을 써야 한다. */
 export function takeOwner(t: FaceTable): number {
   return t.nextOwner++;
 }
@@ -158,7 +158,7 @@ export function claimSeats(
 }
 
 /** 깊이 `depth` 의 행 구간 `[lo, hi]` 를 `owner` 에게 준다. */
-export function claimLane(
+export function claimDepth(
   t: FaceTable,
   depth: number,
   lo: number,

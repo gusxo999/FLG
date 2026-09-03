@@ -32,7 +32,7 @@ import { type Link } from "./link";
 import { layoutCluster } from "./clusterLayout";
 // 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
 import { planModulePorts, type LinkFaceStage } from "../planner/module/planModulePorts";
-import type { LaneShortage, LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
+import type { DepthShortage, LinkFacePlan, LinkSeats } from "../planner/module/linkPlanner";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
 import type { Container, ModulePortMeta, PlacedCell, PortFace } from "../containerModel";
@@ -77,7 +77,7 @@ export interface ModulePort {
    * 한 번도 안 막히면 그 방향이 들어간다. 모듈이 **자기 자신에 대해** 답하므로
    * (모듈 = 블랙박스), planner 는 모듈 내부를 들여다보지 않고 이 목록만 본다.
    *
-   * 왜 필요한가: 반출 경로 예약([perimeterLanePlanner])이 `meta.side` 만 보고 배정하면
+   * 왜 필요한가: 반출 경로 예약([perimeterTrackPlanner])이 `meta.side` 만 보고 배정하면
    * 코너 어깨 상자처럼 **그 방향이 형제 트렁크에 막힌** 경우를 못 보고 **못 쓰는 경로를
    * 예약**한다(채널 폭만 낭비되고 방출은 탐색 폴백에 떠넘겨짐). wayOuts 를 주면 예약이
    * 애초에 **뚫린 방향만** 고르므로 "탐색 없이 항상 방출 가능"이라는 예약 철학이 지켜진다.
@@ -134,10 +134,10 @@ export interface GeneratedModule {
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
   /**
-   * **못 앉은 내부 링크의 사유** — `linkId` → [LaneShortage]. 사다리 1단의 입력이다.
+   * **못 앉은 내부 링크의 사유** — `linkId` → [DepthShortage]. 사다리 1단의 입력이다.
    * 쪼개는 주체는 `modulePacking` 이다(링크 객체를 양끝이 공유하므로).
    */
-  laneShortages?: Map<string, LaneShortage[]>;
+  depthShortages?: Map<string, DepthShortage[]>;
   /** 직접 탭/라우팅에 실패한 line(유체·미탭) — 진단용. */
   unroutedLines: IoLine[];
   /**
@@ -200,7 +200,7 @@ export interface ModuleInput {
   linkFaceStage?: LinkFaceStage;
   /**
    * 노출된 끝면(N/S, 선호 순서) — count=1 완화. external 입력이 W-spill 전에 이 면의
-   * 레인을 쓴다(planner E→N/S→W). 노출 판정(열의 끝 + 전역 마진 방향)은 packModuleTree
+   * 깊이를 쓴다(planner E→N/S→W). 노출 판정(열의 끝 + 전역 마진 방향)은 packModuleTree
    * 가 DFS 열-내 순서에서 유도한다. 미지정=기존 동작(W/E 만).
    */
   nsExposure?: ("N" | "S")[];
@@ -246,9 +246,9 @@ export interface ModuleInput {
  * 한 클러스터를 자족 모듈로 생성. 입력 line 은 supply 트렁크, 출력 line 은 collect
  * 트렁크로 자기 ring 까지 깐다. 각 트렁크의 종착 ring 셀 = 그 line 의 포트 anchor.
  *
- * 결정적: 배정([tryLinkFace])이 줄마다 자리(면 W/E·레인·좌석)를 먼저
+ * 결정적: 배정([tryLinkFace])이 줄마다 자리(면 W/E·깊이·좌석)를 먼저
  * 못박고, 각 트렁크를 그 슬롯에만 가둔다(faceConstraints). 누적 occupancy 로 같은 면
- * 두 레인의 seat 행이 겹치지 않게 한다. 슬롯은 columnTapCapacity 로 보장돼 미탭 불가.
+ * 두 깊이의 seat 행이 겹치지 않게 한다. 슬롯은 columnTapCapacity 로 보장돼 미탭 불가.
  */
 export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
@@ -329,7 +329,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, laneShortages: plan.laneShortages, unpourableFix: plan.unpourableFix };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, depthShortages: plan.depthShortages, unpourableFix: plan.unpourableFix };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     bbox,
     unroutedLines,
     pipeCells,
-    laneShortages: plan.laneShortages,
+    depthShortages: plan.depthShortages,
     unpourableFix: plan.unpourableFix,
   };
 }
@@ -457,7 +457,7 @@ export interface TrunkContext {
   clusterPipeDepth: (side: PortSide, rank: number) => number;
   /** 줄의 **실제 배치 깊이** — 유체 줄은 점프 모드면 자기 순번의 ClusterPipe 깊이, 아니면 계획값. */
   emitDepthOf: (p: PlannedLine) => number;
-  /** 같은 면·같은 끝으로 나가는 줄들의 최대 레인 깊이 — stagger 계산의 기준. */
+  /** 같은 면·같은 끝으로 나가는 줄들의 최대 깊이 — stagger 계산의 기준. */
   maxDepthAtEnd: Map<string, number>;
 }
 
@@ -502,7 +502,7 @@ function buildTrunkContext(
   //   base = max(그 면 벨트 최대 깊이, 1) · D_r = base + 2 + 2r · 탭 = D_r − 1
   // `n=1, beltMax>0` 을 넣으면 `beltMax + 2` — **현행과 같은 수**다(회귀 0).
   // **탭 벨트와 링크 벨트를 함께 센다.** `plan.lines` 는 탭 계획뿐이라, 링크·다이렉트가 앉은
-  // 면에서는 이것만 보면 0 을 답한다 — 그러면 ClusterPipe 가 링크 포트 끝(d`laneDepth+2`)
+  // 면에서는 이것만 보면 0 을 답한다 — 그러면 ClusterPipe 가 링크 포트 끝(d`clusterBeltDepth+2`)
   // **위로** 지나가고, 파이프가 끊겨도 겹침도 미배치도 아니라 아무도 못 알아챈다.
   // 오늘은 [tryLinkFace] 가 유체 면을 통째로 거절하므로 유체 면의 링크 깊이는 언제나 없고,
   // 따라서 이 항은 **아직 아무 배치도 바꾸지 않는다** — 유체 면을 여는 다음 단계의 안전망이다.

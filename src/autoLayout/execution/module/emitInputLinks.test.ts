@@ -54,7 +54,7 @@ describe("머신 여럿을 맡는 그룹 — 트렁크로 앉는다", () => {
   it("벨트가 세 머신의 좌석 행을 모두 덮는다 — 구멍이 있으면 뒤쪽이 굶는다", () => {
     const belts = mod.cells.filter((c) => c.cell.entityType === EntityType.Belt);
     const col = new Set(belts.map((c) => c.x));
-    expect(col.size, "트렁크는 한 열(레인)에 선다").toBe(1);
+    expect(col.size, "트렁크는 한 열(깊이)에 선다").toBe(1);
     const ys = belts.map((c) => c.y).sort((a, b) => a - b);
     // 연속이어야 한다 — 끊기면 그 너머는 아무도 못 잡는다(계획서 §3 조건 ⑤).
     for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBe(1);
@@ -85,10 +85,10 @@ describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴�
   ];
   const mod = generateModule({ ...base, inputLinks: disjoint });
 
-  it("둘 다 기본 레인(d=2) — 행이 안 겹치니 다툴 게 없다", () => {
+  it("둘 다 기본 깊이(d=2) — 행이 안 겹치니 다툴 게 없다", () => {
     expect(mod.unroutedLines).toHaveLength(0);
     expect(mod.inputPorts).toHaveLength(2);
-    expect(mod.inputPorts.every((p) => p.meta.laneDepth === 2)).toBe(true);
+    expect(mod.inputPorts.every((p) => p.meta.clusterBeltDepth === 2)).toBe(true);
   });
 
   // 순서 우선(문서 체크리스트 "(나)") — 입력 쪽도 정렬 없이 그룹 배열 순서 그대로 좌석

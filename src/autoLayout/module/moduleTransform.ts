@@ -167,7 +167,7 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
     bbox: { x: 0, y: 0, w, h },
     unroutedLines: mod.unroutedLines,
     unpourableFix: mod.unpourableFix,
-    laneShortages: mod.laneShortages,
+    depthShortages: mod.depthShortages,
     // 지하파이프의 `connectDir` 은 **면**이므로 같이 돌아야 한다. 안 돌리면 합류 가드가
     // 엉뚱한 면 하나만 막고 나머지 셋을 뚫어 준다.
     pipeCells: mod.pipeCells.map((c): PipeFlowPipe => {
@@ -285,7 +285,7 @@ export function shiftModule(mod: GeneratedModule, dx: number, dy: number): Gener
     bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
     unroutedLines: mod.unroutedLines,
     unpourableFix: mod.unpourableFix,
-    laneShortages: mod.laneShortages,
+    depthShortages: mod.depthShortages,
     // `connectDir` 은 면이라 평행이동에 불변 — 좌표만 옮긴다.
     pipeCells: mod.pipeCells.map((c): PipeFlowPipe => ({ ...c, x: c.x + dx, y: c.y + dy })),
   };

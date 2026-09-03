@@ -1,9 +1,10 @@
-> 상태: **승인 대기** (2026-09-03). 코드를 한 줄도 안 건드렸다.
+> 상태: **진행 중** — Step 1 ✅ · Step 2 ✅ (2026-09-03).
 >
-> **레인 물리 다섯은 사장님이 확정했다**(2026-09-03 — 계획서 §2). 그래서 Step 1 은
-> 실측이 아니라 **문서화**로 줄었고, 합류 기하도 §5 에서 확정됐다.
-> **남은 미확인은 하나 — 곡선(90° 꺾임)에서 좌/우 레인이 보존되나**(계획서 §2 끝).
-> 그것이 아니오면 `side` 가 필드 하나가 아니라 **경로를 따라 접는 셈**이 된다.
+> 낱말은 되찾았다: 축은 **`clusterBeltDepth`**, 반출·채널 세로줄은 **`track`**,
+> **"레인" 은 게임의 좌/우 두 줄 전용**이다. 식별자 `lane` 은 저장소에 없다
+> (남은 것은 게임 레인을 말하는 자리와 이력 인용뿐 — 계획서 Step 2).
+>
+> **다음은 Step 3**(`laneThroughput` = 줄 용량 ÷ 2). 그 뒤 Step 4 가 첫 실물이다.
 
 # 벨트-레인 — 공통 컨텍스트
 
@@ -13,19 +14,20 @@
 이름은 이미 있다 — [용어사전 `MixedItemBelt`](../../docs/용어사전.md) (2026-07-14 사용자
 명명, **미구현**). 이 폴더는 그 항목을 실물로 옮기는 일이다.
 
-## 이 폴더에서 "레인"은 게임의 좌/우 두 줄**만** 뜻한다
+## "레인" 은 게임의 좌/우 두 줄**만** 뜻한다 — Step 2 로 되찾았다
 
-코드는 오늘 **깊이**(머신 면에서 바깥으로 몇 칸)를 "레인"이라 부른다 — `laneDepth`
-110곳 · `claimLane`/`laneClear`/`laneCap` 53곳. 그리고 **반출 트랙**도 "lane"이라
-부른다(`perimeterLanePlanner`·`laneX` 44곳). 뜻이 셋이다.
+한때 코드가 세 가지를 다 "레인"이라 불렀다: **깊이**(면에서 바깥 몇 칸) · **반출 트랙** ·
+게임 레인. 용어사전이 이 충돌을 미리 경고해 뒀고(`§ClusterBelt` — *"depth 3 레인의 벨트의
+오른쪽 레인 같은 말이 나와 반드시 깨진다"*), **2026-09-03 에 걷어냈다**:
 
-용어사전이 이 충돌을 **미리 경고해 뒀다**(`docs/용어사전.md` §ClusterBelt):
+```
+깊이        clusterBeltDepth · claimDepth · depthClear · depthBudget.ts · DepthShortage
+반출·채널   perimeterTrackPlanner.ts · TrackAssignment · trackX · perimeter/tracks.ts
+레인        게임의 좌/우 두 줄. 식별자로는 안 쓴다(`side: "left" | "right"`)
+```
 
-> *"[MixedItemBelt] 를 만들기 시작하면 「depth 3 레인의 벨트의 오른쪽 레인」 같은 말이
-> 나와 반드시 깨진다."*
-
-그래서 이 폴더의 글에서 **깊이는 "깊이"라고만 쓴다.** 코드 심볼을 가리킬 때만
-`laneDepth` 처럼 백틱으로 적는다. 개명 자체는 계획서 **Step 2** 다.
+식별자 `lane` 은 저장소에 없다. 한글 "레인"이 남은 곳은 **게임 레인을 말하는 자리**와
+**삭제된 것의 이력 인용**뿐이다(계획서 Step 2 의 표).
 
 ## 착수 전 반드시 읽을 것
 
@@ -44,7 +46,7 @@
   **오늘의 모든 용량 수치가 이미 「두 레인 합」이다**
 - `src/autoLayout/module/link.ts` — `createLinks` 의 붓기(`cap: tier.throughput`) ·
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
-- `src/autoLayout/planner/module/linkPlanner.ts` — `LinkFacePlan.laneDepth`(= 깊이)
+- `src/autoLayout/planner/module/linkPlanner.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
 - `src/autoLayout/execution/module/emitModule.ts` — `emitInputLinks`(공급 줄을 까는 곳)
 - `src/autoLayout/planner/deliveryRoute.ts` — `seatIsBeltFeeder`/`stripKeys`.
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다
@@ -74,8 +76,8 @@
 
 | 전제 | 확인 방법 | 확인일 |
 |---|---|---|
-| **레인 물리 다섯**(드랍=먼 레인 · 픽업=양 레인 · 사이드로드 접힘 · 지하 보존 · 직진 1:1) | 사장님 확정 → 계획서 §2 (Step 1 이 `docs/factorio/belt-lane-semantics.md` 로 옮긴다) | 2026-09-03 ✔ |
-| **곡선에서 좌/우 레인이 보존된다** | ⚠ **아직 아무도 확인 안 했다** — 계획서 §2 끝 · Step 1 | — |
+| **레인 물리 일곱** — 드랍=먼 레인 · 픽업=양 레인 · **사이드로드 접힘** · 지하 보존 · 직진 1:1 · **곡선=유입 하나** · **여유 있어야 올라탄다** | 사장님 확정 → 계획서 §2 (Step 1 이 `docs/factorio/belt-lane-semantics.md` 로 옮긴다) | 2026-09-03 ✔ |
+| 합류 칸은 **뒤 유입이 없어야** 한다(⑤⑦) — 있으면 옆 쪽이 조용히 굶는다 | 계획서 §5 의 조건 셋 | 2026-09-03 ✔ |
 | 용량 수치는 전부 **두 레인 합**이다(`× 480`) | `beltThroughput.ts` 머리말 · 프로토타입 문서 `speed × 480` | 2026-09-03 ✔ |
 | 링크 포트의 경계 인서터는 납품 경로가 **뗀다**(belt→belt) | `deliveryRoute.stripKeys` · `seatIsBeltFeeder` | 2026-09-03 ✔ |
 | 모듈 면 벨트는 **한쪽에만** 머신이 있다(기둥 모델) | `layout-models.md` ① · `emitInputLinks` 의 `faceCell(…, d, t)` | 2026-09-03 ✔ |

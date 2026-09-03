@@ -77,7 +77,7 @@ const packConfig: PackConfig = scaledPack({
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
   channelGeometry: true,
-  reservePerimeterLanes: true,
+  reservePerimeterTracks: true,
   beltMaxUndergroundDistance: 4,
 });
 const deliveryConfig: DeliveryConfig = {

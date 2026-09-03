@@ -22,7 +22,7 @@ import type { PortFace } from "../../containerModel";
 import { armsAt, machinesOn, resolveSpanBlock, spansAllMachines, type Link } from "../../module/link";
 import type { PlannedSide } from "./ioLine";
 import {
-  claimLane, claimSeats, freeSeatRows, groupsOn, laneClear, makeFaceTable,
+  claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceTable,
 } from "./faceTable";
 
@@ -37,13 +37,13 @@ export interface LinkFacePlan {
    * ([gapRowsFromPlans])**이자** 방출기가 벨트를 놓는 깊이다([emitOutputLinks]).
    * 두 곳이 같은 필드를 보므로 폭과 기하가 어긋날 수 없다.
    */
-  laneDepth: number;
+  clusterBeltDepth: number;
   /**
    * **이 줄의 좌석에 앉을 팔** — `reach` 로 지목한다([inserterForReach]).
    *
-   * **깊이에서 되유도하지 않는다.** 오늘은 `laneDepth = reach + 1` 이 항등이라 두 방법이
+   * **깊이에서 되유도하지 않는다.** 오늘은 `clusterBeltDepth = reach + 1` 이 항등이라 두 방법이
    * 같은 답을 내지만, 축은 깊이가 아니라 `(인서터, 그 팔이 집는 타일)` 이고(계획서 §16)
-   * 그 항등이 깨지는 날(케이스 B 부활 · 유체 면 `laneCap`) **조용히 틀린다.**
+   * 그 항등이 깨지는 날(케이스 B 부활 · 유체 면 `depthCap`) **조용히 틀린다.**
    * 그리고 팔 **개수**를 이 팔로 셌으므로([armsAt]), 놓는 팔도 이것이라야 짝이 맞는다.
    */
   reach: number;
@@ -56,8 +56,8 @@ export interface LinkFacePlan {
    * 반드시 합쳐진다.
    *
    * 그래서 이 면의 **n 번째 그룹은 한 칸 더 깊은 줄로 내려가서** 달린다. 내려가는 건
-   * **벨트가 벨트를 먹이는 것**이라 팔 길이와 무관하다 — 팔은 `laneDepth`(수집 줄)까지만
-   * 닿으면 된다. 첫 그룹은 `laneDepth` 와 같다(내려갈 것도 없이 이미 서쪽 변에서 시작).
+   * **벨트가 벨트를 먹이는 것**이라 팔 길이와 무관하다 — 팔은 `clusterBeltDepth`(수집 줄)까지만
+   * 닿으면 된다. 첫 그룹은 `clusterBeltDepth` 와 같다(내려갈 것도 없이 이미 서쪽 변에서 시작).
    */
   exitDepth?: number;
   /** 이 그룹이 쓰는 머신 index → 팔 수. */
@@ -72,8 +72,8 @@ export interface LinkFacePlan {
    * 구간 (g < N)   벨트가 일부     → 포트는 **옆**.  그 면에 관통이 없어야 성립
    * ```
    *
-   * 왜 갈리나 — 상자에 바깥에서 닿으려면 **그보다 깊은 레인들을 가로질러야** 하는데,
-   * W/E 면의 레인은 세로줄이라 **관통 레인은 어떤 행에서도 못 건넌다.** 포트를 옆에 두면
+   * 왜 갈리나 — 상자에 바깥에서 닿으려면 **그보다 더 깊은 줄들을 가로질러야** 하는데,
+   * W/E 면의 깊이는 세로줄이라 **관통 줄은 어떤 행에서도 못 건넌다.** 포트를 옆에 두면
    * 그 면의 깊은 관통이 자기 상자를 가둔다(2026-08-17 실측: `planned = 0` · 완제품 상자가
    * 갇힘 · R-도달 위반). 기둥 끝에 두면 상자가 기둥 **밖**이라 면 깊이와 무관해진다.
    *
@@ -104,9 +104,9 @@ export interface LinkFacePlan {
 type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
 
 /**
- * **못 앉은 이유 — 후보(면 × 레인) 하나마다 하나.** 사다리가 읽는다.
+ * **못 앉은 이유 — 후보(면 × 깊이) 하나마다 하나.** 사다리가 읽는다.
  *
- * **수량이 아니라 `행`을 담는 것이 요점이다.** *"레인이 하나 모자라다"* 로는 **어디서 자를지**
+ * **수량이 아니라 `행`을 담는 것이 요점이다.** *"깊이가 하나 모자라다"* 로는 **어디서 자를지**
  * 못 정한다. 사다리 1(구간 쪼개기)이 필요로 하는 것은 자름의 **경계**이고, 그건 막힌 행 번호다
  * (계획서 §14-2 — *못을 피해서*).
  *
@@ -114,15 +114,15 @@ type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
  * blockedRows [90, 180]  →  토막 [1,88] · [91,178] · [181,268]
  * ```
  *
- * **못은 얕은 레인 줄의 포트에서 온다** — 포트 인서터가 `d+1` 에 서므로, 레인 `d` 에 앉으려는
- * 줄에게는 레인 `d−1` 줄들의 진출 행이 전부 못이다. 연쇄하지만 레인 수만큼에서 멈춘다.
+ * **못은 얕은 줄의 포트에서 온다** — 포트 인서터가 `d+1` 에 서므로, 깊이 `d` 에 앉으려는
+ * 줄에게는 깊이 `d−1` 줄들의 진출 행이 전부 못이다. 연쇄하지만 깊이 수만큼에서 멈춘다.
  */
-export interface LaneShortage {
+export interface DepthShortage {
   face: PortFace;
-  laneDepth: number;
-  /** 이 레인의 팔로 센 팔 수가 면 좌석 예산을 넘었다. */
+  clusterBeltDepth: number;
+  /** 이 깊이의 팔로 센 팔 수가 면 좌석 예산을 넘었다. */
   seats?: { need: number; budget: number };
-  /** 내 구간 안에서 **이 레인이 이미 먹힌 행**들 — 곧 자름의 경계다. */
+  /** 내 구간 안에서 **이 깊이가 이미 먹힌 행**들 — 곧 자름의 경계다. */
   blockedRows?: number[];
   /**
    * 이 후보로 앉았다면 내 팔이 앉았을 **좌석 행**들(모듈-로컬).
@@ -148,7 +148,7 @@ export interface LaneShortage {
  *   port-blocked   구간은 지나는데 **포트 칸**이 막혔다
  * ```
  *
- * `seat-blocked` 와 `span-blocked` 는 둘 다 [LaneShortage.blockedRows] 에서 오지만 **기하가
+ * `seat-blocked` 와 `span-blocked` 는 둘 다 [DepthShortage.blockedRows] 에서 오지만 **기하가
  * 다르다** — 막힌 칸이 내 좌석 위에 있으면 앞이고, 좌석 *사이*에만 있으면 뒤다. 그 갈림이
  * 곧 [resolveSpanBlock] 이다.
  *
@@ -179,7 +179,7 @@ const RUNG_ORDER: readonly LadderRung[] = [
   "span-blocked", "port-blocked", "seat-blocked", "seat-budget",
 ];
 
-function rungOf(w: LaneShortage): LadderRung {
+function rungOf(w: DepthShortage): LadderRung {
   if (w.blockedRows?.length && w.seatRows?.length)
     return resolveSpanBlock(w.seatRows, w.blockedRows).length > 0 ? "span-blocked" : "seat-blocked";
   if (w.blockedPort?.length) return "port-blocked";
@@ -188,7 +188,7 @@ function rungOf(w: LaneShortage): LadderRung {
 }
 
 /** 줄 하나의 후보들을 한 이름표로. 후보가 없으면 `undefined` — 사유를 지어내지 않는다. */
-export function rungOfLine(ws: readonly LaneShortage[]): LadderRung | undefined {
+export function rungOfLine(ws: readonly DepthShortage[]): LadderRung | undefined {
   if (ws.length === 0) return undefined;
   const seen = new Set(ws.map(rungOf));
   return RUNG_ORDER.find((r) => seen.has(r));
@@ -197,10 +197,10 @@ export function rungOfLine(ws: readonly LaneShortage[]): LadderRung | undefined 
 /**
  * 모듈 하나의 못 앉은 줄들을 **교착별로 센다** — `unrouted-lines` 이슈에 붙는 한 문장.
  *
- * 줄 이름과 이름표를 1:1 로 잇지 않는 것은 [GeneratedModule.laneShortages] 가 `linkId` 로만
+ * 줄 이름과 이름표를 1:1 로 잇지 않는 것은 [GeneratedModule.depthShortages] 가 `linkId` 로만
  * 묶여 있어서다(줄 이름과의 짝은 아직 없다). **없는 대응을 지어내지 않는다.**
  */
-export function summarizeRungs(shortages: Map<string, LaneShortage[]>): string | undefined {
+export function summarizeRungs(shortages: Map<string, DepthShortage[]>): string | undefined {
   const tally = new Map<LadderRung, number>();
   for (const ws of shortages.values()) {
     const r = rungOfLine(ws);
@@ -265,8 +265,8 @@ export interface LinkFaceContext {
    * → 좌석 줄이 **거의 다 살아 있다.** `rows` 만 건너뛰고 앉는다(예산은
    * `machine.h − rows.length`, 순번 remap 은 [commitLinkFace]).
    *
-   * `laneCap` 은 **그 면의 레인 깊이 상한** — 지하파이프 사거리가 정한다([laneDepthCap]).
-   * 얕으면 깊은 레인이 잘려 그만큼 그룹이 다른 면으로 넘어간다.
+   * `depthCap` 은 **그 면의 깊이 상한** — 지하파이프 사거리가 정한다([clusterBeltDepthCap]).
+   * 얕으면 깊은 줄이 잘려 그만큼 그룹이 다른 면으로 넘어간다.
    *
    * (예전엔 *"점프 불가"* 갈래가 있어 그 면을 통째로 거절했고, 탭 경로만 **케이스 B** 로
    * 살아남았다. 2026-08-16 그 경우가 도달 불가능해져 둘 다 삭제됐다 — `docs/.../trunk-pipe.md`.)
@@ -277,7 +277,7 @@ export interface LinkFaceContext {
    * **링크가 앉는 행위 자체가 `pipeJumpMode` 조건 ①(`beltMaxOn > 0`)을 켠다** — 계획의
    * 전제가 스스로 참이 된다.
    */
-  pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; laneCap: number }>;
+  pipeFaces?: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>;
   /**
    * 기둥 끝 장부 — `${면}` → 이미 쓴 끝들([LinkFacePlan.portEnd]). 면마다 N·S 둘뿐이다.
    *
@@ -286,10 +286,10 @@ export interface LinkFaceContext {
    */
   ends: Map<PortFace, Set<"N" | "S">>;
   /**
-   * 쓸 수 있는 팔 — **그 면의 레인 목록이 여기서 나온다**([laneDepthsOf]).
-   * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 레인 수다. 비면 d2 하나로 본다.
+   * 쓸 수 있는 팔 — **그 면의 깊이 목록이 여기서 나온다**([clusterBeltDepthsOf]).
+   * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 깊이 수다. 비면 d2 하나로 본다.
    *
-   * **처리량까지 든다** — 레인을 고르면 그 팔의 처리량이 팔 **개수**를 정하기 때문이다
+   * **처리량까지 든다** — 깊이를 고르면 그 팔의 처리량이 팔 **개수**를 정하기 때문이다
    * ([armsAt]). 예전엔 `{ reach }` 만 받아서 개수를 못 셌고, 그래서 붓기가 reach 1 로
    * 미리 센 수를 그대로 썼다(결함 A).
    */
@@ -297,20 +297,20 @@ export interface LinkFaceContext {
 }
 
 /**
- * **면의 레인 목록** — reach 종류에서 유도된다. 깊이는 고르는 값이 아니라 *결과*다(계획서 §16):
+ * **면의 깊이 목록** — reach 종류에서 유도된다. 깊이는 고르는 값이 아니라 *결과*다(계획서 §16):
  * `d2` 가 관통에 먹혔으면 다음 줄은 `d3` 이고, **그러니 그 줄의 팔이 긴팔이 된다.**
  * 거꾸로 *"긴팔을 쓸까"* 를 먼저 정하는 코드는 없다.
  *
  * **장부를 안 읽는다** — `ctx.inserters` 와 `ctx.pipeFaces` 만 본다. 그래서 배정이 끝난 뒤
  * 다시 불러도 같은 답이고, `planModulePorts` 의 사후 계측이 그 성질에 기대고 있다.
  */
-export function laneDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
+export function clusterBeltDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
   const reaches = [...new Set((ctx.inserters ?? []).map((i) => i.reach))]
     .filter((r) => Number.isFinite(r) && r >= 1)
     .sort((a, b) => a - b);
   const all = reaches.length ? reaches.map((r) => r + 1) : [LINK_LANE_DEPTH];
-  // **파이프가 먼저다** — 유체 면의 레인 깊이는 지하파이프가 넘을 수 있는 데까지다.
-  const cap = ctx.pipeFaces?.get(face)?.laneCap ?? Infinity;
+  // **파이프가 먼저다** — 유체 면의 깊이는 지하파이프가 넘을 수 있는 데까지다.
+  const cap = ctx.pipeFaces?.get(face)?.depthCap ?? Infinity;
   return all.filter((d) => d <= cap);
 }
 
@@ -363,7 +363,7 @@ function beltRowSpan(
  * (`emitOutputLinks:221`·`emitInputLinks:373` 이 같은 규칙을 쓴다).
  */
 function portCells(
-  cand: Pick<LinkFaceCandidate, "laneDepth" | "portEnd">,
+  cand: Pick<LinkFaceCandidate, "clusterBeltDepth" | "portEnd">,
   span: readonly [number, number],
   table: FaceTable,
 ): Array<readonly [number, number]> {
@@ -371,9 +371,9 @@ function portCells(
   const cells: Array<readonly [number, number]> = cand.portEnd
     ? (() => {
         const dir = cand.portEnd === "S" ? 1 : -1;
-        return [[topT + dir, cand.laneDepth], [topT + 2 * dir, cand.laneDepth]] as const;
+        return [[topT + dir, cand.clusterBeltDepth], [topT + 2 * dir, cand.clusterBeltDepth]] as const;
       })()
-    : [[topT, cand.laneDepth + 1], [topT, cand.laneDepth + 2]];
+    : [[topT, cand.clusterBeltDepth + 1], [topT, cand.clusterBeltDepth + 2]];
   // 기둥 밖 행은 표에 없다 — 아무도 청구할 수 없으니 다툴 일도 없다.
   const last = table.rowsPerMachine * table.machineCount - 1;
   return cells.filter(([r]) => r >= 0 && r <= last);
@@ -381,7 +381,7 @@ function portCells(
 
 /**
  * 링크 벨트의 기본 깊이 — 좌석(d1) 바로 바깥. v1 은 그룹마다 이 한 줄뿐이다
- * (레인 늘리기 = 긴팔로 d≥3 을 집는 것은 후속).
+ * (깊이 늘리기 = 긴팔로 d≥3 을 집는 것은 후속).
  */
 const LINK_LANE_DEPTH = 2;
 
@@ -390,7 +390,7 @@ const LINK_LANE_DEPTH = 2;
  * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
  * 옮길 수는 없다.
  *
- * 면마다 한계가 **좌석 수 하나**다(2026-07-22). 예전엔 좌석과 별개로 **depth(레인)** 도
+ * 면마다 한계가 **좌석 수 하나**다(2026-07-22). 예전엔 좌석과 별개로 **depth** 도
  * 다퉜다 — 벨트가 면을 따라 끝까지 달렸기 때문에 같은 depth 두 줄이 반드시 부딪혔고, 그래서
  * 한 면의 줄 수가 팔 길이 종류 수에 묶였다. 이제 벨트는 **자기 좌석 구간만 덮고 끝에서 포트
  * 쪽으로 꺾으므로**([emitOutputLinks]) 행 구간이 안 겹치는 그룹끼리는 **같은 depth 를 그냥
@@ -411,18 +411,18 @@ export function tryLinkFace(
   face: PortFace,
   allowPipeFace = false,
   /** 못 앉으면 그 사유가 여기 쌓인다(후보마다 하나). 안 주면 안 모은다. */
-  why?: LaneShortage[],
+  why?: DepthShortage[],
 ): LinkFaceCandidate | undefined {
   const { machine, count } = ctx;
   // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
-  // ([linkFaceDepths] → `pipeJumpMode` 조건 ①) [ClusterPipe] 가 우리 포트 끝(d`laneDepth+2`)
+  // ([linkFaceDepths] → `pipeJumpMode` 조건 ①) [ClusterPipe] 가 우리 포트 끝(d`clusterBeltDepth+2`)
   // **밖으로** 물러나 그 면이 여러 칸 넓어진다. 갈 곳이 있으면 그쪽이 낫다 — *"없는 위험 때문에
   // 폭을 낭비하지 않는다"* 는 `pipeJumpMode` 의 원칙과 같은 이유이고, 그 이름으로 잠긴 테스트가
   // trunkPipe.test.ts 에 있다. 그래서 선호 단계([allocateLinkFaces])는 비켜 가고,
   // 넘침 단계([spillLinkFacesToGap])만 쓴다.
   //
   // (점프 불가 면을 통째로 거절하던 가드는 **케이스 B 와 함께 사라졌다** — 2026-08-16.
-  // 지금 유체 면을 다르게 만드는 것은 `laneCap` 하나뿐이다.)
+  // 지금 유체 면을 다르게 만드는 것은 `depthCap` 하나뿐이다.)
   //
   // **다만 회피는 더 싼 곳이 있을 때만이다**(2026-08-16). 반대 면도 유체 면이면 어디에 앉든
   // +3 으로 **동률**이고, 동률에서 자기 역할 면을 버리면 포트가 반대편에 서서 납품 경로만
@@ -430,8 +430,8 @@ export function tryLinkFace(
   const pf = face === "W" || face === "E" ? ctx.pipeFaces?.get(face) : undefined;
   const opposite: PortFace = face === "W" ? "E" : "W";
   if (pf && !allowPipeFace && !ctx.pipeFaces?.has(opposite)) return undefined;
-  // **gap 벨트의 레인은 언제나 `LINK_LANE_DEPTH`(d2) 라 팔이 하나로 정해진다** — 깊이를
-  // 고를 여지가 없으므로 여기서 한 번만 센다. W/E 는 아래 레인 루프가 후보마다 다시 센다.
+  // **gap 벨트의 깊이는 언제나 `LINK_LANE_DEPTH`(d2) 라 팔이 하나로 정해진다** — 깊이를
+  // 고를 여지가 없으므로 여기서 한 번만 센다. W/E 는 아래 깊이 루프가 후보마다 다시 센다.
   const gapArms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], LINK_LANE_DEPTH - 1));
   for (const mi of gapArms.keys()) if (mi < 0 || mi >= count) return undefined;
   if (face === "N" || face === "S") {
@@ -458,7 +458,7 @@ export function tryLinkFace(
     // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
     const nth = groupsOn(gapTable, mi);
     return {
-      face, gap, arms, laneDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1,
+      face, gap, arms, clusterBeltDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1,
       exitDepth: LINK_LANE_DEPTH + nth,
     };
   }
@@ -474,12 +474,12 @@ export function tryLinkFace(
   //
   // 예전엔 `arms.size !== 1` 로 통째로 거절했다. 사유는 *"관통하는 순간 다른 그룹과 depth 를
   // 다퉈야 한다"* 였는데, **그 다툼은 관통일 때만 있다**: 나가는 방향이 면과 수직이라 벨트가
-  // **자기 좌석 구간만** 덮고 끝에서 꺾으므로([LinkFacePlan.laneDepth] 머리말), 행이 안 겹치는
+  // **자기 좌석 구간만** 덮고 끝에서 꺾으므로([LinkFacePlan.clusterBeltDepth] 머리말), 행이 안 겹치는
   // 그룹끼리는 같은 깊이를 **나눠 쓴다.** 첫 칸이 언제나 포트 쪽으로 꺾여 행이 붙어도 두 벨트가
   // 이어지지 않는다([emitOutputLinks] ①).
   //
-  // 그래서 자원이 둘이다 — **좌석 행**(머신마다)과 **레인 × 행**(면마다).
-  // 관통 그룹은 사이 행까지 통으로 먹으므로 레인 하나를 통째로 청구하는 셈이 된다.
+  // 그래서 자원이 둘이다 — **좌석 행**(머신마다)과 **깊이 × 행**(면마다).
+  // 관통 그룹은 사이 행까지 통으로 먹으므로 깊이 하나를 통째로 청구하는 셈이 된다.
   //
   // **관통이면 기둥 끝을 청구한다**([LinkFacePlan.portEnd]). 못 받으면 옆으로 — 그때는
   // 이 면의 깊은 관통이 상자를 가둘 수 있지만, 자리가 없는 것은 정직하게 그대로 둔다.
@@ -491,26 +491,26 @@ export function tryLinkFace(
   const endOrder = want ? ([want, want === "N" ? "S" : "N"] as const) : (["N", "S"] as const);
   const portEnd = spanning ? endOrder.find((e) => !endsTaken?.has(e)) : undefined;
 
-  // **레인마다 팔 수를 다시 센다**(계획서 §16 · 결함 A). 레인이 인서터를 정하고, 인서터가
-  // 처리량을 정하고, 처리량이 팔 **개수**를 정한다 — 그러니 좌석 검사도 레인마다 다르다.
-  // 예전엔 팔 수를 reach 1 로 못박아 미리 세고 레인만 골랐고, 그 줄이 d3 에 앉으면
+  // **깊이마다 팔 수를 다시 센다**(계획서 §16 · 결함 A). 깊이가 인서터를 정하고, 인서터가
+  // 처리량을 정하고, 처리량이 팔 **개수**를 정한다 — 그러니 좌석 검사도 깊이마다 다르다.
+  // 예전엔 팔 수를 reach 1 로 못박아 미리 세고 깊이만 골랐고, 그 줄이 d3 에 앉으면
   // **센 팔과 앉는 팔이 갈렸다**(실측: 10/s 로 세고 3.6/s 가 앉았다).
   //
   // **후보를 팔이 적게 드는 순으로 본다** — 좌석은 이 모델에서 **유일하게 못 늘리는 자원**
-  // 이라(`faceSeatArms`: 면의 d1 칸이 그것뿐), 팔이 적게 드는 레인이 그 면의 남은 예산을
+  // 이라(`faceSeatArms`: 면의 d1 칸이 그것뿐), 팔이 적게 드는 깊이가 그 면의 남은 예산을
   // 가장 적게 태운다. 동률이면 **얕은 쪽** — 벨트 칸을 덜 먹고 [ClusterPipe] 를 덜 밀어낸다.
   // 옛 탭 경로(`clusterPortPlanner.takeSeat`, 2026-09-02 삭제)가 쓰던 규칙 **그대로**이고,
   // 이제 그 판단을 하는 곳은 **여기 하나**다(R3). 예전엔 **도착 순으로 얕은 것부터**라 임의가 실패할 수 있는
   // 자리에 있었다(R2).
-  const candidates = laneDepthsOf(ctx, face)
-    .map((laneDepth) => {
-      const arms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], laneDepth - 1));
+  const candidates = clusterBeltDepthsOf(ctx, face)
+    .map((clusterBeltDepth) => {
+      const arms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], clusterBeltDepth - 1));
       let total = 0;
       for (const k of arms.values()) total += k;
-      return { laneDepth, arms, total };
+      return { clusterBeltDepth, arms, total };
     })
-    .sort((a, b) => a.total - b.total || a.laneDepth - b.laneDepth);
-  for (const { laneDepth, arms } of candidates) {
+    .sort((a, b) => a.total - b.total || a.clusterBeltDepth - b.clusterBeltDepth);
+  for (const { clusterBeltDepth, arms } of candidates) {
     let need = 0;
     let seatsFit = true;
     for (const [mi, k] of arms) {
@@ -518,33 +518,33 @@ export function tryLinkFace(
       if (seatsTaken(table, mi) + k > seatRows) seatsFit = false;
     }
     if (!seatsFit) {
-      why?.push({ face, laneDepth, seats: { need, budget: seatRows } });
+      why?.push({ face, clusterBeltDepth, seats: { need, budget: seatRows } });
       continue; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
     }
     const span = beltRowSpan(ctx, face, arms);
-    if (!laneClear(table, laneDepth, span[0], span[1])) {
+    if (!depthClear(table, clusterBeltDepth, span[0], span[1])) {
       // **막힌 행이 곧 자름의 경계다.** 수량이 아니라 행을 담는다 — 그리고 사다리가
       // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([resolveSpanBlock]).
       const rows: number[] = [];
-      for (let r = span[0]; r <= span[1]; r++) if (!laneClear(table, laneDepth, r, r)) rows.push(r);
+      for (let r = span[0]; r <= span[1]; r++) if (!depthClear(table, clusterBeltDepth, r, r)) rows.push(r);
       const seats: number[] = [];
       for (const [mi, k] of arms)
         for (const t of freeSeatRows(table, mi).slice(0, k)) seats.push(rowIndex(table, mi, t));
-      why?.push({ face, laneDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b) });
+      why?.push({ face, clusterBeltDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b) });
       continue;
     }
-    // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 레인
+    // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 깊이
     // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
     // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
-    const port = portCells({ laneDepth, portEnd }, span, table);
-    const hitPort = port.filter(([r, d]) => !laneClear(table, d, r, r));
+    const port = portCells({ clusterBeltDepth, portEnd }, span, table);
+    const hitPort = port.filter(([r, d]) => !depthClear(table, d, r, r));
     if (hitPort.length > 0) {
-      why?.push({ face, laneDepth, blockedPort: hitPort });
+      why?.push({ face, clusterBeltDepth, blockedPort: hitPort });
       continue;
     }
-    return { face, arms, laneDepth, reach: laneDepth - 1, portEnd };
+    return { face, arms, clusterBeltDepth, reach: clusterBeltDepth - 1, portEnd };
   }
-  // 이 면의 레인이 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
+  // 이 면의 깊이가 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;
 }
 
@@ -587,10 +587,10 @@ export function commitLinkFace(
   // 벨트 칸 — gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
   if (span) {
-    claimLane(table, cand.laneDepth, span[0], span[1], owner);
+    claimDepth(table, cand.clusterBeltDepth, span[0], span[1], owner);
     // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
     // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
-    for (const [r, d] of portCells(cand, span, table)) claimLane(table, d, r, r, owner);
+    for (const [r, d] of portCells(cand, span, table)) claimDepth(table, d, r, r, owner);
   }
   if (cand.portEnd) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
@@ -626,7 +626,7 @@ export function allocateLinkFaces(
   const deferred: number[] = [];
   // **선호 면의 사유만 모은다** — 사다리는 그 줄이 *원래 앉고 싶던* 면의 못으로 자른다.
   // 다른 면으로 밀려나는 것은 넘침 단계가 이미 시도하고 실패한 뒤다(`trunk-assignment.md` §15 ⑤).
-  const shortages: LaneShortage[][] = groups.map(() => []);
+  const shortages: DepthShortage[][] = groups.map(() => []);
   groups.forEach((g, i) => {
     const cand = tryLinkFace(ctx, g, side, prefer, false, shortages[i]);
     if (cand) plans[i] = commitLinkFace(ctx, cand, side);
@@ -644,7 +644,7 @@ export function allocateLinkFaces(
 export interface FaceAllocation {
   plans: (LinkFacePlan | undefined)[];
   deferred: number[];
-  shortages: LaneShortage[][];
+  shortages: DepthShortage[][];
 }
 
 /**
@@ -680,10 +680,10 @@ export function spillLinkFacesToGap(
 /**
  * **gap 폭 = 그 gap 에 놓일 것들이 먹는 줄 수.** 우리가 고르는 값이 아니라 배정의 부산물이다.
  *
- * 한쪽 면이 먹는 줄 = 좌석(d1) … 벨트(d`laneDepth`) = `laneDepth` 줄. 양쪽이 쓰면 각자
+ * 한쪽 면이 먹는 줄 = 좌석(d1) … 벨트(d`clusterBeltDepth`) = `clusterBeltDepth` 줄. 양쪽이 쓰면 각자
  * 자기 머신 면에서 재므로 그냥 더해진다(위 머신은 위에서, 아래 머신은 아래에서 센다).
  *
- * 이 수는 방출기가 벨트를 놓을 때 쓰는 `laneDepth` **바로 그 값**이다 — 상수를 따로 적어두면
+ * 이 수는 방출기가 벨트를 놓을 때 쓰는 `clusterBeltDepth` **바로 그 값**이다 — 상수를 따로 적어두면
  * 방출 기하가 바뀔 때 폭이 조용히 안 따라와 벨트가 옆 머신 몸통에 놓인다.
  */
 export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined)[][]): number[] {
@@ -694,7 +694,7 @@ export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined
     for (const p of list) {
       if (!p || p.gap === undefined) continue;
       const key = `${p.gap}:${p.face}`;
-      const d = p.exitDepth ?? p.laneDepth;
+      const d = p.exitDepth ?? p.clusterBeltDepth;
       deepest.set(key, Math.max(deepest.get(key) ?? 0, d));
     }
   const rows = new Array(Math.max(0, count - 1)).fill(0);
@@ -738,7 +738,7 @@ export function gapExitSidesFromPlans(
  * **링크·다이렉트가 옆면(W/E)에서 먹는 가장 깊은 칸** — [ClusterPipe] 가 그보다 바깥으로
  * 물러나야 하는 기준이다([buildTrunkContext] 의 `beltMaxOn`).
  *
- * 벨트는 [LinkFacePlan.laneDepth] 지만 **포트 끝이 두 칸 더 깊다**: 인서터 `+1` · 상자 `+2`
+ * 벨트는 [LinkFacePlan.clusterBeltDepth] 지만 **포트 끝이 두 칸 더 깊다**: 인서터 `+1` · 상자 `+2`
  * ([makeLinkPortChest]). 벨트 깊이만 세면 파이프가 그 두 칸 **위로** 지나가고, 파이프는
  * 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다** — 2026-08-05 의 gap 벨트 사고와
  * 같은 종류다([gapExitSidesFromPlans]).
@@ -755,7 +755,7 @@ export function linkFaceDepths(
   for (const list of lists)
     for (const p of list) {
       if (!p || p.face === "N" || p.face === "S") continue;
-      by[p.face] = Math.max(by[p.face] ?? 0, p.laneDepth + 2);
+      by[p.face] = Math.max(by[p.face] ?? 0, p.clusterBeltDepth + 2);
     }
   return by;
 }

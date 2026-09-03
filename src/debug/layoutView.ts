@@ -114,7 +114,7 @@ export function currentView(): LayoutView | null {
 /**
  * 한 모듈의 **머신 블록** — 면(face)의 기준이다.
  *
- * `ModuleInfo.bbox` 를 쓰면 안 된다: 그건 포트 셀까지 삼킨 합집합이라 이미 레인을
+ * `ModuleInfo.bbox` 를 쓰면 안 된다: 그건 포트 셀까지 삼킨 합집합이라 이미 깊이를
  * 포함한다. "머신 서쪽 첫 칸" 을 세려면 머신 footprint 만의 경계가 필요하다.
  */
 export function machineBoxOf(

@@ -202,7 +202,7 @@ export type RoutingKind = 'item' | 'fluid';
  *
  * 산출 3축(직교):
  *  - 면(side) = 토폴로지: planClusterPorts (B) 정책 — 출력→W(부모 쪽) 먼저 확정.
- *  - depth(레인) = 운반량: 수요(amount)↓ ↔ 슬롯 throughput↓ zip 매칭.
+ *  - depth = 운반량: 수요(amount)↓ ↔ 슬롯 throughput↓ zip 매칭.
  *  - 끝(end) = 합성 정렬: packModuleTree 가 부모↔자식 포트 |Δy| 최소로 지정.
  */
 export interface ModulePortMeta {
@@ -210,8 +210,8 @@ export interface ModulePortMeta {
   item: string;
   /** planner 가 배정한 면. W=부모 쪽 우선/E=자식 쪽, N/S=노출 끝면(count=1 raw 입력 완화). */
   side: 'W' | 'E' | 'N' | 'S';
-  /** 머신 면에서 바깥 칸 거리(레인). 2=근접(일반 인서터), 3=원거리(긴팔). */
-  laneDepth: number;
+  /** 머신 면에서 바깥 칸 거리(깊이). 2=근접(일반 인서터), 3=원거리(긴팔). */
+  clusterBeltDepth: number;
   /** belt 를 모는 인서터 종류. */
   inserter?: 'normal' | 'long';
   /** craft당 수량 = 운반량 프록시(depth 매칭의 수요). */

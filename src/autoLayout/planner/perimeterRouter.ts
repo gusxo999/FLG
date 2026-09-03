@@ -1,7 +1,7 @@
 /**
  * perimeterRouter — 포트(블랙박스 경계 셀) → 전역 perimeter 변까지의 **순수 기하 라우터**.
  *
- * modulePerimeterPass(⑥C)에 엉켜 있던 belt 기하(직선/L-jog/lane 스캔)를 여기로 이관해
+ * modulePerimeterPass(⑥C)에 엉켜 있던 belt 기하(직선/L-jog/트랙 스캔)를 여기로 이관해
  * 재사용·단위테스트가 가능한 한 함수로 만든 것. 모듈/pack/store 를 전혀 모르며, 오직
  *   - anchor: 블랙박스 테두리 위의 포트 셀
  *   - face:   바깥 방향(포트가 향한 면)
@@ -10,7 +10,7 @@
  * 만 본다.
  *
  * ## 두 모드
- * - **hint 있음(production)**: [perimeterLanePlanner] 가 ⑥A 에서 정한 exitEdge·host 를 그대로
+ * - **hint 있음(production)**: [perimeterTrackPlanner] 가 ⑥A 에서 정한 exitEdge·host 를 그대로
  *   재현한다 — self/margin=직선, channel=face 방향 가로 jog→세로. 기존 동작 불변(회귀 0).
  * - **hint 없음(DevTool·탐색)**: 스스로 "가장 가까운 도달 가능한 변"을 고른다. face 변으로
  *   직선을 먼저 시도하고, 막히면 인접 gap 으로 우회(L), 그래도 막히면 다른 변으로. ⑥C+ 의
@@ -22,7 +22,7 @@
 
 import type { PortFace } from "../containerModel";
 import { cellKey, faceVector, segment } from "../util/helper";
-import type { ExitEdge, LaneHost } from "./perimeterLanePlanner";
+import type { ExitEdge, TrackHost } from "./perimeterTrackPlanner";
 
 export interface Rect {
   minX: number;
@@ -33,16 +33,16 @@ export interface Rect {
 
 export type Pt = { x: number; y: number };
 
-/** production 재현용 힌트 — lanePlan 이 정한 배정. */
+/** production 재현용 힌트 — trackPlan 이 정한 배정. */
 export interface RouteHint {
   exitEdge: ExitEdge;
-  host: LaneHost;
+  host: TrackHost;
   /**
    * 기하 예약(channelGeometryPlanner)이 확정한 세로 주행 열(절대 x) — channel host 에서
    * 스캔 대신 이 트랙을 먼저 재생한다(예약 자리는 납품 경로가 침범 못 하므로 비어 있어야 정상).
    * 막혀 있으면(예약 밖 점유) 기존 스캔으로 폴백.
    */
-  laneX?: number;
+  trackX?: number;
 }
 
 export interface RouteRequest {
@@ -56,7 +56,7 @@ export interface RouteRequest {
   obstacles: Set<string>;
   /** 있으면 production 배정 그대로 재현. 없으면 자동 결정. */
   hint?: RouteHint;
-  /** lane 우회 최대 거리(셀). 기본 16. */
+  /** 트랙 우회 최대 거리(셀). 기본 16. */
   maxJog?: number;
 }
 
@@ -89,8 +89,8 @@ function edgeCoord(edge: ExitEdge, p: Rect): number {
 }
 
 /**
- * anchor 에서 N/S 변(edgeY)까지 lane column 을 골라 도달 — 가로 jog(0 이면 직선) → 세로.
- * xOffsets = 시도할 lane column 오프셋(anchor.x 기준). 첫 성공 반환.
+ * anchor 에서 N/S 변(edgeY)까지 트랙 열을 골라 도달 — 가로 jog(0 이면 직선) → 세로.
+ * xOffsets = 시도할 트랙 열 오프셋(anchor.x 기준). 첫 성공 반환.
  */
 function tryNS(
   anchor: Pt,
@@ -108,7 +108,7 @@ function tryNS(
 }
 
 /**
- * anchor 에서 W/E 변(edgeX)까지 lane row 를 골라 도달 — 세로 jog(0 이면 직선) → 가로.
+ * anchor 에서 W/E 변(edgeX)까지 트랙 행을 골라 도달 — 세로 jog(0 이면 직선) → 가로.
  */
 function tryWE(
   anchor: Pt,
@@ -135,7 +135,7 @@ function jogOffsets(maxJog: number, preferDir = 0): number[] {
   return out;
 }
 
-/** production 힌트 재현: lanePlan 배정 그대로. */
+/** production 힌트 재현: trackPlan 배정 그대로. */
 function routeWithHint(req: RouteRequest, hint: RouteHint, maxJog: number): RouteResult {
   const { anchor, face, perimeter, obstacles: occ } = req;
   const fv = faceVector(face);
@@ -151,22 +151,22 @@ function routeWithHint(req: RouteRequest, hint: RouteHint, maxJog: number): Rout
     return { ok: true, exitEdge: edge, seat: res.seat, path: res.path };
   }
 
-  // channel host: 예약 트랙(laneX)이 있으면 그대로 재생, 없으면 face(가로) 방향 스캔 → N/S 변.
+  // channel host: 예약 트랙(trackX)이 있으면 그대로 재생, 없으면 face(가로) 방향 스캔 → N/S 변.
   if (edge !== "N" && edge !== "S") return { ok: false, reason: "channel non-NS" };
-  // 반출 elbow 는 가로 진입(anchor → laneX) + 세로 주행(→ N/S 변). laneX 가 확정돼 있으면
-  // jog 방향은 laneX−anchor.x 부호가 정하므로 face 축과 무관하다 — face 가 N/S(fv.x=0)라
+  // 반출 elbow 는 가로 진입(anchor → trackX) + 세로 주행(→ N/S 변). trackX 가 확정돼 있으면
+  // jog 방향은 trackX−anchor.x 부호가 정하므로 face 축과 무관하다 — face 가 N/S(fv.x=0)라
   // 상자가 코너 어깨에 앉은 경우에도 예약된 트랙을 그대로 재생한다. face 가 가로(fv.x≠0)면
-  // laneX 실패 시 그 방향으로 스캔 폴백. laneX 도 face 방향도 없으면(N/S 면 + 미배정) 진입
+  // trackX 실패 시 그 방향으로 스캔 폴백. trackX 도 face 방향도 없으면(N/S 면 + 미배정) 진입
   // 방향을 정할 수 없어 거부(로컬 ring 유지 = skip-on-failure).
   const offsets: number[] = [];
-  if (hint.laneX !== undefined) offsets.push(hint.laneX - anchor.x);
+  if (hint.trackX !== undefined) offsets.push(hint.trackX - anchor.x);
   if (fv.x !== 0) {
     for (let m = 1; m <= maxJog; m++) offsets.push(m * Math.sign(fv.x));
-  } else if (hint.laneX === undefined) {
-    return { ok: false, reason: "N/S-side channel divert without laneX" };
+  } else if (hint.trackX === undefined) {
+    return { ok: false, reason: "N/S-side channel divert without trackX" };
   }
   const res = tryNS(anchor, edgeCoord(edge, perimeter), occ, offsets);
-  if (!res) return { ok: false, reason: "no free lane track in channel" };
+  if (!res) return { ok: false, reason: "no free track in channel" };
   return { ok: true, exitEdge: edge, seat: res.seat, path: res.path };
 }
 

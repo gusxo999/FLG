@@ -10,9 +10,9 @@
 
 ## 이 폴더에서 "깊이"는 깊이라고 쓴다
 
-코드는 머신 면에서 바깥으로 몇 칸인지를 `laneDepth` 라 부르지만, `벨트-레인` 계획이
-**"레인" 을 게임의 좌/우 두 줄 전용으로** 되찾으려 하고 있다. 그래서 이 폴더의 글에서
-**깊이는 "깊이"** 라고만 쓰고, 코드 심볼을 가리킬 때만 백틱으로 적는다(`laneDepth`).
+코드는 머신 면에서 바깥으로 몇 칸인지를 `clusterBeltDepth` 라 부른다 — **2026-09-03 에
+`laneDepth` 에서 개명됐다**(`벨트-레인` 계획 Step 2). "레인" 은 이제 게임의 좌/우 두 줄
+전용이므로, 이 폴더의 글에서 **깊이는 "깊이"** 라고만 쓰고 코드 심볼은 백틱으로 적는다.
 
 ## 착수 전 반드시 읽을 것
 
@@ -29,10 +29,10 @@
 **코드 — 호출 사슬 순서대로**
 
 - `planner/module/planModulePorts.ts` — 단일 진입점. `allocateLinkFaces` ×3 → `spillLinkFacesToGap` ×3
-- `planner/module/linkPlanner.ts` — `tryLinkFace`(후보 루프 · `LaneShortage`) · `commitLinkFace` ·
-  `portCells`(**못이 여기서 난다**) · `laneDepthsOf`
-- `planner/module/faceTable.ts` — `laneClear` 는 **칸만** 본다. 면당 줄 수 가드는 없다
-- `planner/module/laneBudget.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
+- `planner/module/linkPlanner.ts` — `tryLinkFace`(후보 루프 · `DepthShortage`) · `commitLinkFace` ·
+  `portCells`(**못이 여기서 난다**) · `clusterBeltDepthsOf`
+- `planner/module/faceTable.ts` — `depthClear` 는 **칸만** 본다. 면당 줄 수 가드는 없다
+- `planner/module/depthBudget.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
 
 ## 하지 않는 것
 

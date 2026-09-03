@@ -261,7 +261,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
 
   // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 납품 경로는
   // 배정 좌표(계단꼴/열 갈아타기/지하 횡단)를 탐색 없이 체인으로 방출한다. dijkstra 는
-  // 최후 폴백으로만 남고, 예약 자리(반출 lane + 다른 계획 납품 경로)를 침범하지 못한다 —
+  // 최후 폴백으로만 남고, 예약 자리(반출 트랙 + 다른 계획 납품 경로)를 침범하지 못한다 —
   // "먼저 깔린 경로가 나중 경로의 자리를 뺏는" 예약의 구멍을 여기서 봉인한다.
   const geo = pack.channelGeometry;
   const reservedExport = geo?.reservedExportCells ?? new Set<string>();
@@ -337,7 +337,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
         if (AUTO_LAYOUT_COORD_DUMP)
           console.log("[deliveryRoute] planned chain blocked — dijkstra fallback", k, "—", blockedBy);
       }
-      // 다른 예약 자리(반출 lane + 다른 계획 납품 경로)는 dijkstra 도 침범 금지.
+      // 다른 예약 자리(반출 트랙 + 다른 계획 납품 경로)는 dijkstra 도 침범 금지.
       const extra = new Set<string>(reservedExport);
       for (const [k2, cells] of reservedDelivery) if (k2 !== k) for (const c of cells) extra.add(c);
       route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds, extra);

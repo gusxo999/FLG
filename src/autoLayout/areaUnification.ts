@@ -90,7 +90,7 @@ const shiftRouting = (r: Routing, dx: number, dy: number): Routing => ({
   kind: r.kind,
   from: shiftPort(r.from, dx, dy),
   to: shiftPort(r.to, dx, dy),
-  // `*PortMeta` 는 좌표가 없다(면·레인·수량뿐) — 주석이 그렇게 못 박고 있다.
+  // `*PortMeta` 는 좌표가 없다(면·깊이·수량뿐) — 주석이 그렇게 못 박고 있다.
   fromPortMeta: r.fromPortMeta,
   toPortMeta: r.toPortMeta,
   placed: r.placed.map((p) => shiftCell(p, dx, dy)),

@@ -168,7 +168,7 @@ export function edgeFlows(
  * ## 아직 아무도 안 준다 — 밸브만 먼저 뚫는다
  *
  * 오늘 호출부는 이 값을 **비워 둔다** → 흐름을 한 번에 붓는 옛 동작 그대로다(관통). 채울
- * 사람은 **레인 예산**(`planner/module/laneBudget.ts` 의 `planBundles`)인데, 그쪽은 아직
+ * 사람은 **깊이 예산**(`planner/module/depthBudget.ts` 의 `planBundles`)인데, 그쪽은 아직
  * 나머지 줄(원료·완제품)만 본다. 그 판정을 링크까지 넓히는 자리는 `modulePacking` 의 간선
  * 루프다 — **거기서만** 자식·부모의 좌석표를 둘 다 보고 있다(`tempPlanDocs/부분-링크/`).
  *

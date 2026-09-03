@@ -4,7 +4,7 @@ tags: [factorio-data, routing, auto-layout]
 
 # 파이프의 작동 방식 — 벨트와 무엇이 같고 무엇이 다른가
 
-> **짝 문서:** [entity-roles §C 고체 운반(벨트)](../auto-layout/common/entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식
+> **짝 문서:** [entity-roles §C 고체 운반(벨트)](../auto-layout/common/entity-roles.md#c-고체-운반-벨트) — 벨트의 작동 방식 · [[belt-lane-semantics]] — 벨트의 좌/우 두 레인(이 문서의 벨트판)
 > **관련 문서:** [fluid-box-semantics](fluid-box-semantics.md) (유체 상자의 면·이름) · [auto-layout-wizard.trunk-pipe](../auto-layout/module/trunk-pipe.md) (트렁크 파이프) · [용어사전](../용어사전.md)
 
 파이프는 "벨트의 액체 버전" 이 **아니다.** 겉보기엔 둘 다 "물건을 A 에서 B 로 나르는 1×1 칸" 이지만,
@@ -22,7 +22,7 @@ tags: [factorio-data, routing, auto-layout]
 | **처리량** | 유한. 티어별 items/s 상한이 있고, 합류하면 서로 깎아먹음 | **무한**(2.0 게임이 그렇다). 길이 감쇠 없음, 합류해도 잃는 게 없음 |
 | **머신에 붙는 자리** | 머신 둘레 **아무 칸**(인서터가 팔로 옮김) | 프로토타입이 정한 **유체 상자의 연결 칸만** |
 | **머신과의 사이** | **인서터가 필요**하다 | **인서터가 없다.** 파이프가 직접 닿는다 |
-| **한 줄에 몇 종류** | 좌/우 **2 레인** — 최대 2종(우리는 미사용, 1종) | **1종.** 한 관망엔 유체 하나만 |
+| **한 줄에 몇 종류** | 좌/우 **2 레인** — 최대 2종, 종당 **절반**([[belt-lane-semantics]]. 우리는 미사용, 1종) | **1종.** 한 관망엔 유체 하나만 |
 | **줄 수 결정** | 처리량이 모자라면 **줄을 늘린다**(`determineBeltCount`) | **늘릴 일이 없다** — 유체판 대응물이 없다 |
 | **지하 변형** | `underground-belt` — 같은 prototype 끼리만 간섭 | `pipe-to-ground` — **prototype 무관 전부** 간섭 |
 | **잘못 이어졌을 때** | 아이템이 섞여 눈에 띔 | **조용하다.** 화면상 멀쩡하고 라우팅도 "성공"이라 보고함 |

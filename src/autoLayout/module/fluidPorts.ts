@@ -202,7 +202,7 @@ export interface FluidJumpBudget {
   /** 그 면의 좌석 줄 수 = 머신 높이(W/E 면). */
   seatRows: number;
   /** 그 면에 설 [ClusterBelt] 줄 수의 상한 — 인서터 reach 종류 수, 단 아이템 줄 수를 못 넘는다. */
-  beltLanes: number;
+  beltDepths: number;
 }
 
 /** 못 넘는 사유 — 셋은 처방이 다르다(파이프 고르기 · 더 긴 지하파이프 · 더 큰 머신). */
@@ -216,15 +216,15 @@ export type FluidJumpBlocker =
  *
  * 순번 `r` 인 유체 줄의 터널 좌표 차가 `base + 2r` 이고(trunk-pipe §5.1) 가장 바깥 줄이
  * `r = n−1` 이므로, 사거리 `have` 로 넘을 수 있는 `base` 는 `have − 2(n−1)` 이다.
- * `base = max(그 면 벨트 최대 깊이, 1)` 이라 이 값이 곧 **레인 깊이의 상한**이다.
+ * `base = max(그 면 벨트 최대 깊이, 1)` 이라 이 값이 곧 **깊이의 상한**이다.
  *
  * **식을 뒤집은 것이다**(2026-08-16 사용자 결정 — *"사거리가 짧으면 파이프 배치를 우선"*).
  * 예전엔 `maxInserterReach + 1` 을 **최악 base 로 가정**해 필요 사거리를 냈다. 배정이 아직
  * 안 끝나 실제 깊이를 몰랐기 때문인데, 그 가정 때문에 **실제로는 넘을 수 있는 면을 거절**했다.
- * 이제 파이프가 먼저 답을 내고 아이템 레인이 그 안에 들어간다 — 상한이 2 미만이면 그 면은
- * 아이템 레인을 안 주고(사다리 한 칸), 거절이 아니다.
+ * 이제 파이프가 먼저 답을 내고 아이템 깊이가 그 안에 들어간다 — 상한이 2 미만이면 그 면은
+ * 아이템 깊이를 안 주고(사다리 한 칸), 거절이 아니다.
  */
-export function laneDepthCap(n: number, pipeMaxUndergroundDistance: number | undefined): number {
+export function clusterBeltDepthCap(n: number, pipeMaxUndergroundDistance: number | undefined): number {
   return (pipeMaxUndergroundDistance ?? 0) - 2 * (n - 1);
 }
 
@@ -240,8 +240,8 @@ export function fluidJumpBlocker(n: number, b: FluidJumpBudget): FluidJumpBlocke
     return { kind: "no-underground", detail: `유체 ${n}줄을 넘길 지하파이프를 안 골랐다` };
   }
   // **아이템 벨트를 하나도 안 놓아도 못 넘나** — 그때만 거절이다(base 의 최소값은 1).
-  // 넘을 수는 있는데 좁은 경우는 거절이 아니라 [laneDepthCap] 이 레인을 깎는다.
-  if (laneDepthCap(n, b.pipeMaxUndergroundDistance) < 1) {
+  // 넘을 수는 있는데 좁은 경우는 거절이 아니라 [clusterBeltDepthCap] 이 깊이를 깎는다.
+  if (clusterBeltDepthCap(n, b.pipeMaxUndergroundDistance) < 1) {
     const have = b.pipeMaxUndergroundDistance ?? 0;
     return {
       kind: "underground-too-short",
@@ -249,13 +249,13 @@ export function fluidJumpBlocker(n: number, b: FluidJumpBudget): FluidJumpBlocke
     };
   }
   // 좌석 줄에서 유체 상자 행 n개를 빼고도 벨트 좌석이 남아야 한다.
-  // **`beltLanes` 는 아이템 줄 수를 못 넘는다** — 아이템이 아예 없는 레시피(경유 분해: 물 +
+  // **`beltDepths` 는 아이템 줄 수를 못 넘는다** — 아이템이 아예 없는 레시피(경유 분해: 물 +
   // 경유 → 경유)는 그 면에 벨트가 0줄이라 유체 행만 있으면 된다. 인서터 종류 수만 보던
   // 시절엔 3×3 머신 + 긴팔 선택에서 `2 ≤ 3−2` 가 거짓이 되어 **아이템이 없는데도** 거절했다.
-  if (b.beltLanes > b.seatRows - n) {
+  if (b.beltDepths > b.seatRows - n) {
     return {
       kind: "seats-exhausted",
-      detail: `면 좌석 ${b.seatRows}행에서 유체 ${n}행을 빼면 ${b.seatRows - n}행 — 벨트 ${b.beltLanes}줄이 안 들어간다`,
+      detail: `면 좌석 ${b.seatRows}행에서 유체 ${n}행을 빼면 ${b.seatRows - n}행 — 벨트 ${b.beltDepths}줄이 안 들어간다`,
     };
   }
   return null;

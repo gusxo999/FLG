@@ -188,7 +188,7 @@ Map<셀, 주인>       신청자 vs 현 소유자           ← 계획 1 이 여
                      못 센다 → n자 경쟁의 **존재 자체가 안 보인다**
 
 ② 자유도를 안 싣는다   Claim 은 주인만 싣는다.  **양보는 진 쪽에 대안이 있어야** 성립하는데
-                     LaneAssignment.options 는 장부 **밖**이고 읽는 코드가 0곳이다
+                     TrackAssignment.options 는 장부 **밖**이고 읽는 코드가 0곳이다
 ```
 
 > **§3.5 는 *"진짜 축은 순서가 아니라 양보"* 라고 결론냈다. 그런데 네 축(owner·stage·
@@ -205,7 +205,7 @@ Map<셀, 주인>       신청자 vs 현 소유자           ← 계획 1 이 여
 
 **①과 ②가 어긋날 때 규칙이 없다** — 등급이 높은 쪽이 자유도도 높으면 누가 양보하나.
 그리고 n자에서는 **순서**가 하나 더 필요하다(*스도쿠: 제약 센 곳부터* —
-`perimeterLanePlanner` 주석이 이미 그 말을 하고 있다).
+`perimeterTrackPlanner` 주석이 이미 그 말을 하고 있다).
 
 | | 무엇 | 성질 |
 |---|---|---|
@@ -221,7 +221,7 @@ Map<셀, 주인>       신청자 vs 현 소유자           ← 계획 1 이 여
 
 **코드 역참조:** `channelGeometryPlanner`(동시형 n자의 유일한 실물 · `yieldedExports`) ·
 `deliveryRoute` 의 `reservationOverrun` 주석(연쇄형 관측 기록) ·
-`perimeterLanePlanner.LaneAssignment.options`(자유도의 자료형 — 읽는 곳 0) ·
+`perimeterTrackPlanner.TrackAssignment.options`(자유도의 자료형 — 읽는 곳 0) ·
 [[layout-models]] §3.5 *"고치기 전에 재는 법"*(자유도는 **한 배정 순간의 성질**이다).
 **전제가 썩는 조건:** 계획 1 이 owner 를 심고도 (나)를 안 하면, 이 판단은 *"셀 수 없다"* 는
 이유만으로 영영 (가)에 머문다 — **계획 1 의 성과가 여기서 소진된다.**

@@ -46,7 +46,7 @@ import type { PipeFlowPipe } from "../../util/pipeFlow";
 import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
 // (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
-import { recordFaceLaneStats } from "../../../debug/runStats";
+import { recordFaceDepthStats } from "../../../debug/runStats";
 
 
 /**
@@ -89,11 +89,11 @@ function makeLinkPortChest(o: {
  * pfv), 포트가 서는 **변**(meta.side: 출력 W · 입력 E), `endPreference` 조회 키.
  */
 /**
- * **좌석 팔은 레인 깊이와 짝이다** — 좌석은 언제나 d1 이므로 벨트가 d`laneDepth` 면 팔이
- * `laneDepth-1` 칸을 던져야 한다. 상수를 쓰면 깊은 레인에 앉은 줄이 벨트에 못 닿아 **그 자리가
- * 조용히 굶는다**(2026-08-16 — 레인 장부가 d3 를 쓰기 시작하면서 실제 위험이 됐다).
+ * **좌석 팔은 깊이와 짝이다** — 좌석은 언제나 d1 이므로 벨트가 d`clusterBeltDepth` 면 팔이
+ * `clusterBeltDepth-1` 칸을 던져야 한다. 상수를 쓰면 깊은 줄에 앉은 줄이 벨트에 못 닿아 **그 자리가
+ * 조용히 굶는다**(2026-08-16 — 깊이 장부가 d3 를 쓰기 시작하면서 실제 위험이 됐다).
  *
- * 포트 인서터는 이 짝이 아니다: 벨트 바로 바깥 칸(d`laneDepth+1`)에 서서 벨트를 집으므로
+ * 포트 인서터는 이 짝이 아니다: 벨트 바로 바깥 칸(d`clusterBeltDepth+1`)에 서서 벨트를 집으므로
  * **언제나 reach 1** 이다 — 그쪽은 `input.inserterEntityName` 을 그대로 쓴다.
  */
 function seatInserterName(input: ModuleInput, reach: number): string {
@@ -115,7 +115,7 @@ function pushLinkPortEnd(o: {
   rate?: number;
   beltEntityName?: string;
   tapAnchor: { x: number; y: number };
-  laneDepth: number;
+  clusterBeltDepth: number;
   /** 좌석 팔의 reach — `meta.inserter` 를 여기서 유도한다(깊이에서 되유도하지 않는다). */
   reach: number;
   inserterEntityName: string;
@@ -143,8 +143,8 @@ function pushLinkPortEnd(o: {
       // **어느 변에 섰나** — 반출·채널 장부의 단일 출처([[ns-face-relief]] 결정 5).
       // `portFace` 와 같은 값이어야 한다: gap 그룹은 서/동쪽 변으로 나가고, W/E 면 그룹은
       // 자기 면으로 나간다. 역할(출력=W·입력=E)로 찍던 옛 값은 그 둘이 늘 일치할 때만 맞았다.
-      item: o.line.name, side: o.portFace, laneDepth: o.laneDepth,
-      // **계획이 지목한 팔에서 유도한다** — 예전엔 `laneDepth === 2 ? "normal" : "long"` 이라
+      item: o.line.name, side: o.portFace, clusterBeltDepth: o.clusterBeltDepth,
+      // **계획이 지목한 팔에서 유도한다** — 예전엔 `clusterBeltDepth === 2 ? "normal" : "long"` 이라
       // §16 이 경고한 `if (depth === 3)` 그 자체였다(깊이를 입력으로 두면 생긴다).
       inserter: o.reach <= 1 ? "normal" : "long",
       amount: o.line.amount, endPreference: o.lineEnds?.get(`${o.role}:${o.line.name}`),
@@ -217,17 +217,17 @@ export function emitOutputLinks(args: {
     // 맞았기 때문이다. 원료·완제품 줄까지 이 배분기를 타면 출력이 E 에 앉을 수 있고, 그때
     // W 를 고집하면 포트 인서터가 **머신 쪽으로** 자라 좌석 줄과 부딪힌다.
     // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd]) — 상자가 기둥 밖이라 그 면의 깊은
-    // 레인이 상자를 가두지 못한다. 구간이면 오늘처럼 옆이다.
+    // 깊이가 상자를 가두지 못한다. 구간이면 오늘처럼 옆이다.
     const portFace: PortFace = plan.portEnd ?? (isGap ? "W" : face);
     const pfv = faceVector(portFace);
     // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
     // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
-    const laneDepth = plan.laneDepth;
-    const exitDepth = plan.exitDepth ?? laneDepth;
+    const clusterBeltDepth = plan.clusterBeltDepth;
+    const exitDepth = plan.exitDepth ?? clusterBeltDepth;
     // 흐름은 **포트 쪽 끝**을 향한다 — 옆 포트/N 끝이면 위(t 작은 쪽), S 끝이면 아래.
     const toSouth = plan.portEnd === "S";
     const topT = toSouth ? allRows[allRows.length - 1] : allRows[0];
-    const belt0 = faceCell(mExt, face, laneDepth, topT); // 벨트 줄의 **포트 쪽** 끝 칸
+    const belt0 = faceCell(mExt, face, clusterBeltDepth, topT); // 벨트 줄의 **포트 쪽** 끝 칸
     // 트렁크 끝(= 납품 경로 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
     // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
     const trunkStart = isGap
@@ -269,20 +269,20 @@ export function emitOutputLinks(args: {
     for (let t = loT; t <= hiT; t++) {
       if (blocked) break;
       // 끝 칸: 자기 줄로 내려가야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
-      const turn = exitDepth > laneDepth ? fv : pfv;
-      push(faceCell(mExt, face, laneDepth, t), t === topT ? turn : beltDirV);
+      const turn = exitDepth > clusterBeltDepth ? fv : pfv;
+      push(faceCell(mExt, face, clusterBeltDepth, t), t === topT ? turn : beltDirV);
     }
     // ② **자기 줄로 내려가기** — 막힌 면이라 벨트가 깊이로 갈린다([[ParallelBelt]]). 내려가는
-    // 건 **벨트가 벨트를 먹이는** 것이라 팔 길이와 무관하다(팔은 수집 줄 d`laneDepth` 까지만).
-    for (let d = laneDepth + 1; d <= exitDepth && !blocked; d++) {
+    // 건 **벨트가 벨트를 먹이는** 것이라 팔 길이와 무관하다(팔은 수집 줄 d`clusterBeltDepth` 까지만).
+    for (let d = clusterBeltDepth + 1; d <= exitDepth && !blocked; d++) {
       push(faceCell(mExt, face, d, topT), d === exitDepth ? pfv : fv); // 반출 줄에 닿으면 서쪽으로
     }
     // ③ **반출** — 반출 줄을 따라 서쪽 변까지. 먼저 앉은 그룹들의 줄보다 **깊고**, 그들의
     // 열보다 **동쪽에서** 출발하므로 남의 줄을 밟지 않는다.
-    if (exitDepth > laneDepth)
+    if (exitDepth > clusterBeltDepth)
       for (let t = topT - 1; t >= m0.origin.x && !blocked; t--) push(faceCell(mExt, face, exitDepth, t), pfv);
     if (blocked || occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))) {
-      recordFaceLaneStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
+      recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
       return;
     }
@@ -307,7 +307,7 @@ export function emitOutputLinks(args: {
     // `anchor − 2·faceVector` 를 요구한다([modulePacking] ⑥B).
     //
     // gap(N/S) 그룹은 벨트가 가로로 달려 **변에서 꺾이므로** 그 꺾이는 칸(= 머신 가장자리)이
-    // 끝점이다. W/E 그룹은 벨트가 세로라 끝점이 **벨트 칸 자체**(d`laneDepth`)다 — 예전엔 둘 다
+    // 끝점이다. W/E 그룹은 벨트가 세로라 끝점이 **벨트 칸 자체**(d`clusterBeltDepth`)다 — 예전엔 둘 다
     // 머신 가장자리를 썼는데, 그러면 W/E 포트의 끝점이 머신 발자국 **안**으로 들어가 반출
     // 재배치가 통째로 실패한다(2026-08-17 실측 — skip 3). 옛 탭 경로가 이 줄들을 맡던 동안엔
     // 안 드러났다.
@@ -317,7 +317,7 @@ export function emitOutputLinks(args: {
       tapAnchor: isGap
         ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: trunkStart.y }
         : { ...trunkStart },
-      laneDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts,
     });
   });
@@ -377,10 +377,10 @@ export function emitInputLinks(args: {
     const topT = toSouth ? Math.max(...allRows) : Math.min(...allRows);
     // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 자기 줄로 내려가는 그룹은
     // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
-    const exitDepth = plan.exitDepth ?? plan.laneDepth;
+    const exitDepth = plan.exitDepth ?? plan.clusterBeltDepth;
     const ownEast = Math.max(...allRows);
     const botT = isGap
-      ? (exitDepth > plan.laneDepth ? ownEast : m0.origin.x + m0.size.w - 1)
+      ? (exitDepth > plan.clusterBeltDepth ? ownEast : m0.origin.x + m0.size.w - 1)
       : toSouth ? Math.min(...allRows) : ownEast;
 
     // 입구는 **벨트가 앉은 면을 따른다**([emitOutputLinks] 와 같은 규약). gap 좌석이면 가로
@@ -389,7 +389,7 @@ export function emitInputLinks(args: {
     const portFace: PortFace = plan.portEnd ?? (isGap ? "E" : face);
     const pfv = faceVector(portFace);
 
-    // 좌석(d1)이 막히면 폴백. 레인은 막히면 다음 후보로.
+    // 좌석(d1)이 막히면 폴백. 깊이는 막히면 다음 후보로.
     const seatCells = allRows.map((t) => faceCell(geomExt, face, 1, t));
     if (seatCells.some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); return; }
     /**
@@ -400,9 +400,9 @@ export function emitInputLinks(args: {
       const b = faceCell(geomExt, face, d, topT);
       return isGap ? { x: m0.origin.x + m0.size.w - 1, y: faceCell(geomExt, face, exitDepth, topT).y } : b;
     };
-    // 레인(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
+    // 깊이(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
     // 곧 벨트 하나라 관통 벨트가 없고, 벨트가 자기 구간만 덮으므로 다툴 depth 자체가 없다.
-    const lane = { d: plan.laneDepth, inserter: seatInserterName(input, plan.reach) };
+    const belt = { d: plan.clusterBeltDepth, inserter: seatInserterName(input, plan.reach) };
     const fv = faceVector(face);
     // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
     const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
@@ -413,11 +413,11 @@ export function emitInputLinks(args: {
     const path: { at: { x: number; y: number }; v: { x: number; y: number } }[] = [];
     // ① **반출** — 포트(동쪽 변)에서 자기 열까지 반출 줄로 달려온다([emitOutputLinks] 의 거울,
     // 흐름만 반대다). 내려갈 필요 없는 첫 그룹은 이 구간이 없다(수집이 곧 동쪽 변까지).
-    if (isGap && exitDepth > lane.d)
+    if (isGap && exitDepth > belt.d)
       for (let t = m0.origin.x + m0.size.w - 1; t > ownEast; t--)
         path.push({ at: faceCell(geomExt, face, exitDepth, t), v: beltDirV });
     // ② **자기 줄에서 올라오기** — 자기 열에서 수집 줄까지 **올라온다**(머신 쪽). 벨트→벨트라 팔 길이 무관.
-    for (let d = exitDepth; d > lane.d; d--)
+    for (let d = exitDepth; d > belt.d; d--)
       path.push({ at: faceCell(geomExt, face, d, ownEast), v: inward });
     // ③ **수집** — 자기 좌석 구간을 덮으며 탭에 나눠 준다. 먼 쪽 끝 칸은 면을 따라 더 흐르면
     // **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다 — 그 칸은 이 그룹 자신의
@@ -425,23 +425,23 @@ export function emitInputLinks(args: {
     // 범위는 포트 방향과 무관하다 — 좌석 전체를 덮고, **먼 쪽 끝**에서만 머신 쪽으로 꺾는다.
     for (let t = Math.min(topT, botT); t <= Math.max(topT, botT); t++) {
       const far = isGap ? t === topT : t === botT;
-      path.push({ at: faceCell(geomExt, face, lane.d, t), v: far ? inward : beltDirV });
+      path.push({ at: faceCell(geomExt, face, belt.d, t), v: far ? inward : beltDirV });
     }
 
-    const te = trunkEndOf(lane.d);
+    const te = trunkEndOf(belt.d);
     const span = [
       ...path.map((c) => c.at),
       { x: te.x + pfv.x, y: te.y + pfv.y },
       { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }, // 포트 인서터·상자
     ];
     if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
-      recordFaceLaneStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
+      recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함 — 좌석 장부가 이미 막았어야 한다)
       return;
     }
 
     // ── 배치 확정 ──
-    const beltTop = trunkEndOf(lane.d);
+    const beltTop = trunkEndOf(belt.d);
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
     const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
       role: "input", trunkEnd: beltTop, portFace, pfv, line, machineId: m0.id, chestId,
@@ -459,7 +459,7 @@ export function emitInputLinks(args: {
           producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
           consumer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
         };
-        cells.push(makeInserterCell(seat, fv, lane.inserter, pair)); // 픽업 = 바깥(트렁크) → 머신에 놓음
+        cells.push(makeInserterCell(seat, fv, belt.inserter, pair)); // 픽업 = 바깥(트렁크) → 머신에 놓음
         occupancy.add(cellKey(seat.x, seat.y));
       }
     }
@@ -471,7 +471,7 @@ export function emitInputLinks(args: {
       tapAnchor: isGap
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },
-      laneDepth: lane.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts,
     });
   });
@@ -481,7 +481,7 @@ export function emitInputLinks(args: {
  * **탭 인서팅 방출** — 품목 줄마다 belt 한 줄을 머신 기둥 전체에 직선으로 깔고, 머신마다
  * 탭 인서터를 하나씩 붙인다. 포트는 **벨트 끝 하나뿐**이라 모듈 경계 포트가 품목당 1개가 된다.
  *
- * ## 기하 (W 면 · 3×3 머신 2대 · 가까운 레인 d=2)
+ * ## 기하 (W 면 · 3×3 머신 2대 · 가까운 깊이 d=2)
  * ```
  *        x=-2 -1  0  1  2       d = 머신 면에서 바깥 칸 수
  *  y=-2    C   .  .  .  .       C = 포트 상자(anchor)  ← belt 열 위, 기둥 밖 2칸
@@ -680,7 +680,7 @@ export function emitTrunkPipe(args: {
       meta: {
         item: line.name,
         side: planned.side,
-        laneDepth: d,
+        clusterBeltDepth: d,
         // 파이프는 인서터가 없어 undefined.
         inserter:
           planned.reach === undefined ? undefined : planned.reach >= 2 ? "long" : "normal",

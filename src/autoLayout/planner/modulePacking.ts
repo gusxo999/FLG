@@ -10,10 +10,10 @@ import type { SpecInserter } from "../buildSpec";
  * 배치하고, 부모↔자식 입력 포트를 품목 매칭해 납품 경로 스펙을 낸다.
  *
  * ## 변(side) vs face
- * generateModule 은 포트 `face` 를 트렁크 *축* 방향으로 준다(예: N 레인을 수평으로 달리는
+ * generateModule 은 포트 `face` 를 트렁크 *축* 방향으로 준다(예: N 깊이를 수평으로 달리는
  * 트렁크의 chest 는 face='W'일 수 있다). 좌우 트리에서 의미 있는 건 포트가 클러스터의
  * **어느 변**(W/E/N/S)에 붙었나이며, 그 단일 출처는 planner 슬롯(`meta.side`)이다 —
- * anchor↔bbox 기하 추측(X변 우선)은 N/S 레인의 코너 어깨 chest 를 오분류해 폐기했다.
+ * anchor↔bbox 기하 추측(X변 우선)은 N/S 깊이의 코너 어깨 chest 를 오분류해 폐기했다.
  * face 정의는 불변.
  *
  * 무배선 — 라이브 회귀 0. 단위 테스트 + 전체 트리 ASCII 로만 검증.
@@ -32,19 +32,19 @@ import {
   cloneLinkFaceStage, planLinkFaces, seatLinkEdge,
   type LinkFaceStage,
 } from "./module/planModulePorts";
-import type { LaneShortage, LinkFacePlan } from "./module/linkPlanner";
+import type { DepthShortage, LinkFacePlan } from "./module/linkPlanner";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { summarizeBeltForms, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
-import { planLanes, expandBbox } from "./perimeter/lanes";
-import type { LanePlan } from "./perimeterLanePlanner";
+import { planTracks, expandBbox } from "./perimeter/tracks";
+import type { TrackPlan } from "./perimeterTrackPlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/ioLine";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, recordFaceLaneStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -144,14 +144,14 @@ export interface PackConfig {
   /** **고른 인서터 전부** — reach 별 하나씩. `belts` 와 같은 자리(전역 선택)다(`docs/용어사전.md §BuildSpec`). */
   inserters: SpecInserter[];
   /**
-   * 외부상자 perimeter exit-lane 예약을 켠다(조각 6-①). true 면 채널 폭이 납품 경로 구간에
-   * 더해 lane 세로 구간까지 반영해 넓어지고 bbox 에 N/S/W/E 마진 프레임이 붙는다.
+   * 외부상자 perimeter **반출 트랙** 예약을 켠다(조각 6-①). true 면 채널 폭이 납품 경로 구간에
+   * 더해 트랙 세로 구간까지 반영해 넓어지고 bbox 에 N/S/W/E 마진 프레임이 붙는다.
    * 미지정=off(현행 유지) — 골든/단위 테스트 회귀 0. moduleWizard 가 플래그로 전달.
    */
-  reservePerimeterLanes?: boolean;
+  reservePerimeterTracks?: boolean;
   /**
    * 채널 기하 예약(통합 장부) — 예약을 "폭"에서 "기하(누가 어느 트랙)"로 승격한다
-   * (docs/auto-layout-wizard.channel-geometry-reservation.md). true 면 납품(납품 경로)·반출(lane)
+   * (docs/auto-layout-wizard.channel-geometry-reservation.md). true 면 납품(납품 경로)·반출(트랙)
    * 경로의 트랙을 [channelGeometryPlanner] 가 패킹 시점에 배정하고(같은 쪽 판정 + 해소
    * 사다리), 채널 폭은 그 결과에서 유도(폭 역전), PackResult.channelGeometry 로 방출
    * 지시를 내린다. 미지정=off(현행 dijkstra/스캔 유지).
@@ -214,7 +214,7 @@ export interface DeliverySpec {
  * 이 `row` 까지 **세로로 먼저** 간 뒤, 거기서부터 평소의 계단꼴을 그린다 — 갈아탄 뒤엔
  * 출처가 구별되지 않아서 세로 채널은 `startY` 가 어디서 왔는지 안 묻는다.
  *
- * 세로 채널 쪽 거울은 `perimeterLanePlanner.LaneOption.entry`(채널 진입점)다.
+ * 세로 채널 쪽 거울은 `perimeterTrackPlanner.TrackOption.entry`(채널 진입점)다.
  */
 export interface RowChannelEntry {
   /** 배정된 트랙의 **절대 행**. 세로 채널의 `startY`/`endY` 가 이 값이 된다. */
@@ -235,7 +235,7 @@ export type DeliveryGeometry =
        * 예약을 밟아 연쇄했다(2026-08-17 실측: 완제품 상자가 갇혔다).
        *
        * 스필은 이제 드문 예외가 아니다. 아이템 방출이 링크 경로로 합쳐지며 관통 트렁크가
-       * 레인을 통째로 먹자 W 스필이 흔해졌다. **모델이 따라가는 것이 맞다** — 우회 자체는
+       * 깊이를 통째로 먹자 W 스필이 흔해졌다. **모델이 따라가는 것이 맞다** — 우회 자체는
        * 남지만 *계획된* 우회가 되어 남의 자리를 안 밟는다.
        *
        * 모양은 **ㄱ자** 하나다: *자기 행을 따라 가로로* → *목표 열에서 세로로*. 세로부터
@@ -283,7 +283,7 @@ export interface PackChannelGeometry {
    * 2026-08-17 조사에서 게이트·배선을 헛짚었다.
    *
    * 도입 당시엔 스필이 드문 예외라 견딜 만했다. 아이템 방출이 링크 경로로 합쳐지면서
-   * 관통 트렁크가 레인을 통째로 먹자 **W 스필이 흔해졌고**, 그 폴백(dijkstra)은 남의 예약을
+   * 관통 트렁크가 깊이를 통째로 먹자 **W 스필이 흔해졌고**, 그 폴백(dijkstra)은 남의 예약을
    * 밟아 연쇄한다 — 조용하면 안 되는 수가 됐다.
    */
   skips: { key: string; reason: string }[];
@@ -295,8 +295,8 @@ export interface PackResult {
   /** child 없는 입력 포트 — raw(무한상자 유지). 절대 좌표. */
   rawPorts: ModulePort[];
   bbox: { x: number; y: number; w: number; h: number };
-  /** 외부상자 perimeter exit-lane 배정(조각 6-①). ②③(재배치·라우팅)이 소비. */
-  lanePlan: LanePlan;
+  /** 외부상자 perimeter 반출 트랙 배정(조각 6-①). ②③(재배치·라우팅)이 소비. */
+  trackPlan: TrackPlan;
   /** 채널 기하 예약(통합 장부) — config.channelGeometry 일 때만. */
   channelGeometry?: PackChannelGeometry;
   /**
@@ -374,7 +374,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 노출 끝면(N/S) — count=1 완화의 노출 판정. 세로 순서는 tidy-tree 가 DFS 방문
   // 순서를 보존하므로(형제 재배열 없음) 좌표 확정 *전에* 열-내 서열로 유도할 수 있다
   // (스도쿠 닻: 트리 구조가 외생). 열의 첫 모듈 위(N)·마지막 모듈 아래(S)는 전역
-  // 마진뿐 — 그 방향 레인이 형제와 충돌하지 않는다.
+  // 마진뿐 — 그 방향 깊이가 형제와 충돌하지 않는다.
   const dfsByDepth = new Map<number, string[]>();
   const dfsVisit = (id: string) => {
     const s = byId.get(id)!;
@@ -383,7 +383,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   };
   for (const s of specs) if (!s.parentId) dfsVisit(s.id);
   const nsExposureOf = (s: NodeSpec): ("N" | "S")[] | undefined => {
-    if (s.count !== 1) return undefined; // 기둥(count≥2)은 N/S 레인이 끝 머신만 서빙 — 제외.
+    if (s.count !== 1) return undefined; // 기둥(count≥2)은 N/S 깊이가 끝 머신만 서빙 — 제외.
     const col = dfsByDepth.get(s.depth)!;
     const faces: ("N" | "S")[] = [];
     if (col[0] === s.id) faces.push("N");
@@ -514,8 +514,8 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
     // 모듈마다 최종 링크 목록·계획을 모은다. `in` 은 자식 순서대로 이어 붙는다
     // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
-    const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: LaneShortage[][] }>();
-    const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: LaneShortage[][] }>();
+    const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
+    const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
     for (const s of specs) {
       outOf.set(s.id, { links: [], plans: [], why: [] });
       inOf.set(s.id, { links: [], plans: [], why: [] });
@@ -555,7 +555,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       });
     }
     // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
-    if (laddered > 0) recordFaceLaneStats({ splits: laddered });
+    if (laddered > 0) recordFaceDepthStats({ splits: laddered });
     return { stages, inputs };
   };
 
@@ -698,7 +698,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const intervalsByDepth = new Map<number, { lo: number; hi: number }[]>();
   // 납품 경로 씨앗 — 기하 예약(5c)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
   // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
-  //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(레인 예약)
+  //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(트랙 예약)
   //    와 7(납품 경로 생성)이 공유한다 — 세 곳이 따로 판단해 어긋나는 일이 없게.
   const deliverySeeds: {
     depth: number;
@@ -858,14 +858,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   }
 
 
-  // 5b) 외부상자 exit-lane 예약(조각 6-①) — 살아남은 raw 입력·루트 출력 상자를 인접 gap
-  //     으로 빼는 lane 을 planner 에 맡긴다. 채널로 우회하는 lane 의 세로 구간은 위 납품 경로
+  // 5b) 외부상자 반출 트랙 예약(조각 6-①) — 살아남은 raw 입력·루트 출력 상자를 인접 gap
+  //     으로 빼는 트랙을 planner 에 맡긴다. 채널로 우회하는 트랙의 세로 구간은 위 납품 경로
   //     구간과 **합쳐** 채널 폭에 반영(결정 A: 폭만 예약, 트랙 index 는 라우터). colX 전이라
   //     X 없이 abs y+depth 만으로 판정 가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진
-  //     반영은 reservePerimeterLanes 게이트.
-  const lanePlan = planLanes(specs, oriented, topY, pairedChestIds, maxDepth, absPortY);
-  if (config.reservePerimeterLanes) {
-    for (const [d, ivs] of lanePlan.channelLaneIntervals)
+  //     반영은 reservePerimeterTracks 게이트.
+  const trackPlan = planTracks(specs, oriented, topY, pairedChestIds, maxDepth, absPortY);
+  if (config.reservePerimeterTracks) {
+    for (const [d, ivs] of trackPlan.channelTrackIntervals)
       for (const iv of ivs) (intervalsByDepth.get(d) ?? intervalsByDepth.set(d, []).get(d)!).push(iv);
   }
 
@@ -890,8 +890,8 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
       }
       const exps: ExportInput[] = [];
-      if (config.reservePerimeterLanes) {
-        for (const a of lanePlan.assignments) {
+      if (config.reservePerimeterTracks) {
+        for (const a of trackPlan.assignments) {
           if (a.host.kind !== "channel" || a.host.depth !== d) continue;
           if (a.entry && (a.exitEdge === "N" || a.exitEdge === "S")) {
             exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
@@ -961,28 +961,28 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const rawBbox = unionExtent(placements);
 
   // 7b) 기하 예약의 절대좌표 변환 — 트랙 index → 채널 내부 x, 반출 배정 확정(exitEdge
-  //     뒤집힘 반영 + laneX 기록), 반출 예약 셀 산출. marginNeeds 를 갱신할 수 있으므로
+  //     뒤집힘 반영 + trackX 기록), 반출 예약 셀 산출. marginNeeds 를 갱신할 수 있으므로
   //     expandBbox 보다 먼저.
   const channelGeometry = config.channelGeometry
     ? materializeChannelGeometry({
         geometryPlans,
         deliverySeeds,
-        lanePlan,
+        trackPlan,
         placements,
         channelStartX: (d: number) => colX[d - 1] + colWidth[d - 1],
         rawBbox,
-        reserveLanes: config.reservePerimeterLanes === true,
+        reserveTracks: config.reservePerimeterTracks === true,
       })
     : undefined;
 
-  const bbox = config.reservePerimeterLanes ? expandBbox(rawBbox, lanePlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, lanePlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
+  const bbox = config.reservePerimeterTracks ? expandBbox(rawBbox, trackPlan.marginNeeds) : rawBbox;
+  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
 }
 
 /**
  * 통합 장부의 추상 배정(트랙 index)을 절대좌표 지시로 변환한다.
  * - 납품: DeliveryGeometry(트랙 x·갈아타는 행·지하 횡단 좌표) — deliveryRoute 이 탐색 없이 방출.
- * - 반출: LaneAssignment 에 laneX·(뒤집혔으면) exitEdge 를 기록 — ⑥C 가 그대로 재생.
+ * - 반출: TrackAssignment 에 trackX·(뒤집혔으면) exitEdge 를 기록 — ⑥C 가 그대로 재생.
  * - 예약 셀: 모든 확정 반출 경로(채널 elbow + self/margin 직선)의 절대 셀 —
  *   폴백 dijkstra 납품 경로의 침범을 막아 "먼저 깐 경로가 자리를 뺏는" 원래 구멍을 봉인한다.
  */
@@ -992,13 +992,13 @@ function materializeChannelGeometry(args: {
     depth: number; key: string; eligible: boolean; fluid?: string;
     fromRowChannel?: RowChannelEntry; toRowChannel?: RowChannelEntry;
   }[];
-  lanePlan: LanePlan;
+  trackPlan: TrackPlan;
   placements: ModulePlacement[];
   channelStartX: (d: number) => number;
   rawBbox: { x: number; y: number; w: number; h: number };
-  reserveLanes: boolean;
+  reserveTracks: boolean;
 }): PackChannelGeometry {
-  const { geometryPlans, deliverySeeds, lanePlan, placements, channelStartX, rawBbox, reserveLanes } = args;
+  const { geometryPlans, deliverySeeds, trackPlan, placements, channelStartX, rawBbox, reserveTracks } = args;
   const deliveries = new Map<string, DeliveryDirective>();
   const skips: { key: string; reason: string }[] = [];
   for (const seed of deliverySeeds) {
@@ -1056,7 +1056,7 @@ function materializeChannelGeometry(args: {
   }
 
   const reservedExportCells = new Set<string>();
-  if (reserveLanes) {
+  if (reserveTracks) {
     // 포트 anchor(절대) — 상자 id 로 조회.
     const portByChest = new Map<string, ModulePort>();
     for (const pl of placements)
@@ -1067,20 +1067,20 @@ function materializeChannelGeometry(args: {
     const addSeg = (from: { x: number; y: number }, to: { x: number; y: number }) => {
       for (const c of segment(from, to)) reservedExportCells.add(`${c.x},${c.y}`);
     };
-    for (const a of lanePlan.assignments) {
+    for (const a of trackPlan.assignments) {
       const port = portByChest.get(a.id);
       if (!port) continue;
       const anchor = { x: port.anchor.x, y: port.anchor.y };
       if (a.host.kind === "channel") {
         const plan = geometryPlans.get(a.host.depth)?.exports.get(a.id);
         if (plan?.kind !== "elbow") continue; // fallback — 예약 없음(스캔·skip 유지)
-        const laneX = channelStartX(a.host.depth) + 1 + plan.track;
+        const trackX = channelStartX(a.host.depth) + 1 + plan.track;
         a.exitEdge = plan.exitEdge; // 해소 사다리 ①에서 뒤집혔을 수 있다
-        a.laneX = laneX;
-        lanePlan.marginNeeds[plan.exitEdge] = true;
-        const corner = { x: laneX, y: anchor.y };
+        a.trackX = trackX;
+        trackPlan.marginNeeds[plan.exitEdge] = true;
+        const corner = { x: trackX, y: anchor.y };
         addSeg(anchor, corner);
-        addSeg(corner, { x: laneX, y: seatRow(plan.exitEdge) });
+        addSeg(corner, { x: trackX, y: seatRow(plan.exitEdge) });
       } else if (a.exitEdge === "N" || a.exitEdge === "S") {
         addSeg(anchor, { x: anchor.x, y: seatRow(a.exitEdge) });
       } else {

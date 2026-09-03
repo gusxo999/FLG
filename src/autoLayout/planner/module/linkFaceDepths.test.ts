@@ -11,10 +11,10 @@ import { describe, it, expect } from "vitest";
 import { linkFaceDepths, type LinkFacePlan } from "./linkPlanner";
 import type { PortFace } from "../../containerModel";
 
-const plan = (face: PortFace, laneDepth: number, exitDepth?: number): LinkFacePlan => ({
+const plan = (face: PortFace, clusterBeltDepth: number, exitDepth?: number): LinkFacePlan => ({
   face,
-  laneDepth,
-  reach: laneDepth - 1,
+  clusterBeltDepth,
+  reach: clusterBeltDepth - 1,
   exitDepth,
   gap: face === "N" || face === "S" ? 0 : undefined,
   arms: new Map([[0, 1]]),
@@ -22,7 +22,7 @@ const plan = (face: PortFace, laneDepth: number, exitDepth?: number): LinkFacePl
 });
 
 describe("linkFaceDepths — 링크가 옆면에서 먹는 가장 깊은 칸", () => {
-  it("벨트가 아니라 **포트 끝**까지 센다 — laneDepth + 2", () => {
+  it("벨트가 아니라 **포트 끝**까지 센다 — clusterBeltDepth + 2", () => {
     // 벨트 d2 · 포트 인서터 d3 · 포트 상자 d4 ([makeLinkPortChest]).
     expect(linkFaceDepths([[plan("W", 2)]])).toEqual({ W: 4 });
   });
