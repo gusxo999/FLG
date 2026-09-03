@@ -116,6 +116,16 @@ export interface ModulePort {
    * (2026-07-21, 옛 `seq` 위치-zip 이 방출 실패 시 조용히 밀리던 문제의 근치).
    */
   linkId?: string;
+  /**
+   * **이 포트의 줄이 남과 물리 벨트를 나눠 쓰나**([Link.sharedLineId] 를 그대로 복사).
+   *
+   * 같은 값을 가진 포트 둘은 **같은 칸**에 서 있다(논리 포트 둘 · 물리 벨트 하나).
+   * 채널이 이걸 보고 두 납품 경로를 **한 칸에서 합류**시킨다 — 안 보면 둘이 같은 자리를
+   * 두고 다투다 하나가 폴백으로 떨어진다.
+   *
+   * `linkId` 와 같은 규칙으로 산다 — **불투명 토큰이고 이 폴더는 파싱하지 않는다.**
+   */
+  sharedLineId?: string;
 }
 
 export interface GeneratedModule {

@@ -126,6 +126,8 @@ function pushLinkPortEnd(o: {
   ports: ModulePort[];
   /** 이미 놓인 물리 벨트에 **논리 포트만** 더 얹나(레인 공유). 기본 `false`. */
   reuse?: boolean;
+  /** 이 줄이 남과 나눠 쓰는 물리 벨트의 신원([Link.sharedLineId]) — 채널이 합류를 안다. */
+  sharedLineId?: string;
 }): void {
   const pickup = o.role === "output" ? { x: -o.pfv.x, y: -o.pfv.y } : o.pfv;
   // **`reuse` = 이미 놓인 물리 벨트에 논리 포트만 하나 더 얹는다**(레인 공유).
@@ -150,7 +152,7 @@ function pushLinkPortEnd(o: {
   o.ports.push({
     line: o.line, anchor: { ...o.chestAt }, tapAnchor: o.tapAnchor, face: o.portFace,
     moduleWayOuts: [], chest: o.chest, cells: o.beltCells, linkId: o.linkId,
-    rate: o.rate, beltEntityName: o.beltEntityName,
+    rate: o.rate, beltEntityName: o.beltEntityName, sharedLineId: o.sharedLineId,
     meta: {
       // **어느 변에 섰나** — 반출·채널 장부의 단일 출처([[ns-face-relief]] 결정 5).
       // `portFace` 와 같은 값이어야 한다: gap 그룹은 서/동쪽 변으로 나가고, W/E 면 그룹은
@@ -503,6 +505,7 @@ export function emitInputLinks(args: {
         : { ...beltTop },
       clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts, reuse: reuse !== undefined,
+      sharedLineId: group.sharedLineId,
     });
     if (group.sharedLineId !== undefined && !reuse) {
       sharedBelts.set(group.sharedLineId, { beltCells, portPair, beltTop });

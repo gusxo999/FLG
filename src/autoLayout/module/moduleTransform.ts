@@ -148,6 +148,10 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
     cells: p.cells.map(cel),
     meta: p.meta,
     linkId: p.linkId,
+    // **줄이 든 값은 변환에 불변이다** — 운반량·티어·공유 신원은 좌표가 아니다.
+    rate: p.rate,
+    beltEntityName: p.beltEntityName,
+    sharedLineId: p.sharedLineId,
   });
 
   // 3) 새 머신 bbox (정규화 후 min=0).
@@ -274,6 +278,10 @@ export function shiftModule(mod: GeneratedModule, dx: number, dy: number): Gener
     cells: p.cells.map(cel),
     meta: p.meta,
     linkId: p.linkId,
+    // **줄이 든 값은 변환에 불변이다** — 운반량·티어·공유 신원은 좌표가 아니다.
+    rate: p.rate,
+    beltEntityName: p.beltEntityName,
+    sharedLineId: p.sharedLineId,
   });
   return {
     machines: mod.machines.map(ctn),
