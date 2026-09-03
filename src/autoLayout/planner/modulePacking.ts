@@ -37,7 +37,7 @@ import type { DepthShortage, LinkFacePlan } from "./module/linkPlanner";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
-import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
+import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planTracks, expandBbox } from "./perimeter/tracks";
 import type { TrackPlan } from "./perimeterTrackPlanner";
@@ -470,6 +470,56 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     if (groups) linkCache.set(s.id, end ? groups.map((g) => ({ ...g, end })) : groups);
   }
 
+  // ── 레인 공유 짝짓기 ───────────────────────────────────────────────────────
+  //
+  // **줄 둘을 한 물리 벨트의 좌/우 레인에 하나씩** 싣는다
+  // (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
+  //
+  // ## 무엇을 되찾나
+  // 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
+  // [determineBeltCount] 가 줄 **둘**로 낸다. 합류시키면 벨트가 하나로 돌아온다 —
+  // **처리량은 안 늘고 물리 벨트 수가 준다.**
+  //
+  // ## 후보 = **같은 간선의 두 줄** (v1 = 같은 품목)
+  // `linkCache` 의 한 항목이 곧 간선 하나(자식→부모, 품목 하나)이고, 그 안에 줄이 여럿이면
+  // 그것이 곧 *"수요가 레인 하나를 넘어 갈린 줄들"* 이다. 그 둘이 짝의 자연스러운 단위다.
+  //
+  // **기하가 공짜로 성립한다** — 관통 줄은 기둥 끝에 포트를 세우는데(`LinkFacePlan.portEnd`),
+  // 그 끝은 면마다 장부(`ctx.ends`)로 관리돼 **먼저 앉은 줄이 N 을 잡으면 다음 줄은 S** 를
+  // 잡는다. 즉 같은 간선의 두 줄은 기둥의 **위·아래 끝**에서 나가고, 채널에서 그 둘의 세로
+  // 주행은 도착 행에 **양옆으로** 닿는다 → 유입이 둘 다 옆이라 **둘 다 접힌다**(각자 한 레인).
+  // 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 아래쪽이 조용히 굶는다(규칙 ⑤⑦).
+  //
+  // **같은 품목이라 필터가 필요 없다** — 집는 팔이 뭘 집든 같은 품목이다(승인 Q1).
+  //
+  // **[AUTO_LAYOUT_LANE_MERGE] 가 꺼져 있으면 아무 줄에도 안 붙는다** — 아래 모든 갈래가
+  // 도달 불가가 되어 **오늘 동작 그대로**다(미완성 기능의 관용구).
+  //
+  // **배정([allocateTree]) 앞이라야 한다** — 배정이 공유를 보고 부모 면에서 한 벨트를
+  // 잡기 때문이다. 배정이 줄을 쪼개면 그 토막은 더 이상 같은 줄이 아니므로
+  // [splitLinkAtRows] 가 표시를 **떼어 낸다**.
+  if (AUTO_LAYOUT_LANE_MERGE) {
+    const laneCapOf = (n: string | undefined): number | undefined => {
+      const tier = config.belts?.find((b) => b.entityName === n);
+      return tier ? laneCapOfTier(tier) : undefined;
+    };
+    const share = { candidates: 0, pairs: 0, rejected: 0 };
+    for (const [childId, groups] of linkCache) {
+      // 줄이 하나면 갈린 적이 없다 — 되찾을 절반도 없다.
+      for (let i = 0; i + 1 < groups.length; i += 2) {
+        share.candidates += 1;
+        const made = shareLanes(
+          [groups[i], groups[i + 1]],
+          laneCapOf,
+          () => `${childId}#lane${i / 2}`,
+        );
+        share.pairs += made;
+        share.rejected += made === 0 ? 1 : 0;
+      }
+    }
+    recordLaneShareStats(share);
+  }
+
   // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
   const outputLinksOf = (s: NodeSpec): Link[] | undefined => linkCache.get(s.id);
@@ -563,53 +613,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
   const allocated = allocateTree();
 
-  // ── 레인 공유 짝짓기 ───────────────────────────────────────────────────────
-  //
-  // **줄 둘을 한 물리 벨트의 좌/우 레인에 하나씩** 싣는다
-  // (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
-  //
-  // ## 무엇을 되찾나
-  // 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
-  // [determineBeltCount] 가 줄 **둘**로 낸다. 합류시키면 벨트가 하나로 돌아온다 —
-  // **처리량은 안 늘고 물리 벨트 수가 준다.**
-  //
-  // ## 후보 = **같은 간선의 두 줄** (v1 = 같은 품목)
-  // `linkCache` 의 한 항목이 곧 간선 하나(자식→부모, 품목 하나)이고, 그 안에 줄이 여럿이면
-  // 그것이 곧 *"수요가 레인 하나를 넘어 갈린 줄들"* 이다. 그 둘이 짝의 자연스러운 단위다.
-  //
-  // **기하가 공짜로 성립한다** — 관통 줄은 기둥 끝에 포트를 세우는데(`LinkFacePlan.portEnd`),
-  // 그 끝은 면마다 장부(`ctx.ends`)로 관리돼 **먼저 앉은 줄이 N 을 잡으면 다음 줄은 S** 를
-  // 잡는다. 즉 같은 간선의 두 줄은 기둥의 **위·아래 끝**에서 나가고, 채널에서 그 둘의 세로
-  // 주행은 도착 행에 **양옆으로** 닿는다 → 유입이 둘 다 옆이라 **둘 다 접힌다**(각자 한 레인).
-  // 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 아래쪽이 조용히 굶는다(규칙 ⑤⑦).
-  //
-  // **같은 품목이라 필터가 필요 없다** — 집는 팔이 뭘 집든 같은 품목이다(승인 Q1).
-  //
-  // 오늘은 **표시만 남는다.** `sharedLineId` 를 읽는 방출기·기하가 아직 없어 배치가 안 바뀐다.
-  //
-  // **[allocateTree] 뒤라야 한다** — 그 단계가 `linkCache` 를 최종본으로 갈아 끼운다
-  // (쪼개졌으면 토막). 앞에서 표시하면 그 교체가 표시를 **조용히 버린다**.
-  {
-    const laneCapOf = (n: string | undefined): number | undefined => {
-      const tier = config.belts?.find((b) => b.entityName === n);
-      return tier ? laneCapOfTier(tier) : undefined;
-    };
-    const share = { candidates: 0, pairs: 0, rejected: 0 };
-    for (const [childId, groups] of linkCache) {
-      // 줄이 하나면 갈린 적이 없다 — 되찾을 절반도 없다.
-      for (let i = 0; i + 1 < groups.length; i += 2) {
-        share.candidates += 1;
-        const made = shareLanes(
-          [groups[i], groups[i + 1]],
-          laneCapOf,
-          () => `${childId}#lane${i / 2}`,
-        );
-        share.pairs += made;
-        share.rejected += made === 0 ? 1 : 0;
-      }
-    }
-    recordLaneShareStats(share);
-  }
   const stagesRef = allocated.stages;
   const inputsRef = allocated.inputs;
 

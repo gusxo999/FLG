@@ -56,6 +56,7 @@ import {
   allocateLinkFaces,
   commitLinkFace,
   tryLinkFace,
+  seatOnSharedBelt,
   clusterBeltDepthsOf,
   spillLinkFacesToGap,
   gapRowsFromPlans,
@@ -348,15 +349,41 @@ export function seatLinkEdge(
     groups.push(g); fromPlans.push(fp); toPlans.push(tp); fromWhy.push(fw); toWhy.push(tw);
   };
 
+  /**
+   * **레인 공유** — 같은 물리 벨트를 쓰는 줄들의 **집는 쪽** 계획(`sharedLineId` → 첫 줄의 계획).
+   *
+   * 비대칭이 요점이다: **싣는 쪽은 벨트 둘**(팔이 각자 먼 레인에 떨궈야 두 레인이 찬다),
+   * **집는 쪽은 벨트 하나**(합류한 벨트가 벽의 한 칸으로 들어온다). 그래서 `from` 은
+   * 오늘처럼 각자 앉고, `to` 만 첫 줄의 벨트에 얹는다([seatOnSharedBelt]).
+   */
+  const sharedTo = new Map<string, LinkFacePlan>();
+
   while (queue.length > 0) {
     const g = queue.shift()!;
     const fw: DepthShortage[] = [];
     const tw: DepthShortage[] = [];
     // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(원자성의 전제다).
     const candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw);
+
+    // **짝의 둘째 줄이면 집는 쪽을 안 고른다** — 첫 줄이 잡은 벨트에 좌석만 얹는다.
+    const partner = g.sharedLineId !== undefined ? sharedTo.get(g.sharedLineId) : undefined;
+    if (candFrom && partner) {
+      const onShared = seatOnSharedBelt(toSeat.ctx, g, "to", partner);
+      if (onShared) {
+        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), onShared);
+        continue;
+      }
+      // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
+      g.sharedLineId = undefined;
+    }
+
     const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
     if (candFrom && candTo) {
-      keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), commitLinkFace(toSeat.ctx, candTo, "to"));
+      const toPlan = commitLinkFace(toSeat.ctx, candTo, "to");
+      if (g.sharedLineId !== undefined && !sharedTo.has(g.sharedLineId)) {
+        sharedTo.set(g.sharedLineId, toPlan); // 첫 줄 — 다음 줄이 이 벨트에 얹힌다
+      }
+      keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from"), toPlan);
       continue;
     }
 

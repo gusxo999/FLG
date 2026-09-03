@@ -601,6 +601,57 @@ export function commitLinkFace(
 }
 
 /**
+ * **짝의 둘째 줄을 첫 줄의 벨트에 얹는다** — 레인 공유
+ * (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
+ *
+ * ## 비대칭이 이 함수의 존재 이유다
+ * ```
+ * 싣는 쪽(자식)   벨트 **둘**  — 팔이 각자 먼 레인에 떨궈야 두 레인이 다 찬다
+ * 집는 쪽(부모)   벨트 **하나** — 합류한 벨트가 벽의 한 칸으로 들어온다
+ * ```
+ * 그래서 이 함수는 **집는 쪽에서만** 불린다. 싣는 쪽은 오늘처럼 각자 자기 벨트를 잡는다.
+ *
+ * ## 무엇을 다시 청구하고 무엇을 안 하나
+ * ```
+ * 좌석(d1)   **자기 것** — 팔은 줄마다 따로 앉는다
+ * 벨트 칸     안 한다 — 첫 줄이 이미 잡았고, 그게 곧 **같은 물리 벨트**라는 뜻이다
+ * 포트 칸     안 한다 — 포트도 하나다(논리 포트 둘이 한 셀)
+ * 기둥 끝     안 한다 — 끝 장부는 물리 벨트당 하나여야 한다
+ * ```
+ *
+ * **깊이·면·팔 종류를 고르지 않는다** — 첫 줄이 정한 것을 그대로 받는다. 고르는 순간 두 줄이
+ * 다른 벨트에 앉고, 그러면 합류한 벨트가 먹일 곳이 없어진다.
+ *
+ * `undefined` = **좌석이 모자라다.** 그때 호출자는 짝을 풀고 오늘처럼 각자 앉힌다 —
+ * 반쪽만 공유된 상태를 남기지 않는다.
+ */
+export function seatOnSharedBelt(
+  ctx: LinkFaceContext,
+  group: Link,
+  side: "from" | "to",
+  shared: LinkFacePlan,
+): LinkFacePlan | undefined {
+  if (shared.face === "N" || shared.face === "S") return undefined; // gap 은 폭이 자원이라 다르다
+  const table = tableOf(ctx, shared.face);
+  const inserter = inserterForReach(ctx.inserters ?? [], shared.reach);
+  if (!inserter) return undefined;
+  const arms = armsAt(group, side, inserter);
+  if (arms.size === 0) return undefined;
+
+  // **좌석이 되는지 먼저 다 확인하고** 나서 청구한다 — 반쯤 앉히면 되돌릴 길이 없다.
+  const want = new Map<number, number[]>();
+  for (const [mi, k] of [...arms].sort((a, b) => a[0] - b[0])) {
+    const slots = freeSeatRows(table, mi).slice(0, k);
+    if (slots.length < k) return undefined;
+    want.set(mi, slots);
+  }
+  const owner = takeOwner(table);
+  for (const [mi, slots] of want) claimSeats(table, mi, slots, owner);
+  // 벨트·포트 칸·기둥 끝은 **안 청구한다** — 첫 줄의 것을 그대로 쓴다.
+  return { ...shared, arms, slotIndex: want };
+}
+
+/**
  * **링크 면 배정 — 선호 면부터 채우고, 차면 gap 으로 넘어간다.**
  *
  * 머신 하나의 한 면에는 인서터가 `machine.h` 개까지만 앉는다(d1 칸이 그것뿐이다). 팔이 그보다

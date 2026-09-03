@@ -124,17 +124,29 @@ function pushLinkPortEnd(o: {
   chests: Container[];
   occupancy: Set<string>;
   ports: ModulePort[];
+  /** 이미 놓인 물리 벨트에 **논리 포트만** 더 얹나(레인 공유). 기본 `false`. */
+  reuse?: boolean;
 }): void {
   const pickup = o.role === "output" ? { x: -o.pfv.x, y: -o.pfv.y } : o.pfv;
-  o.cells.push(
-    ...o.beltCells,
-    makeInserterCell(o.seatCell, pickup, o.inserterEntityName, o.portPair),
-    makeContainerCell(o.chest, o.chestAt),
-  );
-  for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
-  o.occupancy.add(cellKey(o.seatCell.x, o.seatCell.y));
-  o.occupancy.add(cellKey(o.chestAt.x, o.chestAt.y));
-  o.chests.push(o.chest);
+  // **`reuse` = 이미 놓인 물리 벨트에 논리 포트만 하나 더 얹는다**(레인 공유).
+  //
+  // 셀·상자·점유를 다시 만들지 않는다 — 물리적으로는 벨트도 포트 인서터도 상자도 **하나**다.
+  // 그런데 [ModulePort] 는 **줄마다** 있어야 한다: 납품 짝짓기가 `linkId`·품목으로 조회하고
+  // (`pairDeliveryPorts`), 상자 id 로 *"이 포트는 이미 짝지었다"* 를 센다(`usedIn`).
+  // **그래서 상자 객체는 줄마다 자기 것(자기 id)이되, `chests` 에 들어가는 것은 하나다** —
+  // 같은 객체를 공유하면 먼저 짝지은 줄이 그 id 를 `usedIn` 에 넣어 **나머지가 영영 짝을
+  // 못 찾는다.**
+  if (!o.reuse) {
+    o.cells.push(
+      ...o.beltCells,
+      makeInserterCell(o.seatCell, pickup, o.inserterEntityName, o.portPair),
+      makeContainerCell(o.chest, o.chestAt),
+    );
+    for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
+    o.occupancy.add(cellKey(o.seatCell.x, o.seatCell.y));
+    o.occupancy.add(cellKey(o.chestAt.x, o.chestAt.y));
+    o.chests.push(o.chest);
+  }
   o.ports.push({
     line: o.line, anchor: { ...o.chestAt }, tapAnchor: o.tapAnchor, face: o.portFace,
     moduleWayOuts: [], chest: o.chest, cells: o.beltCells, linkId: o.linkId,
@@ -345,6 +357,14 @@ export function emitInputLinks(args: {
   unroutedLines: IoLine[];
 }): void {
   const { groups, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines } = args;
+  /**
+   * **레인 공유** — 이미 깔린 물리 벨트(`sharedLineId` → 첫 줄이 놓은 것).
+   *
+   * 집는 쪽은 벨트가 **하나**다(합류한 벨트가 벽의 한 칸으로 들어온다). 둘째 줄은 자기
+   * **좌석 팔만** 놓고 벨트·포트 인서터·상자는 첫 줄의 것을 그대로 쓴다.
+   * 배정이 이미 같은 면·같은 깊이를 줬으므로([seatOnSharedBelt]) 여기서 기하를 다시 안 고른다.
+   */
+  const sharedBelts = new Map<string, { beltCells: PlacedCell[]; portPair: PortPair; beltTop: { x: number; y: number } }>();
   const ext = {
     x0: Math.min(...machines.map((m) => m.origin.x)),
     y0: Math.min(...machines.map((m) => m.origin.y)),
@@ -408,6 +428,8 @@ export function emitInputLinks(args: {
     const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
     const inward = { x: -fv.x, y: -fv.y };
 
+    const reuse = group.sharedLineId !== undefined ? sharedBelts.get(group.sharedLineId) : undefined;
+
     // 벨트 경로를 **먼저 전부 계산하고**, 다 놓을 수 있을 때만 놓는다. 반만 놓인 벨트는
     // 포트에서 물건이 사라지는 것과 같아서, 한 칸이라도 막히면 통째로 물러난다.
     const path: { at: { x: number; y: number }; v: { x: number; y: number } }[] = [];
@@ -434,24 +456,32 @@ export function emitInputLinks(args: {
       { x: te.x + pfv.x, y: te.y + pfv.y },
       { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }, // 포트 인서터·상자
     ];
-    if (span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
+    // **짝의 둘째 줄은 이 검사를 건너뛴다** — 그 칸들은 첫 줄이 놓은 **자기 벨트**다.
+    // 여기서 막는 것은 *"남이 이미 쓰는 칸"* 인데, 공유는 정의상 같은 줄이 쓰는 것이다.
+    if (!reuse && span.some((c) => occupancy.has(cellKey(c.x, c.y)))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함 — 좌석 장부가 이미 막았어야 한다)
       return;
     }
 
     // ── 배치 확정 ──
-    const beltTop = trunkEndOf(belt.d);
+    // **포트 자리도 첫 줄의 것이다** — 둘째 줄은 자기 좌석 행이 달라 `topT` 가 다르게 나오는데,
+    // 물리 벨트가 하나이므로 그 끝도 하나여야 한다. 여기서 다시 재면 논리 포트 둘이 **서로 다른
+    // 칸**에 서서, 합류한 벨트가 그중 하나만 먹인다.
+    const beltTop = reuse?.beltTop ?? trunkEndOf(belt.d);
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
     const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
       role: "input", trunkEnd: beltTop, portFace, pfv, line, machineId: m0.id, chestId,
     });
 
-    const beltCells: PlacedCell[] = path.map((c) =>
-      // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
-      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
-    );
-    for (const c of beltCells) occupancy.add(cellKey(c.x, c.y));
+    // 공유면 벨트 셀도 첫 줄의 것이다 — 다시 만들면 같은 칸에 두 번 놓인다.
+    const beltCells: PlacedCell[] = reuse
+      ? reuse.beltCells
+      : path.map((c) =>
+          // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
+          makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
+        );
+    if (!reuse) for (const c of beltCells) occupancy.add(cellKey(c.x, c.y));
     for (const s of seats) {
       for (const t of s.rows) {
         const seat = faceCell(geomExt, face, 1, t);
@@ -472,8 +502,11 @@ export function emitInputLinks(args: {
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },
       clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
-      cells, chests, occupancy, ports: inputPorts,
+      cells, chests, occupancy, ports: inputPorts, reuse: reuse !== undefined,
     });
+    if (group.sharedLineId !== undefined && !reuse) {
+      sharedBelts.set(group.sharedLineId, { beltCells, portPair, beltTop });
+    }
   });
 }
 

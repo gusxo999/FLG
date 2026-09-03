@@ -560,6 +560,9 @@ export function splitLinkAtRows(
       to: narrow(group.to, "to"),
       carries,
       id: group.id === undefined ? undefined : `${group.id}/${k}`,
+      // **토막은 더 이상 그 줄이 아니다** — 짝은 *"이 줄과 저 줄이 한 벨트"* 라는 약속인데
+      // 쪼개진 토막은 실린 양도 맡는 머신도 달라져 그 약속을 못 지킨다. 떼어 낸다.
+      sharedLineId: undefined,
     };
   });
 }

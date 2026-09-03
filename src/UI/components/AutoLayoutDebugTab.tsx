@@ -4,6 +4,8 @@ import {
   setAutoLayoutCoordDump,
   AUTO_LAYOUT_LINK_LADDER,
   setAutoLayoutLinkLadder,
+  AUTO_LAYOUT_LANE_MERGE,
+  setAutoLayoutLaneMerge,
 } from '../../autoLayout/debugFlags';
 import { useUiDebugStore } from '../store/uiDebugStore';
 
@@ -16,6 +18,7 @@ import { useUiDebugStore } from '../store/uiDebugStore';
 export default function AutoLayoutDebugTab() {
   const [dumpEnabled, setDumpEnabled] = useState(AUTO_LAYOUT_COORD_DUMP);
   const [ladder, setLadder] = useState(AUTO_LAYOUT_LINK_LADDER);
+  const [laneMerge, setLaneMerge] = useState(AUTO_LAYOUT_LANE_MERGE);
   const showEntityDebugInfo = useUiDebugStore((s) => s.showEntityDebugInfo);
   const setShowEntityDebugInfo = useUiDebugStore((s) => s.setShowEntityDebugInfo);
 
@@ -63,6 +66,31 @@ export default function AutoLayoutDebugTab() {
           앉힙니다(사다리 1단 · 구간막힘 해소). <b>미완성 기능이라 기본은 꺼짐</b>입니다 —
           켜고 끄며 <code>flg.report()</code> 의 <b>쪼갬</b> 수와 못 앉은 줄 수를 비교하세요.
           바꾼 뒤에는 <b>자동 배치를 다시 실행</b>해야 반영됩니다.
+        </p>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => {
+            const next = !laneMerge;
+            setAutoLayoutLaneMerge(next);
+            setLaneMerge(next);
+          }}
+          className={`shrink-0 text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
+            laneMerge
+              ? 'bg-violet-900/60 border-violet-600 text-violet-300 hover:bg-violet-800/60'
+              : 'bg-gray-800/40 border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-400'
+          }`}
+        >
+          레인 합류 {laneMerge ? 'ON' : 'OFF'}
+        </button>
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          인서터는 벨트의 <b>먼 레인 하나</b>에만 떨구므로 줄 하나는 벨트의 <b>절반</b>만
+          씁니다. 켜면 그렇게 갈린 줄 둘을 <b>한 벨트의 좌/우 레인</b>에 하나씩 실어 벨트를
+          하나로 되돌립니다 — <b>처리량은 안 늘고 물리 벨트 수가 줍니다</b>.
+          <b>미완성이라 기본은 꺼짐</b>입니다(채널 합류 도형이 아직 없어, 켜면 납품 경로가
+          같은 칸을 두고 다툴 수 있습니다). 짝 수는 <code>flg.report()</code> 의{' '}
+          <b>레인공유</b> 줄로 봅니다. 바꾼 뒤에는 <b>자동 배치를 다시 실행</b>해야 합니다.
         </p>
       </div>
 

@@ -73,3 +73,28 @@ export let AUTO_LAYOUT_LINK_LADDER = false;
 export function setAutoLayoutLinkLadder(v: boolean): void {
   AUTO_LAYOUT_LINK_LADDER = v;
 }
+
+/**
+ * AUTO_LAYOUT_LANE_MERGE — **레인 합류** 스위치
+ * (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
+ *
+ * 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
+ * 줄 둘이 된다. `true` 면 그 둘을 **한 물리 벨트의 좌/우 레인**에 하나씩 실어 벨트를
+ * 하나로 되돌린다 — **처리량은 안 늘고 물리 벨트 수가 준다**(벨트 칸·채널 트랙·면 깊이·포트).
+ *
+ * **`false`(현재 기본) 면 짝짓기 자체가 안 돈다** — `sharedLineId` 가 아무 줄에도 안 붙어
+ * 아래 모든 갈래가 도달 불가가 된다. 즉 꺼 두면 **오늘 동작 그대로**다.
+ *
+ * **미완성이라 꺼 둔다.** 합류가 성립하려면 셋이 함께 서야 한다:
+ *  - 부모 면이 **한 벨트**를 쓴다(싣는 쪽은 둘, 집는 쪽은 하나 — 그 비대칭이 핵심이다)
+ *  - 그 벨트의 **포트가 하나**다(논리 포트 둘이 한 셀)
+ *  - 채널에서 두 납품 경로가 **한 칸에 양옆으로** 들어와 합류한다
+ *
+ * 셋 중 하나라도 없으면 배치가 조용히 틀린다 — 벨트는 이어져 있고 총량도 맞는데 **한쪽만
+ * 안 흐른다**. 그래서 다 서기 전까지는 켜지 않는다.
+ */
+export let AUTO_LAYOUT_LANE_MERGE = false;
+
+export function setAutoLayoutLaneMerge(v: boolean): void {
+  AUTO_LAYOUT_LANE_MERGE = v;
+}
