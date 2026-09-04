@@ -334,6 +334,17 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       dijkstraFallback += 1;
       if (chain) {
         chainMisses.push({ key: k, reason: `chain-blocked:${blockedBy}` });
+        // **안 쓸 계획의 예약은 유령이다 — 여기서 지운다.**
+        //
+        // 예약 장부는 계획 체인 전부에서 **한 번에** 만들어지고 여태 갱신된 적이 없었다.
+        // 그래서 계획 둘이 한 칸에서 만나면 **둘 다 죽었다**: A 는 B 의 예약에 막혀
+        // 탐색으로 내려가는데, A 의 (이제 안 깔릴) 계획 칸이 장부에 남아 B 까지 막는다.
+        // 아무도 못 이기고 둘 다 폴백한다(2026-09-04 실측: 겹친 칸은 `(18,26)` **하나**였다).
+        //
+        // 지우면 A 는 탐색으로 가되 B 는 계획을 지킨다 — 폴백이 둘에서 하나로 준다.
+        // A 의 탐색은 아래 `extra` 로 여전히 B 의 예약을 피하고, B 는 그 뒤 A 가 **실제로**
+        // 깐 칸(`deliveryBelts`)에 대고 다시 검사받는다. 유령만 사라진다.
+        reservedDelivery.delete(k);
         if (AUTO_LAYOUT_COORD_DUMP)
           console.log("[deliveryRoute] planned chain blocked — dijkstra fallback", k, "—", blockedBy);
       }
