@@ -48,10 +48,11 @@ import {
   externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows, summarizeBeltForms,
   type Link,
 } from "../../module/link";
-import { recordBeltFormStats, recordFaceDepthStats } from "../../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats, recordLaneUnshare } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
 import { determineBeltCount, laneCapOfTier } from "../../beltThroughput";
 import { planBundles } from "./depthBudget";
+import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../debugFlags";
 import {
   allocateLinkFaces,
   commitLinkFace,
@@ -424,7 +425,12 @@ export function seatLinkEdge(
     // 같은 `topT` 규약을 써야 방출이 합류 칸을 계산할 수 있다).
     const pair = g.sharedLineId !== undefined ? mergePairs.get(g.sharedLineId) : undefined;
     const inPair = pair !== undefined;
-    let candFrom = tryLinkFace(fromSeat.ctx, g, "from", "W", false, fw, inPair, pair?.end);
+    // **이끄는 줄이 이미 앉았으면 그 면·깊이를 물려받는다** — 배정 순서가 쌍을 붙여 놓았으므로
+    // 따르는 줄 차례엔 반드시 있다(없으면 이끄는 줄이 도형을 못 세운 것이라 짝도 아니다).
+    const fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
+    let candFrom = tryLinkFace(
+      fromSeat.ctx, g, "from", "W", false, fw, inPair, pair?.end, fromPartner?.clusterBeltDepth,
+    );
 
     // **싣는 쪽 — 짝의 둘째 줄은 첫 줄과 같은 끝을 써야 한다.**
     //
@@ -434,7 +440,6 @@ export function seatLinkEdge(
     //
     // 깊이가 **인접**하지 않거나 면이 다르면 그 도형이 안 선다 → **짝을 푼다.**
     // (배정 단계라 아직 풀 수 있다 — 납품이 하나로 접히는 것은 이 뒤다.)
-    const fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
     let merged: Record<string, never> | undefined;
     if (candFrom && fromPartner) {
       // **같은 면 · 같은 깊이 · 끝이 있다.** 구간 줄 둘은 구간이 안 겹쳐 **한 깊이를 나눠
@@ -451,6 +456,7 @@ export function seatLinkEdge(
         merged = {};
       } else {
         g.sharedLineId = undefined;
+        recordLaneUnshare("shape");
       }
     }
 
@@ -464,6 +470,7 @@ export function seatLinkEdge(
       }
       // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
       g.sharedLineId = undefined;
+      recordLaneUnshare("seats");
     }
 
     const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
@@ -523,8 +530,19 @@ function spillPair(
   toSeat: LinkFaceStage,
   g: Link,
 ): { from: LinkFacePlan; to: LinkFacePlan } | undefined {
-  const OUT: readonly PortFace[] = ["W", "S", "N"];
-  const IN: readonly PortFace[] = ["E", "S", "N"];
+  // **반대 옆면은 gap 앞에 온다** — gap 은 기둥을 벌려 모듈을 키우지만(`gapRowsFromPlans`)
+  // 반대 면은 안 키운다. 그 순서는 자매 경로가 자기 줄에 이미 쓰는 것과 같다
+  // (`planModulePorts`: `["E","W","S","N"]` · `["W","E","S","N"]`).
+  //
+  // **끄면 오늘 동작 그대로다** — 기전: `false` 면 배열이 옛 상수와 글자 그대로 같아,
+  // 반대 면을 후보로 **한 번도 안 물어본다**([tryLinkFace] 호출 자체가 안 생긴다).
+  //
+  // 이 분기가 **켜졌는데 납품이 깨지면** `tempPlanDocs/부분-링크/judgements.md` **J14** 를
+  // 본다 — 그 대가를 재는 것이 이 플래그의 존재 이유다(2026-08-05 실측: 자매 경로에서
+  // W 로 밀린 자식-공급 입력의 납품 1건이 실패했다).
+  const both = AUTO_LAYOUT_LINK_OPPOSITE_FACE;
+  const OUT: readonly PortFace[] = both ? ["W", "E", "S", "N"] : ["W", "S", "N"];
+  const IN: readonly PortFace[] = both ? ["E", "W", "S", "N"] : ["E", "S", "N"];
   for (const ff of OUT) {
     const candFrom = tryLinkFace(fromSeat.ctx, g, "from", ff, true);
     if (!candFrom) continue;

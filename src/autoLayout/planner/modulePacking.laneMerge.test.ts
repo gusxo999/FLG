@@ -115,6 +115,34 @@ describe("레인 합류 — 켜면 집는 쪽이 한 벨트가 된다", () => {
     expect(run(true).outAnchors.size).toBe(1);
   });
 
+  it("계측은 **마지막 관문**에서 센다 — `짝` 이 아니라 `합쳐짐` 이 아낀 벨트다", () => {
+    // 자격(`짝`)을 통과해도 배정이 도형을 못 세우거나 방출에서 칸이 막히면 되돌아간다.
+    // 그래서 `짝` 을 아낀 벨트 수로 읽으면 **거짓말이 된다**(2026-09-04 실물 트리:
+    // 짝 3에 실제로 줄어든 납품은 하나였다). 여기선 다 서므로 셋이 같다.
+    const on = run(true);
+    expect(on.share.pairs, "자격을 통과한 쌍").toBe(1);
+    expect(on.share.merged, "**셀까지 간 합류** — 이 수만이 아낀 물리 벨트다").toBe(1);
+    expect(on.share.unshared, "되돌린 것 없음").toEqual({ shape: 0, seats: 0 });
+  });
+
+  it("**끄면 아무것도 안 센다** — 0 과 「안 돌았다」가 갈린다(대조군)", () => {
+    const off = run(false);
+    expect(off.share.candidates).toBe(0);
+    expect(off.share.merged).toBe(0);
+  });
+
+  it("따르는 줄은 **이끄는 줄의 깊이에 쌓인다** — 다르면 합류 도형이 없다", () => {
+    // 후보 정렬은 원래 *"팔 적은 것 → 얕은 것"* 이라 둘이 서로 다른 깊이를 고른다.
+    // 실물에서 되돌림 2건이 **전부** 이것이었다(`depth 3 vs 2` · `2 vs 3`).
+    const on = run(true);
+    const depths = new Set(
+      on.pack.placements.find((pl) => pl.id === "c")!.module.outputPorts
+        .filter((q) => q.line.name === "x")
+        .map((q) => q.anchor.x),
+    );
+    expect(depths.size, "두 줄의 포트가 같은 열에 선다").toBe(1);
+  });
+
   it("한 자리에 상자는 **하나**뿐이다 — 논리 포트가 둘이어도 물건은 하나다", () => {
     const on = run(true);
     const at = [...on.inAnchors][0];

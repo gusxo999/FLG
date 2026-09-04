@@ -33,7 +33,8 @@ import {
   cloneLinkFaceStage, planLinkFaces, seatLinkEdge,
   type LinkFaceStage,
 } from "./module/planModulePorts";
-import type { DepthShortage, LinkFacePlan } from "./module/linkPlanner";
+import { clusterBeltDepthsOf, type DepthShortage, type LinkFacePlan } from "./module/linkPlanner";
+import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
@@ -498,12 +499,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // **배정([allocateTree]) 앞이라야 한다** — 배정이 공유를 보고 부모 면에서 한 벨트를
   // 잡기 때문이다. 배정이 줄을 쪼개면 그 토막은 더 이상 같은 줄이 아니므로
   // [splitLinkAtRows] 가 표시를 **떼어 낸다**.
+  // **꺼져 있어도 0 을 적는다** — 안 적으면 앞 실행의 수가 그대로 남아 대조군이 거짓이
+  // 된다(2026-09-04: 끈 실행이 켠 실행의 `후보 1` 을 물려받았다). `beginRunStats` 가
+  // 가려 주는 자리라 앱에선 안 보이고 테스트에서만 드러난다.
+  const share = { candidates: 0, pairs: 0, rejected: 0 };
   if (AUTO_LAYOUT_LANE_MERGE) {
     const laneCapOf = (n: string | undefined): number | undefined => {
       const tier = config.belts?.find((b) => b.entityName === n);
       return tier ? laneCapOfTier(tier) : undefined;
     };
-    const share = { candidates: 0, pairs: 0, rejected: 0 };
     for (const [childId, groups] of linkCache) {
       // 줄이 하나면 갈린 적이 없다 — 되찾을 절반도 없다.
       for (let i = 0; i + 1 < groups.length; i += 2) {
@@ -517,8 +521,8 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         share.rejected += made === 0 ? 1 : 0;
       }
     }
-    recordLaneShareStats(share);
   }
+  recordLaneShareStats(share);
 
   // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
   // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
@@ -588,6 +592,33 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const i = inOf.get(s.parentId)!;
       i.links.push(...r.groups); i.plans.push(...r.toPlans); i.why.push(...r.toWhy);
     }
+
+    // **링크가 앉으려면 무엇을 풀어야 했나** — 모듈마다 눈금 하나([linkDepthNeed]).
+    //
+    // 여기서 세는 이유: `L_f`(그 면의 링크 **줄** 수 = 품목 종류 수)와 `R_f`(그 면의 깊이
+    // 수)를 **둘 다 아는 유일한 자리**다. 판정 자체는 앉혀 본 결과를 안 보므로(입력만
+    // 본다) 성공한 배치만 세는 편향이 없다 — `tempPlanDocs/부분-링크/` §4 Step 1.
+    //
+    // 면은 **선호**로 읽는다: 출력은 W, 입력은 E([allocateLinkFaces] 의 기본 면).
+    // 링크는 반대 면으로 못 넘어가므로(`spillPair`) 그 선호가 곧 그 줄이 앉을 면이다.
+    const needTally: Partial<Record<LinkDepthNeed, number>> = {};
+    const needWho: string[] = [];
+    for (const s of specs) {
+      const st = stages.get(s.id)!;
+      const items = (ls: readonly Link[]): number => new Set(ls.map((l) => l.item)).size;
+      const L = (f: "W" | "E"): number =>
+        items(f === "W" ? outOf.get(s.id)!.links : inOf.get(s.id)!.links);
+      const R = (f: "W" | "E"): number => clusterBeltDepthsOf(st.ctx, f).length;
+      const need = linkDepthNeed({ linesOf: L, depthsOf: R });
+      needTally[need] = (needTally[need] ?? 0) + 1;
+      // **넘친 것만 이름을 남긴다** — `L/R` 까지 실어야 *왜* 넘쳤는지가 한 줄에서 읽힌다.
+      if (need !== "free")
+        needWho.push(`${s.id} → ${need} (W ${L("W")}/${R("W")} · E ${L("E")}/${R("E")})`);
+    }
+    recordFaceDepthStats({
+      linkNeed: needTally as Record<LinkDepthNeed, number>,
+      linkNeedWho: needWho,
+    });
 
     // 무대의 링크 목록·배정을 최종본으로 갈아 끼운다 — `generateModule` 이 보는
     // `input.outputLinks` 와 **같은 배열**이어야 방출이 index 로 짝을 찾는다.

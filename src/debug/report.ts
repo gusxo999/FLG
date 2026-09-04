@@ -136,18 +136,52 @@ export function buildReport(): string {
   // **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽는다. "막힌 행"이 자름의 경계다.
   for (const w of fl.shortages) out.push(sub(w));
 
-  // **레인 공유** — 벨트 한 줄에 두 품목(좌/우 레인). 아직 **표시만** 하고 배치는 안 바뀐다.
-  // 읽는 법: `짝` 이 곧 아낄 수 있는 물리 줄 수다. `후보` 대비 `짝` 이 0에 가까우면
-  // 자격에서 떨어진 것이고, 사유는 거의 언제나 **양**이다(각자 ≤ 레인 용량 = 줄의 절반).
+  // **링크 눈금** — 링크가 앉으려면 무엇을 풀어야 하나(`linkDepthNeed`).
+  // 읽는 법: 오늘 코드는 `free` 밖에 못 하므로 **`free` 가 아닌 수 = 오늘 실패하는 모듈 수**다.
+  // `tempPlanDocs/부분-링크/` J14(손잡이 기본값)의 입력이 이 분포다.
+  const ln = fl.linkNeed;
+  const ln_who = fl.linkNeedWho;
+  const needSum = ln['opposite-face'] + ln.direct + ln['depth-starved'];
+  if (ln.free + needSum > 0) {
+    out.push(
+      line(
+        '링크눈금',
+        `앉는다 ${ln.free}`
+          + (needSum > 0
+            ? `  ← **넘침 ${needSum}**`
+              + ` (반대면 ${ln['opposite-face']} · 다이렉트 ${ln.direct}`
+              + ` · 깊이없음 ${ln['depth-starved']})`
+            : ''),
+      ),
+    );
+    for (const w of ln_who) out.push(sub(w));
+  }
+
+  // **레인 공유** — 벨트 한 줄에 두 품목(좌/우 레인).
+  //
+  // **관문 넷을 갈라 센다.** 예전엔 `짝` 하나만 내고 *"짝 하나 = 아낀 벨트 하나"* 라고
+  // 읽었는데 **거짓이었다** — 2026-09-04 실측에서 짝 3에 실제로 줄어든 납품은 **하나**였다.
+  // 자격을 통과해도 배정이 도형을 못 세우거나(되돌림) 방출에서 칸이 막힌다.
+  //
+  // ```
+  // 후보    갈린 줄에서 고른 쌍            (짝짓기 이전)
+  // 짝      자격 넷 통과                   (양 · 티어)
+  // 되돌림  배정이 자리를 못 맞춤 — 싣는 쪽 도형 / 집는 쪽 좌석
+  // 합쳐짐  **셀까지 갔다 = 아낀 물리 벨트**  ← 이 수 하나만 값이다
+  // ```
   const ls = stats.laneShare;
   out.push(
     line(
       '레인공유',
       ls.candidates === 0
         ? '후보 0 — 레인을 넘어 **갈린 줄**이 없다(또는 `레인 합류` 플래그가 꺼짐)'
-        : `후보 ${ls.candidates} · **짝 ${ls.pairs}**`
+        : `후보 ${ls.candidates} · 짝 ${ls.pairs}`
           + (ls.rejected > 0 ? ` · 자격미달 ${ls.rejected}(양)` : '')
-          + '  — 짝 하나 = 아낀 물리 벨트 하나',
+          + (ls.unshared.shape + ls.unshared.seats > 0
+            ? ` · 되돌림 ${ls.unshared.shape + ls.unshared.seats}`
+              + `(도형 ${ls.unshared.shape} · 좌석 ${ls.unshared.seats})`
+            : '')
+          + ` · **합쳐짐 ${ls.merged}**  — 아낀 물리 벨트`,
     ),
   );
 

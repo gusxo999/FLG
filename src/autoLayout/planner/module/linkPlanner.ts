@@ -424,6 +424,15 @@ export function tryLinkFace(
    * 도형이 아예 없다.** 대안이 없는 쪽이 이긴다(배정 순서와 같은 원칙).
    */
   preferEnd?: "N" | "S",
+  /**
+   * **이 깊이를 먼저 본다** — 합류 쌍의 **따르는 줄** 전용.
+   *
+   * 두 줄은 구간이 안 겹쳐 **한 깊이에 위/아래로 쌓여야** 합류 도형이 선다. 그런데 후보
+   * 정렬은 *"팔 적은 것 → 얕은 것"* 이라 둘이 서로 다른 깊이를 고르는 일이 잦다
+   * (2026-09-04 실측: 되돌림 2건이 **전부** `depth 3 vs 2` · `2 vs 3` 이었다).
+   * 이끄는 줄은 먼저 앉으므로 자기 깊이를 모르고, 따르는 줄만 상대를 안다.
+   */
+  preferDepth?: number,
 ): LinkFaceCandidate | undefined {
   const { machine, count } = ctx;
   // **유체 면은 마지막 수단이다.** 여기 앉는 순간 `beltMaxOn > 0` 이 되어 파이프가 점프하고
@@ -527,7 +536,12 @@ export function tryLinkFace(
       for (const k of arms.values()) total += k;
       return { clusterBeltDepth, arms, total };
     })
-    .sort((a, b) => a.total - b.total || a.clusterBeltDepth - b.clusterBeltDepth);
+    .sort((a, b) =>
+      // **짝의 깊이가 먼저다** — 도형이 걸린 축이라 팔 수·얕음보다 세다.
+      (preferDepth !== undefined
+        ? Number(a.clusterBeltDepth !== preferDepth) - Number(b.clusterBeltDepth !== preferDepth)
+        : 0)
+      || a.total - b.total || a.clusterBeltDepth - b.clusterBeltDepth);
   for (const { clusterBeltDepth, arms } of candidates) {
     let need = 0;
     let seatsFit = true;

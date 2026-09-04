@@ -30,6 +30,7 @@
  * [mergeBeltFormCounters] 로 누적한다.
  */
 import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/link';
+import type { LinkDepthNeed } from '../autoLayout/planner/module/depthBudget';
 export type { BeltFormCounters };
 
 /** 납품 경로 — [deliveryRoute.routeDeliveryRoutes] 의 카운터 그대로. */
@@ -122,6 +123,22 @@ export interface FaceDepthCounters {
    * 지금은 **관측뿐**이다.
    */
   shortages: ReadonlyArray<string>;
+  /**
+   * **링크가 앉으려면 무엇을 풀어야 하나** — 모듈을 눈금별로 센다([linkDepthNeed]).
+   *
+   * 오늘 코드는 `free` 밖에 못 한다(링크는 반대 면을 안 보고, `g` 를 주는 호출부가 없다).
+   * **그래서 `free` 가 아닌 수가 곧 "오늘 통째로 실패하는 모듈 수"** 다.
+   *
+   * 이 수가 `tempPlanDocs/부분-링크/` 의 값이다 — 무엇을 자동으로 켤지(J14 손잡이 기본값)를
+   * 정하려면 **어느 눈금이 실제로 필요한지**부터 봐야 한다. 판정 자체는 입력(`L`·`R`)만으로
+   * 서므로, 성공한 배치만 세는 편향이 없다.
+   */
+  linkNeed: Readonly<Record<LinkDepthNeed, number>>;
+  /**
+   * **넘친 모듈의 이름과 눈금** — `모듈id:눈금`. 수만으로는 *어느 모듈을 고쳐야 하나*를
+   * 못 묻는다(`shortages` 와 같은 이유다). `"free"` 는 안 싣는다 — 그게 대부분이라.
+   */
+  linkNeedWho: ReadonlyArray<string>;
 }
 
 /**
@@ -138,13 +155,33 @@ export interface LaneShareCounters {
   pairs: number;
   /** 떨어진 쌍 — 사유는 거의 언제나 **양**이다(각자 ≤ 레인 용량). */
   rejected: number;
+  /**
+   * **배정이 되돌린 쌍** — `pairs` 는 *자격*을, 이건 *자리*를 잰다.
+   *
+   * 사유 둘은 **처방이 다르다.** `shape` 는 싣는 쪽(자식)이 두 줄을 같은 면·깊이·끝에
+   * 못 세운 것이고, `seats` 는 집는 쪽(부모)이 한 벨트에 좌석을 다 못 얹은 것이다.
+   * 합쳐 세면 어느 쪽을 고쳐야 하는지가 사라진다.
+   */
+  unshared: { shape: number; seats: number };
+  /**
+   * **셀까지 간 합류** — 방출이 실제로 첫 줄의 포트를 다시 쓴 횟수.
+   *
+   * **이 수만이 「아낀 물리 벨트」다.** `pairs` 는 자격을 통과한 수라 배정·방출에서
+   * 얼마든지 되돌아간다(2026-09-04: 짝 3인데 납품은 하나만 줄었다).
+   */
+  merged: number;
 }
 
-const freshLaneShare = (): LaneShareCounters => ({ candidates: 0, pairs: 0, rejected: 0 });
+const freshLaneShare = (): LaneShareCounters =>
+  ({ candidates: 0, pairs: 0, rejected: 0, unshared: { shape: 0, seats: 0 }, merged: 0 });
+
+const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
+  "free": 0, "opposite-face": 0, "direct": 0, "depth-starved": 0,
+});
 
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
-  shortages: [],
+  shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
 export interface RunStats {
@@ -190,8 +227,19 @@ export function beginRunStats(): void {
 }
 
 /** 레인 공유 짝짓기 결과 — `packModuleTree` 가 링크 캐시를 다 만든 뒤 한 번 부른다. */
-export function recordLaneShareStats(c: LaneShareCounters): void {
-  current.laneShare = c;
+export function recordLaneShareStats(c: Pick<LaneShareCounters, "candidates" | "pairs" | "rejected">): void {
+  // **뒤 단계 계수기는 여기서 0 이 된다** — 짝짓기가 다시 돌았다는 건 새 패스라는 뜻이다.
+  current.laneShare = { ...c, unshared: { shape: 0, seats: 0 }, merged: 0 };
+}
+
+/** 배정이 짝을 되돌렸다 — `planModulePorts` 가 도형·좌석을 못 세운 자리에서 부른다. */
+export function recordLaneUnshare(why: "shape" | "seats"): void {
+  current.laneShare.unshared[why] += 1;
+}
+
+/** 방출이 첫 줄의 포트를 다시 썼다 — **셀까지 간 합류**. `emitOutputLinks` 가 부른다. */
+export function recordLaneMerge(): void {
+  current.laneShare.merged += 1;
 }
 
 export function recordDeliveryStats(c: DeliveryCounters): void {
@@ -225,6 +273,15 @@ export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);
+  // 넘친 모듈 이름은 잇는다(사유와 같은 규약). 트리가 크면 폭주하므로 앞의 것 몇만.
+  if (c.linkNeedWho?.length)
+    cur.linkNeedWho = [...cur.linkNeedWho, ...c.linkNeedWho].slice(0, 12);
+  // 눈금은 **모듈 수**라 더한다 — 준 눈금만.
+  if (c.linkNeed) {
+    const next = { ...cur.linkNeed };
+    for (const k of Object.keys(next) as LinkDepthNeed[]) next[k] += c.linkNeed[k] ?? 0;
+    cur.linkNeed = next;
+  }
 }
 
 /**
@@ -261,6 +318,11 @@ export function readRunStats(): RunStats {
           needs: [...current.rowChannels.needs],
         }
       : null,
-    faceDepths: { ...current.faceDepths, shortages: [...current.faceDepths.shortages] },
+    faceDepths: {
+      ...current.faceDepths,
+      shortages: [...current.faceDepths.shortages],
+      linkNeed: { ...current.faceDepths.linkNeed },
+      linkNeedWho: [...current.faceDepths.linkNeedWho],
+    },
   };
 }

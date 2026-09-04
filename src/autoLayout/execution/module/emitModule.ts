@@ -46,7 +46,7 @@ import type { PipeFlowPipe } from "../../util/pipeFlow";
 import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
 // (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
-import { recordFaceDepthStats } from "../../../debug/runStats";
+import { recordFaceDepthStats, recordLaneMerge } from "../../../debug/runStats";
 
 
 /**
@@ -438,6 +438,9 @@ export function emitOutputLinks(args: {
     if (canMerge && !followed && group.sharedLineId !== undefined) {
       sharedExit.set(group.sharedLineId, { trunkStart, portPair, seatCell, chestAt, chest, topT });
     }
+    // **여기까지 와야 물리 벨트를 하나 아낀 것이다** — 자격(`짝`)도 배정도 통과했는데
+    // 방출에서 칸이 막혀 되돌아가는 일이 있다. 계측은 **마지막 관문**에서 센다.
+    if (followed) recordLaneMerge();
   });
 }
 
