@@ -1,6 +1,6 @@
 > 상태: **진행 중** — ㉠ ✅ · ㉡ **전부 ✅**(짝짓기·부모 면·포트·출구 합류·포트 자리 기준·계측).
 >
-> **켜는 쪽이 이제 더 작다**(2026-09-04): 셀 **522→506** · 납품 **7→5** · 합쳐짐 **2**.
+> **켜는 쪽이 이제 더 작다**(2026-09-04): 납품 **7→5** · 합쳐짐 **2**.
 > 이끄는 줄이 **기둥 밖 한 행**까지 달려 거기서 꺾고, 따르는 줄이 깊이 +2 를 타고 와
 > 옆구리를 친다. 배정 순서는 **유체 → 합류 쌍 → 관통 → 구간**(계획서 ㉡-4).
 >
@@ -8,8 +8,8 @@
 > 되돌림은 **도형/좌석**으로 갈려 있어 처방이 바로 읽힌다.
 >
 > **아직 기본 꺼짐이다.** 남은 것은 경고 둘이다 —
-> `delivery-dijkstra-fallback` 3건(두 납품이 `(17,25)`·`(18,26)` 에서 **서로** 막는다) ·
-> `perimeter-skip` 2건(상자가 트랙을 못 받아 모듈 안에 남았다. 물류는 이어진다).
+> `delivery-dijkstra-fallback` ·
+> `perimeter-skip`(상자가 트랙을 못 받아 모듈 안에 남았다. 물류는 이어진다).
 >
 > 낱말은 되찾았고(`clusterBeltDepth` · `track` · 레인=게임 전용), 용량(`laneThroughput`)과
 > 공유 자료(`Link.sharedLineId` · `shareLanes`)가 섰다.
@@ -22,7 +22,7 @@
 이름은 이미 있다 — [용어사전 `MixedItemBelt`](../../docs/용어사전.md) (2026-07-14 사용자
 명명, **미구현**). 이 폴더는 그 항목을 실물로 옮기는 일이다.
 
-## "레인" 은 게임의 좌/우 두 줄**만** 뜻한다 — Step 2 로 되찾았다
+## "레인" 은 게임의 좌/우 두 줄**만** 뜻한다
 
 한때 코드가 세 가지를 다 "레인"이라 불렀다: **깊이**(면에서 바깥 몇 칸) · **반출 트랙** ·
 게임 레인. 용어사전이 이 충돌을 미리 경고해 뒀고(`§ClusterBelt` — *"depth 3 레인의 벨트의
@@ -35,7 +35,7 @@
 ```
 
 식별자 `lane` 은 저장소에 없다. 한글 "레인"이 남은 곳은 **게임 레인을 말하는 자리**와
-**삭제된 것의 이력 인용**뿐이다(계획서 Step 2 의 표).
+**삭제된 것의 이력 인용**뿐이다.
 
 ## 착수 전 반드시 읽을 것
 
@@ -52,7 +52,7 @@
 
 - `src/autoLayout/beltThroughput.ts` — `480 = belt_speed × 2레인 × 4 × 60`.
   **오늘의 모든 용량 수치가 이미 「두 레인 합」이다**
-- `src/autoLayout/module/link.ts` — `createLinks` 의 붓기(`cap: tier.throughput`) ·
+- `src/autoLayout/module/link.ts` — `createLinks` 의 붓기 ·
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
 - `src/autoLayout/planner/module/linkPlanner.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
 - `src/autoLayout/execution/module/emitModule.ts` — `emitInputLinks`(공급 줄을 까는 곳)
@@ -84,11 +84,11 @@
 
 | 전제 | 확인 방법 | 확인일 |
 |---|---|---|
-| **레인 물리 일곱** — 드랍=먼 레인 · 픽업=양 레인 · **사이드로드 접힘** · 지하 보존 · 직진 1:1 · **곡선=유입 하나** · **여유 있어야 올라탄다** | 사장님 확정 → 계획서 §2 (Step 1 이 `docs/factorio/belt-lane-semantics.md` 로 옮긴다) | 2026-09-03 ✔ |
+| **레인 물리 일곱** — 드랍=먼 레인 · 픽업=양 레인 · **사이드로드 접힘** · 지하 보존 · 직진 1:1 · **곡선=유입 하나** · **여유 있어야 올라탄다** | 사장님 확정 → 계획서 §2 (`docs/factorio/belt-lane-semantics.md`) | 2026-09-03 ✔ |
 | 합류 칸은 **뒤 유입이 없어야** 한다(⑤⑦) — 있으면 옆 쪽이 조용히 굶는다 | 계획서 §5 의 조건 셋 | 2026-09-03 ✔ |
 | 용량 수치는 전부 **두 레인 합**이다(`× 480`) | `beltThroughput.ts` 머리말 · 프로토타입 문서 `speed × 480` | 2026-09-03 ✔ |
 | 링크 포트의 경계 인서터는 납품 경로가 **뗀다**(belt→belt) | `deliveryRoute.stripKeys` · `seatIsBeltFeeder` | 2026-09-03 ✔ |
 | 모듈 면 벨트는 **한쪽에만** 머신이 있다(기둥 모델) | `layout-models.md` ① · `emitInputLinks` 의 `faceCell(…, d, t)` | 2026-09-03 ✔ |
 | 인서터 필터는 **블루프린트로 안 나간다** — `GridCell` 에 자리가 없다 | `types/layout.ts` `GridCell` · `Toolbar.tsx` 의 export 필드 목록 | 2026-09-03 ✔ |
 | 게임데이터에 `filter_count` 가 **없다** | `scripts/export-gamedata.lua` 의 `t == "inserter"` 블록 | 2026-09-03 ✔ |
-| 기준선 = 타입 0 · **52파일 615테스트 · 기존 실패 2건**(trunkPipe 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run` | 2026-09-03 ✔ |
+| 기준선 = 타입 0 · **기존 실패 2건**(trunkPipe 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run` | 2026-09-03 ✔ |
