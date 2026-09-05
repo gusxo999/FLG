@@ -1,6 +1,22 @@
 # 행채널-모델 — 상태와 고유 컨텍스트
 
-> 상태: **승인 대기**
+> 상태: **갱신안 승인 대기** (2026-09-04 재감사)
+>
+> **전제 재감사를 마쳤다 — 계획서 §1.4.** 썩은 것 하나, 새로 참이 된 것 둘:
+>
+> ```
+> 썩음   Step 2 의 "통과 경로가 0이라 배치가 안 바뀐다"
+>        → 지금 띠 7개 · 통과 수요 6건, 그중 **한 띠는 높이 3 인데 수요 4**
+>        → 넘친 트랙은 `band.top + t` 가 **모듈 몸통**을 가리킨다(상한이 없다)
+> 새참   소비자가 하나로 특정됐다 — **기둥 끝 포트(N/S 면)에 붙는 경로, 그것뿐**
+> 새참   `J-교차` 의 착수 조건 충족 — 겹침 1건 `(18,26)`, 가로선 × 세로선
+> ```
+>
+> **단계를 재편했다:** Step 3 **폭을 먹인다**(행이 실재하게) → Step 4 **세로 진입을
+> 장부에 넣는다**(`J-교차` ⓐ VCG 승격) → Step 5 환승 → Step 6 반출.
+> 폭이 먼저인 이유: 행이 없으면 배정을 아무리 정교하게 해도 소용없다.
+>
+> **납품 라우터는 이 계획에서 안 건드린다.** 거기 남은 것이 있는지는 Step 3·4 뒤에 잰다.
 
 **[[용어사전#행 채널 (row channel)|행 채널]]에 계획 모델을 준다.** 이름은 2026-07-11 부터
 있었지만(세로 채널과 **같은 커밋**) 계획하는 코드가 없어, 폭이 `STACK_GAP` 상수로 우연히
@@ -24,6 +40,8 @@
 | [docs/channel-geometry-reservation.md](../../docs/auto-layout/channel/channel-geometry-reservation.md) §2·§3 | 세로 채널의 본문. **전치할 원본**이다. 특히 §3 표(고정/자유/도형) |
 | `planner/channelGeometryPlanner.ts` — `staircaseShape` · `elbowShape` | 도형의 실물. `hseg(startY, track, capCol)` 이 **환승의 접점**이다(§3) |
 | `planner/channelPlanner.ts` — `assignTracksLeftEdge` | **축과 무관한 순수 알고리즘.** 그대로 쓴다 — 다시 만들지 않는다 |
+| `planner/modulePacking.ts` — `deliverySeeds` 루프(≈900) · `seed.startY = fb.row` | **수요가 생기는 자리**. `port.face !== N/S → continue` 가 소비자를 가른다 |
+| `planner/deliveryRoute.ts` — `buildPlannedChain` 의 `if (g.fromRowChannel) push(s)` | 장부에 없는 **세로 진입 다리**를 그리는 유일한 줄 |
 | `planner/modulePacking.ts` — `STACK_GAP` · `layoutY` · `colX/colWidth` | 띠의 위치·폭이 지금 어떻게 정해지나(상수 3). 폭 역전을 여기 이식한다 |
 | [docs/용어사전.md](../../docs/용어사전.md) `행 채널` · `채널` | 정의와 직교 짝 관계. **역할과 사고까지 미리 적혀 있다** |
 
@@ -33,7 +51,9 @@
   바뀌는 것은 *"`startY` 가 어디서 오나"* 뿐이다(§3).
 - **모듈 안쪽을 안 건드린다** — 포트 면 결정(`portEnd`)은 트렁크벨트-경로모델 소관.
 - **DAG(한 자식 여러 부모)로 안 간다.** 행 채널은 통로이고 DAG 는 연결 관계다.
-- **격자(2D 클러스터)로 안 간다.**
+- **격자(2D 클러스터)로 안 간다.** → 그쪽 계획이 섰다: `tempPlanDocs/격자-클러스터/`
+  (그 계획서 §4 가 접점 셋을 적는다 — `innerRowChannel` 은 W/E 로 나가 **독립**,
+  `innerColumnChannel` 은 N/S 로 나가므로 **이 계획이 선행**)
 
 ## 실제로 밟은 함정
 
