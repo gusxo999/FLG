@@ -180,6 +180,73 @@ describe('checkLayout — 결함을 하나씩', () => {
     expect(hits[0].detail).toContain('인서터가 없다');
   });
 
+  // ── R-도달 이 **안 잡아야 하는 것** (2026-09-04) ───────────────────────────
+  //
+  // 규칙을 세 번 좁혔다. 좁힌 만큼 **진짜 결함을 놓치지 않는지**를 대조군으로 못 박는다 —
+  // 안 잡는 규칙은 "검사했다"는 안심만 준다.
+
+  /**
+   * 긴팔 포트 — 팔은 d1, 수집 줄은 d3, 상자는 d4. **d2 는 이 줄의 것이 아니다.**
+   *
+   * ```
+   *   x |   5     6     7     8     9  | 10
+   *     | CHEST Belt  Belt   .   Inser | Assem     ← d2(=x8) 가 비어 있다
+   *     |  d5    d4    d3    d2    d1  |
+   * ```
+   * 포트(트렁크 끝)는 d4, 수집 줄은 d3, 팔은 d1. **d2 는 이 줄이 안 쓴다.**
+   */
+  const longArm = (): LayoutView => {
+    const m = machine('n0-gear-m0', 10, 5);
+    const c = chest('chest-0', 5, 6);
+    const machineCells: PlacedCell[] = [];
+    for (let dy = 0; dy < 3; dy++)
+      for (let dx = 0; dx < 3; dx++)
+        machineCells.push(at(10 + dx, 5 + dy, EntityType.Assembler, 'n0-gear-m0'));
+    const route: PlacedCell[] = [
+      at(6, 6, EntityType.Belt, 'r0'),      // d4 = 포트(트렁크 끝)
+      at(7, 6, EntityType.Belt, 'r0'),      // d3 = 수집 줄
+      at(9, 6, EntityType.Inserter, 'r0'),  // d1 = 팔 (d2 를 건너뛴다)
+    ];
+    const r = routing('r0', ['chest-0', 5, 6], ['n0-gear-m0', 6, 6], route);
+    return viewOf(
+      area('internal', [m], [...machineCells, ...route]),
+      area('external', [c], [at(5, 6, EntityType.InfinityChest, 'chest-0')]),
+      [{ ...r, toPortMeta: { item: 'gear', side: 'W', clusterBeltDepth: 3, inserter: 'long' } }],
+    );
+  };
+
+  it('R-도달: **긴팔이 건너뛴 얕은 칸**은 안 잡는다 — 그 칸은 남의 것이다', () => {
+    expect(checkLayout(longArm()).filter((x) => x.rule === 'R-도달')).toEqual([]);
+  });
+
+  it('R-도달: 그래도 **수집 줄이 끊기면** 잡는다 (대조군)', () => {
+    const v = longArm();
+    v.cells.delete(cellKey(7, 6)); // d3 = 트렁크. 여기가 비면 물건이 못 나간다
+    const hits = checkLayout(v).filter((x) => x.rule === 'R-도달');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].detail).toContain('비었다');
+  });
+
+  it('R-도달: **면은 포트가 답한다** — 기하 추측이 아니라 `meta.side`', () => {
+    // 포트를 머신 **북서쪽**(두 축 다 밖)에 두면 기하 추측은 x 를 먼저 봐 `W` 로 찍고
+    // 머신이 없는 행을 훑는다. `meta.side='N'` 이면 세로로 훑어 실제 벨트를 본다.
+    const m = machine('n0-gear-m0', 10, 5);
+    const c = chest('chest-0', 8, 1);
+    const machineCells: PlacedCell[] = [];
+    for (let dy = 0; dy < 3; dy++)
+      for (let dx = 0; dx < 3; dx++)
+        machineCells.push(at(10 + dx, 5 + dy, EntityType.Assembler, 'n0-gear-m0'));
+    const route: PlacedCell[] = [at(8, 3, EntityType.Belt, 'r0'), at(8, 4, EntityType.Belt, 'r0')];
+    const r = routing('r0', ['chest-0', 8, 1], ['n0-gear-m0', 8, 2], route);
+    const v = viewOf(
+      area('internal', [m], [...machineCells, ...route]),
+      area('external', [c], [at(8, 1, EntityType.InfinityChest, 'chest-0')]),
+      [{ ...r, toPortMeta: { item: 'gear', side: 'N', clusterBeltDepth: 2 } }],
+    );
+    // 기둥 끝 포트라 팔은 이 직선 밖(수직)에 있다 — 인서터를 요구하지 않는다.
+    expect(checkLayout(v).filter((x) => x.rule === 'R-도달')).toEqual([]);
+  });
+
   it('R-겹침: 한 칸을 다른 엔티티가 덮으면 잡는다', () => {
     const v = cleanLayout();
     v.leaf.internal.placed.push(at(8, 6, EntityType.Inserter, '다른아이디'));

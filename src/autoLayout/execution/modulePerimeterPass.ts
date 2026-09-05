@@ -236,10 +236,24 @@ export function rePathToPerimeter(
   };
 
   // 결정적: 상자 id 순.
+  //
+  // **자기 상자가 없는 포트는 반출 대상이 아니다**(2026-09-04). 레인 합류는 논리 포트 둘을
+  // **한 물리 자리**에 얹으므로, 둘째 포트는 상자 **객체**만 갖고 셀은 안 만든다
+  // (`pushLinkPortEnd` 의 `reusePort` — `module.chests` 에도 안 들어간다).
+  //
+  // 그런 포트가 여기 들어오면 **아무도 안 맡는 고아**가 된다: 반출 배정기는 짝지어졌다고
+  // 빼고(`planTracks` 의 `pairedChestIds`), 납품은 합류가 하나로 접어서 안 돌아
+  // `strippedChestIds` 에도 안 든다. 그 결과가 `no track assignment` **4건**이었는데,
+  // 사유가 *"자리를 못 줬다"* 로 읽혀 진짜 원인(**옮길 물건이 없다**)을 가렸다.
+  //
+  // 판정은 **합류를 몰라도 된다** — *"`module.chests` 에 내 상자가 있나"* 면 충분하다.
+  // 물리 자리가 남의 것이면 옮길 것도 없다.
   const ports: ModulePort[] = [];
-  for (const pl of pack.placements)
+  for (const pl of pack.placements) {
+    const own = new Set(pl.module.chests.map((c) => c.id));
     for (const port of [...pl.module.inputPorts, ...pl.module.outputPorts])
-      if (!strippedChestIds.has(port.chest.id)) ports.push(port);
+      if (!strippedChestIds.has(port.chest.id) && own.has(port.chest.id)) ports.push(port);
+  }
   ports.sort((a, b) => a.chest.id.localeCompare(b.chest.id));
 
   for (const port of ports) {

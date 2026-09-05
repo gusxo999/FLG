@@ -187,11 +187,34 @@ function checkReach(view: LayoutView): Violation[] {
     const box = machineBoxOf(view, mod.key);
     if (!box) continue;
     for (const p of mod.ports) {
-      const face = sideOf(box, p.x, p.y);
+      // **면은 포트가 답한다 — 기하로 추측하지 않는다**(2026-09-04).
+      //
+      // [sideOf] 는 x 를 먼저 보므로, **두 축 다 박스 밖**인 포트(= 기둥 끝 포트: 열의
+      // 끝을 지나 깊이만큼 바깥)를 `W`/`E` 로 찍는다. 그러면 머신이 **한 대도 없는 행**을
+      // 가로로 훑고 *"사이가 비었다"* 고 외친다 — 실측 6건이 전부 그것이었다
+      // (예: `n2-stone-tablet` 포트 (21,35) W, 머신 블록은 y38..40 이라 행 35 엔 아무것도 없다).
+      //
+      // `meta.side` 가 **단일 출처**다([[ns-face-relief]] 결정 5) — [faceTable] 도 이미
+      // 그걸 먼저 본다. 기둥 끝 포트면 `N`/`S` 라 세로로 훑고, 그게 실제 벨트가 가는 길이다.
+      const face = p.meta?.side ?? sideOf(box, p.x, p.y);
       if (!face) continue; // 머신 안쪽 포트(있을 수 없지만) — 판정 대상 아님
       const between = cellsBetween(box, face, p.x, p.y);
       if (between.length === 0) continue; // d1 = 머신에 직접 닿음
-      const empty = between.filter((c) => !view.cells.has(cellKey(c.x, c.y)));
+      // **얕은 칸은 남의 것이다 — 비어도 된다**(2026-09-04).
+      //
+      // 팔이 **긴팔**이면 d1 에서 d3 을 집는다 — 그 사이 d2 는 이 줄의 것이 아니고,
+      // 다른 줄이 안 쓰면 **비어 있는 것이 정상**이다. 그런데 여태 *"사이가 전부 채워져야
+      // 한다"* 고 봐서 멀쩡한 긴팔 포트를 위반으로 찍었다(실측: `n0` 포트 (14,21) 의
+      // `(11,21)` = d2. 팔은 d1 에 있고 수집 줄은 d3 이라 d2 를 건너뛴다).
+      //
+      // 채워져 있어야 하는 것은 **상자에서 수집 줄까지**다 — 그게 트렁크이고, 끊기면
+      // 물건이 못 나간다. 그 아래(d1 ~ 수집 줄 사이)는 팔이 넘어간다.
+      const beltDepth = p.meta?.clusterBeltDepth;
+      const need =
+        beltDepth === undefined
+          ? between
+          : between.filter((c) => depthOf(box, face, c) >= beltDepth);
+      const empty = need.filter((c) => !view.cells.has(cellKey(c.x, c.y)));
       if (empty.length > 0) {
         out.push({
           rule: 'R-도달',
@@ -206,15 +229,30 @@ function checkReach(view: LayoutView): Violation[] {
       const isFluid =
         portCell?.type === EntityType.Pipe || portCell?.type === EntityType.PipeUnderground;
       if (isFluid) continue;
-      const hasInserter = between.some(
-        (c) => classOf(view.cells.get(cellKey(c.x, c.y))!.type) === 'inserter',
-      );
+      // **인서터 요구는 「나란히 선」 포트만** (2026-09-04).
+      //
+      // 옆 포트는 `벨트 → 인서터 → 머신` 이 **한 직선 위**에 있다. 기둥 끝 포트는 아니다 —
+      // 열의 끝을 지나 서 있어서 그 직선이 머신 행/열을 **비껴간다.** 그 줄에는 트렁크
+      // 벨트만 있고, 머신을 먹이는 팔은 **수직 방향**(트렁크 옆)에 따로 앉는다.
+      //
+      // 그래서 여기서 인서터를 요구하면 **멀쩡한 기둥 끝 포트를 전부 위반으로 찍는다**
+      // (2026-09-04 실측 4~6건이 전부 그것이었다). 채워졌나(위)는 트렁크가 끊겼는지를
+      // 재므로 **모든 포트에 그대로 묻고**, 팔의 유무만 정렬된 포트로 좁힌다.
+      const aligned =
+        face === "W" || face === "E"
+          ? p.y >= box.y && p.y < box.y + box.h
+          : p.x >= box.x && p.x < box.x + box.w;
+      if (!aligned) continue;
+      const hasInserter = between.some((c) => {
+        const cell = view.cells.get(cellKey(c.x, c.y));
+        return cell !== undefined && classOf(cell.type) === 'inserter';
+      });
       if (!hasInserter) {
         out.push({
           rule: 'R-도달',
           detail:
             `${mod.key} 포트 (${p.x},${p.y}) ${face} 와 머신 사이에 인서터가 없다`
-            + ` — ${between.map((c) => `(${c.x},${c.y})=${view.cells.get(cellKey(c.x, c.y))!.type}`).join(' ')}`,
+            + ` — ${between.map((c) => `(${c.x},${c.y})=${view.cells.get(cellKey(c.x, c.y))?.type ?? '빈칸'}`).join(' ')}`,
           cells: between,
         });
       }
@@ -269,6 +307,23 @@ function sideOf(
   if (y < box.y) return 'N';
   if (y >= box.y + box.h) return 'S';
   return null;
+}
+
+/**
+ * 그 칸이 머신 면에서 **몇 칸 바깥**인가 — d1 = 머신에 붙은 칸.
+ *
+ * `cellsBetween` 의 배열 순서는 면마다 다르므로(W 는 포트 쪽부터, E 는 머신 쪽부터)
+ * index 로 깊이를 세면 안 된다. 좌표에서 직접 잰다.
+ */
+function depthOf(
+  box: { x: number; y: number; w: number; h: number },
+  face: Face,
+  c: { x: number; y: number },
+): number {
+  if (face === 'W') return box.x - c.x;
+  if (face === 'E') return c.x - (box.x + box.w) + 1;
+  if (face === 'N') return box.y - c.y;
+  return c.y - (box.y + box.h) + 1;
 }
 
 /** 포트와 머신 면 **사이**의 칸들(양끝 제외). d1 이면 빈 배열. */
