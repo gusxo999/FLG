@@ -199,7 +199,7 @@ export function buildReport(): string {
   if (rc) {
     for (const b of rc.bands) out.push(sub(b));
     for (const n of rc.needs) out.push(sub(`수요 ${n}`));
-    // **관문**(`행채널-모델` Step 3) — 이 줄이 안 나오는 것이 성공이다.
+    // **이 줄이 안 나오는 것이 성공이다.**
     for (const x of rc.short) out.push(sub(`**부족** ${x}`));
   }
 

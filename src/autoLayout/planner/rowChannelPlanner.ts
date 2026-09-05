@@ -25,7 +25,7 @@
  *
  * 그래서 이 파일은 **순수 함수**만 낸다(구간 → 트랙 → 폭). 그 폭을 실제 배치에 먹이는 것은
  * 통과 경로를 아는 단계(환승)의 일이고, 거기서 **두 패스**(임시 간격으로 배치 → 통과 경로 계산
- * → 폭 확정 → 재배치)로 순환을 끊는다. → `tempPlanDocs/행채널-모델/` Step 3
+ * → 폭 확정 → 재배치)로 순환을 끊는다.
  */
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";

@@ -206,7 +206,7 @@ export interface DeliverySpec {
  * 달리는 구간. `row` 가 곧 세로 채널에 넘기는 **진입 행**이다.
  *
  * (E) 결정에 따라 이 구간은 **자기 깊이 열 안에서만** 달린다 — 세로 채널을 안 가로지르므로
- * 교차로가 없다. → `tempPlanDocs/행채널-모델/`
+ * 교차로가 없다.
  */
 /**
  * **행 채널 진입점** — 상자에서 행 채널로 갈아타는 지점.
@@ -312,7 +312,7 @@ export interface PackResult {
    * **행 채널 띠들** — 같은 깊이의 이웃 모듈 사이 빈 가로 띠(Step 1).
    *
    * 아직 **자리만** 낸다. 트랙 배정·폭 역전은 후속이다
-   * (`tempPlanDocs/행채널-모델/`). 소비처가 생기기 전이라도 `flg.report()` 가 읽어
+   * 소비처가 생기기 전이라도 `flg.report()` 가 읽어
    * **띠가 실제로 몇 개 나는지**를 실측할 수 있게 여기 싣는다.
    */
   rowChannels: RowChannelBand[];
@@ -861,7 +861,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    * **띠를 지나야 하는 경로 끝들** — 포트가 기둥 끝(N/S)이라 세로 채널 벽을 직접 못 마주 보는 것.
    *
    * (E) 결정에 따라 이 경로는 **자기 깊이 열 안에서만** 가로로 달린다 — 세로 채널을
-   * 가로지르지 않으므로 교차로가 없다. → `tempPlanDocs/행채널-모델/`
+   * 가로지르지 않으므로 교차로가 없다.
    *
    * 지금은 **세기만** 한다. 이 수가 0이면 행 채널이 이 트리에 필요 없다는 뜻이고,
    * 0이 아니면 Step 3(트랙 배정 + 두 패스)이 실제로 값을 낸다.
@@ -977,7 +977,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //
   //     **폭은 아직 안 먹인다**(순환: 폭 → 위치 → 수요 → 폭). `wantHeight` 에만 담아
   //     *"수요대로면 얼마여야 하나"* 를 보인다. 실제 반영은 두 패스가 필요하고, 그건
-  //     이 단계 다음이다. → `tempPlanDocs/행채널-모델/` Step 3
+  //     이 단계 다음이다.
   //
   //     **자리가 여기인 이유:** 수요(`rowChannelNeeds`)는 위 납품 짝짓기 루프가 채운다.
   //     띠(2c)는 그보다 앞이라 그때는 아직 빌 수 없다 — 배정만 뒤로 미룬다.
