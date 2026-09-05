@@ -21,7 +21,7 @@ import type { SpecInserter } from "../buildSpec";
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
 import { laneCapOfTier } from "../beltThroughput";
-import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
+import { fitRowChannel, planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
 import {
   planChannelGeometry,
   type ChannelGeometryPlan,
@@ -38,7 +38,7 @@ import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
 import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
-import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE } from "../debugFlags";
+import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planTracks, expandBbox } from "./perimeter/tracks";
 import type { TrackPlan } from "./perimeterTrackPlanner";
@@ -323,6 +323,13 @@ export interface PackResult {
    * 진단(`flg.report()`)이 이 수를 읽어 착수 근거로 쓴다.
    */
   rowChannelNeeds: ReadonlyArray<{ id: string; nodeId: string; depth: number; portY: number; face: string }>;
+  /**
+   * **띠가 모자라 자리를 못 준 끝들** — 비어 있는 것이 정상이다.
+   *
+   * 비지 않으면 그 경로는 계획을 접고 탐색으로 간다. 계획서 Step 3 의 관문이 *"이 배열이
+   * 언제나 비어 있다"* 이므로, 화면에 안 띄우면 관문을 셀 수 없다.
+   */
+  rowChannelShort: ReadonlyArray<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -555,6 +562,49 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     outputLinks: outputLinksOf(s),
     inputLinks: inputLinksOf(s),
   });
+
+  // ── (가) 다이렉트 — **넘치는 부모의 링크 입력만 `g = 1` 로 다시 붓는다** (플래그 뒤) ──
+  //
+  // 밸브([EdgeBundle])는 진작 뚫려 있었고 **주는 사람이 없었다.** 여기가 주는 자리다.
+  //
+  // **두 번 붓는 것이 낭비가 아니다** — `edgeLinkGroups` 가 `undefined` 를 내는 조건
+  // (유체 줄 · 흐름 0 · 벨트/인서터 못 고름)은 `bundle` 과 **무관**하다. 그러니 1차가
+  // 어떤 간선이 링크가 되는지를 확정해 주고, 그 결과라야 `L_f`(품목 종류 수)를 **방출과
+  // 같은 낟알로** 셀 수 있다. 트리에서 자식 수를 세면 유체 간선까지 세어 과대평가한다.
+  //
+  // **끄면 오늘 동작 그대로다** — 기전: 이 블록 전체가 안 돈다.
+  // **레인 합류와 같이 켜지 않는다** — 짝짓기가 이미 `sharedLineId` 를 얹은 뒤라
+  // 다시 부으면 그 신원이 사라진다. 둘을 함께 쓰려면 짝짓기를 이 뒤로 옮겨야 하고,
+  // 그건 이 계획의 몫이 아니다(`부분-링크` 는 `벨트-레인` 을 안 건드린다).
+  if (AUTO_LAYOUT_LINK_DIRECT && !AUTO_LAYOUT_LANE_MERGE) {
+    /** 부모별 들어오는 링크(1차 결과 기준) — 이것이 그 면의 `L_E` 다. */
+    const inItemsOf = new Map<string, Set<string>>();
+    for (const s of specs) {
+      if (!s.parentId || !linkCache.get(s.id)?.length) continue;
+      const set = inItemsOf.get(s.parentId) ?? inItemsOf.set(s.parentId, new Set()).get(s.parentId)!;
+      for (const g of linkCache.get(s.id)!) set.add(g.item);
+    }
+    for (const p of specs) {
+      const L_E = inItemsOf.get(p.id)?.size ?? 0;
+      if (L_E === 0) continue;
+      const outItem = p.parentId ? productOf(p) : undefined;
+      // **깊이는 장부를 안 읽는다**([clusterBeltDepthsOf] 머리말) — `"open"` 무대면 족하다.
+      const probe = planLinkFaces(moduleInputOf(p), Math.max(1, p.count), "open");
+      const need = linkDepthNeed({
+        linesOf: (f) => (f === "W" ? (outItem ? 1 : 0) : L_E),
+        depthsOf: (f) => clusterBeltDepthsOf(probe.ctx, f).length,
+      });
+      if (need === "free") continue;
+      // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 낱말이다.
+      for (const s of specs) {
+        if (s.parentId !== p.id || !linkCache.get(s.id)?.length) continue;
+        const re = edgeLinkGroups(s, p, productOf(s)!, config, { side: "to", g: 1 });
+        if (!re?.length) continue; // 다시 부어 빈손이면 **1차 결과를 지키다** — 없애지 않는다
+        const end = linkEndOf(s);
+        linkCache.set(s.id, end ? re.map((g) => ({ ...g, end })) : re);
+      }
+    }
+  }
 
   /** 배정이 낸 쪼갬 수 — 진단용(옛 `laddered`). */
   let laddered = 0;
@@ -818,6 +868,13 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    */
   /** 경로 끝 id(`…:out`/`…:in`) → 띠 접근. 5a-2 가 채우고 5c 가 지시에 싣는다. */
   const rowChannelEntryById = new Map<string, RowChannelEntry>();
+  /**
+   * **띠가 모자라 자리를 못 준 끝** — 사유 문장. 화면(`flg.report()` · 이슈)이 읽는다.
+   *
+   * 비어 있는 것이 정상이다. 비지 않으면 그 경로는 띠를 못 쓰고 탐색으로 간다 —
+   * **실패는 아니지만 계획의 실패**다(계획서 Step 3 의 관문).
+   */
+  const rowChannelShort: string[] = [];
   const rowChannelNeeds: {
     id: string;
     nodeId: string;
@@ -935,16 +992,41 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     for (const n of rowChannelNeeds) {
       const band = bandOf(n.nodeId, n.depth, n.face);
       if (!band) continue; // 그 면에 띠가 없다 — 있을 수 없다(마진이 늘 있다). 안전망.
-      (byBand.get(band) ?? byBand.set(band, []).get(band)!).push({ id: n.id, x1: n.x1, x2: n.x2 });
+      // **어느 쪽에서 띠로 들어오나** — 면이 답한다. `N` 면이면 띠는 모듈 **위**에 있으므로
+      // 그 경로는 띠의 **아래** 변에서 올라온다. `S` 면은 거울이다. 이 한 값이 교차를
+      // 없애는 순서를 정한다([planRowChannel] 의 전순서).
+      (byBand.get(band) ?? byBand.set(band, []).get(band)!).push({
+        id: n.id, x1: n.x1, x2: n.x2, side: n.face === "N" ? "bottom" : "top",
+      });
     }
     for (const [band, crossings] of byBand) {
       const plan = planRowChannel(crossings);
       band.wantHeight = plan.height;
       band.tracks = plan.tracks;
+      // **띠가 트랙을 다 못 담으면 — 마진은 바깥으로 자란다**([fitRowChannel], 2026-09-04).
+      //
+      // 여태 높이는 `STACK_GAP` 고정이고 `wantHeight` 는 **보고서만** 읽었다. 그런데 트랙
+      // 번호에는 상한이 없어, 트랙이 높이를 넘으면 `band.top + t` 가 **띠 밖** — 곧 모듈
+      // 몸통을 가리킨다. 그 경로는 `plannedChainClear` 가 "모듈 몸통"으로 거부하니
+      // **사유가 「띠가 좁다」인데 화면에는 「체인이 막혔다」로 나온다.**
+      //
+      // **오늘 실물에서는 아직 안 넘는다**(띠마다 트랙 2개 · 높이 3). 그래서 이 갈래는
+      // **안전망**이고 배치는 한 칸도 안 바뀐다 — 넘을 때만 돈다.
+      const fit = fitRowChannel(band, plan.trackCount);
+      band.top = fit.top;
+      band.bottom = fit.bottom;
+      const usable = band.bottom - band.top + 1;
       // 트랙 index → **절대 행**. 띠의 위에서부터 센다.
       for (const n of rowChannelNeeds) {
         const t = plan.tracks.get(n.id);
         if (t === undefined) continue;
+        if (t >= usable) {
+          // **띠가 모자라다.** 예전엔 그대로 `top + t` 를 줘서 모듈 몸통에 앉혔고, 그 경로는
+          // `plannedChainClear` 가 "모듈 몸통"으로 거부해 탐색으로 떨어졌다 — 사유가
+          // *"띠가 좁다"* 인데 화면에는 *"체인이 막혔다"* 로 나왔다. 여기서 끊는다.
+          rowChannelShort.push(`d${band.depth} ${band.kind} 높이 ${usable} < 수요 ${plan.height} (${n.id})`);
+          continue;
+        }
         rowChannelEntryById.set(n.id, { row: band.top + t });
       }
     }
@@ -955,6 +1037,11 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       const tb = rowChannelEntryById.get(`${seed.key}:in`);
       if (fb) { seed.fromRowChannel = fb; seed.startY = fb.row; }
       if (tb) { seed.toRowChannel = tb; seed.endY = tb.row; }
+      // **띠가 필요한데 못 받았으면 계획을 접는다.** 그 끝의 `startY` 는 여전히 포트 행이고,
+      // 포트는 기둥 **밖**에 있어 계단꼴의 가로 진입이 모듈 몸통을 지난다. 그리면 반드시
+      // 막히므로 **애초에 안 그린다** — 장부는 폭만 예약하고 라우터가 탐색으로 잇는다.
+      const wantsBand = (w: "out" | "in") => rowChannelNeeds.some((n) => n.id === `${seed.key}:${w}`);
+      if ((!fb && wantsBand("out")) || (!tb && wantsBand("in"))) seed.eligible = false;
     }
   }
 
@@ -1090,7 +1177,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     : undefined;
 
   const bbox = config.reservePerimeterTracks ? expandBbox(rawBbox, trackPlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
+  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds, rowChannelShort };
 }
 
 /**

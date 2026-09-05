@@ -579,7 +579,19 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
       },
     ),
     needs: pack.rowChannelNeeds.map((n) => `${n.id} @d${n.depth} ${n.nodeId} y${n.portY} ${n.face}`),
+    short: pack.rowChannelShort,
   });
+  // **띠가 좁아 자리를 못 준 경로** — 여태 이런 끝은 조용히 **모듈 몸통 행**을 받았고,
+  // 화면에는 *"계획 체인이 막혔다"* 로 나왔다. 진짜 사유가 한 겹 아래 가려져 있었다.
+  // 물류는 탐색이 잇는다(경고이되 실패 아님) — 다만 **보이지 않으면 안 된다.**
+  if (pack.rowChannelShort.length > 0) {
+    issues.push({
+      code: 'row-channel-short', scope: '채널', severity: 'warning', recoverable: true,
+      detail:
+        `띠가 좁아 **${pack.rowChannelShort.length}개 경로 끝**이 자리를 못 받았다`
+        + ` — 그 납품은 계획을 접고 탐색으로 간다; ${pack.rowChannelShort.join(' · ')}`,
+    });
+  }
   recordDeliveryStats({
     planned: deliveryRes.planned,
     dijkstraFallback: deliveryRes.dijkstraFallback,

@@ -68,6 +68,13 @@ export interface RowChannelCounters {
    * 0이면 행 채널이 이 트리에 필요 없다.
    */
   needs: ReadonlyArray<string>;
+  /**
+   * **띠가 모자라 자리를 못 준 끝들** — 계획서 `행채널-모델` Step 3 의 관문.
+   *
+   * 비어 있는 것이 정상이다. 비지 않으면 그 경로는 띠를 못 쓰고 탐색으로 간다 —
+   * 그리고 **화면에 「체인이 막혔다」로 나와 진짜 사유(띠가 좁다)가 가려진다.**
+   */
+  short: ReadonlyArray<string>;
 }
 
 /**
@@ -294,7 +301,7 @@ export function resetFaceDepthStats(): void {
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
-  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs] };
+  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs], short: [...c.short] };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -316,6 +323,7 @@ export function readRunStats(): RunStats {
           ...current.rowChannels,
           bands: [...current.rowChannels.bands],
           needs: [...current.rowChannels.needs],
+          short: [...current.rowChannels.short],
         }
       : null,
     faceDepths: {

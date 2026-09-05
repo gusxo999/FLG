@@ -191,6 +191,7 @@ export function buildReport(): string {
       '행채널',
       rc
         ? `띠 ${rc.count}개 · **통과 수요 ${rc.needs.length}건**`
+          + (rc.short.length > 0 ? ` · **자리 못 받음 ${rc.short.length}**` : '')
           + (rc.needs.length === 0 ? '  (0이면 이 트리엔 행채널이 필요 없다)' : '')
         : '단계 미도달',
     ),
@@ -198,6 +199,8 @@ export function buildReport(): string {
   if (rc) {
     for (const b of rc.bands) out.push(sub(b));
     for (const n of rc.needs) out.push(sub(`수요 ${n}`));
+    // **관문**(`행채널-모델` Step 3) — 이 줄이 안 나오는 것이 성공이다.
+    for (const x of rc.short) out.push(sub(`**부족** ${x}`));
   }
 
   const p = stats.perimeter;
