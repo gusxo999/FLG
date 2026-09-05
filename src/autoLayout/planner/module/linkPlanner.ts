@@ -84,6 +84,25 @@ export interface LinkFacePlan {
    */
   portEnd?: "N" | "S";
   /**
+   * **벨트 흐름이 향하는 끝** — 포트가 서는 쪽. `portEnd` 와 달리 **장부를 안 먹는다.**
+   *
+   * ```
+   * portEnd   포트가 기둥 끝에 선다 = 면의 희소 자원(`ctx.ends`)을 하나 먹는다
+   * exitEnd   벨트가 어느 쪽으로 흐르나 = 자원이 아니라 **방향**이다
+   * ```
+   *
+   * 관통 줄이면 둘이 같다(포트가 곧 흐름의 끝). **구간 줄은 `portEnd` 가 없어도 이 값을
+   * 갖는다** — 2026-09-05 이전에는 안 그랬고, `topT` 가 `span[0]`(위쪽) 상수였다.
+   *
+   * 값은 `Link.end`(형제 순번, `modulePacking.linkEndOf`)에서 온다. **좌표를 안 본다** —
+   * `gen` 보다 앞에서 확정되므로 되먹임 A(`끝 → gen → 높이 → y → 거리 → 끝`)가 안 닫힌다.
+   *
+   * (이름은 되살린 것이다. 2026-09-02 에 *"구간이 자기 끝을 지목하는 `exitEnd` 갈래"* 가
+   *  `trunkEndKey` 에서 삭제됐는데 — 그건 만드는 쪽(`splitIntervals`)이 죽어 값이 늘
+   *  `undefined` 였기 때문이지 개념이 틀려서가 아니었다. 이제 산 생산자가 생겼다.)
+   */
+  exitEnd?: "N" | "S";
+  /**
    * 머신 index → 이 그룹이 그 머신 면에서 쓰는 **머신 원점 기준 상대 칸 번호**들(오름차순).
    * 키 순서는 머신 index 오름차순이다(방출 순서가 결정적이어야 하므로).
    *
@@ -102,6 +121,17 @@ export interface LinkFacePlan {
 
 /** [commitLinkFace] 전의 배정안 — 순번(`slotIndex`)은 확정 시점에야 정해진다. */
 type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
+
+/**
+ * **이 줄이 향하는 끝** — 배정과 방출이 같은 값을 보게 하는 단일 출처.
+ *
+ * `portEnd` 를 앞에 두는 것은 관통 줄에서 둘이 반드시 같아야 하기 때문이다(포트가 기둥
+ * 끝에 섰는데 벨트가 반대로 흐르면 도형이 없다). 마지막 `"N"` 은 **방향을 아무도 안 말한
+ * 경우**(형제가 하나뿐이라 선호가 없는 줄)의 기본값이고, 그게 2026-09-05 이전의 전부였다.
+ */
+export const flowEnd = (
+  cand: Pick<LinkFacePlan, "portEnd" | "exitEnd">,
+): "N" | "S" => cand.portEnd ?? cand.exitEnd ?? "N";
 
 /**
  * **못 앉은 이유 — 후보(면 × 깊이) 하나마다 하나.** 사다리가 읽는다.
@@ -359,15 +389,18 @@ function beltRowSpan(
  * 이기 때문이다(`emitModule.ts:66`·`:214`·`:381`). 관통이면 그 두 칸이 기둥 **밖**이라
  * 대개 표를 안 건드리지만, 앞선 그룹이 첫 행을 먼저 먹었으면 **표 안으로 들어온다.**
  *
- * `topT` 는 흐름이 향하는 끝이다 — `portEnd === "S"` 면 구간의 아래 끝, 아니면 위 끝
- * (`emitOutputLinks:221`·`emitInputLinks:373` 이 같은 규칙을 쓴다).
+ * `topT` 는 흐름이 향하는 끝이다 — [flowEnd] 가 `"S"` 면 구간의 아래 끝, 아니면 위 끝
+ * (`emitOutputLinks`·`emitInputLinks` 가 같은 규칙을 쓴다).
+ *
+ * **`portEnd` 가 모양을 정하고 [flowEnd] 가 방향을 정한다** — 둘이 갈린 것이 2026-09-05 이다.
+ * 그전에는 구간 줄의 `topT` 가 `span[0]` 상수여서 **부모가 아래에 있어도 위로 나갔다.**
  */
 function portCells(
-  cand: Pick<LinkFaceCandidate, "clusterBeltDepth" | "portEnd">,
+  cand: Pick<LinkFaceCandidate, "clusterBeltDepth" | "portEnd" | "exitEnd">,
   span: readonly [number, number],
   table: FaceTable,
 ): Array<readonly [number, number]> {
-  const topT = cand.portEnd === "S" ? span[1] : span[0];
+  const topT = flowEnd(cand) === "S" ? span[1] : span[0];
   const cells: Array<readonly [number, number]> = cand.portEnd
     ? (() => {
         const dir = cand.portEnd === "S" ? 1 : -1;
@@ -517,6 +550,18 @@ export function tryLinkFace(
   const want = preferEnd ?? group.end?.[side];
   const endOrder = want ? ([want, want === "N" ? "S" : "N"] as const) : (["N", "S"] as const);
   const portEnd = spanning ? endOrder.find((e) => !endsTaken?.has(e)) : undefined;
+  // **구간 줄도 방향을 갖는다**(2026-09-05). `want` 는 위에서 이미 계산됐는데 예전엔
+  // `spanning` 이 거짓이면 **그대로 버려졌고**, 그 뒤 `portCells`/방출기가 `span[0]`(위)로
+  // 상수 고정됐다 — 부모가 아래에 있어도 위로 나갔다는 뜻이다.
+  //
+  // 옆 포트는 깊이 방향(`d+1`·`d+2`)으로 나가므로 **`ctx.ends` 를 안 먹는다.** 그래서
+  // 이 값은 희소 자원을 다투지 않는다 = 방향을 사려고 기둥 끝을 사던 거래가 사라진다
+  // (`tempPlanDocs/벨트-레인/` ㉣ 3차).
+  //
+  // **gap(N/S) 면은 뺀다.** 거기서 벨트는 가로로 눕고 `topT` 가 행이 아니라 **열**이라,
+  // 이 값의 뜻(위/아래)이 성립하지 않는다. gap 의 방향은 다른 규칙이 정한다 —
+  // *"모두가 서쪽 변까지 달린다"*(`emitOutputLinks` 의 `beltDirV = {-1, 0}`).
+  const exitEnd = portEnd ?? (face === "W" || face === "E" ? want : undefined);
 
   // **깊이마다 팔 수를 다시 센다**(계획서 §16 · 결함 A). 깊이가 인서터를 정하고, 인서터가
   // 처리량을 정하고, 처리량이 팔 **개수**를 정한다 — 그러니 좌석 검사도 깊이마다 다르다.
@@ -568,13 +613,13 @@ export function tryLinkFace(
     // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 깊이
     // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
     // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
-    const port = portCells({ clusterBeltDepth, portEnd }, span, table);
+    const port = portCells({ clusterBeltDepth, portEnd, exitEnd }, span, table);
     const hitPort = port.filter(([r, d]) => !depthClear(table, d, r, r));
     if (hitPort.length > 0) {
       why?.push({ face, clusterBeltDepth, blockedPort: hitPort });
       continue;
     }
-    return { face, arms, clusterBeltDepth, reach: clusterBeltDepth - 1, portEnd };
+    return { face, arms, clusterBeltDepth, reach: clusterBeltDepth - 1, portEnd, exitEnd };
   }
   // 이 면의 깊이가 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;
@@ -640,8 +685,9 @@ export function commitLinkFace(
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
   if (span) {
     claimDepth(table, cand.clusterBeltDepth, span[0], span[1], owner);
-    const endRow = cand.portEnd === "S" ? span[1] : span[0];
-    const dir = cand.portEnd === "S" ? 1 : -1;
+    const end = flowEnd(cand);
+    const endRow = end === "S" ? span[1] : span[0];
+    const dir = end === "S" ? 1 : -1;
     /** 기둥 **밖** 첫 행 — 합류는 여기서 일어난다. 표 밖이라 아무도 청구할 수 없다. */
     const outRow = dir > 0 ? table.rowsPerMachine * table.machineCount : -1;
     if (opts?.merged) {

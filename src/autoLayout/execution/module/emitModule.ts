@@ -37,7 +37,7 @@ import type {
   ModulePort,
   TrunkContext,
 } from "../../module/clusterModule";
-import type { LinkSeats } from "../../planner/module/linkPlanner";
+import { flowEnd, type LinkSeats } from "../../planner/module/linkPlanner";
 // trunkEndKey 는 계획 산출물(트렁크 종착 키)이라 clusterModule 소유 — 런타임 import.
 import { trunkEndKey } from "../../module/clusterModule";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
@@ -287,8 +287,10 @@ export function emitOutputLinks(args: {
     // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
     const clusterBeltDepth = plan.clusterBeltDepth;
     const exitDepth = plan.exitDepth ?? clusterBeltDepth;
-    // 흐름은 **포트 쪽 끝**을 향한다 — 옆 포트/N 끝이면 위(t 작은 쪽), S 끝이면 아래.
-    const toSouth = plan.portEnd === "S";
+    // 흐름은 **포트 쪽 끝**을 향한다 — N 이면 위(t 작은 쪽), S 면 아래.
+    // **구간 줄도 이 값을 갖는다**([flowEnd] · 2026-09-05). 예전엔 `plan.portEnd === "S"`
+    // 라서 구간 줄이 언제나 위였다 — 부모가 아래에 있어도.
+    const toSouth = flowEnd(plan) === "S";
     const topT = toSouth ? allRows[allRows.length - 1] : allRows[0];
     const belt0 = faceCell(mExt, face, clusterBeltDepth, topT); // 벨트 줄의 **포트 쪽** 끝 칸
     // 트렁크 끝(= 납품 경로 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
@@ -511,7 +513,7 @@ export function emitInputLinks(args: {
     const allRows = seats.flatMap((s) => s.rows);
     // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd] — 출력과 같은 규칙). S 끝이면
     // 포트가 아래에 서고 공급이 위로 흐른다.
-    const toSouth = plan.portEnd === "S";
+    const toSouth = flowEnd(plan) === "S";
     const topT = toSouth ? Math.max(...allRows) : Math.min(...allRows);
     // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 자기 줄로 내려가는 그룹은
     // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
