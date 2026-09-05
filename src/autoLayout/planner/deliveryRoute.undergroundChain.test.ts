@@ -74,10 +74,15 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
   it("예약이 전부 계획한다 — 탐색 폴백 0", () => {
     // 버그가 있던 시절: 계획은 다 있는데(noPlan 0) 일부가 fallback 이었다.
     // 되돌아 걷는 사슬 **하나**가 멀쩡한 이웃까지 끌고 떨어졌다 — 그래서 **폴백 0** 이 신호다.
-    expect(p.deliveries.length).toBe(6);
+    //
+    // **개수를 못 박지 않는다**(2026-09-04) — 레인 합류가 기본으로 켜지면서 같은 품목
+    // 두 줄이 납품 하나로 접혀 6 → 3 이 됐다. 그건 이 테스트가 겨눈 결함과 **무관한
+    // 기능**이다. 겨눈 것은 *"만든 계획을 하나도 안 버린다"* 이므로 총계가 아니라
+    // **계획 = 납품 수**로 잰다.
+    expect(p.deliveries.length).toBeGreaterThan(0);
     expect(delivery.failures).toBe(0);
     expect(delivery.dijkstraFallback).toBe(0);
-    expect(delivery.planned).toBe(6);
+    expect(delivery.planned).toBe(p.deliveries.length);
   });
 
   it("계획된 사슬은 같은 칸을 두 번 밟지 않는다 (되돌아 걷기 금지)", () => {

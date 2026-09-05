@@ -297,9 +297,16 @@ export function emitOutputLinks(args: {
     // 짝의 **둘째** 줄이면 첫 줄이 만든 합류 칸·포트를 그대로 쓴다. 첫 줄이면 합류 칸을
     // 새로 만든다. 기하가 안 서면(gap · 끝 없음 · 반출 줄로 내려감) 합류하지 않는다 —
     // 그런 짝은 배정이 이미 풀었으므로 정상 경로에선 여기 오지 않는다.
-    const followed = group.sharedLineId !== undefined ? sharedExit.get(group.sharedLineId) : undefined;
     const canMerge = group.sharedLineId !== undefined && !isGap
       && plan.portEnd !== undefined && exitDepth === clusterBeltDepth;
+    // **자기도 합류 도형을 세울 수 있을 때만 첫 줄을 따른다**(2026-09-04).
+    //
+    // 예전엔 `sharedExit` 에 신원만 있으면 따랐다. 그런데 따르는 줄이 **끝을 못 받았거나
+    // gap 으로 밀렸으면** 포트 면이 W/E 라 아래 순회가 **열을 걸으면서 행을 목표로 삼는다**
+    // — 영영 안 끝난다(실측: 힙 소진으로 워커 사망, 사유도 스택도 안 남았다).
+    const followed = canMerge && group.sharedLineId !== undefined
+      ? sharedExit.get(group.sharedLineId)
+      : undefined;
     /**
      * **기둥 밖 첫 행** — 합류는 여기서 일어난다.
      *
@@ -307,7 +314,7 @@ export function emitOutputLinks(args: {
      * (2026-09-04 실측: `못앉음 copper-cable: Wd2 포트칸 (13,d3)` — 합류 셋을 얻고
      * 줄 하나를 통째로 잃었다). 표 밖 행은 아무도 청구하지 않으니 다툴 것이 없다.
      */
-    const outT = pfv.y > 0 ? mExt.y1 + 1 : mExt.y0 - 1;
+    const outT = plan.portEnd === "S" ? mExt.y1 + 1 : mExt.y0 - 1;
     /** 합류 칸 — 기둥 밖 첫 행에서 **깊은 쪽 한 칸**. 그 칸이 포트 쪽으로 나간다. */
     const mergeCell = canMerge
       ? faceCell(mExt, face, clusterBeltDepth + 1, outT)
@@ -368,7 +375,9 @@ export function emitOutputLinks(args: {
     }
     // **출구 합류** — 위 `sharedExit` 주석의 그림. `outT` 가 늘 `step` 쪽에 있으므로
     // 아래 두 루프는 반드시 끝난다(`segment` 가 축이 안 맞을 때 힙을 4GB 태운 그 함정).
-    const step = pfv.y !== 0 ? Math.sign(pfv.y) : Math.sign(pfv.x);
+    // **`outT` 와 같은 축에서 유도한다.** `pfv` 에서 뽑으면 포트 면이 W/E 일 때 부호가
+    // **x 축**의 것이 되어, 행을 목표로 삼은 순회가 열을 걷는다 = 안 끝난다.
+    const step = outT > topT ? 1 : -1;
     if (followed) {
       // 따르는 줄: `d+1` 로 한 칸, `d+2` 로 또 한 칸 비킨 뒤 **그 열을 따라 이끄는 줄의
       // 포트 행까지** 올라와, 마지막에 **얕은 쪽**(= 합류 칸)으로 꺾어 들어간다.

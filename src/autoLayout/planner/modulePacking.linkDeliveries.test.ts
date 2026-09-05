@@ -196,10 +196,16 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
   const child = pack.placements.find((pl) => pl.id === "c")!;
   const parent = pack.placements.find((pl) => pl.id === "p")!;
 
-  it("그룹이 안 묶여 포트 2쌍·납품 경로 2개(fan-out 유지)", () => {
-    expect(child.module.outputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
+  it("그룹이 안 묶여 포트 2쌍 — 납품은 **물리 벨트마다** 하나", () => {
+    const out = child.module.outputPorts.filter((p) => p.line.name === "x");
+    expect(out).toHaveLength(2);
     expect(parent.module.inputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
-    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(2);
+    // **납품 수를 못 박지 않는다**(2026-09-04). 레인 합류가 기본으로 켜지면서 논리 포트
+    // 둘이 **한 물리 자리**를 나눠 쓸 수 있고, 그러면 그 사이를 잇는 벨트도 하나다.
+    // 겨눈 것은 *"그릇이 차서 안 묶인다"* — 그건 **논리 포트 둘**이 말한다(위).
+    // 납품은 그 아래 층이라 **물리 자리 수**로 잰다.
+    const anchors = new Set(out.map((p) => `${p.anchor.x},${p.anchor.y}`));
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(anchors.size);
   });
 
   it("라우팅 실패 0", () => {
@@ -241,10 +247,14 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
 
   it("자식 머신마다 W 하나 + gap 하나 — 팔을 깎지 않는다", () => {
     const ports = child.module.outputPorts.filter((p) => p.line.name === "x");
-    expect(ports).toHaveLength(4);
-    // 넘친 그룹도 모서리에서 꺾여 **평범한 W 포트**로 나온다.
-    expect(ports.filter((p) => p.face === "W")).toHaveLength(4);
-    expect(ports.reduce((s, p) => s + p.cells.length, 0)).toBe(12); // 팔 합 = 6×2
+    expect(ports).toHaveLength(4); // 그룹마다 포트 하나 — 넘쳤다고 하나도 안 버린다
+    // 넘친 그룹도 **장부가 아는 면**으로 나온다 — 새 도형을 요구하지 않는다.
+    // (W = 평범한 옆 포트, N/S = 기둥 끝. 레인 합류가 짝에게 기둥 끝을 주므로 둘 다 온다.)
+    for (const p of ports) expect(["W", "N", "S"]).toContain(p.face);
+    // 그리고 **어느 포트도 벨트를 잃지 않았다.** 예전엔 여기를 `cells` 합계 12 로 못 박았는데,
+    // 그 수는 벨트 **길이**라 합류가 이끄는 줄을 기둥 밖까지 늘리면 그냥 바뀐다 — 겨눈
+    // 것(*"팔을 깎지 않는다"*)과 무관한 스냅샷이었다.
+    for (const p of ports) expect(p.cells.length).toBeGreaterThan(0);
   });
 
   it("unrouted 0 — 넘쳤다고 줄을 버리지 않는다", () => {
@@ -266,7 +276,8 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
       beltMaxUndergroundDistance: 4,
     });
     expect(delivery.failures).toBe(0);
-    expect(delivery.planned).toBe(4);
+    // 개수가 아니라 **하나도 안 버렸나**로 잰다 — 합류가 납품을 접으면 총계가 바뀐다.
+    expect(delivery.planned).toBe(pack.deliveries.length);
     expect(delivery.dijkstraFallback).toBe(0);
   });
 });

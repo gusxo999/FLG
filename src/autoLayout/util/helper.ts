@@ -50,6 +50,15 @@ export function segment(
   const out: { x: number; y: number }[] = [];
   const dx = Math.sign(to.x - from.x);
   const dy = Math.sign(to.y - from.y);
+  // **대각선은 여기서 죽인다**(2026-09-04). 아래 루프는 축이 안 맞으면 목표를 영영 못 만나
+  // 배열이 무한히 자란다 — 실측 두 번 다 **힙 4GB 소진 후 프로세스 사망**이었고, 그러면
+  // 사유도 스택도 안 남는다. 던지면 **부른 자리가 스택에 찍힌다**: 고칠 곳은 언제나
+  // 호출자(축을 안 맞추고 부른 쪽)이지 이 함수가 아니다.
+  if (dx !== 0 && dy !== 0)
+    throw new Error(
+      `segment: 축 정렬이 아니다 (${from.x},${from.y})→(${to.x},${to.y})`
+      + ` — 부르기 전에 x 나 y 를 맞춰야 한다`,
+    );
   let x = from.x;
   let y = from.y;
   while (x !== to.x || y !== to.y) {
