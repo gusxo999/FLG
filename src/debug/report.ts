@@ -129,6 +129,8 @@ export function buildReport(): string {
         + ` · **깊은줄 ${fl.deepBelt}**`
         + (fl.deepBeltOtherArm > 0 ? ` (다른 팔 ${fl.deepBeltOtherArm})` : '')
         + (fl.splits > 0 ? ` · 쪼갬 ${fl.splits}` : '')
+        + (fl.endsCoarse > 0 ? ` · **끝 낟알로 잃음 ${fl.endsCoarse}**` : '')
+        + (fl.endsDisagree > 0 ? ` · **장부 어긋남 ${fl.endsDisagree}**` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),
     ),
   );

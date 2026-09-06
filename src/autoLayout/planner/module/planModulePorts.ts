@@ -278,7 +278,7 @@ export function planLinkFaces(
   const faceTables = new Map<PortFace, FaceTable>();
   const faceCtx: LinkFaceContext = {
     machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
-    ends: new Map(), inserters: input.inserters,
+    ends: new Map(), outside: new Map(), inserters: input.inserters,
   };
   const empty = (n: number): FaceAllocation => ({
     plans: Array.from({ length: n }, () => undefined),
@@ -584,10 +584,11 @@ export interface EdgeSeatResult {
 export function cloneLinkFaceStage(stage: LinkFaceStage): LinkFaceStage {
   const tables = new Map([...stage.tables].map(([f, t]) => [f, copyFaceTable(t)] as const));
   const ends = new Map([...stage.ctx.ends].map(([f, set]) => [f, new Set(set)] as const));
+  const outside = new Map([...stage.ctx.outside].map(([f, set]) => [f, new Set(set)] as const));
   return {
     ...stage,
     tables,
-    ctx: { ...stage.ctx, tables, ends },
+    ctx: { ...stage.ctx, tables, ends, outside },
     out: { ...stage.out, plans: [...stage.out.plans], deferred: [...stage.out.deferred] },
     in: { ...stage.in, plans: [...stage.in.plans], deferred: [...stage.in.deferred] },
   };

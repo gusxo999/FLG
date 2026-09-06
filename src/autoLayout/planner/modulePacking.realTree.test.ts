@@ -69,6 +69,20 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
    *
    * 0 을 잠그는 이유: 후보가 *"간선의 두 줄"* 이라는 정의가 흔들리면 이 수가 먼저 튄다.
    */
+  /**
+   * **기둥 밖 칸 장부가 `ends` 와 어긋나지 않는다** — `구간-밖-주행` 트랙 A1 의 불변.
+   *
+   * `outside`(칸)는 `ends`(면당 끝 둘)보다 곱다. 그러니 `outside` 가 막는 것은 `ends` 도
+   * 이미 막았어야 한다. 0이 아니면 **모델이 틀린 것**이다 — 결정은 아직 `ends` 가 하므로
+   * 그 어긋남은 곧 아무도 안 막는 자리가 있다는 뜻이 된다.
+   *
+   * **수를 못 박지 않는다** — `endsCoarse`(거친 낟알로 잃은 관통 줄)는 트리마다 다르다.
+   * 못 박는 것은 **어긋남이 없다**는 관계 하나다.
+   */
+  it("기둥 밖 장부가 `ends` 와 어긋나지 않는다 (endsDisagree 0)", () => {
+    expect(readRunStats().faceDepths.endsDisagree).toBe(0);
+  });
+
   it("수요가 레인 안에 들면 짝이 없다 — 갈린 줄이 없으니 되찾을 것도 없다", () => {
     const share = readRunStats().laneShare;
     expect(share.candidates).toBe(0);

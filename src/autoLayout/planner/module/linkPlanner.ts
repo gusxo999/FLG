@@ -20,6 +20,7 @@
 import { faceSeatArms, inserterForReach, type SpecInserter } from "../../buildSpec";
 import type { PortFace } from "../../containerModel";
 import { armsAt, machinesOn, resolveSpanBlock, spansAllMachines, type Link } from "../../module/link";
+import { recordFaceDepthStats } from "../../../debug/runStats";
 import type { PlannedSide } from "./ioLine";
 import {
   claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear, makeFaceTable,
@@ -316,6 +317,20 @@ export interface LinkFaceContext {
    */
   ends: Map<PortFace, Set<"N" | "S">>;
   /**
+   * **기둥 밖의 칸 장부** — `${끝}:${오프셋}:${깊이}`. `offset 0` 이 기둥 바로 바깥 행.
+   *
+   * 위 `ends` 의 주석은 *"기둥 끝은 `(행, 깊이)` 로 표현되지 않는다"* 고 적었는데, 그건
+   * **표의 좌표계**에서만 참이었다. 기둥 밖도 격자다 — 원점을 기둥 끝으로 옮기면 그만이다.
+   *
+   * **왜 필요한가** — `ends` 의 낟알은 「면 × 끝」이라 한 줄이 N 을 잡으면 그 끝 바깥이
+   * 통째로 잠긴다. 그런데 포트 칸은 **각자 자기 깊이**에 서므로 깊이가 다르면 안 부딪힌다.
+   * 그 잃은 자리를 `endsCoarse` 가 센다(`tempPlanDocs/구간-밖-주행/` 트랙 A).
+   *
+   * **아직 결정은 `ends` 가 한다**(A1). 이 장부는 나란히 돌면서 두 답을 대조한다 —
+   * `endsDisagree` 가 0이 아니면 모델이 틀린 것이다.
+   */
+  outside: Map<PortFace, Set<string>>;
+  /**
    * 쓸 수 있는 팔 — **그 면의 깊이 목록이 여기서 나온다**([clusterBeltDepthsOf]).
    * reach `r` 인 팔은 d`r+1` 을 집으므로 reach 종류 수 = 깊이 수다. 비면 d2 하나로 본다.
    *
@@ -375,7 +390,40 @@ function beltRowSpan(
 }
 
 /**
- * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`. 표 밖(기둥 위/아래)이면 뺀다.
+ * 이 행이 기둥 **밖**이면 그 좌표 — `end` 쪽으로 `offset` 칸 나간 자리. 안이면 `undefined`.
+ */
+function outsideOf(row: number, table: FaceTable): { end: "N" | "S"; offset: number } | undefined {
+  const last = table.rowsPerMachine * table.machineCount - 1;
+  if (row < 0) return { end: "N", offset: -1 - row };
+  if (row > last) return { end: "S", offset: row - last - 1 };
+  return undefined;
+}
+
+const outsideKey = (o: { end: "N" | "S"; offset: number }, depth: number): string =>
+  `${o.end}:${o.offset}:${depth}`;
+
+/**
+ * 후보가 먹는 칸을 **표 안 / 기둥 밖**으로 가른다 — 두 장부가 다르기 때문이다.
+ *
+ * 검사([tryLinkFace])와 청구([commitLinkFace])가 **같은 함수**를 부르게 해서 둘이 갈리지
+ * 않게 한다. 갈리면 배정이 못 본 다툼이 방출에서 터진다.
+ */
+function splitByTable(
+  cells: ReadonlyArray<readonly [number, number]>,
+  table: FaceTable,
+): { inside: Array<readonly [number, number]>; outside: string[] } {
+  const inside: Array<readonly [number, number]> = [];
+  const outside: string[] = [];
+  for (const [r, d] of cells) {
+    const o = outsideOf(r, table);
+    if (o) outside.push(outsideKey(o, d));
+    else inside.push([r, d]);
+  }
+  return { inside, outside };
+}
+
+/**
+ * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`.
  *
  * **방향이 `portEnd` 로 갈린다.** 계획서가 한동안 *"포트는 언제나 `d+1`·`d+2`"* 라고 적었는데
  * **관통 그룹은 그렇지 않다**(2026-08-26 코드 확인):
@@ -398,7 +446,6 @@ function beltRowSpan(
 function portCells(
   cand: Pick<LinkFaceCandidate, "clusterBeltDepth" | "portEnd" | "exitEnd">,
   span: readonly [number, number],
-  table: FaceTable,
 ): Array<readonly [number, number]> {
   const topT = flowEnd(cand) === "S" ? span[1] : span[0];
   const cells: Array<readonly [number, number]> = cand.portEnd
@@ -407,9 +454,9 @@ function portCells(
         return [[topT + dir, cand.clusterBeltDepth], [topT + 2 * dir, cand.clusterBeltDepth]] as const;
       })()
     : [[topT, cand.clusterBeltDepth + 1], [topT, cand.clusterBeltDepth + 2]];
-  // 기둥 밖 행은 표에 없다 — 아무도 청구할 수 없으니 다툴 일도 없다.
-  const last = table.rowsPerMachine * table.machineCount - 1;
-  return cells.filter(([r]) => r >= 0 && r <= last);
+  // **거르지 않는다**(2026-09-06) — 기둥 밖 행은 `ctx.outside` 가 센다([splitByTable]).
+  // 예전엔 여기서 버렸고, 그래서 기둥 끝 포트의 두 칸이 **아무 장부에도 안 올라갔다.**
+  return cells;
 }
 
 /**
@@ -613,11 +660,32 @@ export function tryLinkFace(
     // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 깊이
     // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
     // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
-    const port = portCells({ clusterBeltDepth, portEnd, exitEnd }, span, table);
-    const hitPort = port.filter(([r, d]) => !depthClear(table, d, r, r));
+    const claim = splitByTable(portCells({ clusterBeltDepth, portEnd, exitEnd }, span), table);
+    const hitPort = claim.inside.filter(([r, d]) => !depthClear(table, d, r, r));
     if (hitPort.length > 0) {
       why?.push({ face, clusterBeltDepth, blockedPort: hitPort });
       continue;
+    }
+    // **A1 — 기둥 밖 칸 장부를 나란히 돌린다**(`tempPlanDocs/구간-밖-주행/` 트랙 A).
+    //
+    // 결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다:
+    //
+    // ```
+    // endsDisagree  outside 가 막았는데 ends 는 안 막았다  → **0이어야 한다**(모델 검증)
+    // endsCoarse    ends 가 막았는데 outside 는 자리가 있다 → **A2 의 이득**
+    // ```
+    const bandTaken = ctx.outside.get(face);
+    if (claim.outside.some((k) => bandTaken?.has(k)))
+      recordFaceDepthStats({ endsDisagree: 1 });
+    // **끝을 못 받아 옆 포트로 저하했나** — 그런데 칸 장부로는 자리가 있었나.
+    // 끝 선택은 깊이를 안 보는데(`endOrder` 가 루프 **밖**이다) 포트 칸은 깊이에 선다 —
+    // 그래서 이 대조는 깊이를 아는 **여기**서만 할 수 있다. A2 는 끝 선택 자체를
+    // 이 루프 안으로 들여와야 한다.
+    if (spanning && portEnd === undefined) {
+      const roomAtSomeEnd = (["N", "S"] as const).some((e) =>
+        splitByTable(portCells({ clusterBeltDepth, portEnd: e, exitEnd: e }, span), table)
+          .outside.every((k) => !bandTaken?.has(k)));
+      if (roomAtSomeEnd) recordFaceDepthStats({ endsCoarse: 1 });
     }
     return { face, arms, clusterBeltDepth, reach: clusterBeltDepth - 1, portEnd, exitEnd };
   }
@@ -703,7 +771,15 @@ export function commitLinkFace(
     } else {
       // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
       // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
-      for (const [r, d] of portCells(cand, span, table)) claimDepth(table, d, r, r, owner);
+      //
+      // 검사([tryLinkFace])와 **같은 함수**로 가른다 — 모양이 갈리면 못 본 다툼이 생긴다.
+      const claim = splitByTable(portCells(cand, span), table);
+      for (const [r, d] of claim.inside) claimDepth(table, d, r, r, owner);
+      if (claim.outside.length > 0) {
+        const band = ctx.outside.get(cand.face) ?? new Set<string>();
+        for (const k of claim.outside) band.add(k);
+        ctx.outside.set(cand.face, band);
+      }
     }
   }
   if (cand.portEnd && !opts?.merged) {

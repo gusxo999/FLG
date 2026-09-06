@@ -108,6 +108,24 @@ export interface FaceDepthCounters {
   /** `emitModule` 의 *"구성상 발생 안 함"* 안전망이 발동한 횟수 (계획서의 `D수`). */
   netTrips: number;
   /**
+   * **`ends` 가 거칠어서 잃은 관통 줄** — 기둥 끝을 못 받아 옆 포트로 저하했는데
+   * **칸 장부(`LinkFaceContext.outside`)로는 자리가 있었던** 수.
+   *
+   * `ends` 의 낟알은 「면 × 끝」이라 한 줄이 N 을 잡으면 그 끝 바깥이 통째로 잠긴다.
+   * 그런데 포트 칸은 **각자 자기 깊이**에 서므로 깊이가 다르면 안 부딪힌다 — 이 수가
+   * 그 잃은 자리다(`tempPlanDocs/구간-밖-주행/` §3.4 값 ①).
+   *
+   * **실패가 아니라 저하**라 다른 어떤 수에도 안 나타난다. 0이면 이 트리에선 안 잃었다.
+   */
+  endsCoarse: number;
+  /**
+   * **두 장부가 어긋난 수 — 0이어야 한다.**
+   *
+   * `outside` 는 `ends` 보다 곱다. 그러니 `outside` 가 막는 것은 `ends` 도 이미 막았어야
+   * 한다. 0이 아니면 **모델이 틀린 것**이다 — `ends` 가 못 보는 자리가 있다는 뜻.
+   */
+  endsDisagree: number;
+  /**
    * **배정이 구간막힘을 만나 링크를 토막낸 횟수** — 옛 사다리의 `laddered`.
    *
    * 이제 쪼갬은 배정 **안에서** 일어난다([seatLinkEdge]) — 밖에서 `linkCache` 를 고치고
@@ -181,6 +199,7 @@ const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
 
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
+  endsCoarse: 0, endsDisagree: 0,
   shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
@@ -307,7 +326,12 @@ export function recordBeltFormStats(c: BeltFormCounters): void {
  */
 export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
   const cur = current.faceDepths;
-  for (const k of ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips"] as const)
+  // **`splits` 가 이 목록에 없었다**(2026-09-06 발견) — 선언·초기화·보고는 다 있는데
+  // 더하는 자리에만 빠져서 **언제나 0** 이었다. `쪼갬 0` 이 *"안 일어났다"* 가 아니라
+  // *"안 세었다"* 였다는 뜻이라, 그 수를 관문으로 읽던 글이 거짓을 읽고 있었다.
+  for (const k of
+    ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips", "splits",
+     "endsCoarse", "endsDisagree"] as const)
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);
