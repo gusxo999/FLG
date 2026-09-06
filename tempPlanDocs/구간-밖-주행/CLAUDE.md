@@ -34,6 +34,7 @@
 
 | 무엇 | 왜 |
 |---|---|
+| `docs/auto-layout/common/pipeline-lifecycle.md` | **시대 여섯과 장부의 낟알.** 이 계획의 두 문제가 왜 안 보였는지가 §5 규칙 ①③ 이다 |
 | `planner/module/linkPlanner.ts` — `LinkFaceContext.ends` 주석 | *"이것만 표 밖에 남는다"* — **오늘 ㉡ 을 막는 유일한 것**이고, 낟알이 면당 둘이다 |
 | `planner/module/linkPlanner.ts` — `clusterBeltDepth` 머리말(≈430) | *"행이 안 겹치는 그룹끼리는 같은 depth 를 나눠 쓴다. **다툴 게 없으니 장부도 없다**"* — **깨질 전제의 원문** |
 | `planner/module/linkPlanner.ts` — `portCells` | 기둥 밖 두 칸이 어디서 나오나. **표 밖 행은 걸러진다** |
