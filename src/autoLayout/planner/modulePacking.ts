@@ -965,44 +965,62 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     }
   }
 
-  // ── 4) 세로 좌표 — **띠 높이가 간격이다** ─────────────────────────────────
+  // ── 4) 세로 좌표 — **열마다 누적합. 간격은 전부 띠 높이다** ────────────────
   //
-  //    tidy-tree(RT) 로 부모를 자식들 중앙에 놓고, 같은 깊이에서 겹치면 아래로 민다.
-  //    **미는 폭이 상수가 아니라 그 두 모듈 사이 띠의 높이다** — 여기가 과녁이다.
-  //    예전엔 `STACK_GAP = 3` 고정이라 띠가 모자라면 경로가 계획을 접고 탐색으로 갔다.
+  //    `colX[d] = colX[d-1] + 열폭 + 채널폭` 의 **세로 판**이다. 열 하나가 순번 0부터
+  //    누적합이고, 더하는 것은 **모듈 높이 + 그 아래 띠의 높이**뿐 — 상수가 없다.
+  //    예전엔 `STACK_GAP = 3` 이 간격이었고 띠가 모자라면 경로가 탐색으로 떨어졌다.
   const heightOf = (id: string): number => moduleExtent(pass1.get(id)!).h;
   const bandHeightBelow = new Map<string, number>();
   for (const b of rowChannels)
     if (b.kind === "between") bandHeightBelow.set(`${b.depth}:${b.above}`, b.height);
-  const topY = new Map<string, number>();
-  const cursor = { y: 0 };
-  const layoutY = (id: string): number => {
-    const kids = childIdsByParent.get(id) ?? [];
-    if (kids.length === 0) {
-      const top = cursor.y;
-      topY.set(id, top);
-      // 잎 커서는 **서브트리** 간격이라 깊이가 섞인다 — 하한만 둔다. 같은 깊이 이웃의
-      // 진짜 간격은 아래 스윕이 띠 높이로 강제한다.
-      cursor.y = top + heightOf(id) + ROW_CHANNEL_MIN;
-      return top + heightOf(id) / 2;
-    }
-    const centers = kids.map(layoutY);
-    const center = (centers[0] + centers[centers.length - 1]) / 2;
-    topY.set(id, center - heightOf(id) / 2);
-    return center;
-  };
-  for (const s of specs) if (!s.parentId) layoutY(s.id);
+  /** 순번 `i` 다음에 오는 띠의 높이 — 이것이 곧 다음 모듈까지의 간격이다. */
+  const gapBelow = (depth: number, id: string): number =>
+    bandHeightBelow.get(`${depth}:${id}`) ?? ROW_CHANNEL_MIN;
 
-  // 4b) 겹침 스윕 — **순서는 3a 가 이미 정했다**(좌표로 다시 정렬하지 않는다).
+  // 4a) **누적합** — 순번 → 행. 좌표는 이 식 하나에서 나온다.
+  const topY = new Map<string, number>();
+  const stack = (): void => {
+    for (const [depth, ids] of orderByDepth) {
+      let y = 0;
+      for (const id of ids) {
+        topY.set(id, y);
+        y += heightOf(id) + gapBelow(depth, id);
+      }
+    }
+  };
+  stack();
+
+  // 4b) **중앙 정렬 — 순번 공간에서**(2026-09-06 사장님 지시로 index 판으로 다시 세움).
+  //
+  //     부모를 자식들 곁에 두면 납품의 세로 구간이 짧아지고, 그만큼 세로 채널의 트랙이
+  //     줄어 **채널이 좁아진다**. 그 이득은 버리지 않는다.
+  //
+  //     **옛 tidy-tree 와 무엇이 다른가** — 옛 판은 잎을 전역 커서에 상수(`STACK_GAP`)
+  //     간격으로 쌓아 **좌표를 먼저 만들고** 부모를 그 좌표의 중점에 놓았다. 그래서 간격이
+  //     띠와 무관했다. 지금은 자리를 4a 의 누적합이 만들고, 이 단계는 **부모를 옮기기만**
+  //     한다 — 옮긴 뒤 4c 가 누적합 하한을 되살리므로 띠보다 좁아질 수 없다.
+  //
+  //     깊은 열부터 올라간다: 자식이 먼저 서야 부모가 맞출 수 있다.
+  const depths = [...orderByDepth.keys()].sort((a, b) => b - a);
+  for (const d of depths) {
+    for (const id of orderByDepth.get(d) ?? []) {
+      const kids = childIdsByParent.get(id) ?? [];
+      if (kids.length === 0) continue;
+      const lo = Math.min(...kids.map((k) => topY.get(k)!));
+      const hi = Math.max(...kids.map((k) => topY.get(k)! + heightOf(k)));
+      topY.set(id, Math.round((lo + hi) / 2 - heightOf(id) / 2));
+    }
+  }
+
+  // 4c) **누적합 하한 복원** — 4b 가 부모를 옮겨 이웃과 가까워졌을 수 있다.
+  //     순서는 3a 가 정했으므로 **좌표로 다시 정렬하지 않는다.** 위에서부터 아래로만 민다.
   for (const [depth, ids] of orderByDepth) {
     let prevBottom = -Infinity;
     let prevId: string | undefined;
     for (const id of ids) {
-      let t = Math.round(topY.get(id)!);
-      if (prevId !== undefined) {
-        const gap = bandHeightBelow.get(`${depth}:${prevId}`) ?? ROW_CHANNEL_MIN;
-        if (t < prevBottom + gap) t = prevBottom + gap;
-      }
+      let t = topY.get(id)!;
+      if (prevId !== undefined) t = Math.max(t, prevBottom + gapBelow(depth, prevId));
       topY.set(id, t);
       prevBottom = t + heightOf(id);
       prevId = id;
