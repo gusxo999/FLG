@@ -85,10 +85,10 @@ export interface TrackOption {
 /**
  * 한 레이어(depth 열)에서 **모듈 하나가 차지한** 세로 구간(abs y) — 자기-열 막힘 판정용.
  *
- * **[[용어사전#띠 (band)|띠]]가 아니다** — 띠는 머신이 안 놓이는 *빈* 구간이고 이건 그
- * 반대인 *점유* 구간이다. 2026-08-19 까지 `ColumnBand` 였는데, 같은 `top`/`bottom` 필드로
- * 빈칸을 담는 `RowChannelBand` 와 뜻이 정반대라 개명했다("Column" 도 어긋났다 —
- * `spansByDepth` 이므로 기둥(ColumnCluster)이 아니라 레이어다).
+ * **[[용어사전#채널 (channel)|채널]]이 아니다** — 채널(행·열 둘 다)은 머신이 안 놓이는
+ * *빈* 통로이고 이건 그 반대인 *점유* 구간이다. 2026-08-19 까지 `ColumnBand` 였는데,
+ * 같은 `top`/`bottom` 필드로 빈칸을 담는 `RowChannel` 과 뜻이 정반대라 개명했다
+ * ("Column" 도 어긋났다 — `spansByDepth` 이므로 기둥(ColumnCluster)이 아니라 레이어다).
  *
  * **높이가 아니라 위치다** — `selfBlocked` 이 `b.top < myTop` 으로 *"형제가 내 위에 있나"*
  * 를 묻는다. 크기(`bottom - top + 1`)는 아무도 안 쓴다.
@@ -162,11 +162,11 @@ function selfBlocked(
   edge: "N" | "S",
   ctx: TrackContext,
 ): boolean {
-  const bands = ctx.spansByDepth.get(depth) ?? [];
-  const mine = bands.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
+  const spans = ctx.spansByDepth.get(depth) ?? [];
+  const mine = spans.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
   const myTop = mine ? mine.top : anchorY;
   const myBottom = mine ? mine.bottom : anchorY;
-  for (const b of bands) {
+  for (const b of spans) {
     if (b === mine) continue;
     if (edge === "N" && b.top < myTop) return true;
     if (edge === "S" && b.bottom > myBottom) return true;

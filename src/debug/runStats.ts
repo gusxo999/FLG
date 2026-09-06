@@ -57,14 +57,14 @@ export interface PerimeterCounters {
   skips: ReadonlyArray<{ chestId: string; reason: string }>;
 }
 
-/** 행 채널 — [modulePacking] 이 낸 띠들(Step 1). 아직 자리만 있고 배정은 없다. */
+/** 행 채널 — [modulePacking] 이 낸 행 채널들(Step 1). 아직 자리만 있고 배정은 없다. */
 export interface RowChannelCounters {
-  /** 띠 개수. 0 이면 이 트리엔 세로로 쌓인 이웃이 없다(같은 깊이에 모듈 하나씩). */
+  /** 행 채널 개수. 0 이면 이 트리엔 세로로 쌓인 이웃이 없다(같은 깊이에 모듈 하나씩). */
   count: number;
-  /** 띠마다 `depth#index top..bottom (위모듈 | 아래모듈)`. */
-  bands: ReadonlyArray<string>;
+  /** 행 채널마다 `depth#index top..bottom (위모듈 | 아래모듈)`. */
+  channels: ReadonlyArray<string>;
   /**
-   * **띠를 지나야 하는 경로 끝 수** — 포트가 기둥 끝이라 세로 채널 벽을 직접 못 마주 보는 것.
+   * **행 채널을 지나야 하는 경로 끝 수** — 포트가 기둥 끝이라 세로 채널 벽을 직접 못 마주 보는 것.
    * 0이면 행 채널이 이 트리에 필요 없다.
    */
   needs: ReadonlyArray<string>;
@@ -223,7 +223,7 @@ export interface RunStats {
    * **"0건 이사" 와 "안 돌았다" 는 다르다.**
    */
   perimeter: PerimeterCounters | null;
-  /** 행 채널 띠. 패킹까지 갔으면 채워진다. */
+  /** 행 채널. 패킹까지 갔으면 채워진다. */
   rowChannels: RowChannelCounters | null;
   /**
    * 면 깊이. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이기 때문이다
@@ -333,7 +333,7 @@ export function resetFaceDepthStats(): void {
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
-  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs] };
+  current.rowChannels = { count: c.count, channels: [...c.channels], needs: [...c.needs] };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -354,7 +354,7 @@ export function readRunStats(): RunStats {
     rowChannels: current.rowChannels
       ? {
           ...current.rowChannels,
-          bands: [...current.rowChannels.bands],
+          channels: [...current.rowChannels.channels],
           needs: [...current.rowChannels.needs],
         }
       : null,

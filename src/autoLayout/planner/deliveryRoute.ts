@@ -717,7 +717,7 @@ function buildPlannedChain(delivery: DeliverySpec, g: DeliveryDirective): Dijkst
       break;
     }
   }
-  // 띠 트랙 행 → 부모 상자(세로). 띠를 안 쓰면 0칸이다.
+  // 행 채널 트랙 행 → 부모 상자(세로). 행 채널을 안 쓰면 0칸이다.
   if (g.toRowChannel) push(e0);
 
 

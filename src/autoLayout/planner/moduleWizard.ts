@@ -615,13 +615,13 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     fluidBlocked,
     seedCorridors: terminusCorridors,
   });
-  // **행 채널 띠** — 높이가 곧 모듈 사이 간격이다(2026-09-06). `높이` 와 `트랙` 이 함께
+  // **행 채널** — 높이가 곧 모듈 사이 간격이다(2026-09-06). `높이` 와 `트랙` 이 함께
   // 나오므로 **폭 역전이 실제로 돌았는지**를 한 줄로 읽을 수 있다: 트랙 n 이면 높이는
   // `max(3, n+2)` 라야 한다. 예전엔 높이가 `STACK_GAP` 고정이라 둘이 갈릴 수 있었고,
   // 그 갈림을 `수요` 로 따로 적어야 했다.
   recordRowChannelStats({
     count: pack.rowChannels.length,
-    bands: pack.rowChannels.map(
+    channels: pack.rowChannels.map(
       (b) => {
         const have = b.bottom - b.top + 1;
         const who = b.kind === "between" ? `${b.above} | ${b.below}` : `${b.kind} ${b.above ?? b.below}`;
@@ -635,7 +635,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     ),
     needs: pack.rowChannelNeeds.map((n) => `${n.id} @d${n.depth} ${n.nodeId} y${n.portY} ${n.face}`),
   });
-  // (옛 `row-channel-short` 경고는 **사유가 사라져** 지웠다 — 2026-09-06. 띠 높이가 배정
+  // (옛 `row-channel-short` 경고는 **사유가 사라져** 지웠다 — 2026-09-06. 행 채널 높이가 배정
   //  **결과**라 트랙보다 좁을 수가 없다. 예전엔 높이가 `STACK_GAP` 고정이라 넘칠 수 있었다.)
   recordDeliveryStats({
     planned: deliveryRes.planned,

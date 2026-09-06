@@ -34,11 +34,11 @@ tags: [auto-layout, placement, routing]
 
 원인은 라우터의 실력 부족이 아니라 **예약의 구멍**이다. 현재 파이프라인의 순서는:
 
-1. 채널 폭을 계산해 빈 세로 띠를 예약한다 (`channelPlanner.ts` — [.s-layer-channel-reservation §4](s-layer-channel-reservation.md)).
+1. 채널 폭을 계산해 빈 세로 통로를 예약한다 (`channelPlanner.ts` — [.s-layer-channel-reservation §4](s-layer-channel-reservation.md)).
 2. 머신을 배치하고, 자식→부모 벨트(납품 경로)를 **먼저** 깐다.
 3. 맨 마지막에 갇힌 상자를 테두리로 빼는 벨트(반출 경로)를 깔려고 시도한다.
 
-1단계 예약은 "이 띠에 벨트 N줄이 들어간다"까지만 보장한다. **N줄이 서로 어떻게 배치돼야
+1단계 예약은 "이 채널에 벨트 N줄이 들어간다"까지만 보장한다. **N줄이 서로 어떻게 배치돼야
 전부 성립하는지는 아무도 조율하지 않는다.** 그 결과 2단계에서 먼저 깔린 납품 경로가
 채널의 요지를 차지하고, 3단계의 반출 경로는 탐색([[용어사전#Dijkstra|dijkstra]])을 아무리 잘해도
 지나갈 길 자체가 없어 실패한다 — 상자는 갇힌 채로 남는다.

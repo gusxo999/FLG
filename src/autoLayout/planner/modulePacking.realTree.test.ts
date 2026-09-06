@@ -88,7 +88,7 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
   });
 
   /**
-   * **폭 역전이 y 축에서도 돈다** — 띠 높이가 배정의 **결과**이지 상수가 아니다.
+   * **폭 역전이 y 축에서도 돈다** — 행 채널 높이가 배정의 **결과**이지 상수가 아니다.
    *
    * 예전엔 높이가 `STACK_GAP = 3` 고정이었고, 트랙이 그보다 많으면 그 경로는 계획을 접고
    * 탐색으로 갔다(옛 `rowChannelShort` · `row-channel-short` 경고). 이제 그 높이가 **모듈
@@ -97,8 +97,8 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
    * **수로 못 박지 않는다** — 트랙 수는 트리가 바뀌면 바뀐다. 못 박는 것은 **관계**다:
    * 실제 높이 ≥ 배정이 요구한 높이 ≥ 트랙 수.
    */
-  describe("띠 높이 — 수요에서 유도된다(폭 역전, y 축)", () => {
-    it("모든 띠가 자기 트랙을 담는다 — 옛 `rowChannelShort` 의 구조적 대체", () => {
+  describe("행 채널 높이 — 수요에서 유도된다(폭 역전, y 축)", () => {
+    it("모든 행 채널이 자기 트랙을 담는다 — 옛 `rowChannelShort` 의 구조적 대체", () => {
       expect(pack.rowChannels.length).toBeGreaterThan(0);
       for (const b of pack.rowChannels) {
         const actual = b.bottom - b.top + 1;

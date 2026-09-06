@@ -1,0 +1,64 @@
+# 구간-밖-주행 — 상태와 고유 컨텍스트
+
+> 상태: **승인 대기** (2026-09-06 작성 · 여기까지 코드 변경 0).
+
+**한 문장:** 이 저장소의 자리 장부는 전부 *"줄은 자기가 신고한 구간 안에서만 산다"* 를
+전제한다. 그 전제를 깨는 주행이 **둘** 있고, 그 부분은 **어느 장부에도 없다.**
+
+```
+㉠ 진입 다리        기둥 끝 포트 → 행 채널 트랙 행. 행 채널에는 **가로 구간만** 신고했다
+㉡ 기둥 밖 포트 사슬  기둥 끝 포트가 기둥 밖에 내는 칸들. FaceTable 밖이고 행 채널도 아니다
+```
+
+## 이 폴더의 어휘
+
+```
+구간(span)     그 줄이 장부에 **신고한** 범위. 좌석 행 구간이거나 행 채널의 가로 구간
+구간 밖 주행    실제로 깔리지만 신고에 없는 부분. **이 계획의 대상**
+기둥           머신이 선 열. `FaceTable` 이 아는 전부(행 0 … rowsPerMachine×머신수−1)
+행 채널          모듈 extent **밖**의 가로 통로. `RowChannel`
+```
+
+**기둥 밖 ≠ 행 채널.** `moduleExtent` 는 모든 셀을 감싸므로 기둥 밖 포트 사슬은 **extent 안**이고,
+행 채널은 extent 밖에서 시작한다. 둘 사이에 **낀 자리**가 ㉡ 다.
+
+## 착수 전 반드시 읽을 것
+
+| 무엇 | 왜 |
+|---|---|
+| `planner/module/linkPlanner.ts` — `LinkFaceContext.ends` 주석 | *"이것만 표 밖에 남는다"* — **오늘 ㉡ 을 막는 유일한 것**이고, 낟알이 면당 둘이다 |
+| `planner/module/linkPlanner.ts` — `clusterBeltDepth` 머리말(≈430) | *"행이 안 겹치는 그룹끼리는 같은 depth 를 나눠 쓴다. **다툴 게 없으니 장부도 없다**"* — **깨질 전제의 원문** |
+| `planner/module/linkPlanner.ts` — `portCells` | 기둥 밖 두 칸이 어디서 나오나. **표 밖 행은 걸러진다** |
+| `planner/deliveryRoute.ts` — `buildPlannedChain` 의 `if (g.fromRowChannel) push(s)` | ㉠ 을 그리는 **유일한 한 줄**. 계획에는 이 구간의 자료가 없다 |
+| `planner/rowChannelPlanner.ts` — `RowCrossing` | 행 채널에 신고하는 것이 `{id, side, x1, x2}` 뿐이라는 증거 |
+| `docs/auto-layout/common/layout-models.md` §5 전수표 | #2(A↔A 같은 모듈)가 **이 자리에서 거짓**이다 · #15·#16 이 ㉠ 의 자국 |
+| `tempPlanDocs/셀장부/셀장부.md` §축 4 · 계획 4 | **경계**: 저쪽은 *"등록하는 자리"*, 이쪽은 *"등록할 자료"* |
+| `tempPlanDocs/벨트-레인/벨트-레인.md` ㉣ | ㉡ 이 세 번 막은 그 계획. **A 트랙이 서야 ㉣ 이 선다** |
+| `tempPlanDocs/채널-양보-명세/judgements.md` J-교차 | ⓐ(전순서)는 구현됐다. ⓑ(dogleg)·ⓒ(지하)는 미결 |
+
+## 하지 않는 것
+
+- **세로 채널을 안 건드린다.** 계단꼴·절단선·같은 쪽 판정 그대로.
+- **`FaceTable` 의 행을 물리 행으로 바꾸지 않는다** — 머신 틈(`rowGaps`)이 좌석 순번과
+  물리 행을 가르는 문제는 **같은 축이지만 다른 계획**이다(오늘 실물에선 틈이 0이라 안 문다).
+- **행 채널 안에서 가로선과 세로선을 함께 배정하지 않는다** — 그건 J-교차 ⓑⓒ(dogleg·지하)다.
+  이 계획은 **다리를 자료로 만들고 예약에 싣는 데까지**다.
+- **셀장부의 `Claim` 구조를 앞당기지 않는다.** 그 계획이 서면 여기서 만든 자료가
+  그 장부로 옮겨 간다 — 지금은 **오늘의 예약 경로**에 싣는다.
+- **㉣(합류 포트 분리) 자체는 이 계획 밖이다.** A 트랙이 그 **바닥**을 놓을 뿐이다.
+
+## 공통 전제 (썩는지 감시할 것)
+
+| 전제 | 확인 방법 | 확인일 |
+|---|---|---|
+| `FaceTable` 의 행은 `0 … rowsPerMachine×머신수−1` 뿐이고 그 **밖은 표에 없다** | `faceTable.rowIndex` · `portCells` 의 마지막 `filter` | 2026-09-06 ✔ |
+| `ctx.ends` 가 기둥 밖을 막는 **유일한** 장부다 | `LinkFaceContext.ends` 주석 *"이것만 표 밖에 남는다"* | 2026-09-06 ✔ |
+| `moduleExtent` 가 **모든 셀**을 감싼다 → 기둥 밖 사슬은 extent 안 | `moduleTransform.moduleExtent` 의 `for (const c of mod.cells) mk(...)` | 2026-09-06 ✔ |
+| 행 채널에 신고하는 것은 `{id, side, x1, x2}` 뿐 — **세로가 없다** | `rowChannelPlanner.RowCrossing` | 2026-09-06 ✔ |
+| 진입 다리를 그리는 코드가 **한 줄**이고 계획엔 자료가 없다 | `deliveryRoute.buildPlannedChain` | 2026-09-06 ✔ |
+| 행 채널 높이는 이제 수요에서 유도된다(`max(3, 트랙+2)`)고 **모듈 간격을 민다** | `modulePacking` 3c·4a·4c | 2026-09-06 ✔ |
+| 기준선 = 타입 0 · **기존 실패 2건**(trunkPipe 유체 면) | `npx tsc -p tsconfig.app.json --noEmit` · `npx vitest run` | 2026-09-06 ✔ |
+
+## 실제로 밟은 함정
+
+(착수 후 채운다. 계획서를 지울 때 여기 남은 것만 `docs/` 로 옮긴다.)

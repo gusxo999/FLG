@@ -406,14 +406,14 @@ describe("gap 그룹의 벨트는 gap 안에 있다", () => {
     ],
   } as ModuleInput);
 
-  it("넘친 그룹의 벨트 칸이 두 머신 사이 빈 띠 안에 든다", () => {
+  it("넘친 그룹의 벨트 칸이 두 머신 사이 빈 gap 안에 든다", () => {
     const [m0, m1] = mod.machines;
-    const bandTop = m0.origin.y + m0.size.h; // gap 첫 줄
-    const bandBot = m1.origin.y - 1; // gap 마지막 줄
-    expect(bandBot).toBeGreaterThanOrEqual(bandTop); // gap 이 실제로 열렸다
+    const gapTop = m0.origin.y + m0.size.h; // gap 첫 줄
+    const gapBot = m1.origin.y - 1; // gap 마지막 줄
+    expect(gapBot).toBeGreaterThanOrEqual(gapTop); // gap 이 실제로 열렸다
     for (const c of mod.outputPorts[1].cells) {
-      expect(c.y).toBeGreaterThanOrEqual(bandTop);
-      expect(c.y).toBeLessThanOrEqual(bandBot);
+      expect(c.y).toBeGreaterThanOrEqual(gapTop);
+      expect(c.y).toBeLessThanOrEqual(gapBot);
     }
   });
 
