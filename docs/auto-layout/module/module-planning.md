@@ -308,24 +308,32 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 포트 y      ─→ 채널 트랙 수 ─→ 채널 폭 ─→ x 좌표
 ```
 
-**되먹임** — 둘뿐이고, 그래서 `generateModule` 이 세 번 돈다.
+**되먹임 — 지금은 0이다.** `generateModule` 은 트리마다 **한 번**만 돈다
+(`modulePacking.ts` 의 `gen` 호출부가 하나 — `pass1`).
+
+> **2026-09-04 정정.** 이 절은 *"둘뿐이고, 그래서 `generateModule` 이 세 번 돈다"* 라고
+> 적고 있었다. **고리 둘이 각각 닫혔는데 이 문서가 안 따라왔다.**
 
 ```
-A  gen ─→ moduleExtent ─→ tidy-tree topY ─→ lineEnds ─→ **gen**   (2026-07-11~)
-B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ **gen**         (2026-08-26~)
+A  gen ─→ moduleExtent ─→ tidy-tree topY ─→ lineEnds ─→ gen   (2026-07-11~)
+   닫힘: 끝 선호를 P0 의 **형제 순번**으로 확정 → `gen` 보다 앞이다 (`modulePacking.ts:718`)
+
+B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ gen         (2026-08-26~)
+   닫힘: 못을 만나면 **배정 안에서** 그 자리에 쪼개고 토막을 이어 앉힌다([seatLinkEdge]) —
+         밖에서 `linkCache` 를 고치고 1차를 다시 만들지 않는다 (`modulePacking.ts:633`)
 ```
 
-**둘 다 `gen` 으로 닫힌다.** 파이프라인의 다른 모든 단계는 **정확히 한 번씩** 불린다
-(`packModuleTree` · `routeDeliveryRoutes` · `rePathToPerimeter` · `planChannelGeometry` ·
-`insertingPlanner` · `allocateFlows` · `chooseFluidTrunkPlan` 전부 호출부 하나).
+**그래서 파이프라인의 모든 단계가 정확히 한 번씩 불린다**(`packModuleTree` ·
+`routeDeliveryRoutes` · `rePathToPerimeter` · `planChannelGeometry` · `allocateFlows` ·
+`chooseFluidTrunkPlan` 전부 호출부 하나).
 
-> **A 가 사다리보다 6주 먼저다.** *"한 번에 못 정한다"* 는 사다리가 만든 사정이 아니라
-> **이 코드의 원래 사실**이고, 사다리는 **둘째 고리**를 얹었다.
+> **고리 0은 자산이고, 새 능력을 넣을 때 지켜야 하는 값이다.** 자리가 모자랄 때 **형태를
+> 배정 뒤에 고치는** 설계는 이 값을 0 → 1 로 되돌린다 — 지금 그 자리에 서 있는 것이
+> 격자 클러스터다(`tempPlanDocs/격자-클러스터/`).
 >
-> ~~A 는 끝 선택이 높이를 안 바꾸면 고리가 아니다~~ — **틀렸다**(2026-08-29 정정).
-> 값이 안 바뀌는 것과 고리가 없는 것은 다른 말이다. `gen(:597)` 의 인자 `lineEnds` 가
-> `gen(:431)` 의 출력에서 유도되는 이상 **고리는 있다.** 오늘 값이 같더라도, 내일
-> `portEnd` 가 높이에 영향을 주기 시작하면 **아무도 모르는 채로 물기 시작한다.**
+> **판정 규칙은 그대로다**(2026-08-29): ~~값이 안 바뀌면 고리가 아니다~~ 는 **틀렸다.**
+> 값이 같아도 호출 그래프에 고리가 있으면 고리다. 그래서 A 를 실제로 없앤 방법도
+> *"값이 같다"* 가 아니라 **확정 시점을 `gen` 앞으로 옮긴 것**이었다.
 
 ### 여기서 드러난 어긋남 둘
 

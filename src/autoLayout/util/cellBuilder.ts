@@ -59,6 +59,35 @@ export function makeBeltCell(
 }
 
 /**
+ * 지하벨트 1셀 emit. `direction` = **벨트 흐름 방향**(= 터널 진행 방향) — 입구·출구가 같은
+ * 값을 쓴다(일반 벨트의 "다음 칸 방향"과 같은 축이라 회전도 함께 돈다).
+ *
+ * `undergroundType` 이 `"input"` 인데 사거리 안에 짝(출구)이 없으면 **터널이 안 뚫린다** —
+ * 물건이 그 칸에서 멈춘다. 벨트 흐름의 **종착**([resolveBeltTermini](../execution/module/beltTerminus.ts))이
+ * 그 성질을 쓴다: 종착은 어느 이웃으로도 토해내지 않아야 하는데, 일반 벨트는 반드시 한
+ * 방향으로 토해내기 때문이다.
+ */
+export function makeUndergroundBeltCell(
+  cell: { x: number; y: number },
+  direction: Direction,
+  undergroundType: "input" | "output",
+  undergroundBeltEntityName: string,
+  pair: PortPair,
+): PlacedCell {
+  const grid: GridCell = {
+    ...createEmptyCell(),
+    entityId: `r-ubelt-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
+    entityName: undergroundBeltEntityName,
+    entityType: EntityType.UndergroundBelt,
+    direction,
+    tileOffset: { x: 0, y: 0 },
+    isOrigin: true,
+    undergroundType,
+  };
+  return { x: cell.x, y: cell.y, cell: grid };
+}
+
+/**
  * 파이프 1셀 emit. **방향이 없다** — 파이프는 이웃한 파이프/유체상자와 자동으로 이어지고,
  * 벨트처럼 흐름 방향을 갖지 않는다(그래서 `direction: 0` 고정). 인서터도 필요 없다.
  * → docs/auto-layout-wizard.trunk-pipe.md §1

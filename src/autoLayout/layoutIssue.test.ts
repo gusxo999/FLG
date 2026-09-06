@@ -65,7 +65,7 @@ const OK_DATA: GameData = {
 const input = (targetRecipe = 'target-item'): ContainerWizardInput => ({
   targetRecipe,
   countMode: 'min',
-  externalIngredients: new Set(['ore']),
+  internalIngredients: new Set(['sub-a', 'sub-b']), // 둘 다 펼친다 — ore 는 외부 공급
   selectedMachines: ['assembler'],
   selectedInserters: ['inserter'],
   selectedBelts: ['transport-belt'],

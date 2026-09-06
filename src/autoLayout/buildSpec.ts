@@ -49,6 +49,22 @@ export interface SpecBelt {
   throughput: number;
 }
 
+/**
+ * 사용자가 고른 **지하벨트 하나** — 이름 · 저울(초당 운반량) · 사거리.
+ *
+ * 이름만 나르지 않는 이유는 [SpecBelt] 와 같다(*"이름과 저울은 함께 온다"* — 2026-08-24).
+ * 여기선 저울이 **가장 느린 것을 고르는 기준**이고(종착은 나르는 일이 없으니 싼 것이 낫다),
+ * 사거리는 **장부에 적을 값**이다 — 짝 없는 입구도 그만큼을 예약해야 남이 그 구간에 출구를
+ * 세워 **터널이 뚫려 버리는** 일이 없다([resolveBeltTermini](./execution/module/beltTerminus.ts)).
+ */
+export interface SpecUndergroundBelt {
+  entityName: string;
+  /** 초당 운반량(items/sec) — 느린 것을 고르는 저울. */
+  throughput: number;
+  /** `max_underground_distance` — 입/출구 좌표 차이 상한(= 예약할 사거리). */
+  maxDistance: number;
+}
+
 export interface BuildSpec {
   /** 주 벨트(첫 선택 또는 지정). 벨트를 하나만 묻는 옛 소비처용. */
   beltEntityName: string;
@@ -84,6 +100,14 @@ export interface BuildSpec {
   pipeEntityName: string;
   undergroundPipeEntityName?: string;
   undergroundBeltEntityName?: string;
+  /**
+   * 고른 지하벨트 **전부** — 처리량 **오름차순**(느린 것부터). 사거리·처리량을 게임데이터에서
+   * 확인한 것만 담는다(둘 중 하나라도 없으면 뺀다 — 지어내지 않는다).
+   *
+   * `undergroundBeltEntityName` 과 자리가 다르다: 저쪽은 **납품 경로가 점프에 쓸 하나**이고,
+   * 이쪽은 **고를 수 있는 전부**다(벨트가 `beltEntityName` ↔ `belts` 로 갈린 것과 같은 축).
+   */
+  undergroundBelts: SpecUndergroundBelt[];
   /** 지하파이프 입출구 좌표 차이 한계. undefined / 0 이면 **점프 비활성**. */
   pipeMaxUndergroundDistance?: number;
   /** 지하벨트 입출구 좌표 차이 한계. undefined / 0 이면 **점프 비활성**. */
@@ -240,6 +264,20 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
   const undergroundPipeEntityName = input.selectedUndergroundPipes[0];
   const undergroundBeltEntityName = input.selectedUndergroundBelts[0];
 
+  // 고른 지하벨트 전부 → **느린 것부터**. 종착([resolveBeltTermini])이 가장 느린 것을 쓴다:
+  // 종착은 아무것도 나르지 않으니 빠른 티어를 태울 이유가 없다(사용자 규칙 2026-09-06).
+  // 처리량이나 사거리를 모르는 것은 **뺀다** — 사거리를 모르면 장부에 적을 값이 없고,
+  // 값을 지어내면 남의 출구가 그 안에 서서 터널이 조용히 뚫린다.
+  const undergroundBelts: SpecUndergroundBelt[] = [];
+  for (const entityName of input.selectedUndergroundBelts) {
+    const entity = entityMap.get(entityName);
+    const throughput = beltThroughput(entity);
+    const maxDistance = entity?.max_underground_distance ?? 0;
+    if (throughput <= 0 || maxDistance <= 0) continue;
+    undergroundBelts.push({ entityName, throughput, maxDistance });
+  }
+  undergroundBelts.sort((a, b) => a.throughput - b.throughput);
+
   return {
     beltEntityName,
     belts,
@@ -249,6 +287,7 @@ export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
     pipeEntityName: "pipe",
     undergroundPipeEntityName,
     undergroundBeltEntityName,
+    undergroundBelts,
     pipeMaxUndergroundDistance: undergroundPipeEntityName
       ? pipeUndergroundDistance(entityMap.get(undergroundPipeEntityName))
       : 0,

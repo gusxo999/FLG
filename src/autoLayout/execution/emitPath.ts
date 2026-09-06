@@ -20,7 +20,7 @@ import type {
   UndergroundCorridor,
 } from '../containerModel';
 import { vectorToDirection, PIPE_BLOCK_GROUP } from '../util/helper';
-import { makeBeltCell } from '../util/cellBuilder';
+import { makeBeltCell, makeUndergroundBeltCell } from '../util/cellBuilder';
 // 타입 전용 — 런타임 간선이 아니므로 containerRouting 과 순환이 되지 않는다.
 import type { DijkstraResult, JumpEdge } from '../planner/containerRouting';
 
@@ -111,25 +111,6 @@ export function emitItemPath(
   return { placed, corridors };
 }
 
-function makeUndergroundBeltCell(
-  cell: { x: number; y: number },
-  direction: Direction,
-  undergroundType: 'input' | 'output',
-  undergroundBeltEntityName: string,
-  pair: PortPair,
-): PlacedCell {
-  const grid: GridCell = {
-    ...createEmptyCell(),
-    entityId: `r-ubelt-${pair.producer.containerId}-${pair.consumer.containerId}-${cell.x},${cell.y}`,
-    entityName: undergroundBeltEntityName,
-    entityType: EntityType.UndergroundBelt,
-    direction,
-    tileOffset: { x: 0, y: 0 },
-    isOrigin: true,
-    undergroundType,
-  };
-  return { x: cell.x, y: cell.y, cell: grid };
-}
 /**
  * Dijkstra 결과를 fluid 운반체 셀로 변환.
  *
@@ -243,12 +224,31 @@ export function corridorFromJump(
   kind: UndergroundCorridor['kind'],
   blockGroup: string,
 ): UndergroundCorridor {
-  const toX = fromX + edge.dx * edge.k;
-  const toY = fromY + edge.dy * edge.k;
-  const axis: 'h' | 'v' = edge.dy === 0 ? 'h' : 'v';
-  const line = axis === 'h' ? fromY : fromX;
-  const a = axis === 'h' ? fromX : fromY;
-  const b = axis === 'h' ? toX : toY;
+  return corridorBetween(
+    { x: fromX, y: fromY },
+    { x: fromX + edge.dx * edge.k, y: fromY + edge.dy * edge.k },
+    kind,
+    blockGroup,
+  );
+}
+
+/**
+ * 축 정렬된 두 칸 사이의 corridor. **점프가 아직 없어도 부른다** — 짝 없는 지하 입구가
+ * *"여기부터 여기까지는 내 사거리다"* 를 선언할 때가 그렇다
+ * ([resolveBeltTermini](module/beltTerminus.ts) 의 종착 · [moduleWizard] 가 셀에서 되읽는다).
+ *
+ * 두 점이 축 정렬이 아니면 가로로 본다 — 호출자가 언제나 축 위의 두 점을 준다.
+ */
+export function corridorBetween(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  kind: UndergroundCorridor['kind'],
+  blockGroup: string,
+): UndergroundCorridor {
+  const axis: 'h' | 'v' = from.y === to.y ? 'h' : 'v';
+  const line = axis === 'h' ? from.y : from.x;
+  const a = axis === 'h' ? from.x : from.y;
+  const b = axis === 'h' ? to.x : to.y;
   const range: [number, number] = a < b ? [a, b] : [b, a];
   return { axis, line, range, blockGroup, kind };
 }

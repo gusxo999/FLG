@@ -124,3 +124,95 @@ export function planBundles(input: DepthBudgetInput): Map<string, number> {
   }
   return g;
 }
+
+/**
+ * 링크 줄이 앉으려면 **무엇을 풀어야 하나** — 눈금 넷. 위에서 아래로 갈수록 비싸다.
+ *
+ * ```
+ * "free"            선호 면에 관통으로 다 앉는다      면마다 L_f ≤ R_f
+ * "opposite-face"   두 면을 다 써야 들어간다         ΣL ≤ ΣR
+ * "direct"          두 면을 다 써도 모자란다         면마다 R_f ≥ 1
+ * "depth-starved"   깊이가 아예 없다                R_f = 0 인 면에 줄이 있다
+ * ```
+ *
+ * **`"free"` 가 아니면 처방은 하나다 — `g = 1`.** 위 넷은 *모자란 정도*이지 처방이 아니다
+ * (아래 *"눈금은 비용 순서가 아니다"*).
+ *
+ * ## 이 함수가 답하는 질문
+ *
+ * *"면이 얼마나 넉넉해야 하고 아이템이 몇 종부터 막히나."* 그 답은 **재는 것이 아니라
+ * 유도되는 것**이다 — `L_f`(그 면이 받는 링크 줄 수 = 트리 안에서 만드는 재료 종류 수)와
+ * `R_f`(그 면의 깊이 수 = |reach 종류|)는 **둘 다 배정보다 먼저 아는 입력**이라, 앉혀 보지
+ * 않고 판정이 선다. `R = 2` 인 오늘의 게임데이터에서는 **재료 3종부터** 막힌다.
+ *
+ * > **오늘 배치의 분포로 이 기준을 세우지 않는다** — 넘치는 모듈은 **실패해서 산출물에
+ * > 없다.** 성공한 배치를 아무리 세도 안 나온다(같은 함정을 `격자-클러스터` 가
+ * > 2026-09-04 에 밟고 철회했다). 실측은 *유도한 기준이 그 실패를 재현하는지* 보는
+ * > 회귀로만 쓴다.
+ *
+ * ## 눈금은 **비용 순서가 아니다** (2026-09-04 정정)
+ *
+ * 초판은 *"`"opposite-face"` 가 `"direct"` 보다 싸다 — 관통인 채로 옮기니 토막이 안 는다"*
+ * 로 유도했다. **그 전제가 틀렸다: 관통인 채로는 못 옮긴다.**
+ *
+ * ```
+ * 관통 벨트가 반대 면에서 출발해 머신 여러 대를 들르고 돌아오는 형태 = **미구현**
+ *   (행 채널 · gap 트렁크 형태가 서야 가능하다 — 사용자 확정 2026-09-04)
+ * gap 도 같은 이유로 `machinesOn !== 1` 을 거절한다  ← **같은 조건이 이미 코드에 있다**
+ * ```
+ *
+ * **그러므로 넘침의 처방은 언제나 `g = 1` 부터다.** 자리를 늘리는 두 수단(gap · 반대 면)이
+ * **둘 다 `g=1` 을 요구**하기 때문이다. 그리고 그 둘 사이의 순서는 **gap 이 먼저**다 —
+ * gap 은 모듈을 키울 뿐이지만 반대 면은 납품 경로가 빙 돌아 **틀릴 수 있다**
+ * (`machine-link.md` 규칙 3). **틀리는 것보다 커지는 것이 낫다.**
+ *
+ * 그래서 아래 넷은 *"무엇부터 사나"* 가 아니라 **"얼마나 모자라나"** 의 눈금이다:
+ * `"opposite-face"` 는 *"선호 면 하나로는 부족하고 두 면을 다 써야 한다"* 를 뜻할 뿐,
+ * `"direct"` 보다 싼 처방이라는 뜻이 아니다.
+ *
+ * ## `"direct"` 가 깊이를 안 막는 이유
+ *
+ * `g=1` 줄들은 **면당 공용 깊이 하나**를 함께 쓰므로([planBundles] 의 부등식), 줄이 몇이든
+ * 깊이 하나면 담긴다. 그래서 다이렉트까지 내려가면 **깊이는 더 이상 한계가 아니고 좌석이
+ * 한계가 된다**(`Σ_j a_j(m) ≤ h` — [tryLinkFace] 의 몫이다). 이 함수는 좌석을 안 본다.
+ *
+ * ## 오늘 코드는 `"free"` 밖에 못 한다
+ *
+ * 링크의 넘침 경로는 반대 옆면을 안 본다(`spillPair` 의 `OUT`/`IN`), 그리고 링크에 `g` 를
+ * 주는 호출부가 없다(`edgeLinkGroups(…, bundle?)` 는 언제나 비어 온다). **그래서 이
+ * 함수가 `"free"` 가 아닌 값을 내는 모듈은 오늘 통째로 실패한다** — 그 사실이 곧 진단이다.
+ *
+ * **이 함수가 `"free"` 가 아닌 값을 내기 시작하면** `tempPlanDocs/부분-링크/judgements.md`
+ * 의 **J14**(손잡이 기본값)를 본다 — *무엇을 자동으로 켤 것인가*의 근거가 거기다.
+ * 분포는 `flg.report()` 의 **링크눈금** 줄이 낸다.
+ *
+ * > **"사다리" 라고 부르지 않는다.** 그 낱말은 이미 **링크 토막내기**(`LadderRung` —
+ * > 구간막힘 1단 · 포트막힘 2단)의 것이다. 이건 *무엇을 내주나*의 축이라 다른 것이다.
+ */
+export type LinkDepthNeed = "free" | "opposite-face" | "direct" | "depth-starved";
+
+export interface LinkDepthInput {
+  /** 그 면이 받는 **링크 줄 수** `L_f` — 품목 하나가 한 줄이다(토막 수가 아니다). */
+  readonly linesOf: (face: BudgetFace) => number;
+  /** 그 면의 깊이 수 `R_f` — [clusterBeltDepthsOf] 가 낸다(유체 면은 깎인 값). */
+  readonly depthsOf: (face: BudgetFace) => number;
+}
+
+const FACES = ["W", "E"] as const;
+
+export function linkDepthNeed(input: LinkDepthInput): LinkDepthNeed {
+  const nonNeg = (n: number): number => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
+  const L = (f: BudgetFace): number => nonNeg(input.linesOf(f));
+  const R = (f: BudgetFace): number => nonNeg(input.depthsOf(f));
+
+  // ① 면마다 관통이 다 들어가나 — 오늘의 배정이 실제로 하는 일이다.
+  if (FACES.every((f) => L(f) <= R(f))) return "free";
+  // ② 면을 넘나들 수 있으면 관통인 채로 앉나. 넘나듦은 **아직 없다**(spillPair) — 그래서
+  //    이 값은 *"반대 면을 열면 풀린다"* 는 진단이지 오늘의 사실이 아니다.
+  if (FACES.reduce((n, f) => n + L(f), 0) <= FACES.reduce((n, f) => n + R(f), 0)) {
+    return "opposite-face";
+  }
+  // ③ 줄이 있는 면마다 공용 깊이 하나가 있으면, 다이렉트로 내려서 앉는다.
+  if (FACES.every((f) => L(f) === 0 || R(f) >= 1)) return "direct";
+  return "depth-starved";
+}

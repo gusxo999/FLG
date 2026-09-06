@@ -38,6 +38,9 @@ import type {
   TrunkContext,
 } from "../../module/clusterModule";
 import { flowEnd, type LinkSeats } from "../../planner/module/linkPlanner";
+// 끝 칸의 **방향**은 여기서 못 정한다 — 모듈의 벨트가 다 깔린 뒤라야 이웃을 안다.
+// 여기선 등록만 하고 [resolveBeltTermini] 가 마무리한다(그 파일 머리말이 근거다).
+import type { BeltTerminus } from "./beltTerminus";
 // trunkEndKey 는 계획 산출물(트렁크 종착 키)이라 clusterModule 소유 — 런타임 import.
 import { trunkEndKey } from "../../module/clusterModule";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
@@ -125,6 +128,15 @@ function pushLinkPortEnd(o: {
   occupancy: Set<string>;
   ports: ModulePort[];
   /**
+   * **이 모듈이 깐 벨트 칸이 무슨 품목을 나르나** — `cellKey` → 품목([GeneratedModule] 이
+   * 파이프에 대해 `pipeCells` 로 하는 것과 같은 자리다. 셀에는 품목이 안 실려 있어서,
+   * **놓는 쪽이 적어 두지 않으면 아무도 되찾을 수 없다.**)
+   *
+   * 소비처는 하나다 — [resolveBeltTermini] 가 *"끝 칸이 저쪽을 보면 남의 품목과 합류하나"*
+   * 를 여기서 묻는다. 모든 모듈 벨트가 이 함수를 지나므로 기록도 여기 한 곳이다.
+   */
+  beltItems: Map<string, string>;
+  /**
    * **레인 공유 — 무엇을 다시 놓지 않나.** 둘은 따로 온다:
    * ```
    * reuseBelt   벨트 셀이 첫 줄의 것이다        집는 쪽(입력) — 벨트가 **하나**다
@@ -149,7 +161,10 @@ function pushLinkPortEnd(o: {
   // 못 찾는다.**
   if (!o.reuseBelt) {
     o.cells.push(...o.beltCells);
-    for (const c of o.beltCells) o.occupancy.add(cellKey(c.x, c.y));
+    for (const c of o.beltCells) {
+      o.occupancy.add(cellKey(c.x, c.y));
+      o.beltItems.set(cellKey(c.x, c.y), o.line.name);
+    }
   }
   if (!o.reusePort) {
     o.cells.push(
@@ -197,8 +212,10 @@ export function emitOutputLinks(args: {
   chests: Container[];
   outputPorts: ModulePort[];
   unroutedLines: IoLine[];
+  /** 깐 벨트의 품목 장부 — [pushLinkPortEnd] 가 채운다. */
+  beltItems: Map<string, string>;
 }): void {
-  const { groups, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines } = args;
+  const { groups, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines, beltItems } = args;
   /**
    * **출구 합류** — 먼저 나온 줄(`sharedLineId` → 그 줄의 합류 칸·포트).
    *
@@ -442,7 +459,7 @@ export function emitOutputLinks(args: {
         ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: trunkStart.y }
         : { ...trunkStart },
       clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
-      cells, chests, occupancy, ports: outputPorts,
+      cells, chests, occupancy, ports: outputPorts, beltItems,
       // 벨트는 **자기 것**이라 늘 놓는다(싣는 쪽은 벨트가 둘이다). 포트만 나눠 쓴다.
       reusePort: followed !== undefined, sharedLineId: group.sharedLineId,
     });
@@ -475,8 +492,12 @@ export function emitInputLinks(args: {
   chests: Container[];
   inputPorts: ModulePort[];
   unroutedLines: IoLine[];
+  /** 깐 벨트의 품목 장부 — [pushLinkPortEnd] 가 채운다. */
+  beltItems: Map<string, string>;
+  /** **흐름의 끝 칸** — 여기선 등록만 한다([resolveBeltTermini] 가 방향을 정한다). */
+  termini: BeltTerminus[];
 }): void {
-  const { groups, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines } = args;
+  const { groups, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines, beltItems, termini } = args;
   /**
    * **레인 공유** — 이미 깔린 물리 벨트(`sharedLineId` → 첫 줄이 놓은 것).
    *
@@ -562,11 +583,18 @@ export function emitInputLinks(args: {
     for (let d = exitDepth; d > belt.d; d--)
       path.push({ at: faceCell(geomExt, face, d, ownEast), v: inward });
     // ③ **수집** — 자기 좌석 구간을 덮으며 탭에 나눠 준다. 먼 쪽 끝 칸은 면을 따라 더 흐르면
-    // **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다 — 그 칸은 이 그룹 자신의
-    // 좌석(인서터)이라 언제나 안전하다.
-    // 범위는 포트 방향과 무관하다 — 좌석 전체를 덮고, **먼 쪽 끝**에서만 머신 쪽으로 꺾는다.
+    // **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다.
+    //
+    // **여기서 놓는 머신 쪽은 기본값일 뿐이다**(2026-09-06). 옛 주석은 *"그 칸은 이 그룹
+    // 자신의 좌석이라 언제나 안전하다"* 라고 적었는데 그건 벨트가 `d2` 일 때만 참이다 —
+    // 긴팔로 `d3` 에 앉으면 머신 쪽은 `d2` 이고 거기로 **남의 줄이 지나갈 수 있다.**
+    // 이웃을 아는 시점은 모듈의 벨트가 다 깔린 뒤라, 최종 방향은 [resolveBeltTermini] 가
+    // 정한다(아래 `termini.push`).
+    // 범위는 포트 방향과 무관하다 — 좌석 전체를 덮고, **먼 쪽 끝**에서만 꺾는다.
+    let farIdx = -1;
     for (let t = Math.min(topT, botT); t <= Math.max(topT, botT); t++) {
       const far = isGap ? t === topT : t === botT;
+      if (far) farIdx = path.length;
       path.push({ at: faceCell(geomExt, face, belt.d, t), v: far ? inward : beltDirV });
     }
 
@@ -601,6 +629,12 @@ export function emitInputLinks(args: {
           // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
           makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
         );
+    // **끝 칸은 물리 벨트당 하나다** — 짝의 둘째 줄(`reuse`)은 첫 줄이 이미 등록했다.
+    // 두 번 등록하면 같은 칸을 두 번 판정하고, 종착이면 **지하 입구를 두 번 세운다.**
+    if (!reuse && farIdx >= 0)
+      termini.push({
+        cell: beltCells[farIdx], item: line.name, flow: beltDirV, inward, pair: portPair,
+      });
 
     for (const s of seats) {
       for (const t of s.rows) {
@@ -622,7 +656,7 @@ export function emitInputLinks(args: {
         ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
         : { ...beltTop },
       clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
-      cells, chests, occupancy, ports: inputPorts,
+      cells, chests, occupancy, ports: inputPorts, beltItems,
       reuseBelt: reuse !== undefined, reusePort: reuse !== undefined,
       sharedLineId: group.sharedLineId,
     });

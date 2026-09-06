@@ -68,13 +68,6 @@ export interface RowChannelCounters {
    * 0이면 행 채널이 이 트리에 필요 없다.
    */
   needs: ReadonlyArray<string>;
-  /**
-   * **띠가 모자라 자리를 못 준 끝들.**
-   *
-   * 비어 있는 것이 정상이다. 비지 않으면 그 경로는 띠를 못 쓰고 탐색으로 간다 —
-   * 그리고 **화면에 「체인이 막혔다」로 나와 진짜 사유(띠가 좁다)가 가려진다.**
-   */
-  short: ReadonlyArray<string>;
 }
 
 /**
@@ -191,6 +184,29 @@ const freshFaceDepths = (): FaceDepthCounters => ({
   shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
+/**
+ * **벨트 흐름의 끝 칸** — [resolveBeltTermini](../autoLayout/execution/module/beltTerminus.ts)
+ * 가 무엇을 골랐나.
+ *
+ * 세는 이유: 끝 칸의 기본값(머신 쪽으로 꺾기)은 벨트가 `d2` 일 때만 *"자기 좌석이라 언제나
+ * 안전"* 하다. 긴팔이 열려 `d3` 이 쓰이기 시작하면 그 칸이 **남의 벨트**일 수 있다 —
+ * `turned` 가 0 이 아니면 그 일이 실제로 일어나고 있다는 뜻이고, `underground` 는 세 방향이
+ * 전부 막혀 종착까지 간 수다.
+ */
+export interface BeltTerminusCounters {
+  /** 끝 칸 수(= 입력 줄이 깐 물리 벨트 수). */
+  ends: number;
+  /** 기본 방향(머신 쪽)이 남의 품목 벨트라 **다른 방향으로 돌린** 수. */
+  turned: number;
+  /** 세 방향이 다 막혀 **지하벨트 종착**을 세운 수. */
+  underground: number;
+  /**
+   * 종착도 못 세워 **합류한 채로 남긴** 수 — 0 이 아니면 **지하벨트를 안 골랐다**는 뜻이고,
+   * 그만큼 화면에 `belt-terminus-merge` 경고가 뜬다.
+   */
+  merged: number;
+}
+
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
@@ -219,11 +235,17 @@ export interface RunStats {
    * (*"자격을 통과하는 쌍이 한 건도 없다"* 는 그 기능을 지을 이유가 없다는 뜻이다).
    */
   laneShare: LaneShareCounters;
+  /** 벨트 끝 칸. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이다(위 주석). */
+  beltTermini: BeltTerminusCounters;
 }
+
+const freshBeltTermini = (): BeltTerminusCounters => ({
+  ends: 0, turned: 0, underground: 0, merged: 0,
+});
 
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
-  faceDepths: freshFaceDepths(), laneShare: freshLaneShare(),
+  faceDepths: freshFaceDepths(), laneShare: freshLaneShare(), beltTermini: freshBeltTermini(),
 });
 
 let current: RunStats = fresh();
@@ -247,6 +269,15 @@ export function recordLaneUnshare(why: "shape" | "seats"): void {
 /** 방출이 첫 줄의 포트를 다시 썼다 — **셀까지 간 합류**. `emitOutputLinks` 가 부른다. */
 export function recordLaneMerge(): void {
   current.laneShare.merged += 1;
+}
+
+/**
+ * 끝 칸 하나의 결말 — [resolveBeltTermini] 가 칸마다 한 번 부른다.
+ * `kept` 는 오늘까지의 동작(머신 쪽)과 같은 답이 나온 경우다.
+ */
+export function recordBeltTerminus(outcome: "kept" | "turned" | "underground" | "merged"): void {
+  current.beltTermini.ends += 1;
+  if (outcome !== "kept") current.beltTermini[outcome] += 1;
 }
 
 export function recordDeliveryStats(c: DeliveryCounters): void {
@@ -298,10 +329,11 @@ export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
  */
 export function resetFaceDepthStats(): void {
   current.faceDepths = freshFaceDepths();
+  current.beltTermini = freshBeltTermini(); // 끝 칸도 방출이 센다 — 같은 이유로 함께 비운다
 }
 
 export function recordRowChannelStats(c: RowChannelCounters): void {
-  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs], short: [...c.short] };
+  current.rowChannels = { count: c.count, bands: [...c.bands], needs: [...c.needs] };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -313,6 +345,7 @@ export function readRunStats(): RunStats {
   return {
     startedAt: current.startedAt,
     laneShare: { ...current.laneShare },
+    beltTermini: { ...current.beltTermini },
     beltForms: current.beltForms ? { ...current.beltForms } : null,
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter
@@ -323,7 +356,6 @@ export function readRunStats(): RunStats {
           ...current.rowChannels,
           bands: [...current.rowChannels.bands],
           needs: [...current.rowChannels.needs],
-          short: [...current.rowChannels.short],
         }
       : null,
     faceDepths: {

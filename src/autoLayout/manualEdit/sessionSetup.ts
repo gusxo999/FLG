@@ -46,7 +46,7 @@
       targetRecipe: props.targetRecipe,
       countMode:
         props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
-      externalIngredients: props.externalIngredients,
+      internalIngredients: props.internalIngredients,
       recipeOverrides: props.recipeOverrides,
       selectedMachines: Array.from(props.selectedMachines),
       selectedInserters: Array.from(props.selectedInserters),

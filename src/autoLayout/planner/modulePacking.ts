@@ -21,7 +21,7 @@ import type { SpecInserter } from "../buildSpec";
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
 import { laneCapOfTier } from "../beltThroughput";
-import { fitRowChannel, planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
+import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
 import {
   planChannelGeometry,
   type ChannelGeometryPlan,
@@ -56,7 +56,6 @@ export { moduleExtent } from "../module/moduleTransform";
 
 /** 채널 폭 하한(셀). 단일 납품 경로(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
 const MODULE_CHANNEL_MIN = 4;
-const STACK_GAP = 3; // tidy-tree 서브트리 간격 + 4b 겹침 스윕 하한
 
 /**
  * **행 채널 하나** — 같은 깊이에서 세로로 이웃한 두 모듈 사이의 빈 가로 띠.
@@ -97,13 +96,13 @@ export interface RowChannelBand {
   /** 아래 모듈 id. `marginS` 이면 없다. */
   below?: string;
   /**
-   * 이 띠가 **먹어야 하는** 높이 — 통과 경로에서 유도된다(폭 역전, [planRowChannel]).
+   * 이 띠의 **높이** — 통과 경로에서 유도된다(폭 역전, [planRowChannel]).
    *
-   * `bottom - top + 1`(실제 높이)과 **다를 수 있다.** 실제 높이는 `STACK_GAP` 상수로
-   * 이미 정해졌고, 이 값은 *"수요대로면 얼마여야 하나"* 다. 둘이 갈리면 그만큼
-   * **띠가 모자라다**는 뜻이고, 그 조정은 순환 때문에 Step 3(환승, 두 패스)의 일이다.
+   * 2026-09-06 이전엔 `wantHeight` 라는 이름이었고 *"수요대로면 얼마여야 하나"* 를 **보고만**
+   * 했다. 실제 높이는 `STACK_GAP` 상수가 정했고, 둘이 갈리면 그만큼 띠가 모자랐다.
+   * 이제 이 값이 **모듈 사이 간격을 정한다** — 갈릴 수가 없다.
    */
-  wantHeight: number;
+  height: number;
   /**
    * 이 띠를 지나는 경로 id → **트랙 index**(띠 안의 몇 번째 행). 수요가 없으면 없다.
    * 실제 y 는 `top + track` 이다 — 폭이 확정된 뒤에.
@@ -143,6 +142,12 @@ export interface PackConfig {
    * 거절 → 다이렉트).
    */
   belts?: ModuleInput["belts"];
+  /**
+   * 고를 수 있는 지하벨트 전부([BuildSpec.undergroundBelts](../buildSpec.ts)) — 모듈이
+   * **벨트 종착**([resolveBeltTermini](../execution/module/beltTerminus.ts))에 쓴다.
+   * `belts` 와 같은 자리(전역 선택)다.
+   */
+  undergroundBelts?: ModuleInput["undergroundBelts"];
   /** **고른 인서터 전부** — reach 별 하나씩. `belts` 와 같은 자리(전역 선택)다(`docs/용어사전.md §BuildSpec`). */
   inserters: SpecInserter[];
   /**
@@ -323,13 +328,6 @@ export interface PackResult {
    * 진단(`flg.report()`)이 이 수를 읽어 착수 근거로 쓴다.
    */
   rowChannelNeeds: ReadonlyArray<{ id: string; nodeId: string; depth: number; portY: number; face: string }>;
-  /**
-   * **띠가 모자라 자리를 못 준 끝들** — 비어 있는 것이 정상이다.
-   *
-   * 비지 않으면 그 경로는 계획을 접고 탐색으로 간다. 계획서 Step 3 의 관문이 *"이 배열이
-   * 언제나 비어 있다"* 이므로, 화면에 안 띄우면 관문을 셀 수 없다.
-   */
-  rowChannelShort: ReadonlyArray<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -714,86 +712,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //  그 자리에서 쪼개고 토막을 이어 앉힌다. `linkCache` 를 밖에서 고치고 1차를 통째로
   //  다시 만들던 자리가 사라졌다 = **되먹임 B 제거**
 
-  // 2) tidy-tree(RT) 세로 배치 — 부모를 자식들 중앙에(Reingold–Tilford 풍). 옛 id-stack
-  //    preview 대체. 6/13 측정상 무용했으나(그땐 채널 없어 납품 경로=raw 거리), 채널 폭(piece 5)이
-  //    부모↔자식 근접을 보상하므로 복원 — 부모를 자식 곁에 두면 교차 구간↓→트랙↓→폭↓.
-  const heightOf = (id: string): number => moduleExtent(pass1.get(id)!).h;
-  const topY = new Map<string, number>();
-  const cursor = { y: 0 };
-  const layoutY = (id: string): number => {
-    const kids = childIdsByParent.get(id) ?? [];
-    if (kids.length === 0) {
-      const top = cursor.y;
-      topY.set(id, top);
-      cursor.y = top + heightOf(id) + STACK_GAP;
-      return top + heightOf(id) / 2;
-    }
-    const centers = kids.map(layoutY);
-    const center = (centers[0] + centers[centers.length - 1]) / 2;
-    topY.set(id, center - heightOf(id) / 2);
-    return center;
-  };
-  for (const s of specs) if (!s.parentId) layoutY(s.id);
-
-  // 2b) 열 단위 겹침 안전 스윕 — 반올림·키 큰 노드가 같은 depth 에서 안 겹치게 아래로 민다.
-  const idsByDepth = new Map<number, string[]>();
-  for (const s of specs) (idsByDepth.get(s.depth) ?? idsByDepth.set(s.depth, []).get(s.depth)!).push(s.id);
-  for (const ids of idsByDepth.values()) {
-    ids.sort((a, b) => topY.get(a)! - topY.get(b)!);
-    let prevBottom = -Infinity;
-    for (const id of ids) {
-      let t = Math.round(topY.get(id)!);
-      if (t < prevBottom + STACK_GAP) t = prevBottom + STACK_GAP;
-      topY.set(id, t);
-      prevBottom = t + heightOf(id);
-    }
-  }
-
-  // 2c) **행 채널** — 같은 깊이에서 세로로 이웃한 두 모듈 **사이의 가로 띠**
-  //     ([[용어사전#행 채널 (row channel)|행 채널]] · docs/layout-models §2⑤).
-  //
-  //     세로 채널의 **직교 짝**이다. 세로 채널이 깊이 사이를 가르면 이 띠는 같은 깊이 안의
-  //     모듈 행을 가른다. 2026-07-11 부터 **이름만 있고 계획이 없었다** — 폭이 `STACK_GAP`
-  //     상수로 우연히 생기고 아무도 예약하지 않았다.
-  //
-  //     여기서는 **자리만 낸다**(Step 1). 트랙 배정·폭 역전은 다음 단계다.
-  //     `top`/`bottom` 은 띠의 **빈 칸 범위**(양 끝 모듈에 안 물린다).
-  const rowChannels: RowChannelBand[] = [];
-  for (const [depth, ids] of idsByDepth) {
-    const sorted = [...ids].sort((a, b) => topY.get(a)! - topY.get(b)!);
-    // **마진도 띠다.** 맨 위 모듈의 북쪽 · 맨 아래 모듈의 남쪽은 이웃이 없을 뿐,
-    // 거기로 나가는 경로들이 행을 다투는 것은 사이 띠와 똑같다.
-    // 마진의 `top`/`bottom` 은 열려 있으므로 하한 높이만큼만 잡아 둔다 — 실제 경계는
-    // 전역 bbox 가 정한다(그 계산은 이 단계보다 뒤다).
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    const wanted = (): number => planRowChannel([]).height;
-    if (first !== undefined) {
-      const b = topY.get(first)! - 1;
-      rowChannels.push({
-        depth, index: -1, kind: "marginN",
-        top: b - (ROW_CHANNEL_MIN - 1), bottom: b, below: first, wantHeight: wanted(),
-      });
-    }
-    for (let i = 0; i + 1 < sorted.length; i++) {
-      const above = sorted[i];
-      const below = sorted[i + 1];
-      const top = topY.get(above)! + heightOf(above); // 위 모듈 바로 아래 칸
-      const bottom = topY.get(below)! - 1; // 아래 모듈 바로 위 칸
-      if (bottom < top) continue; // 스윕이 붙여 놨으면 띠가 없다
-      rowChannels.push({
-        depth, index: i, kind: "between", top, bottom, above, below, wantHeight: wanted(),
-      });
-    }
-    if (last !== undefined) {
-      const t = topY.get(last)! + heightOf(last);
-      rowChannels.push({
-        depth, index: sorted.length - 1, kind: "marginS",
-        top: t, bottom: t + (ROW_CHANNEL_MIN - 1), above: last, wantHeight: wanted(),
-      });
-    }
-  }
-
   // (옛 `3) 포트 끝(DOF-B)` 은 **P0 으로 옮겼다** — 형제 순번으로 정하므로 tidy-tree 가
   //  필요 없다. |Δy| 최소(거리)를 버리고 **교차 없음**을 노린다.
   //  그것이 `gen → 높이 → 끝 → gen` 고리를 여는 유일한 조건이었다 = **되먹임 A 제거**
@@ -822,17 +740,17 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     ),
   );
 
-  // 5) 열 폭 + 채널 폭(수요 기반) → x 좌표. 채널 d(깊이 d↔d-1)를 가로지르는 납품 경로를 세로
-  //    구간 [min(자식포트y, 부모포트y), max(...)] 으로 모아 left-edge 트랙 수 = 폭의 근거.
-  //    포트 abs-y = 로컬 anchor.y + (topY - ext.y) (colX 무관 → 배치 전 계산 가능). 끝 정렬
-  //    (piece 4)으로 구간이 짧아 트랙↓→폭↓. channelPlanner 코드 무수정(좌표-무지).
-  const maxDepth = Math.max(...specs.map((s) => s.depth), 0);
-  const colWidth = new Array(maxDepth + 1).fill(0);
-  for (const s of specs) colWidth[s.depth] = Math.max(colWidth[s.depth], moduleExtent(oriented.get(s.id)!.module).w);
+  // ── 2) 납품 짝짓기 — **좌표 없이** ────────────────────────────────────────
+  //
+  //    예전엔 이 루프가 `topY` 뒤에 있어 절대 행을 그 자리에서 계산했다. 그러면 띠 수요가
+  //    좌표보다 뒤가 되고, 띠 높이가 배치를 못 민다. 여기서는 **재료만** 담고 절대 행은
+  //    6단계로 미룬다 — 짝짓기 자체는 좌표를 하나도 안 본다(계획서 `y축-index` §3).
 
-  const absPortY = (id: string, anchorY: number): number =>
-    anchorY + topY.get(id)! - moduleExtent(oriented.get(id)!.module).y;
   const intervalsByDepth = new Map<number, { lo: number; hi: number }[]>();
+  /** 세로 채널 구간의 **재료** — 절대 행이 서기 전이라 로컬 행으로 담아 둔다(6단계가 푼다). */
+  const intervalAnchors: {
+    depth: number; fromId: string; fromAnchorY: number; toId: string; toAnchorY: number;
+  }[] = [];
   // 납품 경로 씨앗 — 기하 예약(5c)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
   // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
   //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(트랙 예약)
@@ -842,6 +760,11 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     key: string;
     startY: number;
     endY: number;
+    /** 절대 행을 나중에 계산할 재료 — 모듈 신원과 **모듈-로컬** 행. */
+    fromId: string;
+    toId: string;
+    fromAnchorY: number;
+    toAnchorY: number;
     eligible: boolean;
     /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
     fluid?: string;
@@ -868,18 +791,14 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
    */
   /** 경로 끝 id(`…:out`/`…:in`) → 띠 접근. 5a-2 가 채우고 5c 가 지시에 싣는다. */
   const rowChannelEntryById = new Map<string, RowChannelEntry>();
-  /**
-   * **띠가 모자라 자리를 못 준 끝** — 사유 문장. 화면(`flg.report()` · 이슈)이 읽는다.
-   *
-   * 비어 있는 것이 정상이다. 비지 않으면 그 경로는 띠를 못 쓰고 탐색으로 간다 —
-   * **실패는 아니지만 계획의 실패**다(계획서 Step 3 의 관문).
-   */
-  const rowChannelShort: string[] = [];
   const rowChannelNeeds: {
     id: string;
     nodeId: string;
     depth: number;
+    /** **나중에 채운다** — 절대 행은 세로 좌표가 선 뒤에 온다(6단계). 진단용이다. */
     portY: number;
+    /** 포트의 **모듈-로컬** 행. `portY` 를 나중에 계산하는 재료다. */
+    anchorY: number;
     face: ModulePort["face"];
     /**
      * 이 끝이 띠에서 달릴 **가로 구간**(모듈-로컬 x). 상자에서 그 열의 **서쪽 변**까지다 —
@@ -918,17 +837,17 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
           id: `${deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId })}:${who}`,
           nodeId: ownerId,
           depth: who === "out" ? s.depth : s.depth - 1,
-          portY: absPortY(ownerId, port.anchor.y),
+          portY: 0, // ← 6단계가 채운다
+          anchorY: port.anchor.y,
           face: port.face,
           x1: 0, // 열의 서쪽 변
           x2: port.anchor.x - ownerExt.x, // 상자의 로컬 x
         });
       }
-      const cy = absPortY(s.id, out.anchor.y);
-      const py = absPortY(s.parentId!, inp.anchor.y);
-      (intervalsByDepth.get(s.depth) ?? intervalsByDepth.set(s.depth, []).get(s.depth)!).push({
-        lo: Math.min(cy, py),
-        hi: Math.max(cy, py),
+      // **구간도 미룬다** — 절대 행은 6단계에 온다. 여기선 재료만 담는다.
+      intervalAnchors.push({
+        depth: s.depth, fromId: s.id, fromAnchorY: out.anchor.y,
+        toId: s.parentId!, toAnchorY: inp.anchor.y,
       });
       // **띠를 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
       // 것인지 띠 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
@@ -950,8 +869,13 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
       deliverySeeds.push({
         depth: s.depth,
         key: dkey,
-        startY: cy,
-        endY: py,
+        // **나중에 채운다** — 6단계가 `fromAnchorY`/`toAnchorY` 에서 계산한다.
+        startY: 0,
+        endY: 0,
+        fromId: s.id,
+        toId: s.parentId!,
+        fromAnchorY: out.anchor.y,
+        toAnchorY: inp.anchor.y,
         // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
         //
         // 예전엔 *"포트가 벽을 마주 본다"*(`side === W`/`E`)로만 봤다. 그게 계단꼴 모델의
@@ -970,17 +894,50 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     });
   }
 
-  // 5a-2) **띠에 수요를 붙이고 트랙을 배정한다.**
+
+  // ── 3) 세로 순서 · 띠 신원 · 트랙 배정 — **전부 좌표가 없다** ─────────────────
   //
-  //     수요 하나 = "이 모듈의 이 면 바깥 띠에서 가로로 달린다". 면이 N 이면 그 모듈 **위**
-  //     띠, S 면 **아래** 띠다. 띠는 `between` 이거나 마진이다 — 이웃 유무가 가른다.
+  //    이 셋이 `topY` 보다 앞에 설 수 있다는 것이 이 구조의 전부다. `rowChannelPlanner`
+  //    머리말이 한때 여기에 순환이 있다고 적었는데, 그 순환의 둘째 화살표
+  //    *「absPortY → 띠를 지나는 경로」* 가 거짓이었다 — 배정 입력 넷(면 · 모듈-로컬 x ·
+  //    side · 띠 신원)이 어느 것도 y 를 안 본다.
+
+  // 3a) **깊이별 세로 순서 — 좌표가 아니라 트리가 답한다.**
   //
-  //     **폭은 아직 안 먹인다**(순환: 폭 → 위치 → 수요 → 폭). `wantHeight` 에만 담아
-  //     *"수요대로면 얼마여야 하나"* 를 보인다. 실제 반영은 두 패스가 필요하고, 그건
-  //     이 단계 다음이다.
+  //     `layoutY` 는 자식을 배열 순서대로 위→아래로 놓고, 겹침 스윕은 **아래로만** 민다.
+  //     그러니 같은 깊이의 세로 순서 = **트리 DFS 순서**이고, 좌표 없이 나온다.
+  const orderByDepth = new Map<number, string[]>();
+  {
+    const visit = (id: string): void => {
+      const d = byId.get(id)!.depth;
+      (orderByDepth.get(d) ?? orderByDepth.set(d, []).get(d)!).push(id);
+      for (const k of childIdsByParent.get(id) ?? []) visit(k);
+    };
+    for (const s of specs) if (!s.parentId) visit(s.id);
+  }
+
+  // 3b) **띠의 신원** — 깊이 · 순번 · 이웃. 자리(`top`/`bottom`)는 5단계가 채운다.
   //
-  //     **자리가 여기인 이유:** 수요(`rowChannelNeeds`)는 위 납품 짝짓기 루프가 채운다.
-  //     띠(2c)는 그보다 앞이라 그때는 아직 빌 수 없다 — 배정만 뒤로 미룬다.
+  //     **마진도 띠다** — 이웃이 없을 뿐, 거기로 나가는 경로들이 행을 다투는 것은 같다.
+  const rowChannels: RowChannelBand[] = [];
+  for (const [depth, ids] of orderByDepth) {
+    const first = ids[0];
+    const last = ids[ids.length - 1];
+    if (first === undefined || last === undefined) continue;
+    rowChannels.push({ depth, index: -1, kind: "marginN", top: 0, bottom: 0, below: first, height: 0 });
+    for (let i = 0; i + 1 < ids.length; i++)
+      rowChannels.push({
+        depth, index: i, kind: "between", top: 0, bottom: 0, above: ids[i], below: ids[i + 1], height: 0,
+      });
+    rowChannels.push({
+      depth, index: ids.length - 1, kind: "marginS", top: 0, bottom: 0, above: last, height: 0,
+    });
+  }
+
+  // 3c) **띠 트랙 배정 → 높이.** 폭 역전 — 높이는 고르는 값이 아니라 배정의 결과다.
+  //
+  //     수요 하나 = *"이 모듈의 이 면 바깥 띠에서 가로로 달린다"*. 면이 N 이면 그 모듈
+  //     **위** 띠, S 면 **아래** 띠다.
   {
     const bandOf = (nodeId: string, depth: number, face: ModulePort["face"]) =>
       rowChannels.find(
@@ -999,36 +956,96 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         id: n.id, x1: n.x1, x2: n.x2, side: n.face === "N" ? "bottom" : "top",
       });
     }
+    // 수요가 없는 띠도 하한(`ROW_CHANNEL_MIN`)만큼은 선다 — `planRowChannel([])` 이 그 값이다.
+    for (const band of rowChannels) band.height = planRowChannel([]).height;
     for (const [band, crossings] of byBand) {
       const plan = planRowChannel(crossings);
-      band.wantHeight = plan.height;
+      band.height = plan.height;
       band.tracks = plan.tracks;
-      // **띠가 트랙을 다 못 담으면 — 마진은 바깥으로 자란다**([fitRowChannel], 2026-09-04).
-      //
-      // 여태 높이는 `STACK_GAP` 고정이고 `wantHeight` 는 **보고서만** 읽었다. 그런데 트랙
-      // 번호에는 상한이 없어, 트랙이 높이를 넘으면 `band.top + t` 가 **띠 밖** — 곧 모듈
-      // 몸통을 가리킨다. 그 경로는 `plannedChainClear` 가 "모듈 몸통"으로 거부하니
-      // **사유가 「띠가 좁다」인데 화면에는 「체인이 막혔다」로 나온다.**
-      //
-      // **오늘 실물에서는 아직 안 넘는다**(띠마다 트랙 2개 · 높이 3). 그래서 이 갈래는
-      // **안전망**이고 배치는 한 칸도 안 바뀐다 — 넘을 때만 돈다.
-      const fit = fitRowChannel(band, plan.trackCount);
-      band.top = fit.top;
-      band.bottom = fit.bottom;
-      const usable = band.bottom - band.top + 1;
-      // 트랙 index → **절대 행**. 띠의 위에서부터 센다.
-      for (const n of rowChannelNeeds) {
-        const t = plan.tracks.get(n.id);
-        if (t === undefined) continue;
-        if (t >= usable) {
-          // **띠가 모자라다.** 예전엔 그대로 `top + t` 를 줘서 모듈 몸통에 앉혔고, 그 경로는
-          // `plannedChainClear` 가 "모듈 몸통"으로 거부해 탐색으로 떨어졌다 — 사유가
-          // *"띠가 좁다"* 인데 화면에는 *"체인이 막혔다"* 로 나왔다. 여기서 끊는다.
-          rowChannelShort.push(`d${band.depth} ${band.kind} 높이 ${usable} < 수요 ${plan.height} (${n.id})`);
-          continue;
-        }
-        rowChannelEntryById.set(n.id, { row: band.top + t });
+    }
+  }
+
+  // ── 4) 세로 좌표 — **띠 높이가 간격이다** ─────────────────────────────────
+  //
+  //    tidy-tree(RT) 로 부모를 자식들 중앙에 놓고, 같은 깊이에서 겹치면 아래로 민다.
+  //    **미는 폭이 상수가 아니라 그 두 모듈 사이 띠의 높이다** — 여기가 과녁이다.
+  //    예전엔 `STACK_GAP = 3` 고정이라 띠가 모자라면 경로가 계획을 접고 탐색으로 갔다.
+  const heightOf = (id: string): number => moduleExtent(pass1.get(id)!).h;
+  const bandHeightBelow = new Map<string, number>();
+  for (const b of rowChannels)
+    if (b.kind === "between") bandHeightBelow.set(`${b.depth}:${b.above}`, b.height);
+  const topY = new Map<string, number>();
+  const cursor = { y: 0 };
+  const layoutY = (id: string): number => {
+    const kids = childIdsByParent.get(id) ?? [];
+    if (kids.length === 0) {
+      const top = cursor.y;
+      topY.set(id, top);
+      // 잎 커서는 **서브트리** 간격이라 깊이가 섞인다 — 하한만 둔다. 같은 깊이 이웃의
+      // 진짜 간격은 아래 스윕이 띠 높이로 강제한다.
+      cursor.y = top + heightOf(id) + ROW_CHANNEL_MIN;
+      return top + heightOf(id) / 2;
+    }
+    const centers = kids.map(layoutY);
+    const center = (centers[0] + centers[centers.length - 1]) / 2;
+    topY.set(id, center - heightOf(id) / 2);
+    return center;
+  };
+  for (const s of specs) if (!s.parentId) layoutY(s.id);
+
+  // 4b) 겹침 스윕 — **순서는 3a 가 이미 정했다**(좌표로 다시 정렬하지 않는다).
+  for (const [depth, ids] of orderByDepth) {
+    let prevBottom = -Infinity;
+    let prevId: string | undefined;
+    for (const id of ids) {
+      let t = Math.round(topY.get(id)!);
+      if (prevId !== undefined) {
+        const gap = bandHeightBelow.get(`${depth}:${prevId}`) ?? ROW_CHANNEL_MIN;
+        if (t < prevBottom + gap) t = prevBottom + gap;
       }
+      topY.set(id, t);
+      prevBottom = t + heightOf(id);
+      prevId = id;
+    }
+  }
+
+  // 5) **띠 자리** — 이제야 좌표가 붙는다. `top`/`bottom` 은 띠의 **빈 칸 범위**다.
+  //
+  //    사이 띠는 두 모듈이 경계다(4b 가 높이만큼 벌려 놓았다). 마진은 바깥이 열려 있으므로
+  //    자기 높이만큼 뻗는다 — 예전의 `fitRowChannel` 이 하던 일이 여기로 접혔다.
+  for (const b of rowChannels) {
+    if (b.kind === "between") {
+      b.top = topY.get(b.above!)! + heightOf(b.above!);
+      b.bottom = topY.get(b.below!)! - 1;
+    } else if (b.kind === "marginN") {
+      b.bottom = topY.get(b.below!)! - 1;
+      b.top = b.bottom - (b.height - 1);
+    } else {
+      b.top = topY.get(b.above!)! + heightOf(b.above!);
+      b.bottom = b.top + (b.height - 1);
+    }
+  }
+
+  // 6) **절대 행** — 2단계가 미뤄 둔 것들을 여기서 푼다.
+  const absPortY = (id: string, anchorY: number): number =>
+    anchorY + topY.get(id)! - moduleExtent(oriented.get(id)!.module).y;
+  for (const n of rowChannelNeeds) n.portY = absPortY(n.nodeId, n.anchorY);
+  for (const a of intervalAnchors) {
+    const cy = absPortY(a.fromId, a.fromAnchorY);
+    const py = absPortY(a.toId, a.toAnchorY);
+    (intervalsByDepth.get(a.depth) ?? intervalsByDepth.set(a.depth, []).get(a.depth)!)
+      .push({ lo: Math.min(cy, py), hi: Math.max(cy, py) });
+  }
+  for (const seed of deliverySeeds) {
+    seed.startY = absPortY(seed.fromId, seed.fromAnchorY);
+    seed.endY = absPortY(seed.toId, seed.toAnchorY);
+  }
+
+  // 6b) **띠 진입 행** — 트랙 번호가 행이 된다(`top + t`). 자리가 선 지금에야 된다.
+  {
+    for (const b of rowChannels) {
+      if (!b.tracks) continue;
+      for (const [id, t] of b.tracks) rowChannelEntryById.set(id, { row: b.top + t });
     }
     // **배정이 끝난 지금** seed 에 실어 준다 — 위 짝짓기 루프는 배정을 아직 모른다.
     // 진입 행이 곧 세로 채널의 출발/도착 행이다(Step 0: 출처를 안 가린다).
@@ -1045,6 +1062,13 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     }
   }
 
+  // 5) 열 폭 + 채널 폭(수요 기반) → x 좌표. 채널 d(깊이 d↔d-1)를 가로지르는 납품 경로를 세로
+  //    구간 [min(자식포트y, 부모포트y), max(...)] 으로 모아 left-edge 트랙 수 = 폭의 근거.
+  //    포트 abs-y = 로컬 anchor.y + (topY - ext.y) (colX 무관 → 배치 전 계산 가능). 끝 정렬
+  //    (piece 4)으로 구간이 짧아 트랙↓→폭↓. channelPlanner 코드 무수정(좌표-무지).
+  const maxDepth = Math.max(...specs.map((s) => s.depth), 0);
+  const colWidth = new Array(maxDepth + 1).fill(0);
+  for (const s of specs) colWidth[s.depth] = Math.max(colWidth[s.depth], moduleExtent(oriented.get(s.id)!.module).w);
 
   // 5b) 외부상자 반출 트랙 예약(조각 6-①) — 살아남은 raw 입력·루트 출력 상자를 인접 gap
   //     으로 빼는 트랙을 planner 에 맡긴다. 채널로 우회하는 트랙의 세로 구간은 위 납품 경로
@@ -1177,7 +1201,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     : undefined;
 
   const bbox = config.reservePerimeterTracks ? expandBbox(rawBbox, trackPlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds, rowChannelShort };
+  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
 }
 
 /**
@@ -1320,6 +1344,7 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     inserterEntityName: config.inserterEntityName,
     beltEntityName: config.beltEntityName,
     belts: config.belts,
+    undergroundBelts: config.undergroundBelts,
     inserters: config.inserters,
     idPrefix: s.id,
     // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(moduleWizard)가 이미

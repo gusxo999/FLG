@@ -26,7 +26,7 @@ import {
   type PortSide,
   type SupplyCapacity,
 } from "../planner/module/ioLine";
-import type { SpecBelt, SpecInserter } from "../buildSpec";
+import type { SpecBelt, SpecInserter, SpecUndergroundBelt } from "../buildSpec";
 import { fluidLineOf, fluidLinesOnSide, type FluidTrunkInput } from "./fluidPorts";
 import { type Link } from "./link";
 import { layoutCluster } from "./clusterLayout";
@@ -44,6 +44,9 @@ import {
   emitInputLinks,
   emitTrunkPipe,
 } from "../execution/module/emitModule";
+// 흐름의 끝 칸 — 방출기가 등록하고, 벨트가 다 깔린 뒤 여기서 방향이 정해진다.
+import { resolveBeltTermini, type BeltMerge, type BeltTerminus } from "../execution/module/beltTerminus";
+export type { BeltMerge };
 
 /**
  * 모듈 머신 사이 세로 gap = 0(밀착). 모듈은 **간단 레시피**(W/E 두 면만으로 모든 I/O 를
@@ -168,6 +171,15 @@ export interface GeneratedModule {
    * 하려면 그 정보가 여기까지 와야 한다. 가드의 입력 자료형을 그대로 쓰는 것이 요점이다.
    */
   pipeCells: PipeFlowPipe[];
+  /**
+   * **피할 수 없어 합류한 채로 남긴 끝 칸** — 벨트 흐름의 종착이 어느 방향으로 꺾어도 남의
+   * 품목과 만나는데 지하벨트를 하나도 안 골라 [벨트 종착](../execution/module/beltTerminus.ts)을
+   * 못 세운 자리다. 비어 있는 것이 정상이다.
+   *
+   * 모듈은 **판정만** 하고 화면에 못 올린다(형제도 위저드도 모른다). `moduleWizard` 가
+   * 이 배열을 `belt-terminus-merge` **경고**로 빚어 그 칸을 화면에 찍는다.
+   */
+  beltMerges: BeltMerge[];
 }
 
 export interface ModuleInput {
@@ -225,6 +237,13 @@ export interface ModuleInput {
    * (옛 동작: 거절 → 다이렉트). `beltEntityName` 은 기본/폴백 벨트로 남는다.
    */
   belts?: SpecBelt[];
+  /**
+   * 고를 수 있는 지하벨트들([BuildSpec.undergroundBelts](../buildSpec.ts)) — **벨트 흐름의
+   * 종착**에 쓴다([resolveBeltTermini]). 끝 칸이 어느 방향으로 꺾어도 남의 품목과 합류하게
+   * 되면, 그 칸을 **가장 느린** 지하벨트 입구로 바꿔 흐름을 그 자리에서 끝낸다.
+   * 미지정이면 종착을 못 세우고 그 줄을 정직하게 포기한다.
+   */
+  undergroundBelts?: SpecUndergroundBelt[];
   /**
    * **출력 fan-out 링크** — 이 노드의 출력을 부모 머신들에게 어떻게 나눠 주나
    * ([allocateFlows]). 각 그룹 = 이 클러스터의 한 머신에서 나가는 벨트 하나(목적지
@@ -303,6 +322,19 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const chests: Container[] = [];
   // 파이프 셀의 유체 — 방출기가 놓는 자리에서 채운다([GeneratedModule.pipeCells]).
   const pipeCells: PipeFlowPipe[] = [];
+  /**
+   * **벨트 칸 → 품목** · **흐름의 끝 칸들** — [resolveBeltTermini] 의 재료.
+   *
+   * 끝 칸의 방향은 이웃을 봐야 정해지고, 이웃은 이 모듈의 벨트가 **다 깔린 뒤**에야 안다.
+   * 그래서 방출기는 등록만 하고 결정은 아래 [finishBeltTermini] 가 한 번에 한다.
+   */
+  const beltItems = new Map<string, string>();
+  const beltTermini: BeltTerminus[] = [];
+  const beltMerges: BeltMerge[] = [];
+  const finishBeltTermini = (): void =>
+    resolveBeltTermini({
+      termini: beltTermini, beltItems, undergroundBelts: input.undergroundBelts, merges: beltMerges,
+    });
   const inputPorts: ModulePort[] = [];
   const outputPorts: ModulePort[] = [];
   const unroutedLines: IoLine[] = [];
@@ -321,11 +353,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const lineOf = new Map(input.lines.map((l) => [`${l.role}:${l.name}`, l]));
   if (outLinks.length > 0) {
     const m = new Map(outLinks.map((g) => [g.item, lineOf.get(`output:${g.item}`)!]));
-    emitOutputLinks({ groups: outLinks, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
+    emitOutputLinks({ groups: outLinks, seats: outSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines, beltItems });
   }
   if (inLinks.length > 0) {
     const m = new Map(inLinks.map((g) => [g.item, lineOf.get(`input:${g.item}`)!]));
-    emitInputLinks({ groups: inLinks, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+    emitInputLinks({ groups: inLinks, seats: inSeats, lineOf: m, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines, beltItems, termini: beltTermini });
   }
 
   // 나머지 줄이 못 앉았으면 그 줄들만 unrouted 로 낸다 — **못 앉은 줄이 계획에 적혀 있어서**
@@ -338,8 +370,9 @@ export function generateModule(input: ModuleInput): GeneratedModule {
 
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
+    finishBeltTermini(); // 나머지 줄이 없어도 링크 줄의 끝 칸은 마무리해야 한다
     fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, depthShortages: plan.depthShortages, unpourableFix: plan.unpourableFix };
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, beltMerges, depthShortages: plan.depthShortages, unpourableFix: plan.unpourableFix };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -378,8 +411,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const restOutSeats = placeLinkSeats(machines, rest.out.plans);
   const restInSeats = placeLinkSeats(machines, rest.in.plans);
   const restLineOf = new Map(input.lines.map((l) => [l.name, l]));
-  emitOutputLinks({ groups: rest.out.groups, seats: restOutSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines });
-  emitInputLinks({ groups: rest.in.groups, seats: restInSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines });
+  emitOutputLinks({ groups: rest.out.groups, seats: restOutSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines, beltItems });
+  emitInputLinks({ groups: rest.in.groups, seats: restInSeats, lineOf: restLineOf, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines, beltItems, termini: beltTermini });
 
   // ── [트렁크 파이프] — **아이템 공급 방식 밖에서 한 번** ─────────────────────────
   // 파이프 기하는 아이템을 어떻게 나르는지와 무관하다: 면은 머신 `fluid_boxes` 가 강제하고,
@@ -398,6 +431,10 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     ctx, seqRef, pipeCells,
   });
 
+  // **끝 칸의 방향은 여기서 정해진다** — 이 모듈의 벨트가 전부 깔린 지금이 처음으로
+  // *"끝 칸의 이웃이 남의 품목이냐"* 를 물을 수 있는 자리다([resolveBeltTermini]).
+  finishBeltTermini();
+
   // 전 포트 emit 완료 → 모듈 몸통이 확정됐으니 각 포트의 moduleWayOuts 를 채운다.
   fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
 
@@ -411,6 +448,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     bbox,
     unroutedLines,
     pipeCells,
+    beltMerges,
     depthShortages: plan.depthShortages,
     unpourableFix: plan.unpourableFix,
   };

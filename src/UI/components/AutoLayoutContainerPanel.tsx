@@ -47,7 +47,7 @@ interface AutoLayoutContainerPanelProps {
   countMode: 'min' | 'manual';
   /** 'manual' 모드에서 루트가 산출할 목표 처리량 (items/sec) */
   perTarget: number;
-  externalIngredients: ReadonlySet<string>;
+  internalIngredients: ReadonlySet<string>;
   recipeOverrides: Readonly<Record<string, string>>;
   selectedMachines: ReadonlySet<string>;
   selectedInserters: ReadonlySet<string>;
@@ -80,7 +80,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
     () => ({
       targetRecipe: props.targetRecipe,
       countMode: props.countMode === 'manual' ? { perTarget: props.perTarget } : 'min',
-      externalIngredients: props.externalIngredients,
+      internalIngredients: props.internalIngredients,
       recipeOverrides: props.recipeOverrides,
       selectedMachines: Array.from(props.selectedMachines),
       selectedInserters: Array.from(props.selectedInserters),
@@ -91,7 +91,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
       externalPortsDefault: 'top-left',
     }),
     [
-      props.targetRecipe, props.countMode, props.perTarget, props.externalIngredients,
+      props.targetRecipe, props.countMode, props.perTarget, props.internalIngredients,
       props.recipeOverrides, props.selectedMachines, props.selectedInserters,
       props.selectedBelts, props.selectedUndergroundPipes, props.selectedUndergroundBelts,
       inserterOverrides,
@@ -263,7 +263,7 @@ export default function AutoLayoutContainerPanel(props: AutoLayoutContainerPanel
           countMode: props.countMode,
           perTarget: props.countMode === 'manual' ? props.perTarget : undefined,
         },
-        externalIngredients: Array.from(props.externalIngredients),
+        internalIngredients: Array.from(props.internalIngredients),
         recipeOverrides: props.recipeOverrides,
         selectedMachines: Array.from(props.selectedMachines).map(entitySpec),
         selectedBelts: Array.from(props.selectedBelts).map(entitySpec),

@@ -31,6 +31,10 @@ import {
   setAutoLayoutChannelGeometry,
   setAutoLayoutLinkLadder,
   AUTO_LAYOUT_LINK_LADDER,
+  setAutoLayoutLinkOppositeFace,
+  AUTO_LAYOUT_LINK_OPPOSITE_FACE,
+  setAutoLayoutLinkDirect,
+  AUTO_LAYOUT_LINK_DIRECT,
   setAutoLayoutCoordDump,
   setAutoLayoutPerimeterPass,
   setAutoLayoutLaneMerge,
@@ -278,6 +282,24 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
+  linkOppositeFace: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 링크 넘침이 **반대 옆면**을 본다(gap 앞에). 기본 OFF. '
+      + '대가는 납품 경로 우회 — report 의 `납품`·`링크눈금` 줄로 대조한다',
+    fn: (v: boolean) => {
+      setAutoLayoutLinkOppositeFace(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
+  linkDirect: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 넘치는 부모의 링크 입력을 **g=1**(다이렉트)로. 기본 OFF. '
+      + '대가는 포트 c배 — report 의 `형태`(포트·이용률)로 대조한다',
+    fn: (v: boolean) => {
+      setAutoLayoutLinkDirect(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
   channelGeometry: {
     usage: '(true|false)', desc: '화면에 버튼이 없는 플래그 — 채널 기하 예약',
     fn: (v: boolean) => {
@@ -291,6 +313,8 @@ const flags = defineGroup('flags', {
       perimeterPass: AUTO_LAYOUT_PERIMETER_PASS,
       channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
       linkLadder: AUTO_LAYOUT_LINK_LADDER,
+      linkOppositeFace: AUTO_LAYOUT_LINK_OPPOSITE_FACE,
+      linkDirect: AUTO_LAYOUT_LINK_DIRECT,
       entityIds: useUiDebugStore.getState().showEntityDebugInfo,
     }),
   },

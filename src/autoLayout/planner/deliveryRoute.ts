@@ -75,6 +75,17 @@ export interface DeliveryConfig {
    * 값=cellKey 집합(그 유체의 `PipeFlow.blockedTilesHard`). 같은 유체는 안 막는다(공유 허용).
    */
   fluidBlocked?: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * **이미 놓인 지하 입/출구가 예약해 둔 구간** — 지금은 모듈이 세운 **벨트 종착**
+   * ([resolveBeltTermini](../execution/module/beltTerminus.ts))이 유일한 출처다.
+   *
+   * 왜 필요한가: 종착은 **짝 없는 입구**라 터널이 안 뚫린 채로 서 있다. 그 사거리 안에
+   * 납품 경로가 **같은 티어의 출구**를 세우면 그 순간 짝이 맺혀 터널이 뚫리고, 모듈 안
+   * 물건이 남의 납품 벨트로 쏟아진다. 구간을 미리 올려 두면 점프 검사가 그 자리를 피한다.
+   *
+   * `blockGroup` 이 다르면(=티어가 다르면) 어차피 안 맺히므로 검사에서 저절로 빠진다.
+   */
+  seedCorridors?: ReadonlyArray<UndergroundCorridor>;
 }
 
 /** 한 납품 경로의 라우팅 결과. */
@@ -237,7 +248,10 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
   };
   const deliveryBelts = new Set<string>(); // 이미 깐 납품 경로 belt(지하 입/출구 포함)
   const cells: PlacedCell[] = [];
-  const corridors: UndergroundCorridor[] = []; // 납품 경로 간 누적 — 같은 직선 위 페어링 절단 방지
+  const corridors: UndergroundCorridor[] = []; // 이 실행이 **깐** corridor (결과로 나간다)
+  // 점프 검사용 장부 = 씨앗(모듈 종착) + 깐 것. 결과 배열과 갈라 둔다 —
+  // 씨앗은 이 실행이 깐 것이 아니므로 `DeliveryResult.corridors` 에 섞이면 안 된다.
+  const ledger: UndergroundCorridor[] = [...(config.seedCorridors ?? [])];
   const strippedChestIds = new Set<string>();
   const strippedCellKeys = new Set<string>();
   const routes: DeliveryRoute[] = [];
@@ -328,7 +342,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       // 장부 자체가 꺼진 모드(AUTO_LAYOUT_CHANNEL_GEOMETRY off) — 아이템도 전부 탐색으로
       // 가는 "계획 없음" 모드다. 유체만 유별나게 실패시킬 이유가 없어 옛 탐색을 쓴다.
       route = config.pipeEntityName
-        ? routeOneFluidDelivery(delivery, base, deliveryBelts, corridors, maxJumpPipe, config, bounds, config.fluidBlocked?.get(delivery.item))
+        ? routeOneFluidDelivery(delivery, base, deliveryBelts, ledger, maxJumpPipe, config, bounds, config.fluidBlocked?.get(delivery.item))
         : { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
     } else {
       dijkstraFallback += 1;
@@ -351,7 +365,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       // 다른 예약 자리(반출 트랙 + 다른 계획 납품 경로)는 dijkstra 도 침범 금지.
       const extra = new Set<string>(reservedExport);
       for (const [k2, cells] of reservedDelivery) if (k2 !== k) for (const c of cells) extra.add(c);
-      route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds, extra);
+      route = routeOneDelivery(delivery, base, deliveryBelts, ledger, maxJump, blockGroup, config, bounds, extra);
       if (!route.ok && extra.size > 0) {
         // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(납품 경로 실패 = 트리 전체
         // 폴백이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
@@ -362,7 +376,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
         // 그래도 **의도된 거래**다: 여기서 물러나면 납품 경로 실패 → 트리 전체가 옛 경로로
         // 떨어져 훨씬 크게 잃는다. 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
         // **최소한만 밟게** 해야 하는데, 그건 라우터 비용 모델을 바꾸는 별개 작업이다.
-        route = routeOneDelivery(delivery, base, deliveryBelts, corridors, maxJump, blockGroup, config, bounds);
+        route = routeOneDelivery(delivery, base, deliveryBelts, ledger, maxJump, blockGroup, config, bounds);
         reservationOverrun += 1;
         if (AUTO_LAYOUT_COORD_DUMP)
           console.log("[deliveryRoute] 예약 무시 재시도 — 남의 계획을 밟는다(연쇄 가능)", k);
@@ -379,6 +393,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
       deliveryBelts.add(cellKey(c.x, c.y));
     }
     corridors.push(...route.corridors);
+    ledger.push(...route.corridors);
     strippedChestIds.add(delivery.from.chest.id);
     strippedChestIds.add(delivery.to.chest.id);
     for (const sk of stripKeys(delivery)) strippedCellKeys.add(sk);

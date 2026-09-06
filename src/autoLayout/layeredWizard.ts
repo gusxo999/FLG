@@ -93,7 +93,7 @@ export const runLayeredWizard: RunContainerWizard = async (
     input.targetRecipe,
     recipeMap,
     itemToRecipe,
-    input.externalIngredients,
+    input.internalIngredients,
     new Map(Object.entries(input.recipeOverrides ?? {})),
   );
   const tree =

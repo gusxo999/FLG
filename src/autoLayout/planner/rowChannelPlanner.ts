@@ -1,5 +1,5 @@
 /**
- * 행 채널 계획 — [[용어사전#행 채널 (row channel)|행 채널]]의 트랙 배정과 폭.
+ * 행 채널 계획 — [[용어사전#행 채널 (row channel)|행 채널]]의 트랙 배정과 높이.
  *
  * [channelPlanner](channelPlanner.ts) 의 **직교 짝**이다. 세로 채널이 깊이 사이를 가르며
  * **세로선(트랙)** 을 나눠 준다면, 행 채널은 같은 깊이의 모듈 행 사이를 가르며
@@ -13,27 +13,23 @@
  * **알고리즘은 축과 무관하다** — `assignTracksLeftEdge` 를 그대로 쓴다. 이 파일이 하는 일은
  * *"무엇이 구간인가"* 를 가로축으로 읽어 주고, 폭 공식을 행 채널의 하한으로 감싸는 것뿐이다.
  *
- * ## 왜 위치 반영이 여기 없나 — **순환** (2026-08-18)
+ * ## 이 파일은 **순수 함수**만 낸다 — 구간 → 트랙 → 높이
  *
- * ```
- * topY → absPortY → 띠를 지나는 경로 → 띠 폭 → topY
- * ```
+ * 그 높이를 실제 배치에 먹이는 것은 `modulePacking` 이다(4b 겹침 스윕의 간격).
  *
- * 세로 채널은 이 순환을 **축을 갈라서** 피한다: y 는 상수 간격(`STACK_GAP`)으로 먼저 정하고,
- * x 만 수요에서 유도한다. 행 채널은 **같은 축**이라 그 수가 안 통한다 — 폭이 위치를 바꾸고
- * 위치가 다시 통과 경로를 바꾼다.
- *
- * 그래서 이 파일은 **순수 함수**만 낸다(구간 → 트랙 → 폭). 그 폭을 실제 배치에 먹이는 것은
- * 통과 경로를 아는 단계(환승)의 일이고, 거기서 **두 패스**(임시 간격으로 배치 → 통과 경로 계산
- * → 폭 확정 → 재배치)로 순환을 끊는다.
+ * (2026-08-18 ~ 2026-09-06 사이 이 자리에 *"순환이라 두 패스가 필요하다"* 는 절이 있었다.
+ *  `topY → absPortY → 띠를 지나는 경로 → 띠 폭 → topY` 라고 적었는데 **둘째 화살표가
+ *  거짓이었다** — 배정 입력 넷(면 · 모듈-로컬 x · `side` · 띠 신원)이 어느 것도 y 를 안 본다.
+ *  그래서 배정이 `topY` **앞**에 설 수 있고, 두 패스가 필요 없다.)
  */
 
 import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
 
 /**
- * 행 채널 폭(높이)의 하한. 세로 채널의 `MODULE_CHANNEL_MIN` 과 짝이고, 값은
- * `STACK_GAP`(3) 과 같다 — **오늘 배치를 한 칸도 안 바꾸기 위해서다.** 통과 경로가 0이면
- * `channelWidthFromTracks(0, 3) = 3` 이라 상수 시절과 답이 같다.
+ * 행 채널 높이의 **하한**. 세로 채널의 `MODULE_CHANNEL_MIN` 과 짝이다.
+ *
+ * 값 3 은 옛 `STACK_GAP` 이었다 — 통과 경로가 0이면 `channelWidthFromTracks(0, 3) = 3` 이라
+ * **상수 시절과 답이 같다.** 수요가 없는 트리는 이 계획 전후로 한 칸도 안 움직인다.
  */
 export const ROW_CHANNEL_MIN = 3;
 
@@ -128,23 +124,7 @@ export function planRowChannel(crossings: ReadonlyArray<RowCrossing>): RowChanne
   };
 }
 
-/**
- * **띠가 트랙을 다 담게 경계를 넓힌다** — 마진만. `between` 은 그대로 돌려준다.
- *
- * 행 매핑이 `row = top + t` 라, 트랙 수가 높이를 넘으면 그 행은 **띠 밖**을 가리킨다.
- * 마진은 밖이 비어 있으므로(그 깊이 맨 위/맨 아래 모듈의 바깥) 경계 숫자만 바꾸면 되고,
- * `between` 은 양쪽이 모듈이라 모듈을 밀어야 한다 — 그건 `topY` 를 다시 잡는 일이다.
- *
- * **`height`(= `trackCount + 2`)로 재지 않는다.** 그 +2 는 세로 채널의 **양옆 여유**인데
- * 행 매핑은 여유를 안 두므로, 그걸로 재면 트랙 2개에 높이 3인 멀쩡한 띠까지 "부족"이 된다
- * (2026-09-04 실측에서 실제로 그렇게 읽었다). **넘치는지는 트랙 수로 잰다.**
- */
-export function fitRowChannel(
-  band: { kind: "between" | "marginN" | "marginS"; top: number; bottom: number },
-  trackCount: number,
-): { top: number; bottom: number } {
-  if (trackCount <= band.bottom - band.top + 1) return { top: band.top, bottom: band.bottom };
-  if (band.kind === "marginN") return { top: band.bottom - (trackCount - 1), bottom: band.bottom };
-  if (band.kind === "marginS") return { top: band.top, bottom: band.top + (trackCount - 1) };
-  return { top: band.top, bottom: band.bottom };
-}
+/* (옛 `fitRowChannel` 은 **근거를 잃어 지웠다** — 2026-09-06. 트랙이 높이를 넘으면 마진만
+   바깥으로 넓히던 미봉책이었고, `between` 은 *"모듈을 밀어야 하는데 그건 `topY` 를 다시
+   잡는 일"* 이라 손을 못 댔다. 이제 **높이가 배정의 결과**라 넘칠 수가 없다 — 그 높이가
+   곧 모듈 사이 간격이다(`modulePacking` 4b). */

@@ -64,7 +64,7 @@ export const en: Translations = {
 
     ingredientTree: 'Ingredient tree',
     ingredientTreeHelp:
-      'Recipe and sub-recipe tree. Click a row to toggle between internal production and external supply.',
+      'Recipe and sub-recipe tree. Every ingredient starts as external supply; click a row to expand that one item into internal production.',
     markExternal: 'Click to switch to external supply',
     markInternal: 'Click to switch to internal production',
     altRecipeTooltip: 'Pick alternative recipe ({count}) — the recipe used to make this item',

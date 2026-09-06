@@ -3,7 +3,7 @@ tags: [factorio-data, routing, auto-layout]
 ---
 
 > **짝 문서:** [[pipe-semantics]] — 파이프의 작동 방식(같은 자리의 유체판)
-> **관련 문서:** [entity-roles §C 고체 운반(벨트)](../auto-layout/common/entity-roles.md#c-고체-운반-벨트) — 우리 배치에서 벨트가 맡는 역할 · [[용어사전]] §`레인 (lane)` · §`MixedItemBelt` · §`side-load`
+> **관련 문서:** [entity-roles §C 고체 운반(벨트)](../auto-layout/common/entity-roles.md#c-고체-운반-벨트) — 우리 배치에서 벨트가 맡는 역할 · [[belt-terminus]] — 흐름의 **끝 칸**이 합류를 피하는 방법(짝 없는 지하 입구가 종착) · [[용어사전]] §`레인 (lane)` · §`MixedItemBelt` · §`side-load`
 
 # 벨트 레인 — 한 줄은 언제 두 줄이고 언제 한 줄인가
 

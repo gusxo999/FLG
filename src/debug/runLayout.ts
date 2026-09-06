@@ -39,8 +39,11 @@ export interface RunOverrides {
   belts?: string[];
   ugBelts?: string[];
   pipes?: string[];
-  /** 외부에서 공급받을 품목(트리를 여기서 끊는다). */
-  external?: string[];
+  /**
+   * **자체 생산으로 펼칠** 품목. 안 주면 화면의 현재 선택을 쓰고, `target` 을 화면과 다른
+   * 레시피로 덮어쓰면 화면과 똑같이 **접힌 트리**(= 빈 집합)로 시작한다.
+   */
+  internal?: string[];
   /**
    * 위저드 스토어에 반영할까. 기본 **true** — 화면이 방금 돌린 설정과 어긋나면
    * 다음에 사람이 누르는 버튼이 다른 것을 돌린다.
@@ -75,10 +78,10 @@ function entitiesOfType(type: string): string[] {
  * 지금 화면이 쓸 머신 후보 — 트리 안 비-외부 레시피의 category 를 처리할 수 있는 머신.
  * (`AutoLayoutModal.machineCandidates` 와 같은 계산. 자동 선택 판정에 필요하다.)
  */
-function machineCandidates(target: string, external: Set<string>, overrides: Record<string, string>): string[] {
+function machineCandidates(target: string, internal: Set<string>, overrides: Record<string, string>): string[] {
   const { recipeMap, itemToRecipe, getMachinesForCategory } = useGameDataStore.getState();
   if (!target) return [];
-  const tree = expandRecipeTree(target, recipeMap, itemToRecipe, external, new Map(Object.entries(overrides)));
+  const tree = expandRecipeTree(target, recipeMap, itemToRecipe, internal, new Map(Object.entries(overrides)));
   const cats = new Set<string>();
   for (const name of collectInternalRecipes(tree)) {
     const r = recipeMap.get(name);
@@ -95,11 +98,14 @@ export function buildInput(ov: RunOverrides = {}): { input: ContainerWizardInput
   const target = ov.target ?? w.targetRecipe;
   const mode = ov.mode ?? (ov.perTarget !== undefined ? 'manual' : w.countMode);
   const perTarget = ov.perTarget ?? w.perTarget;
-  const external = new Set(ov.external ?? w.externalIngredients);
+  // 화면과 같은 규칙: 타깃이 바뀌면 펼침은 리셋된다(`AutoLayoutModal.pickTargetRecipe`).
+  const internal = new Set(
+    ov.internal ?? (target === w.targetRecipe ? w.internalIngredients : []),
+  );
 
   const machines = effective(
     ov.machines ?? w.selectedMachines,
-    machineCandidates(target, external, w.recipeOverrides),
+    machineCandidates(target, internal, w.recipeOverrides),
   );
   const inserters = effective(ov.inserters ?? w.selectedInserters, entitiesOfType('inserter'));
   const belts = effective(ov.belts ?? w.selectedBelts, entitiesOfType('transport-belt'));
@@ -109,7 +115,7 @@ export function buildInput(ov: RunOverrides = {}): { input: ContainerWizardInput
   const input: ContainerWizardInput = {
     targetRecipe: target,
     countMode: mode === 'manual' ? { perTarget } : 'min',
-    externalIngredients: external,
+    internalIngredients: internal,
     recipeOverrides: w.recipeOverrides,
     selectedMachines: machines,
     selectedInserters: inserters,
@@ -130,7 +136,10 @@ function persistOverrides(ov: RunOverrides, input: ContainerWizardInput): void {
     w.setCountMode(typeof input.countMode === 'object' ? 'manual' : 'min');
     if (ov.perTarget !== undefined) w.setPerTarget(ov.perTarget);
   }
-  if (ov.external !== undefined) w.setExternalIngredients(new Set(ov.external));
+  // 타깃만 덮어써도 `buildInput` 이 펼침을 리셋했다 — 화면이 그 트리를 보게 결과값을 넣는다.
+  if (ov.internal !== undefined || ov.target !== undefined) {
+    w.setInternalIngredients(new Set(input.internalIngredients));
+  }
   if (ov.machines !== undefined) w.setSelectedMachines(new Set(ov.machines));
   if (ov.inserters !== undefined) w.setSelectedInserters(new Set(ov.inserters));
   if (ov.belts !== undefined) w.setSelectedBelts(new Set(ov.belts));

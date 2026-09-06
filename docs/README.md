@@ -60,7 +60,8 @@ docs/
 | [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
 | [placement-search](auto-layout/common/placement-search.md) | **모델 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M). Part II 의 S-LAYER 흐름은 삭제됨 |
 | [entity-roles](auto-layout/common/entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
-| [known-limits](auto-layout/common/known-limits.md) | 알려진 약점·한계 9건 + 우선순위(P1~P3) |
+| [belt-merge-guards](auto-layout/common/belt-merge-guards.md) | **벨트 합류 가드 — 지금 코드는 어디까지 막고 있나**(현황 조사) — 방출기 넷 × 가드 셋 실측 · `collectBeltFlow` 는 호출자 0 · 계획 체인은 가드를 안 거친다 · **합류의 절반은 의도된 것**. **[[known-limits]] §11 을 고치기 전에 읽는다** |
+| [known-limits](auto-layout/common/known-limits.md) | 알려진 약점·한계 11건 + 우선순위(P1~P3) |
 | [priority-ordering](auto-layout/common/priority-ordering.md) | 배치·라우팅 순서 결정점 등록부 |
 | [tech-tree-resolution](auto-layout/common/tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 산출 (배치 이전 단계) |
 
@@ -74,6 +75,7 @@ docs/
 | [trunk-blocked](auto-layout/module/trunk-blocked.md) | ↳ **막힐 때 — 지하 · 진출 · gap** — 지하는 아끼는 자원이 아니다 · 진출이 막히는 실물 · **좌석이 넘치면 gap 을 연다**(TR8) · 배치1/배치2 검산. **`LadderRung` 을 다룰 때** |
 | [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 의 `insertingPlanner`+`emitTapInserting` 은 **둘 다 삭제됐다**(2026-08-16 · 2026-09-02) — 문서가 낡았다 |
 | [trunk-pipe](auto-layout/module/trunk-pipe.md) | **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전 |
+| [belt-terminus](auto-layout/module/belt-terminus.md) | **벨트의 끝 칸 — 벨트에는 끝이 없다** — 마지막 칸도 반드시 한 이웃으로 토해낸다 · 후보 셋(네 방향 − 역방향) · 셋이 다 막히면 **짝 없는 지하벨트 입구**가 종착 · 그 사거리는 장부에 오른다. **"한 줄에 남의 품목이 섞인다" 를 조사할 때** |
 | [face-occupancy](auto-layout/module/face-occupancy.md) | **면 점유를 어느 낟알로 아는가** — 행 축의 출처는 좌석 열 하나 · 좌석은 이미 접두합 · 낟알의 사다리 여섯(오늘은 ①과 ⑤뿐) · 구간 그래프. **"레인이 남아 보이는데 왜 못 앉나" 를 조사할 때** |
 | [ns-face-relief](auto-layout/module/ns-face-relief.md) | count=1 raw 입력의 노출 N/S 면 슬롯 (W-spill 갇힘 치료) |
 

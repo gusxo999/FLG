@@ -4,7 +4,13 @@ import type { RecipeTreeNode } from './types';
 interface ExpandContext {
   recipeMap: Map<string, Recipe>;
   itemToRecipe: Map<string, string>;
-  externalIngredients: ReadonlySet<string>;
+  /**
+   * 사용자가 **자체 생산으로 펼친** 품목. 여기 없는 재료는 전부 외부 공급 leaf 다 —
+   * 즉 **펼침이 명시적 선택**이고, 아무것도 안 고르면 트리는 루트 한 겹에서 멈춘다.
+   * (2026-09-05 극성 반전. 예전엔 `externalIngredients` 로 **끊을 것만** 골랐고 나머지가
+   * 전부 펼쳐져, 레시피를 고르는 순간 원광까지 수십 노드가 쏟아졌다.)
+   */
+  internalIngredients: ReadonlySet<string>;
   /**
    * item.name → 사용자가 직접 고른 제작법 이름. 비어 있으면 itemToRecipe 의 기본값을 쓴다.
    * 대체 제작법(여러 레시피가 같은 아이템을 만들 때) 선택을 트리에 반영하기 위한 override.
@@ -15,16 +21,17 @@ interface ExpandContext {
 }
 
 /**
- * 타깃 레시피를 루트로, 모든 ingredient → 그 ingredient 를 만드는 레시피를 자식으로 펼친다.
- * 기본은 첫 매칭(itemToRecipe)이지만 recipeOverrides 에 항목이 있으면 그 제작법을 우선한다.
- * external 로 토글된 ingredient 는 leaf 로만 기록 (그 자식 펼침 X).
+ * 타깃 레시피를 루트로, 재료 → 그 재료를 만드는 레시피를 자식으로 펼친다.
+ * 펼치는 재료는 `internalIngredients` 에 있는 것뿐 — **기본은 안 펼친 상태**라
+ * 빈 집합이면 루트의 직속 재료가 전부 외부 공급 leaf 가 된다.
+ * 펼칠 때의 제작법은 첫 매칭(itemToRecipe)이고 recipeOverrides 에 항목이 있으면 그 쪽을 쓴다.
  * 사이클(직간접 자기 참조)은 자식 무시.
  */
 export function expandRecipeTree(
   targetRecipe: string,
   recipeMap: Map<string, Recipe>,
   itemToRecipe: Map<string, string>,
-  externalIngredients: ReadonlySet<string>,
+  internalIngredients: ReadonlySet<string>,
   recipeOverrides: ReadonlyMap<string, string> = new Map(),
 ): RecipeTreeNode {
   const recipe = recipeMap.get(targetRecipe);
@@ -41,7 +48,7 @@ export function expandRecipeTree(
   const ctx: ExpandContext = {
     recipeMap,
     itemToRecipe,
-    externalIngredients,
+    internalIngredients,
     recipeOverrides,
     ancestors: new Set([targetRecipe]),
   };
@@ -55,7 +62,7 @@ export function expandRecipeTree(
 }
 
 function expandIngredient(itemName: string, ctx: ExpandContext): RecipeTreeNode {
-  if (ctx.externalIngredients.has(itemName)) {
+  if (!ctx.internalIngredients.has(itemName)) {
     return {
       recipeName: undefined,
       itemName,

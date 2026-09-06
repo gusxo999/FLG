@@ -65,7 +65,7 @@ const DATA: GameData = {
 const baseInput = (recipeOverrides?: Record<string, string>): ContainerWizardInput => ({
   targetRecipe: 'target-item',
   countMode: 'min',
-  externalIngredients: new Set(['ore']),
+  internalIngredients: new Set(['sub-item']), // 펼치는 건 sub-item 한 겹 — ore 는 외부 공급
   recipeOverrides,
   selectedMachines: ['assembler', 'special-assembler'],
   selectedInserters: ['inserter'],

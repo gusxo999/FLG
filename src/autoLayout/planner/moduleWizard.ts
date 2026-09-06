@@ -19,7 +19,7 @@
 
 import { useGameDataStore } from "../../UI/store/gameDataStore";
 import { EntityType } from "../../types/layout";
-import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing } from "../containerModel";
+import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing, UndergroundCorridor } from "../containerModel";
 import type { IoLine } from "./module/ioLine";
 import { summarizeRungs } from "./module/linkPlanner";
 import { externalLineGroups, groupRate } from "../module/link";
@@ -52,6 +52,9 @@ import { clusterLineRate } from "../recipeTree";
 import { makeBuildSpec, inserterForReach } from "../buildSpec";
 import { makeEmptyArea, machineSpeedFraction } from "../wizardUtils";
 import { commitContainer } from "../execution/machinePlacer";
+// 모듈이 세운 지하 종착의 사거리를 장부 항목으로 빚는다(방향 → 벡터 · 두 점 → 구간).
+import { directionToVector } from "./containerRouting";
+import { corridorBetween } from "../execution/emitPath";
 
 /** layeredWizard NodeMeta 와 동형(필요한 부분만). */
 export interface ModuleNodeMeta {
@@ -360,6 +363,8 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     beltEntityName: options.beltEntityName,
     // 고른 벨트 전부 — determineBeltCount 가 수요를 이 티어들로 나눠 덮는다.
     belts: options.belts,
+    // 고른 지하벨트 전부 — 모듈이 벨트 종착([resolveBeltTermini])에 가장 느린 것을 쓴다.
+    undergroundBelts: options.undergroundBelts,
     inserters: specInserters,
     // 외부상자 perimeter 반출 트랙 예약(조각 6-①) — 채널 폭에 트랙 세로 구간 합산.
     reservePerimeterTracks: AUTO_LAYOUT_PERIMETER_PASS,
@@ -551,6 +556,55 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   const fluidBlocked = new Map<string, ReadonlySet<string>>();
   for (const [fluid, pf] of pipeFlowByFluid) fluidBlocked.set(fluid, pf.blockedTilesHard);
 
+  // 1c) **못 피한 벨트 끝 칸** — 끝 칸이 어느 방향으로 꺾어도 남의 품목과 만나는데 지하벨트를
+  //     안 골라 [종착](../execution/module/beltTerminus.ts)을 못 세운 자리다. 흐름 그대로 두고
+  //     **경고**로 낸다(2026-09-06 사용자 확정): 물류는 이어지고 처방은 한 단계 뒤로 가는 것
+  //     뿐이라 줄을 물리지 않는다 — 대신 **보이지 않으면 안 된다**(반출 skip 과 같은 자리).
+  //
+  //     **이 아래여야 한다** — 위쪽 `issues.length > 0` 관문들은 경고도 실패로 보고 배치를
+  //     통째로 물린다. 경고는 마지막 관문을 지난 뒤에 쌓아야 `leaf.warnings` 로 나간다.
+  for (const pl of pack.placements) {
+    const merges = pl.module.beltMerges;
+    if (merges.length === 0) continue;
+    const who = merges.map((m) => `(${m.x},${m.y}) ${m.item}→${m.into}`).join(' · ');
+    issues.push({
+      code: 'belt-terminus-merge', scope: '모듈', severity: 'warning', recoverable: true,
+      carrier: 'item', fixStep: 'belt', target: { moduleId: pl.id },
+      cells: merges.map((m) => ({ x: m.x, y: m.y })),
+      detail:
+        `${pl.id}: 벨트 끝 칸 ${merges.length}개가 **남의 품목 줄과 합류한다**`
+        + ` — ${who}; 벨트 단계에서 **지하벨트를 하나 고르면** 그 자리에 종착이 선다`,
+    });
+  }
+
+  // **모듈이 세운 벨트 종착의 사거리** — 지하벨트 장부에 올린다
+  // ([resolveBeltTermini](../execution/module/beltTerminus.ts) 머리말 §사거리).
+  //
+  // **셀에서 되읽는다**(모듈이 따로 실어 보내지 않는다): 모듈 안에 지하벨트를 놓는 코드는
+  // 종착 하나뿐이라 *"모듈 셀 중 지하벨트 입구"* 가 곧 종착이고, 위치·방향·이름은 회전·
+  // 평행이동을 이미 거친 **절대 좌표**다. 사거리만 게임데이터에서 붙이면 된다 —
+  // 구간을 모듈 안에서 만들면 그 변환을 따로 따라가야 한다.
+  const terminusCorridors: UndergroundCorridor[] = [];
+  for (const pl of pack.placements) {
+    for (const c of pl.module.cells) {
+      if (c.cell.entityType !== EntityType.UndergroundBelt) continue;
+      if (c.cell.undergroundType !== "input") continue;
+      const entityName = c.cell.entityName;
+      if (!entityName) continue;
+      const dist = entityMap.get(entityName)?.max_underground_distance ?? 0;
+      const v = directionToVector(c.cell.direction);
+      if (dist <= 0 || (v.x === 0 && v.y === 0)) continue; // 사거리를 모르면 지어내지 않는다
+      terminusCorridors.push(
+        corridorBetween(
+          { x: c.x, y: c.y },
+          { x: c.x + v.x * dist, y: c.y + v.y * dist },
+          "belt",
+          entityName, // blockGroup = 그 티어 — 다른 티어와는 애초에 안 맺힌다
+        ),
+      );
+    }
+  }
+
   const deliveryRes = routeDeliveryRoutes(pack, {
     beltEntityName: options.beltEntityName,
     beltMaxUndergroundDistance: options.beltMaxUndergroundDistance,
@@ -559,10 +613,12 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
     undergroundPipeEntityName: options.undergroundPipeEntityName,
     fluidBlocked,
+    seedCorridors: terminusCorridors,
   });
-  // **행 채널 띠** — 아직 소비처가 없다(Step 1: 자리만 낸다). 그래도 여기서 기록해
-  // `flg.report()` 가 **띠가 실제로 몇 개 나는지**를 실측할 수 있게 한다 —
-  // 다음 단계(트랙 배정)가 필요한지 재는 근거다.
+  // **행 채널 띠** — 높이가 곧 모듈 사이 간격이다(2026-09-06). `높이` 와 `트랙` 이 함께
+  // 나오므로 **폭 역전이 실제로 돌았는지**를 한 줄로 읽을 수 있다: 트랙 n 이면 높이는
+  // `max(3, n+2)` 라야 한다. 예전엔 높이가 `STACK_GAP` 고정이라 둘이 갈릴 수 있었고,
+  // 그 갈림을 `수요` 로 따로 적어야 했다.
   recordRowChannelStats({
     count: pack.rowChannels.length,
     bands: pack.rowChannels.map(
@@ -572,26 +628,15 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         const t = b.tracks?.size ?? 0;
         return (
           `d${b.depth} ${b.kind} y${b.top}..${b.bottom} 높이 ${have}`
-          + (b.wantHeight > have ? ` → **수요 ${b.wantHeight}**` : "")
           + (t > 0 ? ` · 트랙 ${t}건` : "")
           + `  (${who})`
         );
       },
     ),
     needs: pack.rowChannelNeeds.map((n) => `${n.id} @d${n.depth} ${n.nodeId} y${n.portY} ${n.face}`),
-    short: pack.rowChannelShort,
   });
-  // **띠가 좁아 자리를 못 준 경로** — 여태 이런 끝은 조용히 **모듈 몸통 행**을 받았고,
-  // 화면에는 *"계획 체인이 막혔다"* 로 나왔다. 진짜 사유가 한 겹 아래 가려져 있었다.
-  // 물류는 탐색이 잇는다(경고이되 실패 아님) — 다만 **보이지 않으면 안 된다.**
-  if (pack.rowChannelShort.length > 0) {
-    issues.push({
-      code: 'row-channel-short', scope: '채널', severity: 'warning', recoverable: true,
-      detail:
-        `띠가 좁아 **${pack.rowChannelShort.length}개 경로 끝**이 자리를 못 받았다`
-        + ` — 그 납품은 계획을 접고 탐색으로 간다; ${pack.rowChannelShort.join(' · ')}`,
-    });
-  }
+  // (옛 `row-channel-short` 경고는 **사유가 사라져** 지웠다 — 2026-09-06. 띠 높이가 배정
+  //  **결과**라 트랙보다 좁을 수가 없다. 예전엔 높이가 `STACK_GAP` 고정이라 넘칠 수 있었다.)
   recordDeliveryStats({
     planned: deliveryRes.planned,
     dijkstraFallback: deliveryRes.dijkstraFallback,
@@ -722,7 +767,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   // 납품 경로 지하 corridor — Area 인덱스에 기록해 이후 라우팅(드래그 재라우팅 등)이 같은
   // 직선 위 페어링 절단을 피하게 한다. placed 와 같은 직접-기록 규약(비-이중-commit:
   // 이 candidate 의 routings 는 commitRouting 을 타지 않는다).
-  internal.undergroundCorridors.push(...deliveryRes.corridors);
+  internal.undergroundCorridors.push(...terminusCorridors, ...deliveryRes.corridors);
 
   // 2b) Routing 객체 — 선/IO 라벨/드래그 그룹 복원(옛 routings=[] 한계 해소). 끝점은 실제
   //    컨테이너 id(머신 = `${모듈id}-m0`, 유지된 상자). placed = 납품 경로 belt 셀(직선 폴백 가능).

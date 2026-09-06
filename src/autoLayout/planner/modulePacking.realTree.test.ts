@@ -86,4 +86,37 @@ describe("packModuleTree — 실제 트리(advanced-circuit)가 새 경로로 �
     expect(delivery.dijkstraFallback).toBe(0);
     expect(delivery.planned).toBeGreaterThan(0);
   });
+
+  /**
+   * **폭 역전이 y 축에서도 돈다** — 띠 높이가 배정의 **결과**이지 상수가 아니다.
+   *
+   * 예전엔 높이가 `STACK_GAP = 3` 고정이었고, 트랙이 그보다 많으면 그 경로는 계획을 접고
+   * 탐색으로 갔다(옛 `rowChannelShort` · `row-channel-short` 경고). 이제 그 높이가 **모듈
+   * 사이 간격을 정하므로** 모자랄 수가 없다.
+   *
+   * **수로 못 박지 않는다** — 트랙 수는 트리가 바뀌면 바뀐다. 못 박는 것은 **관계**다:
+   * 실제 높이 ≥ 배정이 요구한 높이 ≥ 트랙 수.
+   */
+  describe("띠 높이 — 수요에서 유도된다(폭 역전, y 축)", () => {
+    it("모든 띠가 자기 트랙을 담는다 — 옛 `rowChannelShort` 의 구조적 대체", () => {
+      expect(pack.rowChannels.length).toBeGreaterThan(0);
+      for (const b of pack.rowChannels) {
+        const actual = b.bottom - b.top + 1;
+        expect(actual, `${b.kind} d${b.depth} 실제 ${actual} < 요구 ${b.height}`)
+          .toBeGreaterThanOrEqual(b.height);
+        expect(actual).toBeGreaterThanOrEqual(b.tracks?.size ?? 0);
+      }
+    });
+
+    it("높이는 `max(하한, 트랙+2)` 다 — 세로 채널과 **같은 식**이다", () => {
+      for (const b of pack.rowChannels)
+        expect(b.height).toBe(Math.max(3, (b.tracks?.size ?? 0) + 2));
+    });
+
+    it("수요가 없으면 하한 그대로 — 옛 `STACK_GAP` 과 같은 수라 배치가 안 움직인다", () => {
+      const idle = pack.rowChannels.filter((b) => (b.tracks?.size ?? 0) === 0);
+      expect(idle.length).toBeGreaterThan(0);
+      for (const b of idle) expect(b.height).toBe(3);
+    });
+  });
 });

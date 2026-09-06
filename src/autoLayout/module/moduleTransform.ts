@@ -19,7 +19,7 @@
 
 import { EntityType } from "../../types/layout";
 import type { Direction } from "../../types/layout";
-import type { GeneratedModule, ModulePort } from "./clusterModule";
+import type { BeltMerge, GeneratedModule, ModulePort } from "./clusterModule";
 import type { Container, PlacedCell, PortFace } from "../containerModel";
 import type { PipeFlowPipe } from "../util/pipeFlow";
 import { faceVector, vectorToDirection } from "../util/helper";
@@ -180,6 +180,9 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
         ? { x: t.x, y: t.y, fluid: c.fluid }
         : { x: t.x, y: t.y, fluid: c.fluid, connectDir: dirXf(c.connectDir, o) };
     }),
+    // 합류한 끝 칸은 **좌표뿐**이다 — 품목 두 개는 변환에 불변. 안 돌리면 화면 경고가
+    // 원점 근처 엉뚱한 칸을 가리킨다(`pipeCells` 가 실제로 그랬다 — 아래 §좌표 주석).
+    beltMerges: mod.beltMerges.map((m): BeltMerge => ({ ...m, ...pt(m) })),
   };
 }
 
@@ -296,5 +299,6 @@ export function shiftModule(mod: GeneratedModule, dx: number, dy: number): Gener
     depthShortages: mod.depthShortages,
     // `connectDir` 은 면이라 평행이동에 불변 — 좌표만 옮긴다.
     pipeCells: mod.pipeCells.map((c): PipeFlowPipe => ({ ...c, x: c.x + dx, y: c.y + dy })),
+    beltMerges: mod.beltMerges.map((m): BeltMerge => ({ ...m, x: m.x + dx, y: m.y + dy })),
   };
 }

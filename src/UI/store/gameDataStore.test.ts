@@ -66,17 +66,18 @@ describe('buildDerived — 산출물 인덱스', () => {
 describe('레시피 트리에서 유체가 자식이 된다 (유체 납품 경로의 입구)', () => {
   const d = buildDerived(DATA);
 
-  it('유체 재료가 external 이 아니면 그 유체를 만드는 자식 노드로 펼쳐진다', () => {
-    const tree = expandRecipeTree('concrete', d.recipeMap, d.itemToRecipe, new Set());
+  it('유체 재료를 펼치면 그 유체를 만드는 자식 노드가 된다', () => {
+    const tree = expandRecipeTree('concrete', d.recipeMap, d.itemToRecipe, new Set(['water']));
     const water = tree.children.find((c) => c.itemName === 'water');
     expect(water).toBeDefined();
     expect(water!.external).toBe(false);
     expect(water!.recipeName).toBe('kr-water-from-atmosphere');
   });
 
-  it('유체도 철광석과 동등하다 — external 로 토글하면 leaf 로 멈춘다', () => {
-    // 1차 자원 선정은 데이터가 아니라 **사용자**가 한다(트리에서 external 토글).
-    const tree = expandRecipeTree('concrete', d.recipeMap, d.itemToRecipe, new Set(['water']));
+  it('유체도 철광석과 동등하다 — 안 펼치면(기본) leaf 로 멈춘다', () => {
+    // 1차 자원 선정은 데이터가 아니라 **사용자**가 한다(트리에서 펼침 토글).
+    // 빈 집합 = 갓 고른 레시피의 기본 상태 → 재료가 전부 외부 공급이다.
+    const tree = expandRecipeTree('concrete', d.recipeMap, d.itemToRecipe, new Set());
     const water = tree.children.find((c) => c.itemName === 'water');
     expect(water!.external).toBe(true);
     expect(water!.recipeName).toBeUndefined();

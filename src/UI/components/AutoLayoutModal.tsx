@@ -104,24 +104,37 @@ export default function AutoLayoutSidebar() {
   );
 
   // Set 값은 배열로 저장되므로 useMemo 로 변환
-  const _extIngr = useWizardStore((s) => s.externalIngredients);
+  const _intIngr = useWizardStore((s) => s.internalIngredients);
   const _selMachines = useWizardStore((s) => s.selectedMachines);
   const _selInserters = useWizardStore((s) => s.selectedInserters);
   const _selBelts = useWizardStore((s) => s.selectedBelts);
   const _selUgBelts = useWizardStore((s) => s.selectedUndergroundBelts);
   const _selPipes = useWizardStore((s) => s.selectedPipes);
-  const externalIngredients = useMemo(() => new Set(_extIngr), [_extIngr]);
+  const internalIngredients = useMemo(() => new Set(_intIngr), [_intIngr]);
   const selectedMachines = useMemo(() => new Set(_selMachines), [_selMachines]);
   const selectedInserters = useMemo(() => new Set(_selInserters), [_selInserters]);
   const selectedBelts = useMemo(() => new Set(_selBelts), [_selBelts]);
   const selectedUndergroundBelts = useMemo(() => new Set(_selUgBelts), [_selUgBelts]);
   const selectedPipes = useMemo(() => new Set(_selPipes), [_selPipes]);
-  const setExternalIngredients = useWizardStore((s) => s.setExternalIngredients);
+  const setInternalIngredients = useWizardStore((s) => s.setInternalIngredients);
   const setSelectedMachines = useWizardStore((s) => s.setSelectedMachines);
   const setSelectedInserters = useWizardStore((s) => s.setSelectedInserters);
   const setSelectedBelts = useWizardStore((s) => s.setSelectedBelts);
   const setSelectedUndergroundBelts = useWizardStore((s) => s.setSelectedUndergroundBelts);
   const setSelectedPipes = useWizardStore((s) => s.setSelectedPipes);
+
+  /**
+   * 타깃을 바꾸면 트리는 **접힌 채로** 다시 시작한다 — 펼친 품목은 그 타깃의 트리에서 고른
+   * 것이라 다음 타깃에 그대로 얹으면 고르지도 않은 하위 라인이 딸려 온다.
+   */
+  const pickTargetRecipe = useCallback(
+    (name: string) => {
+      if (name === targetRecipe) return;
+      setTargetRecipe(name);
+      setInternalIngredients(new Set());
+    },
+    [targetRecipe, setTargetRecipe, setInternalIngredients],
+  );
 
   const recipeOptions = useMemo(
     () =>
@@ -140,7 +153,7 @@ export default function AutoLayoutSidebar() {
       targetRecipe,
       recipeMap,
       itemToRecipe,
-      externalIngredients,
+      internalIngredients,
       recipeOverridesMap,
     );
     if (countMode === 'manual') {
@@ -152,7 +165,7 @@ export default function AutoLayoutSidebar() {
       );
     }
     return assignMinimumCounts(tree);
-  }, [targetRecipe, recipeMap, itemToRecipe, externalIngredients, recipeOverridesMap, countMode, perTarget, selectedMachines]);
+  }, [targetRecipe, recipeMap, itemToRecipe, internalIngredients, recipeOverridesMap, countMode, perTarget, selectedMachines]);
 
   // 2단계 머신 후보: 트리 안 비-외부 레시피의 category 합집합을 처리할 수 있는 머신
   const machineCandidates: Entity[] = useMemo(() => {
@@ -341,14 +354,14 @@ export default function AutoLayoutSidebar() {
               recipeMap={recipeMap}
               recipesByProduct={recipesByProduct}
               targetRecipe={targetRecipe}
-              setTargetRecipe={setTargetRecipe}
+              setTargetRecipe={pickTargetRecipe}
               countMode={countMode}
               setCountMode={setCountMode}
               perTarget={perTarget}
               setPerTarget={setPerTarget}
               tree={previewTree}
-              externalIngredients={externalIngredients}
-              setExternalIngredients={setExternalIngredients}
+              internalIngredients={internalIngredients}
+              setInternalIngredients={setInternalIngredients}
               recipeOverrides={recipeOverrides}
               setRecipeOverrides={setRecipeOverrides}
               loaded={loaded}
@@ -436,7 +449,7 @@ export default function AutoLayoutSidebar() {
                 targetRecipe={targetRecipe}
                 countMode={countMode}
                 perTarget={perTarget}
-                externalIngredients={externalIngredients}
+                internalIngredients={internalIngredients}
                 recipeOverrides={recipeOverrides}
                 selectedMachines={effectiveMachines}
                 selectedInserters={effectiveInserters}
@@ -500,8 +513,8 @@ interface RecipeStepProps {
   perTarget: number;
   setPerTarget: (v: number) => void;
   tree: RecipeTreeNode | null;
-  externalIngredients: Set<string>;
-  setExternalIngredients: (v: Set<string>) => void;
+  internalIngredients: Set<string>;
+  setInternalIngredients: (v: Set<string>) => void;
   recipeOverrides: Record<string, string>;
   setRecipeOverrides: (v: Record<string, string>) => void;
   loaded: boolean;
@@ -520,8 +533,8 @@ function RecipeStep(props: RecipeStepProps) {
     perTarget,
     setPerTarget,
     tree,
-    externalIngredients,
-    setExternalIngredients,
+    internalIngredients,
+    setInternalIngredients,
     recipeOverrides,
     setRecipeOverrides,
     loaded,
@@ -624,8 +637,8 @@ function RecipeStep(props: RecipeStepProps) {
                 node={tree}
                 recipeMap={recipeMap}
                 recipesByProduct={recipesByProduct}
-                externalIngredients={externalIngredients}
-                setExternalIngredients={setExternalIngredients}
+                internalIngredients={internalIngredients}
+                setInternalIngredients={setInternalIngredients}
                 recipeOverrides={recipeOverrides}
                 setRecipeOverrides={setRecipeOverrides}
                 t={t}
@@ -634,8 +647,8 @@ function RecipeStep(props: RecipeStepProps) {
           </div>
           <SelfProducedChips
             tree={tree}
-            externalIngredients={externalIngredients}
-            setExternalIngredients={setExternalIngredients}
+            internalIngredients={internalIngredients}
+            setInternalIngredients={setInternalIngredients}
             t={t}
           />
         </>
@@ -809,15 +822,15 @@ function RecipeCombobox({
 
 interface SelfProducedChipsProps {
   tree: RecipeTreeNode;
-  externalIngredients: Set<string>;
-  setExternalIngredients: (v: Set<string>) => void;
+  internalIngredients: Set<string>;
+  setInternalIngredients: (v: Set<string>) => void;
   t: (k: string, p?: Record<string, string | number>) => string;
 }
 
 function SelfProducedChips({
   tree,
-  externalIngredients,
-  setExternalIngredients,
+  internalIngredients,
+  setInternalIngredients,
   t,
 }: SelfProducedChipsProps) {
   const items: string[] = [];
@@ -850,9 +863,9 @@ function SelfProducedChips({
             <button
               key={name}
               onClick={() => {
-                const next = new Set(externalIngredients);
-                next.add(name);
-                setExternalIngredients(next);
+                const next = new Set(internalIngredients);
+                next.delete(name);
+                setInternalIngredients(next);
               }}
               title={t('autoLayoutModal.selfProducedChipTooltip')}
               className="group flex items-center gap-1 text-[11px] bg-orange-500/10 border border-orange-600/50 text-orange-100 px-2 py-0.5 rounded-full hover:bg-red-500/20 hover:border-red-500 hover:text-red-100 transition-colors"
@@ -879,8 +892,8 @@ interface TreeViewProps {
   depth?: number;
   recipeMap: RecipeMapLike;
   recipesByProduct: Map<string, string[]>;
-  externalIngredients: Set<string>;
-  setExternalIngredients: (v: Set<string>) => void;
+  internalIngredients: Set<string>;
+  setInternalIngredients: (v: Set<string>) => void;
   recipeOverrides: Record<string, string>;
   setRecipeOverrides: (v: Record<string, string>) => void;
   t: (k: string, p?: Record<string, string | number>) => string;
@@ -891,8 +904,8 @@ function TreeView({
   depth = 0,
   recipeMap,
   recipesByProduct,
-  externalIngredients,
-  setExternalIngredients,
+  internalIngredients,
+  setInternalIngredients,
   recipeOverrides,
   setRecipeOverrides,
   t,
@@ -905,12 +918,13 @@ function TreeView({
   const altRecipes = isRoot ? [] : recipesByProduct.get(node.itemName) ?? [];
   const hasAlternatives = !isExternal && altRecipes.length > 1 && !!node.recipeName;
 
+  /** 행 클릭 = 이 품목 한 겹만 펼치거나 접는다. 새로 드러난 자식은 다시 외부 공급이다. */
   function handleToggle() {
     if (!canToggle) return;
-    const next = new Set(externalIngredients);
+    const next = new Set(internalIngredients);
     if (next.has(node.itemName)) next.delete(node.itemName);
     else next.add(node.itemName);
-    setExternalIngredients(next);
+    setInternalIngredients(next);
   }
 
   function handlePickRecipe(recipeName: string) {
@@ -995,8 +1009,8 @@ function TreeView({
           depth={depth + 1}
           recipeMap={recipeMap}
           recipesByProduct={recipesByProduct}
-          externalIngredients={externalIngredients}
-          setExternalIngredients={setExternalIngredients}
+          internalIngredients={internalIngredients}
+          setInternalIngredients={setInternalIngredients}
           recipeOverrides={recipeOverrides}
           setRecipeOverrides={setRecipeOverrides}
           t={t}

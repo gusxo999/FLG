@@ -185,13 +185,30 @@ export function buildReport(): string {
     ),
   );
 
+  // **벨트 끝 칸** — 흐름의 종착이 남의 품목과 합류하지 않게 돌린 수
+  // ([resolveBeltTermini](../autoLayout/execution/module/beltTerminus.ts)).
+  //
+  // 읽는 법: `돌림` 이 0 이 아니면 **긴팔이 연 d3 줄이 실제로 남의 d2 줄 위에 서 있다**는
+  // 뜻이다(옛 코드는 그대로 흘려보냈다). `종착` 은 세 방향이 다 막혀 지하벨트 입구까지 간 수,
+  // **`합류` 가 유일한 경보** — 지하벨트를 안 골라 못 피하고 남긴 칸이다(화면에도 경고가 뜬다).
+  const bt = stats.beltTermini;
+  if (bt.ends > 0)
+    out.push(
+      line(
+        '벨트끝',
+        `끝 칸 ${bt.ends}`
+          + (bt.turned > 0 ? ` · **돌림 ${bt.turned}**` : '')
+          + (bt.underground > 0 ? ` · 종착 ${bt.underground}` : '')
+          + (bt.merged > 0 ? `  ← **합류 ${bt.merged}칸**(지하벨트를 고르면 종착이 선다)` : ''),
+      ),
+    );
+
   const rc = stats.rowChannels;
   out.push(
     line(
       '행채널',
       rc
         ? `띠 ${rc.count}개 · **통과 수요 ${rc.needs.length}건**`
-          + (rc.short.length > 0 ? ` · **자리 못 받음 ${rc.short.length}**` : '')
           + (rc.needs.length === 0 ? '  (0이면 이 트리엔 행채널이 필요 없다)' : '')
         : '단계 미도달',
     ),
@@ -199,8 +216,6 @@ export function buildReport(): string {
   if (rc) {
     for (const b of rc.bands) out.push(sub(b));
     for (const n of rc.needs) out.push(sub(`수요 ${n}`));
-    // **이 줄이 안 나오는 것이 성공이다.**
-    for (const x of rc.short) out.push(sub(`**부족** ${x}`));
   }
 
   const p = stats.perimeter;

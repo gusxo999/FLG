@@ -181,7 +181,7 @@ export function signatureOf(input: ContainerWizardInput): string {
   return JSON.stringify([
     input.targetRecipe,
     input.countMode,
-    sorted(input.externalIngredients),
+    sorted(input.internalIngredients),
     Object.keys(overrides).sort().map((k) => [k, overrides[k]]),
     sorted(input.selectedMachines),
     sorted(input.selectedInserters),

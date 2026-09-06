@@ -460,7 +460,11 @@ export type RunContainerWizard = (
 export interface ContainerWizardInput {
   targetRecipe: string;
   countMode: 'min' | { perTarget: number };
-  externalIngredients: ReadonlySet<string>;
+  /**
+   * 트리에서 **자체 생산으로 펼친** 품목. 여기 없는 재료는 외부 공급(무한상자/무한파이프)이다 —
+   * 펼침이 명시적 선택이라 빈 집합이면 루트 레시피 한 겹만 짓는다. → `expandRecipeTree`
+   */
+  internalIngredients: ReadonlySet<string>;
   /** item.name → 사용자가 고른 대체 제작법 이름. 비어 있으면 기본 제작법(itemToRecipe). */
   recipeOverrides?: Readonly<Record<string, string>>;
   selectedMachines: ReadonlyArray<string>;

@@ -123,6 +123,7 @@ autoLayout/
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
 ├ execution/                   실행 — 계획대로 셀을 놓는다
 │   ├ module/emitModule.ts         트렁크 · 링크 · 탭/다이렉트 인서터 · 유체
+│   ├ module/beltTerminus.ts      흐름의 끝 칸 — 합류를 피할 방향 / 지하 종착
 │   ├ emitPath.ts                  경로 → 벨트·파이프 셀
 │   ├ machinePlacer.ts             머신 footprint
 │   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
@@ -222,7 +223,7 @@ npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0�
 npx vitest run
 ```
 
-기준선: **타입 에러 0 · 44파일 518테스트.** (`manualEdit/` 는 양쪽에서 제외돼 있다.)
+기준선: **타입 에러 0 · 56파일 684테스트**(기존 실패 2건 — trunkPipe 유체 면). (`manualEdit/` 는 양쪽에서 제외돼 있다.)
 
 > **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
 > 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가

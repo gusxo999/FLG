@@ -18,7 +18,11 @@ interface WizardState {
   countMode: 'min' | 'manual';
   perTarget: number;
   // Sets are stored as sorted arrays for JSON serialization
-  externalIngredients: string[];
+  /**
+   * 트리에서 **자체 생산으로 펼친** 품목. 비어 있으면 트리는 안 펼쳐진 상태(루트의 직속
+   * 재료가 전부 외부 공급)다 — 펼침은 사용자가 행을 눌러 하나씩 고른다.
+   */
+  internalIngredients: string[];
   selectedMachines: string[];
   selectedInserters: string[];
   selectedBelts: string[];
@@ -32,7 +36,7 @@ interface WizardState {
   setTargetRecipe: (r: string) => void;
   setCountMode: (m: 'min' | 'manual') => void;
   setPerTarget: (n: number) => void;
-  setExternalIngredients: (v: Set<string>) => void;
+  setInternalIngredients: (v: Set<string>) => void;
   setSelectedMachines: (v: Set<string>) => void;
   setSelectedInserters: (v: Set<string>) => void;
   setSelectedBelts: (v: Set<string>) => void;
@@ -48,7 +52,7 @@ const INITIAL = {
   targetRecipe: '',
   countMode: 'min' as const,
   perTarget: 1,
-  externalIngredients: [] as string[],
+  internalIngredients: [] as string[],
   selectedMachines: [] as string[],
   selectedInserters: [] as string[],
   selectedBelts: [] as string[],
@@ -67,7 +71,7 @@ export const useWizardStore = create<WizardState>()(
       setTargetRecipe: (r) => set({ targetRecipe: r }),
       setCountMode: (m) => set({ countMode: m }),
       setPerTarget: (n) => set({ perTarget: n }),
-      setExternalIngredients: (v) => set({ externalIngredients: [...v] }),
+      setInternalIngredients: (v) => set({ internalIngredients: [...v] }),
       setSelectedMachines: (v) => set({ selectedMachines: [...v] }),
       setSelectedInserters: (v) => set({ selectedInserters: [...v] }),
       setSelectedBelts: (v) => set({ selectedBelts: [...v] }),
@@ -79,6 +83,18 @@ export const useWizardStore = create<WizardState>()(
     }),
     {
       name: 'flg-wizard-state',
+      /**
+       * v1 — 재료 트리의 극성이 뒤집혔다(2026-09-05). 옛 `externalIngredients` 는 "여기서
+       * 끊을 품목", 새 `internalIngredients` 는 "여기서 펼칠 품목"이라 **값을 옮길 수 없다**
+       * (뜻이 정반대다). 옛 키는 버리고 새 필드는 초기값 `[]` = 안 펼쳐진 트리로 시작한다.
+       */
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version >= 1) return persisted as WizardState;
+        const rest = { ...((persisted ?? {}) as Record<string, unknown>) };
+        delete rest.externalIngredients;
+        return { ...rest, internalIngredients: [] } as unknown as WizardState;
+      },
     },
   ),
 );

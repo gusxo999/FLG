@@ -61,7 +61,7 @@ export const ko = {
 
     ingredientTree: '재료 트리',
     ingredientTreeHelp:
-      '재료/하위재료 트리. 행을 클릭하면 자체 생산 / 외부 공급 상태가 토글됩니다.',
+      '재료/하위재료 트리. 처음에는 모든 재료가 외부 공급이며, 행을 클릭하면 그 재료만 한 겹 펼쳐 자체 생산으로 바뀝니다.',
     markExternal: '클릭: 외부 공급으로 전환',
     markInternal: '클릭: 자체 생산으로 전환',
     altRecipeTooltip: '대체 제작법 선택 ({count}개) — 이 아이템을 만드는 데 사용할 레시피',
