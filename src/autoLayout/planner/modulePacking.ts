@@ -744,7 +744,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //
   //    예전엔 이 루프가 `topY` 뒤에 있어 절대 행을 그 자리에서 계산했다. 그러면 띠 수요가
   //    좌표보다 뒤가 되고, 띠 높이가 배치를 못 민다. 여기서는 **재료만** 담고 절대 행은
-  //    6단계로 미룬다 — 짝짓기 자체는 좌표를 하나도 안 본다(계획서 `y축-index` §3).
+  //    6단계로 미룬다 — 짝짓기 자체는 좌표를 하나도 안 본다(`rowChannelPlanner` 머리말).
 
   const intervalsByDepth = new Map<number, { lo: number; hi: number }[]>();
   /** 세로 채널 구간의 **재료** — 절대 행이 서기 전이라 로컬 행으로 담아 둔다(6단계가 푼다). */
