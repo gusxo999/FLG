@@ -165,7 +165,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 > 각자 예약하면 2026-08-17 의 사고(*"남의 계획을 밟는다"*)가 축만 바꿔 재현된다.
 > 그래서 **통로망 모델**(채널 + 행 채널 + 교차로를 한 주체가 배정)이 후보로 있다 —
 > 그러면 ③은 *"한 세로 통로 안의 배정"* 을 맡는 **부품**이 된다.
-> → `tempPlanDocs/행채널-모델/judgements.md` `J-관리관`
+> → `tempPlanDocs/y축-index/judgements.md` `J-관리관`
 
 **있어야 할 것은 ③의 전치(轉置)다.** `assignTracksLeftEdge`(구간 겹침 → 최소 트랙)는
 **축과 무관한 순수 알고리즘**이라 그대로 쓸 수 있다. 그 위의 것(계단꼴·절단선·같은 쪽
@@ -394,7 +394,7 @@ C 는 자기 예약이 아직 유효한지 다시 안 본다. `reservation not e
 **계측의 전제:** 지금 사유는 `반출 예약 (8,15)` 로 **칸만** 말하고 주인을 안 말한다
 (`deliveryRoute.plannedChainClear`). 주인을 모르면 위 표를 물을 수 없다 —
 `reservedExportCells` 를 `Set<셀>` → `Map<셀, 배정id>` 로 바꾸는 것이 계측기다.
-→ `tempPlanDocs/행채널-모델/judgements.md` J-양보
+→ `tempPlanDocs/y축-index/judgements.md` J-양보
 
 ---
 
