@@ -268,10 +268,6 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
     ? Math.max(0, config.beltMaxUndergroundDistance ?? 0)
     : 0;
   const blockGroup = config.undergroundBeltEntityName ?? config.beltEntityName;
-  // 유체 납품 경로 점프 거리 — 지하파이프를 골랐을 때만. 아이템과 별개(pipe-to-ground blockGroup).
-  const maxJumpPipe = config.undergroundPipeEntityName
-    ? Math.max(0, config.pipeMaxUndergroundDistance ?? 0)
-    : 0;
 
   // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 납품 경로는
   // 배정 좌표(계단꼴/열 갈아타기/지하 횡단)를 탐색 없이 체인으로 방출한다. dijkstra 는
@@ -323,11 +319,17 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
     const blockedBy = chain
       ? plannedChainClear(chain, k, base, deliveryBelts, reservedExport, reservedDelivery, mergeGuard)
       : null;
-    if (chain && blockedBy === null) {
+    if (isFluid && !config.pipeEntityName) {
+      // **파이프 prototype 이 없으면 유체는 아예 못 깐다.** 이 판정은 옛 탐색 경로
+      // ([routeOneFluidDelivery] 호출부)가 갖고 있었는데, 그 경로가 사라지면서
+      // (`AUTO_LAYOUT_CHANNEL_GEOMETRY` off 모드 제거, 2026-09-08) 계획 경로가 물려받았다.
+      // 안 그러면 [finishFluidChain] 의 `!` 가 **이름 없는 파이프**를 깐다.
+      route = { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
+    } else if (chain && blockedBy === null) {
       // 계획 체인은 품목-무관하다([buildPlannedChain]) — 갈리는 곳은 방출 하나뿐이다.
       route = isFluid ? finishFluidChain(delivery, chain, config) : finishChain(delivery, chain, config);
       planned += 1;
-    } else if (isFluid && geo) {
+    } else if (isFluid) {
       // **유체엔 탐색 폴백이 없다**(결정 D3). 원칙이 "모든 배치는 처음에 계획할 수 있어야
       // 한다"이므로, 계획 없이 탐색으로 때운 경로를 유체에 남기지 않는다 — 그건 "성공했다는데
       // 어디로 지나가는지 아무도 모르는" 배치다. 여기 오면 납품 경로 실패 → 트리가 거절된다.
@@ -338,12 +340,6 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
         item: delivery.item, ok: false, cells: [], corridors: [],
         reason: chain ? "fluid-planned-chain-blocked" : "fluid-unplannable",
       };
-    } else if (isFluid) {
-      // 장부 자체가 꺼진 모드(AUTO_LAYOUT_CHANNEL_GEOMETRY off) — 아이템도 전부 탐색으로
-      // 가는 "계획 없음" 모드다. 유체만 유별나게 실패시킬 이유가 없어 옛 탐색을 쓴다.
-      route = config.pipeEntityName
-        ? routeOneFluidDelivery(delivery, base, deliveryBelts, ledger, maxJumpPipe, config, bounds, config.fluidBlocked?.get(delivery.item))
-        : { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-pipe-entity" };
     } else {
       dijkstraFallback += 1;
       if (chain) {
@@ -475,58 +471,6 @@ function routeOneDelivery(
   return finishChain(delivery, result, config);
 }
 
-/**
- * 유체 납품 경로 한 개 — **pipe-to-pipe**(docs/auto-layout-wizard.fluid-delivery.md). 아이템 납품 경로보다 단순:
- * 파이프는 인서터가 없어 seat 이음이 없고, 방향이 없어 인접만으로 이어진다. 두 무한파이프
- * (자식 출력 sink · 부모 입력 source)를 떼고 그 자리를 파이프로 메워 잇는다.
- *
- * `fluidBlocked` = **다른 유체** 금지 칸(합류 가드) — 같은 유체는 안 막아 공유 합류를 허용한다.
- * emit 은 검증된 [containerRouting.emitFluidPath] 재사용(지상 pipe + 지하파이프 입/출구).
- */
-function routeOneFluidDelivery(
-  delivery: DeliverySpec,
-  base: Set<string>,
-  deliveryBelts: Set<string>,
-  corridors: ReadonlyArray<UndergroundCorridor>,
-  maxJump: number,
-  config: DeliveryConfig,
-  bounds: { x0: number; y0: number; x1: number; y1: number },
-  fluidBlocked?: ReadonlySet<string>,
-): Omit<DeliveryRoute, "key"> {
-  const from = portGeometry(delivery.from); // 자식 출력(collect)
-  const to = portGeometry(delivery.to); // 부모 입력(supply)
-  const fvFrom = faceVector(delivery.from.face);
-  const fvTo = faceVector(delivery.to.face);
-
-  const blocked = new Set<string>(base);
-  for (const k of deliveryBelts) blocked.add(k);
-  if (fluidBlocked) for (const k of fluidBlocked) blocked.add(k);
-  blocked.delete(cellKey(from.chest.x, from.chest.y));
-  blocked.delete(cellKey(to.chest.x, to.chest.y));
-
-  const result = dijkstraWithJumps({
-    start: from.chest,
-    end: to.chest,
-    blocked,
-    corridors,
-    maxJumpDistance: maxJump,
-    // 모든 pipe-to-ground prototype 은 단일 그룹으로 서로 페어링 절단(Factorio 규칙).
-    blockGroup: "pipe-to-ground",
-    jumpCostModel: "length", // 지상이 뚫려 있으면 항상 지상 — 지하는 충돌 회피용.
-    // 끝 셀 점프 방향 강제(지하파이프 입/출구 표면이 트렁크를 향하게). 지상 경로엔 무해.
-    requiredStartJump: { dx: fvFrom.x, dy: fvFrom.y },
-    requiredEndJump: { dx: -fvTo.x, dy: -fvTo.y },
-    bounds,
-  });
-  if (!result) return { item: delivery.item, ok: false, cells: [], corridors: [], reason: "no-path" };
-
-  const pair = synthPair(delivery.fromId, delivery.toId);
-  const emitted = emitFluidPath(result, pair, {
-    pipeEntityName: config.pipeEntityName!,
-    undergroundPipeEntityName: config.undergroundPipeEntityName,
-  });
-  return { item: delivery.item, ok: true, cells: emitted.placed, corridors: emitted.corridors };
-}
 
 /**
  * 체인(chest_from..chest_to) 공통 마무리 — seat 이음, 연속성 불변식, emit.

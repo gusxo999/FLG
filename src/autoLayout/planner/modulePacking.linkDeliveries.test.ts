@@ -28,7 +28,6 @@ const config: PackConfig = {
   belts: [{ entityName: "transport-belt", throughput: 40 }], // 줄 하나가 20
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 폴백으로 나고, "실패 0" 이 예약을
   // 검증하지 않는다(2026-07-20 실측: planned 0 / fallback 전부).
-  channelGeometry: true,
   reservePerimeterExits: true,
   beltMaxUndergroundDistance: 4,
 };

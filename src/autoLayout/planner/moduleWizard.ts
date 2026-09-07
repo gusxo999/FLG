@@ -44,7 +44,7 @@ import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
 // 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
 import { beginRunStats, recordDeliveryStats, recordPerimeterStats, recordRowChannelStats } from "../../debug/runStats";
-import { AUTO_LAYOUT_CHANNEL_GEOMETRY, AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
+import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
@@ -369,7 +369,6 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     // 외부상자 perimeter 반출 트랙 예약(조각 6-①) — 채널 폭에 트랙 세로 구간 합산.
     reservePerimeterExits: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
-    channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
     // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeDeliveryRoutes 의
     // maxJump 산식과 같아야 한다** — 지하벨트 prototype 이 없으면 방출기는 어차피 지상
     // 전용이므로, 장부도 0(지하 불가)으로 봐야 계획과 방출이 어긋나지 않는다.

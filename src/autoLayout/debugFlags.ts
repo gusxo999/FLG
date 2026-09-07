@@ -34,21 +34,6 @@ export function setAutoLayoutPerimeterPass(v: boolean): void {
 }
 
 /**
- * AUTO_LAYOUT_CHANNEL_GEOMETRY — 채널 기하 예약(통합 장부) 스위치.
- * (docs/auto-layout-wizard.channel-geometry-reservation.md)
- *
- * true(기본)면 packModuleTree 가 납품(납품 경로)·반출(트랙) 경로을 패킹 시점에 배정하고
- * (같은 쪽 판정 + 해소 사다리), 채널 폭을 그 결과에서 유도한다(폭 역전). deliveryRoute 은
- * 배정 좌표를 탐색 없이 방출하고 dijkstra 는 최후 폴백(예약 침범 금지)으로만 남는다.
- * false 면 옛 동작 — 폭만 예약 + dijkstra/스캔. 진단/회귀 격리용.
- */
-export let AUTO_LAYOUT_CHANNEL_GEOMETRY = true;
-
-export function setAutoLayoutChannelGeometry(v: boolean): void {
-  AUTO_LAYOUT_CHANNEL_GEOMETRY = v;
-}
-
-/**
  * AUTO_LAYOUT_LINK_LADDER — **구간막힘 해소**(못을 피해 링크를 토막내기) 스위치.
  * (`docs/auto-layout/link/machine-link.md` — *자리가 없으면 링크를 토막낸다*)
  *

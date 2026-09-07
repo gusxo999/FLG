@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { planPerimeterExits, type ExitContext, type ExitPortInput } from "./perimeterExitPlanner";
-import { assignTracksLeftEdge } from "./channelPlanner";
 import type { PortFace } from "../containerModel";
 
 /** 기본 픽스처: 모듈 몸통이 사방으로 뚫려 있다고 본다(옛 규칙 그대로 재현되는 조건). */
@@ -30,7 +29,8 @@ describe("planPerimeterExits", () => {
     // 세로 **직진** — 축은 `exitEdge` 가 말한다(옛 `self`).
     expect(plan.assignments.map((x) => x.exitMode.kind)).toEqual(["direct", "direct"]);
     expect(plan.assignments.map((x) => x.exitEdge)).toEqual(["N", "S"]);
-    expect(plan.channelTrackIntervals.size).toBe(0);
+    // 직진은 채널을 안 먹는다.
+    expect(plan.assignments.every((x) => x.entry === undefined)).toBe(true);
     expect(plan.marginNeeds).toEqual({ N: true, S: true, W: false, E: false });
   });
 
@@ -48,10 +48,10 @@ describe("planPerimeterExits", () => {
     expect(byId.get("e")!.exitMode).toEqual({ kind: "direct" });
     expect(byId.get("e")!.exitEdge).toBe("E");
     expect(plan.marginNeeds).toEqual({ N: false, S: false, W: true, E: true });
-    expect(plan.channelTrackIntervals.size).toBe(0);
+    expect(plan.assignments.every((x) => x.entry === undefined)).toBe(true);
   });
 
-  it("내부 열 W/E 변 = 인접 채널로 우회, 가까운 N/S 로 세로 구간 생성", () => {
+  it("내부 열 W/E 변 = 인접 채널로 **환승**, 가까운 N/S 로 나간다", () => {
     const ports: ExitPortInput[] = [
       p({ id: "w", role: "input", depth: 1, side: "W", anchorY: 2 }), // 왼쪽 채널(depth 1), N 가까움
       p({ id: "e", role: "output", depth: 1, side: "E", anchorY: 7 }), // 오른쪽 채널(depth 2), S 가까움
@@ -59,13 +59,12 @@ describe("planPerimeterExits", () => {
     const plan = planPerimeterExits(ports, ctx3());
     const byId = new Map(plan.assignments.map((a) => [a.id, a]));
     expect(byId.get("w")!.exitMode).toEqual({ kind: "channel", depth: 1 });
-    expect(byId.get("w")!.exitEdge).toBe("N");
-    expect(byId.get("w")!.interval).toEqual({ lo: 0, hi: 2 }); // [min y..anchor]
+    expect(byId.get("w")!.exitEdge).toBe("N"); // 가까운 변
+    // 진입점 = 상자의 행 + **반대쪽 벽**(W 로 나가면 그 채널의 E 벽으로 들어온다).
+    expect(byId.get("w")!.entry).toEqual({ y: 2, wall: "E" });
     expect(byId.get("e")!.exitMode).toEqual({ kind: "channel", depth: 2 });
     expect(byId.get("e")!.exitEdge).toBe("S");
-    expect(byId.get("e")!.interval).toEqual({ lo: 7, hi: 9 }); // [anchor..max y]
-    expect(plan.channelTrackIntervals.get(1)).toHaveLength(1);
-    expect(plan.channelTrackIntervals.get(2)).toHaveLength(1);
+    expect(byId.get("e")!.entry).toEqual({ y: 7, wall: "W" });
   });
 
   it("자기 열 위 형제에 막힌 N 변 = 인접 채널로 우회", () => {
@@ -92,17 +91,21 @@ describe("planPerimeterExits", () => {
     expect(topAsg.exitEdge).toBe("N");
   });
 
-  it("같은 채널의 트랙 구간은 납품 경로 구간과 합쳐 트랙 산정 가능(겹치면 트랙↑)", () => {
-    // 두 트랙이 같은 채널(depth 1) 로 겹치는 세로 구간 → 트랙 2.
+  it("같은 채널로 나가는 반출 둘은 **둘 다** 그 채널의 신고자가 된다", () => {
+    // 폭은 여기서 안 정해진다 — 통합 장부([channelGeometryPlanner])가 도형을 배정하고
+    // 그 결과(트랙 수)에서 폭이 나온다(폭 역전). 이 배정기가 답하는 것은 *"누가 어느
+    // 채널로 가나"* 까지다. 옛 판은 여기서 세로 구간을 모아 폭을 셌는데, 그 계산은
+    // 2026-09-08 에 사라졌다(off 모드 제거).
     const ports: ExitPortInput[] = [
-      p({ id: "a", role: "input", depth: 1, side: "W", anchorY: 1 }), // N: [0,1]
-      p({ id: "b", role: "input", depth: 1, side: "W", anchorY: 3 }), // N: [0,3] — a 와 겹침
+      p({ id: "a", role: "input", depth: 1, side: "W", anchorY: 1 }),
+      p({ id: "b", role: "input", depth: 1, side: "W", anchorY: 3 }),
     ];
     const plan = planPerimeterExits(ports, ctx3());
-    const trackIvs = plan.channelTrackIntervals.get(1)!;
-    const deliveryIvs = [{ lo: 0, hi: 2 }]; // 가상 납품 경로 구간
-    const combined = assignTracksLeftEdge([...deliveryIvs, ...trackIvs]);
-    expect(combined.trackCount).toBe(3); // 납품 경로+2 트랙 전부 [0,·] 겹침
+    expect(plan.assignments.map((x) => x.exitMode)).toEqual([
+      { kind: "channel", depth: 1 },
+      { kind: "channel", depth: 1 },
+    ]);
+    expect(plan.assignments.map((x) => x.entry!.y)).toEqual([1, 3]);
   });
 
   it("결정적 — id 순 안정", () => {
@@ -148,9 +151,8 @@ describe("planPerimeterExits — moduleWayOuts 제약", () => {
     const a = plan.assignments[0];
     expect(a.exitMode).toEqual({ kind: "direct" });
     expect(a.exitEdge).toBe("S");
+    // 후보가 전부 직진이다 = 채널을 하나도 안 먹는다 = 폭 낭비 0.
     expect(a.options.every((o) => !o.usesChannelTrack)).toBe(true);
-    // 채널 트랙을 하나도 안 먹는다 = 폭 낭비 0.
-    expect(plan.channelTrackIntervals.size).toBe(0);
   });
 
   it("E 가 뚫려 있으면 옛 규칙대로 채널 우회 (회귀 없음)", () => {
@@ -159,7 +161,6 @@ describe("planPerimeterExits — moduleWayOuts 제약", () => {
       ctx3(),
     );
     expect(plan.assignments[0].exitMode).toEqual({ kind: "channel", depth: 2 });
-    expect(plan.channelTrackIntervals.get(2)).toHaveLength(1);
   });
 
   it("나갈 길이 없으면 배정 자체를 안 만든다 (예약 0 · 계획된 skip)", () => {
@@ -169,20 +170,21 @@ describe("planPerimeterExits — moduleWayOuts 제약", () => {
       ctx3(),
     );
     expect(plan.assignments).toHaveLength(0);
-    expect(plan.channelTrackIntervals.size).toBe(0);
     expect(plan.marginNeeds).toEqual({ N: false, S: false, W: false, E: false });
   });
 
-  it("폭은 확정된 출구 하나만 반영한다 (안 쓸 후보를 위해 채널을 넓히지 않는다)", () => {
-    // 사방 뚫린 내부 열 W 변 상자 — 후보엔 채널·self·(끝열 아니라) margin 없음 여러 개가
-    // 있지만, 채널 구간은 **확정된 하나**만 들어가야 한다.
+  it("확정은 하나다 — 후보가 여럿이어도 장부에 가는 것은 `options[0]` 뿐", () => {
+    // 사방 뚫린 내부 열 W 변 상자 — 후보는 여럿(직진·환승 섞여)이지만 **확정은 하나**다.
+    // 안 쓸 후보를 위해 채널을 넓히던 옛 낭비가 여기서 사라졌다.
     const plan = planPerimeterExits(
       [p({ id: "w", role: "input", depth: 1, side: "W", anchorY: 2 })],
       ctx3(),
     );
     const a = plan.assignments[0];
     expect(a.options.length).toBeGreaterThan(1); // 자유도가 남아 있다(양보 가능)
-    const channelIvs = [...plan.channelTrackIntervals.values()].flat();
-    expect(channelIvs).toHaveLength(1); // 확정 하나만
+    // 평평한 확정 필드는 `options[0]` 의 복사본이다 — 그 하나만 통합 장부에 간다.
+    expect(a.exitMode).toEqual(a.options[0].exitMode);
+    expect(a.exitEdge).toBe(a.options[0].exitEdge);
+    expect(a.entry).toEqual(a.options[0].entry);
   });
 });

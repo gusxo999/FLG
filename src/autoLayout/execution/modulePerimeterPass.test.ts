@@ -222,7 +222,7 @@ describe("rePathToPerimeter", () => {
       { id: "n1", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("plastic-bar", 4), bin("kr-silicon", 2), bin("kr-glass", 2), bout("kr-components", 4)] },
       { id: "n2", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("copper-cable", 3), bin("stone-tablet", 1), bout("electronic-circuit", 2)] },
     ]);
-    const pack = packModuleTree(branch, { ...config, reservePerimeterExits: true, channelGeometry: true });
+    const pack = packModuleTree(branch, { ...config, reservePerimeterExits: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);
     const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {

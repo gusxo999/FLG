@@ -37,7 +37,6 @@ const config: PackConfig = {
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
   reservePerimeterExits: true,
-  channelGeometry: true,
   beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
 

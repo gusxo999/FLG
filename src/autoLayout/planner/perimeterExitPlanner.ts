@@ -48,7 +48,6 @@
  * abs **y** 와 depth 만으로 판정한다(납품 경로 구간 산정과 동일 관행).
  */
 
-import type { Interval } from "./channelPlanner";
 import type { PortFace } from "../containerModel";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
@@ -107,8 +106,6 @@ export interface ExitOption {
   exitMode: ExitMode;
   /** 이 출구가 모듈을 빠져나가는 방향 — 반드시 wayOuts 에 포함. */
   wayOut: PortFace;
-  /** 환승일 때의 세로 점유 구간(트랙 풀 합류용). */
-  interval?: Interval;
   /** 환승일 때의 진입 벽/행(장부의 반출 경로 입력). */
   entry?: { y: number; wall: "W" | "E" };
   /** 이 출구가 채널 트랙을 먹는가(= 폭을 넓히는가). 직진은 false. */
@@ -145,18 +142,18 @@ export interface ExitAssignment {
   role: "input" | "output";
   /**
    * 쓸 수 있는 출구 후보들(선호 순, 전부 wayOuts 를 만족). 아래 평평한 필드
-   * (exitEdge/host/interval/entry)는 **현재 확정** = 기본값 `options[0]`.
+   * (exitEdge/exitMode/entry)는 **현재 확정** = 기본값 `options[0]`.
    * 장부가 제약 때문에 다른 후보로 **양보**시킬 수 있다 — 그때 확정 필드도 함께 갱신한다.
    */
   options: ExitOption[];
   exitEdge: ExitEdge;
   exitMode: ExitMode;
-  /** 환승일 때의 세로 점유 구간(트랙 풀 합류용). */
-  interval?: Interval;
   /**
    * 채널 진입점 — 접점 행(anchor y) + 어느 벽에서 들어오나(W=부모 열 쪽 / E=자식 열 쪽).
-   * 기하 예약(channelGeometryPlanner)의 반출 경로 입력. W/E 변 포트만 채워진다 —
-   * N/S 변의 채널 우회는 진입 기하가 달라 미지원(폭만 예약).
+   * 기하 예약(channelGeometryPlanner)의 반출 경로 입력.
+   *
+   * **환승이면 반드시 있다** — `channelOpts` 가 예외 없이 채운다. 그 방향으로 못 나가는
+   * 포트는 환승 후보 **자체가 안 만들어진다**(`wayOut` 이 W/E 일 때만 도니까).
    */
   entry?: { y: number; wall: "W" | "E" };
   /**
@@ -168,8 +165,6 @@ export interface ExitAssignment {
 
 export interface PerimeterExitPlan {
   assignments: ExitAssignment[];
-  /** 채널 depth → 그 채널에 더할 트랙 세로 구간들(납품 경로 구간과 합쳐 폭 산정). */
-  channelTrackIntervals: Map<number, Interval[]>;
   /** 바깥/변 마진 수요. N/S = 상자 seat 행 필요 여부, W/E = 마진 열 필요 여부. */
   marginNeeds: { N: boolean; S: boolean; W: boolean; E: boolean };
 }
@@ -177,11 +172,6 @@ export interface PerimeterExitPlan {
 /** N/S 중 anchor 에 더 가까운 변. */
 function nearerNS(anchorY: number, gy: { min: number; max: number }): "N" | "S" {
   return anchorY - gy.min <= gy.max - anchorY ? "N" : "S";
-}
-
-/** 그 변으로 나갈 때 세로로 달릴 목표 edge y. */
-function edgeY(edge: "N" | "S", gy: { min: number; max: number }): number {
-  return edge === "N" ? gy.min : gy.max;
 }
 
 /**
@@ -259,10 +249,6 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
       exitEdge: e,
       exitMode: { kind: "channel", depth } as ExitMode,
       wayOut,
-      interval: {
-        lo: Math.min(p.anchorY, edgeY(e, gy)),
-        hi: Math.max(p.anchorY, edgeY(e, gy)),
-      } as Interval,
       entry: { y: p.anchorY, wall },
       usesChannelTrack: true,
     }));
@@ -313,7 +299,6 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
  */
 export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: ExitContext): PerimeterExitPlan {
   const assignments: ExitAssignment[] = [];
-  const channelTrackIntervals = new Map<number, Interval[]>();
   const marginNeeds = { N: false, S: false, W: false, E: false };
 
   // 결정적: id 오름차순.
@@ -323,13 +308,8 @@ export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: Exi
     if (options.length === 0) continue; // 나갈 길 없음 — 예약 0, 계획된 skip.
     const chosen = options[0];
 
-    if (chosen.exitMode.kind === "channel" && chosen.interval) {
-      const d = chosen.exitMode.depth;
-      (channelTrackIntervals.get(d) ?? channelTrackIntervals.set(d, []).get(d)!).push(chosen.interval);
-      marginNeeds[chosen.exitEdge] = true; // 상자 seat 는 N/S 마진 행.
-    } else {
-      marginNeeds[chosen.exitEdge] = true;
-    }
+    // 상자 seat 는 진출 변의 마진에 앉는다 — 직진이든 환승이든 같다.
+    marginNeeds[chosen.exitEdge] = true;
 
     assignments.push({
       id: p.id,
@@ -337,10 +317,9 @@ export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: Exi
       options,
       exitEdge: chosen.exitEdge,
       exitMode: chosen.exitMode,
-      interval: chosen.interval,
       entry: chosen.entry,
     });
   }
 
-  return { assignments, channelTrackIntervals, marginNeeds };
+  return { assignments, marginNeeds };
 }

@@ -51,7 +51,6 @@ const config: PackConfig = {
   beltEntityName: "transport-belt",
   belts: [{ entityName: "transport-belt", throughput: 15 }],
   reservePerimeterExits: true,
-  channelGeometry: true,
   beltMaxUndergroundDistance: UNDERGROUND.beltMaxUndergroundDistance,
 };
 

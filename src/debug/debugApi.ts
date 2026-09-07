@@ -25,10 +25,8 @@
  */
 
 import {
-  AUTO_LAYOUT_CHANNEL_GEOMETRY,
   AUTO_LAYOUT_COORD_DUMP,
   AUTO_LAYOUT_PERIMETER_PASS,
-  setAutoLayoutChannelGeometry,
   setAutoLayoutLinkLadder,
   AUTO_LAYOUT_LINK_LADDER,
   setAutoLayoutLinkOppositeFace,
@@ -300,18 +298,10 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
-  channelGeometry: {
-    usage: '(true|false)', desc: '화면에 버튼이 없는 플래그 — 채널 기하 예약',
-    fn: (v: boolean) => {
-      setAutoLayoutChannelGeometry(v);
-      return v ? 'ON' : 'OFF';
-    },
-  },
   show: {
     fn: () => ({
       coordDump: AUTO_LAYOUT_COORD_DUMP,
       perimeterPass: AUTO_LAYOUT_PERIMETER_PASS,
-      channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
       linkLadder: AUTO_LAYOUT_LINK_LADDER,
       linkOppositeFace: AUTO_LAYOUT_LINK_OPPOSITE_FACE,
       linkDirect: AUTO_LAYOUT_LINK_DIRECT,

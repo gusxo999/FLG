@@ -194,7 +194,7 @@ describe("routeDeliveryRoutes", () => {
     expect(res.strippedChestIds.has(fluidDelivery!.to.chest.id)).toBe(true);
   });
 
-  it("유체 납품 경로 config 에 파이프 prototype 이 없으면 실패(→ 옛 경로 폴백)", () => {
+  it("유체 납품 경로 config 에 파이프 prototype 이 없으면 실패한다", () => {
     const pack = packModuleTree(fluidSpecs, packConfig);
     const res = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" }); // 파이프 없음
     expect(res.failures).toBeGreaterThan(0);

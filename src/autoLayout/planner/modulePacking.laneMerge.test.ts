@@ -34,7 +34,6 @@ const config: PackConfig = {
   beltEntityName: "b",
   // 물리 90 → **줄 하나가 45**(레인). 수요 60 은 레인을 넘어 **줄 둘**이 된다.
   belts: [{ entityName: "b", throughput: 90 }],
-  channelGeometry: true,
   reservePerimeterExits: true,
   beltMaxUndergroundDistance: 4,
 };

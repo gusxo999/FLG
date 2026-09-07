@@ -19,7 +19,7 @@ import type { SpecInserter } from "../buildSpec";
  * 무배선 — 라이브 회귀 0. 단위 테스트 + 전체 트리 ASCII 로만 검증.
  */
 
-import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
+import { channelWidthFromTracks, type Interval } from "./channelPlanner";
 import { laneCapOfTier } from "../beltThroughput";
 import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
 import {
@@ -156,14 +156,6 @@ export interface PackConfig {
    * 미지정=off(현행 유지) — 골든/단위 테스트 회귀 0. moduleWizard 가 플래그로 전달.
    */
   reservePerimeterExits?: boolean;
-  /**
-   * 채널 기하 예약(통합 장부) — 예약을 "폭"에서 "기하(누가 어느 트랙)"로 승격한다
-   * (docs/auto-layout-wizard.channel-geometry-reservation.md). true 면 납품(납품 경로)·반출(트랙)
-   * 경로의 트랙을 [channelGeometryPlanner] 가 패킹 시점에 배정하고(같은 쪽 판정 + 해소
-   * 사다리), 채널 폭은 그 결과에서 유도(폭 역전), PackResult.channelGeometry 로 방출
-   * 지시를 내린다. 미지정=off(현행 dijkstra/스캔 유지).
-   */
-  channelGeometry?: boolean;
   /**
    * 지하벨트 점프 거리 상한 — 장부가 **납품끼리의 교차**를 지하로 계획할 때 쓴다
    * ([channelGeometryPlanner.GeometryContext.maxJump]). 0/미지정 = 지하 불가 → 교차하는
@@ -304,8 +296,15 @@ export interface PackResult {
   bbox: { x: number; y: number; w: number; h: number };
   /** 외부상자 perimeter 반출 트랙 배정(조각 6-①). ②③(재배치·라우팅)이 소비. */
   exitPlan: PerimeterExitPlan;
-  /** 채널 기하 예약(통합 장부) — config.channelGeometry 일 때만. */
-  channelGeometry?: PackChannelGeometry;
+  /**
+   * 채널 기하 예약(통합 장부) — **언제나 있다.**
+   *
+   * 2026-09-08 까지 `config.channelGeometry` 스위치가 있어 끄면 *"폭만 예약 + 탐색"* 인
+   * 옛 모델로 돌아갔다. **그 세계에는 「경로 예약」이 없다**(폭만 예약한다) — 그래서
+   * *"예약된 경로는 항상 방출 가능"* 이라는 이 저장소의 철학이 아예 성립하지 않았다.
+   * 두 모델을 함께 이고 갈 값이 없어 지웠다.
+   */
+  channelGeometry: PackChannelGeometry;
   /**
    * **링크 신원 불일치** — 자식이 `linkId` 를 선언한 그룹을 냈는데 부모 쪽에서 짝을 못 찾은
    * 경우([pairDeliveryPorts]). 정상적으로 있을 수 있는 일이 **아니다**: 신원은 자식·부모가 같은
@@ -746,11 +745,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //    좌표보다 뒤가 되고, 행 채널 높이가 배치를 못 민다. 여기서는 **재료만** 담고 절대 행은
   //    6단계로 미룬다 — 짝짓기 자체는 좌표를 하나도 안 본다(`rowChannelPlanner` 머리말).
 
-  const intervalsByDepth = new Map<number, { lo: number; hi: number }[]>();
-  /** 세로 채널 구간의 **재료** — 절대 행이 서기 전이라 로컬 행으로 담아 둔다(6단계가 푼다). */
-  const intervalAnchors: {
-    depth: number; fromId: string; fromAnchorY: number; toId: string; toAnchorY: number;
-  }[] = [];
   // 납품 경로 씨앗 — 기하 예약(5c)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
   // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
   //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(트랙 예약)
@@ -844,11 +838,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
           x2: port.anchor.x - ownerExt.x, // 상자의 로컬 x
         });
       }
-      // **구간도 미룬다** — 절대 행은 6단계에 온다. 여기선 재료만 담는다.
-      intervalAnchors.push({
-        depth: s.depth, fromId: s.id, fromAnchorY: out.anchor.y,
-        toId: s.parentId!, toAnchorY: inp.anchor.y,
-      });
       // **행 채널을 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
       // 것인지 행 채널 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
       // **행 채널 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
@@ -1048,12 +1037,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   const absPortY = (id: string, anchorY: number): number =>
     anchorY + topY.get(id)! - moduleExtent(oriented.get(id)!.module).y;
   for (const n of rowChannelNeeds) n.portY = absPortY(n.nodeId, n.anchorY);
-  for (const a of intervalAnchors) {
-    const cy = absPortY(a.fromId, a.fromAnchorY);
-    const py = absPortY(a.toId, a.toAnchorY);
-    (intervalsByDepth.get(a.depth) ?? intervalsByDepth.set(a.depth, []).get(a.depth)!)
-      .push({ lo: Math.min(cy, py), hi: Math.max(cy, py) });
-  }
   for (const seed of deliverySeeds) {
     seed.startY = absPortY(seed.fromId, seed.fromAnchorY);
     seed.endY = absPortY(seed.toId, seed.toAnchorY);
@@ -1090,66 +1073,56 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 
   // 5b) 외부상자 반출 트랙 예약(조각 6-①) — 살아남은 raw 입력·루트 출력 상자를 인접 gap
   //     으로 빼는 트랙을 planner 에 맡긴다. 채널로 우회하는 트랙의 세로 구간은 위 납품 경로
-  //     구간과 **합쳐** 채널 폭에 반영(결정 A: 폭만 예약, 트랙 index 는 라우터). colX 전이라
-  //     X 없이 abs y+depth 만으로 판정 가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진
-  //     반영은 reservePerimeterExits 게이트.
+  //     으로 빼는 출구를 planner 에 맡긴다. colX 전이라 X 없이 abs y+depth 만으로 판정
+  //     가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진 반영은 reservePerimeterExits 게이트.
+  //     환승 출구가 먹는 트랙은 5c 의 통합 장부가 배정하고, 그 결과에서 폭이 나온다.
   const exitPlan = planExits(specs, oriented, topY, pairedChestIds, maxDepth, absPortY);
-  if (config.reservePerimeterExits) {
-    for (const [d, ivs] of exitPlan.channelTrackIntervals)
-      for (const iv of ivs) (intervalsByDepth.get(d) ?? intervalsByDepth.set(d, []).get(d)!).push(iv);
-  }
 
   // 5c) 채널 기하 예약(통합 장부) — 납품·반출 경로를 한 장부에 모아 트랙을 배정한다
   //     (같은 쪽 판정 + 해소 사다리, docs/…channel-geometry-reservation.md). 폭 역전:
   //     아래 channelWidth 가 이 배정 결과(trackCount)에서 폭을 유도한다. 부적격 경로
-  //     (스필 납품 경로·N/S 우회 반출)는 폭만 예약(reserveIntervals)하고 기존 dijkstra/스캔에 맡긴다.
+  //     (스필 납품 경로)는 폭만 예약(reserveIntervals)하고 방출의 dijkstra 에 맡긴다.
   const geometryPlans = new Map<number, ChannelGeometryPlan>();
-  if (config.channelGeometry) {
-    let gyMin = Infinity, gyMax = -Infinity;
-    for (const s of specs) {
-      const top = topY.get(s.id)!;
-      gyMin = Math.min(gyMin, top);
-      gyMax = Math.max(gyMax, top + moduleExtent(oriented.get(s.id)!.module).h - 1);
+  let gyMin = Infinity, gyMax = -Infinity;
+  for (const s of specs) {
+    const top = topY.get(s.id)!;
+    gyMin = Math.min(gyMin, top);
+    gyMax = Math.max(gyMax, top + moduleExtent(oriented.get(s.id)!.module).h - 1);
+  }
+  for (let d = 1; d <= maxDepth; d++) {
+    const dels: DeliveryInput[] = [];
+    const reserve: Interval[] = [];
+    for (const seed of deliverySeeds) {
+      if (seed.depth !== d) continue;
+      if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid });
+      else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
     }
-    for (let d = 1; d <= maxDepth; d++) {
-      const dels: DeliveryInput[] = [];
-      const reserve: Interval[] = [];
-      for (const seed of deliverySeeds) {
-        if (seed.depth !== d) continue;
-        if (seed.eligible) dels.push({ id: seed.key, startY: seed.startY, endY: seed.endY, fluid: seed.fluid });
-        else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
+    const exps: ExportInput[] = [];
+    if (config.reservePerimeterExits) {
+      for (const a of exitPlan.assignments) {
+        if (a.exitMode.kind !== "channel" || a.exitMode.depth !== d) continue;
+        // **불변식** — 환승 후보는 `entry` 가 언제나 있고 진출 변이 언제나 N/S 다
+        // (`channelOpts` 가 `[near, far]` 로 둘 다 N/S 를 낸다). 그 방향으로 못 나가는
+        // 포트는 **환승 후보 자체가 안 만들어진다**(`wayOut` 이 W/E 일 때만 도니까).
+        // 아래 가드는 그 불변식을 타입에 알려 주는 것뿐이다 — 참이 될 수 없다.
+        if (!a.entry || (a.exitEdge !== "N" && a.exitEdge !== "S")) continue;
+        exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
       }
-      const exps: ExportInput[] = [];
-      if (config.reservePerimeterExits) {
-        for (const a of exitPlan.assignments) {
-          if (a.exitMode.kind !== "channel" || a.exitMode.depth !== d) continue;
-          if (a.entry && (a.exitEdge === "N" || a.exitEdge === "S")) {
-            exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
-          } else if (a.interval) {
-            reserve.push(a.interval); // N/S 우회 등 미지원 진입 — 폭만 예약
-          }
-        }
-      }
-      geometryPlans.set(
-        d,
-        planChannelGeometry(dels, exps, {
-          yMin: gyMin,
-          yMax: gyMax,
-          reserveIntervals: reserve,
-          maxJump: config.beltMaxUndergroundDistance ?? 0,
-        }),
-      );
     }
+    geometryPlans.set(
+      d,
+      planChannelGeometry(dels, exps, {
+        yMin: gyMin,
+        yMax: gyMax,
+        reserveIntervals: reserve,
+        maxJump: config.beltMaxUndergroundDistance ?? 0,
+      }),
+    );
   }
 
-  const channelWidth = (d: number): number => {
-    if (config.channelGeometry) {
-      // 폭 역전 — 폭은 기하 배정의 결과(사용 트랙 수)에서 유도된다.
-      return channelWidthFromTracks(geometryPlans.get(d)?.trackCount ?? 0, MODULE_CHANNEL_MIN);
-    }
-    const ivs = intervalsByDepth.get(d) ?? [];
-    return channelWidthFromTracks(assignTracksLeftEdge(ivs).trackCount, MODULE_CHANNEL_MIN);
-  };
+  /** **폭 역전** — 폭은 우리가 고르는 값이 아니라 기하 배정의 결과(사용 트랙 수)다. */
+  const channelWidth = (d: number): number =>
+    channelWidthFromTracks(geometryPlans.get(d)?.trackCount ?? 0, MODULE_CHANNEL_MIN);
   const colX = new Array(maxDepth + 1).fill(0);
   for (let d = 1; d <= maxDepth; d++) colX[d] = colX[d - 1] + colWidth[d - 1] + channelWidth(d);
 
@@ -1206,17 +1179,15 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // 7b) 기하 예약의 절대좌표 변환 — 트랙 index → 채널 내부 x, 반출 배정 확정(exitEdge
   //     뒤집힘 반영 + trackX 기록), 반출 예약 셀 산출. marginNeeds 를 갱신할 수 있으므로
   //     expandBbox 보다 먼저.
-  const channelGeometry = config.channelGeometry
-    ? materializeChannelGeometry({
-        geometryPlans,
-        deliverySeeds,
-        exitPlan,
-        placements,
-        channelStartX: (d: number) => colX[d - 1] + colWidth[d - 1],
-        rawBbox,
-        reserveTracks: config.reservePerimeterExits === true,
-      })
-    : undefined;
+  const channelGeometry = materializeChannelGeometry({
+    geometryPlans,
+    deliverySeeds,
+    exitPlan,
+    placements,
+    channelStartX: (d: number) => colX[d - 1] + colWidth[d - 1],
+    rawBbox,
+    reserveTracks: config.reservePerimeterExits === true,
+  });
 
   const bbox = config.reservePerimeterExits ? expandBbox(rawBbox, exitPlan.marginNeeds) : rawBbox;
   return { placements, deliveries, rawPorts, bbox, exitPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };

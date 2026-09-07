@@ -14,7 +14,6 @@
  */
 
 import {
-  AUTO_LAYOUT_CHANNEL_GEOMETRY,
   AUTO_LAYOUT_COORD_DUMP,
   AUTO_LAYOUT_PERIMETER_PASS,
 } from '../autoLayout/debugFlags';
@@ -262,8 +261,7 @@ export function buildReport(): string {
   }
 
   out.push(
-    line('플래그', `COORD_DUMP ${flag(AUTO_LAYOUT_COORD_DUMP)} · PERIMETER_PASS ${flag(AUTO_LAYOUT_PERIMETER_PASS)}`
-      + ` · CHANNEL_GEOMETRY ${flag(AUTO_LAYOUT_CHANNEL_GEOMETRY)}`),
+    line('플래그', `COORD_DUMP ${flag(AUTO_LAYOUT_COORD_DUMP)} · PERIMETER_PASS ${flag(AUTO_LAYOUT_PERIMETER_PASS)}`),
   );
   out.push('', '─ 최근 명령', formatJournal());
   return out.join('\n');
