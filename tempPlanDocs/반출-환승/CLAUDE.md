@@ -1,6 +1,6 @@
 # 반출-환승 — 상태와 고유 컨텍스트
 
-> 상태: **승인 대기** — 계획서 **3차 재작성**(2026-09-07).
+> 상태: **진행 중** — **Step 0 완료**(2026-09-08, `7528b84`). 다음 = Step 0.5 자료구조 정리.
 >
 > **한 문장:** `self` 반출은 **자격을 덜 재고** 배정되어 예약 철학을 깬다.
 > 사후에 감지해 양보시키는 게 아니라 **자격 판정을 완성해서 실패할 수 없게** 만든다.
@@ -33,7 +33,7 @@ skip        예약대로 못 깔아 상자를 로컬 ring 에 두는 것. **버�
 
 | 무엇 | 왜 |
 |---|---|
-| `planner/perimeterTrackPlanner.ts` — `selfBlocked`(≈160) · `enumerateOptions`(≈185) | **자격을 재는 유일한 자리.** 묻는 것이 둘뿐이다 — `wayOuts` 와 *"같은 열에 바깥쪽 형제 모듈이 있나"* |
+| `planner/perimeterExitPlanner.ts` — `selfBlocked` · `enumerateOptions` | **자격을 재는 유일한 자리.** 묻는 것이 둘뿐이다 — `wayOuts` 와 *"같은 열에 바깥쪽 형제 모듈이 있나"* |
 | `execution/modulePerimeterPass.ts` 머리말 — 예약 철학 | *"예약된 경로는 항상 방출 가능해야 한다"* — **이 계획이 참으로 만들려는 문장** |
 | 같은 파일 — `TrackAssignment.options` 주석 | *"장부가 양보시킬 수 있다"* 는데 그 장부가 없다. 이 계획은 **후보를 안 만드는** 쪽으로 푼다 |
 | `planner/perimeterRouter.ts` — `routeWithHint` 의 `offsets` | self 는 `[0]`, channel 은 `trackX + ±maxJog`. **거래가 그 두 줄에 있다** |
