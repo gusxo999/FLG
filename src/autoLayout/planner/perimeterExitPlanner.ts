@@ -108,8 +108,6 @@ export interface ExitOption {
   wayOut: PortFace;
   /** 환승일 때의 진입 벽/행(장부의 반출 경로 입력). */
   entry?: { y: number; wall: "W" | "E" };
-  /** 이 출구가 채널 트랙을 먹는가(= 폭을 넓히는가). 직진은 false. */
-  usesChannelTrack: boolean;
 }
 
 /**
@@ -215,7 +213,7 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
   /** **세로 직진** — 자기 열로 N/S 바깥 변까지. 채널 트랙 안 먹음. */
   const directNS = (e: "N" | "S"): ExitOption | null =>
     can(e) && !selfBlocked(p.depth, p.anchorY, e, ctx)
-      ? { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e, usesChannelTrack: false }
+      ? { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e }
       : null;
 
   /**
@@ -229,7 +227,7 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
     if (!can(e)) return null;
     if (e === "W" && p.depth !== 0) return null;
     if (e === "E" && p.depth !== ctx.maxDepth) return null;
-    return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e, usesChannelTrack: false };
+    return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e };
   };
 
   /**
@@ -250,7 +248,6 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
       exitMode: { kind: "channel", depth } as ExitMode,
       wayOut,
       entry: { y: p.anchorY, wall },
-      usesChannelTrack: true,
     }));
   };
 

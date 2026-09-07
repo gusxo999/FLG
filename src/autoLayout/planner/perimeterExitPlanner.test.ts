@@ -152,7 +152,7 @@ describe("planPerimeterExits — moduleWayOuts 제약", () => {
     expect(a.exitMode).toEqual({ kind: "direct" });
     expect(a.exitEdge).toBe("S");
     // 후보가 전부 직진이다 = 채널을 하나도 안 먹는다 = 폭 낭비 0.
-    expect(a.options.every((o) => !o.usesChannelTrack)).toBe(true);
+    expect(a.options.every((o) => o.exitMode.kind === "direct")).toBe(true);
   });
 
   it("E 가 뚫려 있으면 옛 규칙대로 채널 우회 (회귀 없음)", () => {
