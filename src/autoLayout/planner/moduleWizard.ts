@@ -367,7 +367,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
     undergroundBelts: options.undergroundBelts,
     inserters: specInserters,
     // 외부상자 perimeter 반출 트랙 예약(조각 6-①) — 채널 폭에 트랙 세로 구간 합산.
-    reservePerimeterTracks: AUTO_LAYOUT_PERIMETER_PASS,
+    reservePerimeterExits: AUTO_LAYOUT_PERIMETER_PASS,
     // 채널 기하 예약(통합 장부) — 납품·반출 트랙을 패킹 시점에 배정, 폭은 결과에서 유도.
     channelGeometry: AUTO_LAYOUT_CHANNEL_GEOMETRY,
     // 장부가 납품끼리의 교차를 지하로 계획할 때 쓰는 거리 상한. **아래 routeDeliveryRoutes 의
@@ -668,7 +668,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   }
 
   // 1c) 외부상자 전역 perimeter 재배치(조각 6-C) — 합성 후 살아남은 raw 입력·루트 출력
-  //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A trackPlan 배정대로 예약된
+  //     상자는 각자 *로컬* 모듈 ring(=배치 내부)에 박혀 있다. ⑥A exitPlan 배정대로 예약된
   //     트랙 안에 결정적 belt(직선 or ㄱ자)를 깔아 전역 외곽으로 옮긴다(탐색 없음). 트랙이
   //     막히거나 미지원 배정(형제에 막힌 N/S 변→채널)인 상자만 건너뛰어 로컬 ring 에 남기고
   //     트리는 모듈 경로를 유지한다(회귀 0).

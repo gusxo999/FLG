@@ -33,7 +33,7 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
       face: "N",
       perimeter,
       obstacles: new Set(),
-      hint: { exitEdge: "N", host: { kind: "self" } },
+      hint: { exitEdge: "N", exitMode: { kind: "direct" } },
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -52,7 +52,7 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
       face: "N",
       perimeter,
       obstacles: occ,
-      hint: { exitEdge: "N", host: { kind: "self" } },
+      hint: { exitEdge: "N", exitMode: { kind: "direct" } },
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -69,7 +69,7 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
       face: "E",
       perimeter,
       obstacles: occ,
-      hint: { exitEdge: "N", host: { kind: "channel", depth: 1 } },
+      hint: { exitEdge: "N", exitMode: { kind: "channel", depth: 1 } },
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -86,7 +86,7 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
       face: "N",
       perimeter,
       obstacles: new Set(),
-      hint: { exitEdge: "N", host: { kind: "channel", depth: 1 } },
+      hint: { exitEdge: "N", exitMode: { kind: "channel", depth: 1 } },
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -101,7 +101,7 @@ describe("perimeterRouter — hint 모드(production 재현)", () => {
       face: "N",
       perimeter,
       obstacles: new Set(),
-      hint: { exitEdge: "N", host: { kind: "channel", depth: 1 }, trackX: 8 },
+      hint: { exitEdge: "N", exitMode: { kind: "channel", depth: 1 }, trackX: 8 },
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;

@@ -37,7 +37,7 @@ const config: PackConfig = {
   belts: [{ entityName: "transport-belt", throughput: 40 }], // 줄 하나가 20
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 로 나서 이 버그가 안 드러난다.
   channelGeometry: true,
-  reservePerimeterTracks: true,
+  reservePerimeterExits: true,
   beltMaxUndergroundDistance: 4,
 };
 

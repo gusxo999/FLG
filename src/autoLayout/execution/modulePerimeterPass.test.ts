@@ -64,7 +64,7 @@ function effectiveCells(
 describe("rePathToPerimeter", () => {
   it("순수 — pack 미변형(chest.origin·mod.cells 그대로), 이사 결과는 relocations 로 반환", () => {
     // 예약 on — 채널이 트랙 만큼 넓어져야 channel-host 상자도 통로가 난다.
-    const pack = packModuleTree(specs, { ...config, reservePerimeterTracks: true });
+    const pack = packModuleTree(specs, { ...config, reservePerimeterExits: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);
 
@@ -222,7 +222,7 @@ describe("rePathToPerimeter", () => {
       { id: "n1", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("plastic-bar", 4), bin("kr-silicon", 2), bin("kr-glass", 2), bout("kr-components", 4)] },
       { id: "n2", depth: 1, parentId: "n0", machine: M3, count: 2, lines: [bin("copper-cable", 3), bin("stone-tablet", 1), bout("electronic-circuit", 2)] },
     ]);
-    const pack = packModuleTree(branch, { ...config, reservePerimeterTracks: true, channelGeometry: true });
+    const pack = packModuleTree(branch, { ...config, reservePerimeterExits: true, channelGeometry: true });
     const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
     expect(delivery.failures).toBe(0);
     const res = rePathToPerimeter(pack, delivery.strippedChestIds, delivery.cells, {

@@ -10,8 +10,8 @@
  * 만 본다.
  *
  * ## 두 모드
- * - **hint 있음(production)**: [perimeterTrackPlanner] 가 ⑥A 에서 정한 exitEdge·host 를 그대로
- *   재현한다 — self/margin=직선, channel=face 방향 가로 jog→세로. 기존 동작 불변(회귀 0).
+ * - **hint 있음(production)**: [perimeterExitPlanner] 가 ⑥A 에서 정한 exitEdge·exitMode 를
+ *   그대로 재현한다 — **직진**=상자 좌표 그대로 직선, **환승**=face 방향 가로 jog→세로.
  * - **hint 없음(DevTool·탐색)**: 스스로 "가장 가까운 도달 가능한 변"을 고른다. face 변으로
  *   직선을 먼저 시도하고, 막히면 인접 gap 으로 우회(L), 그래도 막히면 다른 변으로. ⑥C+ 의
  *   미지원 케이스(N/S 면이 형제에 막혀 우회)도 이 경로에서 일반적으로 시도된다.
@@ -22,7 +22,7 @@
 
 import type { PortFace } from "../containerModel";
 import { cellKey, faceVector, segment } from "../util/helper";
-import type { ExitEdge, TrackHost } from "./perimeterTrackPlanner";
+import type { ExitEdge, ExitMode } from "./perimeterExitPlanner";
 
 export interface Rect {
   minX: number;
@@ -33,12 +33,12 @@ export interface Rect {
 
 export type Pt = { x: number; y: number };
 
-/** production 재현용 힌트 — trackPlan 이 정한 배정. */
+/** production 재현용 힌트 — exitPlan 이 정한 배정. */
 export interface RouteHint {
   exitEdge: ExitEdge;
-  host: TrackHost;
+  exitMode: ExitMode;
   /**
-   * 기하 예약(channelGeometryPlanner)이 확정한 세로 주행 열(절대 x) — channel host 에서
+   * 기하 예약(channelGeometryPlanner)이 확정한 세로 주행 열(절대 x) — 환승에서
    * 스캔 대신 이 트랙을 먼저 재생한다(예약 자리는 납품 경로가 침범 못 하므로 비어 있어야 정상).
    * 막혀 있으면(예약 밖 점유) 기존 스캔으로 폴백.
    */
@@ -135,14 +135,16 @@ function jogOffsets(maxJog: number, preferDir = 0): number[] {
   return out;
 }
 
-/** production 힌트 재현: trackPlan 배정 그대로. */
+/** production 힌트 재현: exitPlan 배정 그대로. */
 function routeWithHint(req: RouteRequest, hint: RouteHint, maxJog: number): RouteResult {
   const { anchor, face, perimeter, obstacles: occ } = req;
   const fv = faceVector(face);
   const edge = hint.exitEdge;
 
-  if (hint.host.kind === "self" || hint.host.kind === "margin") {
-    // 직선: face 축으로 그 변까지.
+  if (hint.exitMode.kind === "direct") {
+    // **직진 — 주행선 후보가 `[0]` 하나다.** 상자 좌표 그대로 그 변까지 가고, 옆으로 한 칸도
+    // 못 비킨다. 축은 `exitEdge` 가 정한다(N/S 면 세로, W/E 면 가로) — 옛 `self`/`margin` 의
+    // 구분이 여기 있었고, 실제로는 이 한 줄이 둘을 이미 같게 다루고 있었다.
     const res =
       edge === "N" || edge === "S"
         ? tryNS(anchor, edgeCoord(edge, perimeter), occ, [0])
@@ -151,7 +153,7 @@ function routeWithHint(req: RouteRequest, hint: RouteHint, maxJog: number): Rout
     return { ok: true, exitEdge: edge, seat: res.seat, path: res.path };
   }
 
-  // channel host: 예약 트랙(trackX)이 있으면 그대로 재생, 없으면 face(가로) 방향 스캔 → N/S 변.
+  // **환승 — 후보가 여럿이다.** 예약 트랙(trackX)이 있으면 그대로 재생, 없으면 face(가로) 방향 스캔 → N/S 변.
   if (edge !== "N" && edge !== "S") return { ok: false, reason: "channel non-NS" };
   // 반출 elbow 는 가로 진입(anchor → trackX) + 세로 주행(→ N/S 변). trackX 가 확정돼 있으면
   // jog 방향은 trackX−anchor.x 부호가 정하므로 face 축과 무관하다 — face 가 N/S(fv.x=0)라

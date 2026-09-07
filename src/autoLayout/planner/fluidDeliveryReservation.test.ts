@@ -53,7 +53,7 @@ const fluidSpecs: NodeSpec[] = [
   },
 ];
 
-// **production 충실**: moduleWizard 는 channelGeometry·reservePerimeterTracks 를 켜고 부른다
+// **production 충실**: moduleWizard 는 channelGeometry·reservePerimeterExits 를 켜고 부른다
 // (AUTO_LAYOUT_CHANNEL_GEOMETRY 기본 on). 기존 유체 테스트는 이 둘이 꺼진 config 를 써서
 // 장부가 아예 안 돌았다 — 그래서 이 계측이 따로 필요하다.
 const packConfig: PackConfig = {
@@ -61,7 +61,7 @@ const packConfig: PackConfig = {
   inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
   channelGeometry: true,
-  reservePerimeterTracks: true,
+  reservePerimeterExits: true,
   beltMaxUndergroundDistance: 4,
 };
 const deliveryConfig: DeliveryConfig = {

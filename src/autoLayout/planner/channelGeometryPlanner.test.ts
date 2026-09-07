@@ -148,7 +148,7 @@ const config: PackConfig = {
   inserterEntityName: "inserter",
   inserters: [{ entityName: "i", reach: 1, throughput: 0 }, { entityName: "long-handed-inserter", reach: 2, throughput: 0 }],
   beltEntityName: "transport-belt",
-  reservePerimeterTracks: true,
+  reservePerimeterExits: true,
   channelGeometry: true,
 };
 
@@ -234,7 +234,7 @@ describe("채널 기하 예약 — 파이프라인 불변식(§9)", () => {
   // 예약 켜고/끄고 돌려 **둘을 비교**한다 — 그러면 배치 모델이 바뀌어도 뜻이 그대로 남는다.
   it("반출 예약 재생 — 예약을 켜도 skip 이 끈 것보다 늘지 않는다", () => {
     const withRes = runPipeline().res;
-    const withoutPack = packModuleTree(specs, { ...config, reservePerimeterTracks: false, channelGeometry: false });
+    const withoutPack = packModuleTree(specs, { ...config, reservePerimeterExits: false, channelGeometry: false });
     const withoutDelivery = routeDeliveryRoutes(withoutPack, { beltEntityName: "transport-belt" });
     const withoutRes = rePathToPerimeter(withoutPack, withoutDelivery.strippedChestIds, withoutDelivery.cells, {
       beltEntityName: "transport-belt",

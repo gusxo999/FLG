@@ -1,6 +1,6 @@
 /**
  * tracks — **반출 예약의 입력 준비.** 살아남은 무한상자가 배치 바깥으로 나갈 길을 배정하기
- * 전에, 그 배정기([perimeterTrackPlanner.planPerimeterTracks])가 볼 입력을 모은다.
+ * 전에, 그 배정기([perimeterExitPlanner.planPerimeterExits])가 볼 입력을 모은다.
  *
  * ## 왜 `perimeter/` 인가
  * 여기 있는 두 함수는 **전역 외곽을 안다** — `bbox` 프레임을 마진만큼 넓히고(상자가 앉을
@@ -19,12 +19,12 @@ import type { ModulePort } from "../../module/clusterModule";
 import type { Orientation } from "../../module/moduleTransform";
 import { moduleExtent } from "../../module/moduleTransform";
 import {
-  planPerimeterTracks,
-  type TrackContext,
-  type TrackPlan,
-  type TrackPortInput,
+  planPerimeterExits,
+  type ExitContext,
+  type PerimeterExitPlan,
+  type ExitPortInput,
   type ExitEdge,
-} from "../perimeterTrackPlanner";
+} from "../perimeterExitPlanner";
 import { PERIMETER_MARGIN } from "../../util/helper";
 import type { NodeSpec } from "../modulePacking";
 
@@ -39,10 +39,10 @@ export function expandBbox(
 }
 
 /**
- * 살아남은 외부상자 포트(raw 입력 + 루트 출력)를 모아 반출 트랙을 배정한다.
+ * 살아남은 외부상자 포트(raw 입력 + 루트 출력)를 모아 **반출 출구**를 배정한다.
  * 모듈 내부를 안 보는 planner 의 입력(변·abs y·depth·열 밴드)만 준비.
  */
-export function planTracks(
+export function planExits(
   specs: NodeSpec[],
   oriented: Map<string, { module: GeneratedModule; orientation: Orientation }>,
   topY: Map<string, number>,
@@ -50,13 +50,13 @@ export function planTracks(
   pairedChestIds: ReadonlySet<string>,
   maxDepth: number,
   absPortY: (id: string, anchorY: number) => number,
-): TrackPlan {
+): PerimeterExitPlan {
   // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
   // (X변 우선), N/S 트랙의 chest 는 트렁크가 트랙을 따라 수평으로 자라 코너 어깨
   // (x·y 둘 다 bbox 밖)에 앉을 수 있어 W/E 로 오분류된다 — N 트랙 상자는 위가 전역
-  // 마진이라 self-N 직진이 정답인데 채널 우회로 배정되는 낭비/실패 위험.
+  // 마진이라 N 직진이 정답인데 환승으로 배정되는 낭비/실패 위험.
   const sideOf = (p: ModulePort): ExitEdge => p.meta.side;
-  const ports: TrackPortInput[] = [];
+  const ports: ExitPortInput[] = [];
   let gyMin = Infinity, gyMax = -Infinity;
   const spansByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
   for (const s of specs) {
@@ -82,6 +82,6 @@ export function planTracks(
           wayOuts: p.moduleWayOuts,
         });
   }
-  const ctx: TrackContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, spansByDepth };
-  return planPerimeterTracks(ports, ctx);
+  const ctx: ExitContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, spansByDepth };
+  return planPerimeterExits(ports, ctx);
 }

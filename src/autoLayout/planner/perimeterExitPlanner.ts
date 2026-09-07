@@ -1,6 +1,21 @@
 /**
- * perimeterTrackPlanner — 모듈 외부상자를 전역 perimeter 로 빼기 위한 ****반출 트랙** 예약**
+ * perimeterExitPlanner — 모듈 외부상자를 전역 perimeter 로 빼는 **반출 출구 배정**
  * (조각 6-①, 순수·좌표 산정만).
+ *
+ * ## 모델은 하나다 — **주행선 하나를 고르고 그 축의 바깥 변까지 간다**
+ *
+ * ```
+ * exitEdge   어느 바깥 변으로 나가나 (N·S·W·E) — **축을 이 값이 정한다**
+ * exitMode   그 주행선을 **어디서 얻나**
+ *              직진(direct)   후보 1개  — 상자 좌표 그대로.  늘릴 수 없다
+ *              환승(channel)  후보 여럿 — 통로가 배정한다.   모자라면 채널이 넓어진다
+ * ```
+ *
+ * 2026-09-08 이전엔 출구가 셋(`self`·`margin`·`channel`)이었는데, `self`(세로 직진)와
+ * `margin`(가로 직출)은 **같은 것의 두 축**이었다 — 저장소의 어떤 소비자도 둘을 구분하지
+ * 않았고(방출은 `exitEdge` 로만 축을 골랐다), `margin.edge` 는 언제나 `exitEdge` 와 같았다.
+ * 합치면서 `track` 이라는 낱말도 이 파일에서 걷어냈다 — 저장소의 다른 곳에서 `track` 은
+ * **통로가 배급하는 주행선 번호**를 뜻하는데 여기선 「반출 경로」를 뜻해 두 뜻이었다.
  *
  * ## 무엇을/왜
  * 모듈 파이프라인은 살아남은 외부상자(raw 입력 + 루트 출력)를 각자의 **로컬 모듈 ring**
@@ -19,11 +34,15 @@
  * 구간과 **합쳐** [channelPlanner.assignTracksLeftEdge] 로 트랙 수(=폭)만 산정한다. 실제
  * 몇 번째 트랙에 깔릴지는 검증된 라우터가 정한다(납품 경로와 동일 관행).
  *
- * ## host 판정 규칙 (포트 *변* + depth 위치)
- * - **N/S 변**: 자기 열 직진(self) → N/S 마진 행에 상자 seat. 같은 열 위/아래 형제에
- *   막히면 인접 채널로 우회해 그 채널 안에서 가까운 N/S 로.
- * - **W 변**: 최좌 열(depth 0)이면 바깥 W 마진으로 직출. 아니면 왼쪽 채널로 우회 → 가까운 N/S.
- * - **E 변**: 최우 열(maxDepth)이면 바깥 E 마진으로 직출. 아니면 오른쪽 채널로 우회 → 가까운 N/S.
+ * ## 출구 후보 규칙 (포트 *변* + depth 위치)
+ * - **N/S 변**: 세로 직진 → N/S 마진 행에 상자 seat. 같은 열 위/아래 형제에 막히면
+ *   인접 채널로 **환승**해 그 채널 안에서 가까운 N/S 로.
+ * - **W 변**: 최좌 열(depth 0)이면 가로 직진으로 바깥 W 마진. 아니면 왼쪽 채널로 환승 → 가까운 N/S.
+ * - **E 변**: 최우 열(maxDepth)이면 가로 직진으로 바깥 E 마진. 아니면 오른쪽 채널로 환승 → 가까운 N/S.
+ *
+ * **직진의 자격을 재는 것은 두 질문뿐이다** — `wayOuts`(모듈 몸통이 막나)와 위 조건
+ * (세로는 [selfBlocked], 가로는 끝 열인가). 그 직선이 지나는 **마진 행 채널**은 아직
+ * 아무도 안 본다 → `tempPlanDocs/반출-환승/` 이 그 빈칸을 메운다.
  *
  * 좌표 주의: colX 확정 *전* 에 불린다(채널 폭이 colX 를 정하므로). 그래서 X 는 안 쓰고
  * abs **y** 와 depth 만으로 판정한다(납품 경로 구간 산정과 동일 관행).
@@ -34,14 +53,28 @@ import type { PortFace } from "../containerModel";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
-/** 트랙이 지나갈 통로. */
-export type TrackHost =
-  | { kind: "self" } // 자기 열 직진(N/S 마진 행만 소비)
-  | { kind: "channel"; depth: number } // 채널 depth 안에서 세로 주행(트랙 1 소비)
-  | { kind: "margin"; edge: "W" | "E" }; // 바깥 W/E 마진으로 직출
+/**
+ * **주행선을 어디서 얻나** — 반출의 모델은 하나다. *"주행선 하나를 고르고 그 축의 바깥 변까지
+ * 간다."* 갈리는 것은 그 주행선의 **후보가 어디서 오나**뿐이다.
+ *
+ * ```
+ * 직진(direct)   후보 **1개** — 상자 좌표 그대로.  늘릴 수 없다
+ * 환승(channel)  후보 여럿    — 통로가 배정한다.   모자라면 채널이 넓어진다
+ * ```
+ *
+ * **축은 `exitEdge` 가 이미 말한다** — N/S 면 세로 주행, W/E 면 가로 주행. 그래서 옛
+ * `self`(세로 직진)와 `margin`(가로 직출)은 **같은 것의 두 축**이었고, 실제로 저장소의
+ * 어떤 소비자도 둘을 구분하지 않았다(방출은 `exitEdge` 로만 축을 고른다).
+ *
+ * **직진은 자유도가 0이다** — 방출이 `offsets = [0]` 으로 재생하므로 옆으로 한 칸도 못
+ * 비킨다. 그래서 그 한 칸이 비어 있음을 **배정이 확인해 줘야** 한다(예약 철학).
+ */
+export type ExitMode =
+  | { kind: "direct" } // 직진 — 상자 좌표가 곧 주행선. exitEdge 가 축을 말한다
+  | { kind: "channel"; depth: number }; // 환승 — 그 depth 의 열 채널이 주행선을 배정(트랙 1 소비)
 
 /** 살아남은 외부상자 포트 하나 — 모듈 내부를 안 보는 최소 입력. */
-export interface TrackPortInput {
+export interface ExitPortInput {
   /** 안정 식별자(상자 id). */
   id: string;
   role: "input" | "output";
@@ -69,16 +102,16 @@ export interface TrackPortInput {
  * (절단선이 납품 경로를 가둠·채널 트랙 부족 등)을 가진 장부가 **양보를 요구**할 수 있으므로,
  * planner 가 하나로 못박지 않고 후보를 남겨 장부가 고르게 한다(스도쿠: 제약 센 곳부터).
  */
-export interface TrackOption {
+export interface ExitOption {
   exitEdge: ExitEdge;
-  host: TrackHost;
+  exitMode: ExitMode;
   /** 이 출구가 모듈을 빠져나가는 방향 — 반드시 wayOuts 에 포함. */
   wayOut: PortFace;
-  /** channel host 일 때의 세로 점유 구간(트랙 풀 합류용). */
+  /** 환승일 때의 세로 점유 구간(트랙 풀 합류용). */
   interval?: Interval;
-  /** channel host 일 때의 진입 벽/행(장부의 반출 경로 입력). */
+  /** 환승일 때의 진입 벽/행(장부의 반출 경로 입력). */
   entry?: { y: number; wall: "W" | "E" };
-  /** 이 출구가 채널 트랙을 먹는가(= 폭을 넓히는가). margin/self 는 false. */
+  /** 이 출구가 채널 트랙을 먹는가(= 폭을 넓히는가). 직진은 false. */
   usesChannelTrack: boolean;
 }
 
@@ -99,7 +132,7 @@ export interface ModuleSpan {
   bottom: number;
 }
 
-export interface TrackContext {
+export interface ExitContext {
   /** 전역 세로 범위(모듈 union). */
   globalY: { min: number; max: number };
   maxDepth: number;
@@ -107,7 +140,7 @@ export interface TrackContext {
   spansByDepth: Map<number, ModuleSpan[]>;
 }
 
-export interface TrackAssignment {
+export interface ExitAssignment {
   id: string;
   role: "input" | "output";
   /**
@@ -115,10 +148,10 @@ export interface TrackAssignment {
    * (exitEdge/host/interval/entry)는 **현재 확정** = 기본값 `options[0]`.
    * 장부가 제약 때문에 다른 후보로 **양보**시킬 수 있다 — 그때 확정 필드도 함께 갱신한다.
    */
-  options: TrackOption[];
+  options: ExitOption[];
   exitEdge: ExitEdge;
-  host: TrackHost;
-  /** host 가 channel 일 때의 세로 점유 구간(트랙 풀 합류용). */
+  exitMode: ExitMode;
+  /** 환승일 때의 세로 점유 구간(트랙 풀 합류용). */
   interval?: Interval;
   /**
    * 채널 진입점 — 접점 행(anchor y) + 어느 벽에서 들어오나(W=부모 열 쪽 / E=자식 열 쪽).
@@ -133,8 +166,8 @@ export interface TrackAssignment {
   trackX?: number;
 }
 
-export interface TrackPlan {
-  assignments: TrackAssignment[];
+export interface PerimeterExitPlan {
+  assignments: ExitAssignment[];
   /** 채널 depth → 그 채널에 더할 트랙 세로 구간들(납품 경로 구간과 합쳐 폭 산정). */
   channelTrackIntervals: Map<number, Interval[]>;
   /** 바깥/변 마진 수요. N/S = 상자 seat 행 필요 여부, W/E = 마진 열 필요 여부. */
@@ -160,7 +193,7 @@ function selfBlocked(
   depth: number,
   anchorY: number,
   edge: "N" | "S",
-  ctx: TrackContext,
+  ctx: ExitContext,
 ): boolean {
   const spans = ctx.spansByDepth.get(depth) ?? [];
   const mine = spans.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
@@ -184,23 +217,29 @@ function selfBlocked(
  * 옛 규칙(side 기반)을 1순위로 재현하고, 그게 막혔을 때 나머지 가능한 출구로 흘린다.
  * 나중에 폭 최소화 등 다른 기준으로 재정렬해도 되고, 장부가 뒤 후보로 양보시켜도 된다.
  */
-function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
+function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
   const gy = ctx.globalY;
   const can = (d: PortFace) => p.wayOuts.includes(d);
-  const opts: TrackOption[] = [];
+  const opts: ExitOption[] = [];
 
-  /** 자기 열 직진(N/S 마진 행으로). 채널 트랙 안 먹음. */
-  const selfOpt = (e: "N" | "S"): TrackOption | null =>
+  /** **세로 직진** — 자기 열로 N/S 바깥 변까지. 채널 트랙 안 먹음. */
+  const directNS = (e: "N" | "S"): ExitOption | null =>
     can(e) && !selfBlocked(p.depth, p.anchorY, e, ctx)
-      ? { exitEdge: e, host: { kind: "self" }, wayOut: e, usesChannelTrack: false }
+      ? { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e, usesChannelTrack: false }
       : null;
 
-  /** 바깥 W/E 마진 직출 — 끝 열에서만. 채널 트랙 안 먹음. */
-  const marginOpt = (e: "W" | "E"): TrackOption | null => {
+  /**
+   * **가로 직진** — 자기 행으로 바깥 W/E 마진까지. 끝 열에서만 가능하다.
+   *
+   * 세로 직진의 **전치**다. 막는 것을 묻는 질문도 같다 — *"직진 경로에 남의 열/모듈이
+   * 있나"*. 세로는 같은 열의 형제 모듈([selfBlocked])이 답하고, 가로는 **끝 열인가**가
+   * 답한다(끝 열이 아니면 옆에 다른 깊이의 열이 있다).
+   */
+  const directWE = (e: "W" | "E"): ExitOption | null => {
     if (!can(e)) return null;
     if (e === "W" && p.depth !== 0) return null;
     if (e === "E" && p.depth !== ctx.maxDepth) return null;
-    return { exitEdge: e, host: { kind: "margin", edge: e }, wayOut: e, usesChannelTrack: false };
+    return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e, usesChannelTrack: false };
   };
 
   /**
@@ -208,7 +247,7 @@ function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
    * wayOut=W 면 왼쪽 채널(depth), wayOut=E 면 오른쪽 채널(depth+1).
    * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 wayOut 의 반대.
    */
-  const channelOpts = (wayOut: "W" | "E"): TrackOption[] => {
+  const channelOpts = (wayOut: "W" | "E"): ExitOption[] => {
     if (!can(wayOut)) return [];
     const depth = wayOut === "W" ? p.depth : p.depth + 1;
     if (wayOut === "W" && p.depth < 1) return []; // 최좌 열의 왼쪽엔 채널이 없다(마진).
@@ -218,7 +257,7 @@ function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
     const far: "N" | "S" = near === "N" ? "S" : "N";
     return [near, far].map((e) => ({
       exitEdge: e,
-      host: { kind: "channel", depth } as TrackHost,
+      exitMode: { kind: "channel", depth } as ExitMode,
       wayOut,
       interval: {
         lo: Math.min(p.anchorY, edgeY(e, gy)),
@@ -231,29 +270,31 @@ function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
 
   // ── 1순위: 옛 규칙 재현(회귀 최소) ──
   if (p.side === "N" || p.side === "S") {
-    opts.push(...[selfOpt(p.side)].filter((o): o is TrackOption => !!o));
+    opts.push(...[directNS(p.side)].filter((o): o is ExitOption => !!o));
     // 막히면 채널 우회 — 옛 divertChannel: depth≥1 이면 왼쪽, 아니면 오른쪽.
     opts.push(...(p.depth >= 1 ? channelOpts("W") : channelOpts("E")));
-    opts.push(...[selfOpt(p.side === "N" ? "S" : "N")].filter((o): o is TrackOption => !!o));
+    opts.push(...[directNS(p.side === "N" ? "S" : "N")].filter((o): o is ExitOption => !!o));
   } else if (p.side === "W") {
-    opts.push(...[marginOpt("W")].filter((o): o is TrackOption => !!o));
+    opts.push(...[directWE("W")].filter((o): o is ExitOption => !!o));
     opts.push(...channelOpts("W"));
   } else {
-    opts.push(...[marginOpt("E")].filter((o): o is TrackOption => !!o));
+    opts.push(...[directWE("E")].filter((o): o is ExitOption => !!o));
     opts.push(...channelOpts("E"));
   }
 
   // ── 2순위: 그래도 없거나 부족하면, 남은 모든 가능한 출구(자유도 최대화·고립 방지) ──
   // 코너 어깨 상자(face 가 N/S인데 side 가 E/W)가 여기서 구제된다 — 옛 규칙의 채널
   // 우회는 wayOuts 에 막혀 후보가 안 되고, 뚫린 face 쪽 self/margin 이 잡힌다.
-  for (const e of ["N", "S"] as const) opts.push(...[selfOpt(e)].filter((o): o is TrackOption => !!o));
-  for (const e of ["W", "E"] as const) opts.push(...[marginOpt(e)].filter((o): o is TrackOption => !!o));
+  for (const e of ["N", "S"] as const) opts.push(...[directNS(e)].filter((o): o is ExitOption => !!o));
+  for (const e of ["W", "E"] as const) opts.push(...[directWE(e)].filter((o): o is ExitOption => !!o));
   opts.push(...channelOpts("W"), ...channelOpts("E"));
 
   // 중복 제거(선호 순 보존).
   const seen = new Set<string>();
   return opts.filter((o) => {
-    const k = `${o.host.kind}:${o.host.kind === "channel" ? o.host.depth : o.host.kind === "margin" ? o.host.edge : ""}:${o.exitEdge}`;
+    // 옛 열쇠는 `margin` 의 `edge` 도 섞었는데 그 값은 **언제나 `exitEdge` 와 같아서**
+    // 아무것도 더 가르지 않았다(`directWE` 가 둘 다 `e` 로 넣는다).
+    const k = `${o.exitMode.kind}:${o.exitMode.kind === "channel" ? o.exitMode.depth : ""}:${o.exitEdge}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
@@ -270,8 +311,8 @@ function enumerateOptions(p: TrackPortInput, ctx: TrackContext): TrackOption[] {
  * 나갈 길이 하나도 없는 상자는 **배정을 만들지 않는다** → 예약도 0, 재배치도 skip(로컬 ring
  * 유지). 못 쓸 경로를 예약해 폭만 잡아먹는 것보다 정직하다.
  */
-export function planPerimeterTracks(ports: ReadonlyArray<TrackPortInput>, ctx: TrackContext): TrackPlan {
-  const assignments: TrackAssignment[] = [];
+export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: ExitContext): PerimeterExitPlan {
+  const assignments: ExitAssignment[] = [];
   const channelTrackIntervals = new Map<number, Interval[]>();
   const marginNeeds = { N: false, S: false, W: false, E: false };
 
@@ -282,8 +323,8 @@ export function planPerimeterTracks(ports: ReadonlyArray<TrackPortInput>, ctx: T
     if (options.length === 0) continue; // 나갈 길 없음 — 예약 0, 계획된 skip.
     const chosen = options[0];
 
-    if (chosen.host.kind === "channel" && chosen.interval) {
-      const d = chosen.host.depth;
+    if (chosen.exitMode.kind === "channel" && chosen.interval) {
+      const d = chosen.exitMode.depth;
       (channelTrackIntervals.get(d) ?? channelTrackIntervals.set(d, []).get(d)!).push(chosen.interval);
       marginNeeds[chosen.exitEdge] = true; // 상자 seat 는 N/S 마진 행.
     } else {
@@ -295,7 +336,7 @@ export function planPerimeterTracks(ports: ReadonlyArray<TrackPortInput>, ctx: T
       role: p.role,
       options,
       exitEdge: chosen.exitEdge,
-      host: chosen.host,
+      exitMode: chosen.exitMode,
       interval: chosen.interval,
       entry: chosen.entry,
     });

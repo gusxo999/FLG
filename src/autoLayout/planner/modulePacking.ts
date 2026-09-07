@@ -40,8 +40,8 @@ import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks
 import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
-import { planTracks, expandBbox } from "./perimeter/tracks";
-import type { TrackPlan } from "./perimeterTrackPlanner";
+import { planExits, expandBbox } from "./perimeter/exits";
+import type { PerimeterExitPlan } from "./perimeterExitPlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/ioLine";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
@@ -155,7 +155,7 @@ export interface PackConfig {
    * 더해 트랙 세로 구간까지 반영해 넓어지고 bbox 에 N/S/W/E 마진 프레임이 붙는다.
    * 미지정=off(현행 유지) — 골든/단위 테스트 회귀 0. moduleWizard 가 플래그로 전달.
    */
-  reservePerimeterTracks?: boolean;
+  reservePerimeterExits?: boolean;
   /**
    * 채널 기하 예약(통합 장부) — 예약을 "폭"에서 "기하(누가 어느 트랙)"로 승격한다
    * (docs/auto-layout-wizard.channel-geometry-reservation.md). true 면 납품(납품 경로)·반출(트랙)
@@ -221,7 +221,7 @@ export interface DeliverySpec {
  * 이 `row` 까지 **세로로 먼저** 간 뒤, 거기서부터 평소의 계단꼴을 그린다 — 갈아탄 뒤엔
  * 출처가 구별되지 않아서 세로 채널은 `startY` 가 어디서 왔는지 안 묻는다.
  *
- * 세로 채널 쪽 거울은 `perimeterTrackPlanner.TrackOption.entry`(채널 진입점)다.
+ * 세로 채널 쪽 거울은 `perimeterExitPlanner.ExitOption.entry`(채널 진입점)다.
  */
 export interface RowChannelEntry {
   /** 배정된 트랙의 **절대 행**. 세로 채널의 `startY`/`endY` 가 이 값이 된다. */
@@ -303,7 +303,7 @@ export interface PackResult {
   rawPorts: ModulePort[];
   bbox: { x: number; y: number; w: number; h: number };
   /** 외부상자 perimeter 반출 트랙 배정(조각 6-①). ②③(재배치·라우팅)이 소비. */
-  trackPlan: TrackPlan;
+  exitPlan: PerimeterExitPlan;
   /** 채널 기하 예약(통합 장부) — config.channelGeometry 일 때만. */
   channelGeometry?: PackChannelGeometry;
   /**
@@ -1092,10 +1092,10 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //     으로 빼는 트랙을 planner 에 맡긴다. 채널로 우회하는 트랙의 세로 구간은 위 납품 경로
   //     구간과 **합쳐** 채널 폭에 반영(결정 A: 폭만 예약, 트랙 index 는 라우터). colX 전이라
   //     X 없이 abs y+depth 만으로 판정 가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진
-  //     반영은 reservePerimeterTracks 게이트.
-  const trackPlan = planTracks(specs, oriented, topY, pairedChestIds, maxDepth, absPortY);
-  if (config.reservePerimeterTracks) {
-    for (const [d, ivs] of trackPlan.channelTrackIntervals)
+  //     반영은 reservePerimeterExits 게이트.
+  const exitPlan = planExits(specs, oriented, topY, pairedChestIds, maxDepth, absPortY);
+  if (config.reservePerimeterExits) {
+    for (const [d, ivs] of exitPlan.channelTrackIntervals)
       for (const iv of ivs) (intervalsByDepth.get(d) ?? intervalsByDepth.set(d, []).get(d)!).push(iv);
   }
 
@@ -1120,9 +1120,9 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         else reserve.push({ lo: Math.min(seed.startY, seed.endY), hi: Math.max(seed.startY, seed.endY) });
       }
       const exps: ExportInput[] = [];
-      if (config.reservePerimeterTracks) {
-        for (const a of trackPlan.assignments) {
-          if (a.host.kind !== "channel" || a.host.depth !== d) continue;
+      if (config.reservePerimeterExits) {
+        for (const a of exitPlan.assignments) {
+          if (a.exitMode.kind !== "channel" || a.exitMode.depth !== d) continue;
           if (a.entry && (a.exitEdge === "N" || a.exitEdge === "S")) {
             exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
           } else if (a.interval) {
@@ -1210,23 +1210,23 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     ? materializeChannelGeometry({
         geometryPlans,
         deliverySeeds,
-        trackPlan,
+        exitPlan,
         placements,
         channelStartX: (d: number) => colX[d - 1] + colWidth[d - 1],
         rawBbox,
-        reserveTracks: config.reservePerimeterTracks === true,
+        reserveTracks: config.reservePerimeterExits === true,
       })
     : undefined;
 
-  const bbox = config.reservePerimeterTracks ? expandBbox(rawBbox, trackPlan.marginNeeds) : rawBbox;
-  return { placements, deliveries, rawPorts, bbox, trackPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
+  const bbox = config.reservePerimeterExits ? expandBbox(rawBbox, exitPlan.marginNeeds) : rawBbox;
+  return { placements, deliveries, rawPorts, bbox, exitPlan, channelGeometry, linkMismatches, rowChannels, rowChannelNeeds };
 }
 
 /**
  * 통합 장부의 추상 배정(트랙 index)을 절대좌표 지시로 변환한다.
  * - 납품: DeliveryGeometry(트랙 x·갈아타는 행·지하 횡단 좌표) — deliveryRoute 이 탐색 없이 방출.
- * - 반출: TrackAssignment 에 trackX·(뒤집혔으면) exitEdge 를 기록 — ⑥C 가 그대로 재생.
- * - 예약 셀: 모든 확정 반출 경로(채널 elbow + self/margin 직선)의 절대 셀 —
+ * - 반출: ExitAssignment 에 trackX·(뒤집혔으면) exitEdge 를 기록 — ⑥C 가 그대로 재생.
+ * - 예약 셀: 모든 확정 반출 경로(환승 elbow + 직진 직선)의 절대 셀 —
  *   폴백 dijkstra 납품 경로의 침범을 막아 "먼저 깐 경로가 자리를 뺏는" 원래 구멍을 봉인한다.
  */
 function materializeChannelGeometry(args: {
@@ -1237,13 +1237,13 @@ function materializeChannelGeometry(args: {
     startY: number; endY: number;
     fromRowChannel?: RowChannelEntry; toRowChannel?: RowChannelEntry;
   }[];
-  trackPlan: TrackPlan;
+  exitPlan: PerimeterExitPlan;
   placements: ModulePlacement[];
   channelStartX: (d: number) => number;
   rawBbox: { x: number; y: number; w: number; h: number };
   reserveTracks: boolean;
 }): PackChannelGeometry {
-  const { geometryPlans, deliverySeeds, trackPlan, placements, channelStartX, rawBbox, reserveTracks } = args;
+  const { geometryPlans, deliverySeeds, exitPlan, placements, channelStartX, rawBbox, reserveTracks } = args;
   const deliveries = new Map<string, DeliveryDirective>();
   const skips: { key: string; reason: string }[] = [];
   for (const seed of deliverySeeds) {
@@ -1312,17 +1312,17 @@ function materializeChannelGeometry(args: {
     const addSeg = (from: { x: number; y: number }, to: { x: number; y: number }) => {
       for (const c of segment(from, to)) reservedExportCells.add(`${c.x},${c.y}`);
     };
-    for (const a of trackPlan.assignments) {
+    for (const a of exitPlan.assignments) {
       const port = portByChest.get(a.id);
       if (!port) continue;
       const anchor = { x: port.anchor.x, y: port.anchor.y };
-      if (a.host.kind === "channel") {
-        const plan = geometryPlans.get(a.host.depth)?.exports.get(a.id);
+      if (a.exitMode.kind === "channel") {
+        const plan = geometryPlans.get(a.exitMode.depth)?.exports.get(a.id);
         if (plan?.kind !== "elbow") continue; // fallback — 예약 없음(스캔·skip 유지)
-        const trackX = channelStartX(a.host.depth) + 1 + plan.track;
+        const trackX = channelStartX(a.exitMode.depth) + 1 + plan.track;
         a.exitEdge = plan.exitEdge; // 해소 사다리 ①에서 뒤집혔을 수 있다
         a.trackX = trackX;
-        trackPlan.marginNeeds[plan.exitEdge] = true;
+        exitPlan.marginNeeds[plan.exitEdge] = true;
         const corner = { x: trackX, y: anchor.y };
         addSeg(anchor, corner);
         addSeg(corner, { x: trackX, y: seatRow(plan.exitEdge) });

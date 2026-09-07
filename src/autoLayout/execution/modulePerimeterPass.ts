@@ -13,12 +13,12 @@
  * ## 방식 — 예약 트랙 안 결정적 belt (블랙박스 모델)
  * 모듈은 블랙박스다. 경계에 포트(anchor·face) 하나를 노출하고, 내부 **트렁크**(port.cells)
  * 가 그 anchor 에서 N 머신으로 분배한다. 즉 외곽 상자를 트렁크의 끝점(anchor)에만 이으면
- * 되고, 어느 머신인지는 무관하다. [perimeterTrackPlanner](./perimeterTrackPlanner) 가 ⑥A 에서
- * 상자별로 **어느 외곽 변(exitEdge)·어느 gap(host)** 으로 나갈지 배정하고 그 트랙 폭을
+ * 되고, 어느 머신인지는 무관하다. [perimeterExitPlanner](./perimeterExitPlanner) 가 ⑥A 에서
+ * 상자별로 **어느 외곽 변(exitEdge)·어떤 방식(exitMode)** 으로 나갈지 배정하고 그 폭을
  * 채널에 예약했다. 여기(⑥C)선 그 배정대로 belt 를 **탐색 없이** 깐다 — 트랙이 비어 있음이
  * 보장되므로:
- *   - **margin/self host**: anchor 에서 face 방향 **직선**으로 전역 외곽 변까지.
- *   - **channel host**(W/E 변 내부 열): face 방향으로 채널에 **가로 jog** → 채널 안에서
+ *   - **직진(direct)**: anchor 좌표 그대로 **직선**으로 전역 외곽 변까지. 축은 `exitEdge` 가 정한다.
+ *   - **환승(channel)**(W/E 변 내부 열): face 방향으로 채널에 **가로 jog** → 채널 안에서
  *     가까운 N/S 변으로 **세로 주행**(ㄱ자). 채널의 빈 세로선(트랙)을 스캔해 고른다.
  * 상자를 그 변에 옮기고, anchor→seat 를 잇는 트랙 belt + feeder 를 추가한다. 내부 트렁크는
  * 그대로 둔다(belt-to-belt 로 연속).
@@ -40,7 +40,7 @@ import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../ut
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
 import { moduleExtent, type PackResult } from "../planner/modulePacking";
 import { seatIsBeltFeeder } from "../planner/deliveryRoute";
-import type { TrackAssignment } from "../planner/perimeterTrackPlanner";
+import type { ExitAssignment } from "../planner/perimeterExitPlanner";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
@@ -201,7 +201,7 @@ function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number
 }
 
 /**
- * 살아남은 외부상자(stripped 아님)를 ⑥A trackPlan 배정대로 전역 perimeter 로 재배치할
+ * 살아남은 외부상자(stripped 아님)를 ⑥A exitPlan 배정대로 전역 perimeter 로 재배치할
  * **계획을 산정**한다. deliveryRoute 과 같은 규약: 모듈 그래프(mod.cells·port·chest)를 **건드리지
  * 않고**, 무엇을 떼고(droppedCellKeys) 무엇을 놓고(addedCells) 상자가 어디로 가는지
  * (relocations)를 **설명으로 반환**한다 — 적용은 호출자(moduleWizard)가 Area 를 지을 때 한다.
@@ -216,8 +216,8 @@ export function rePathToPerimeter(
   const occ = buildOccupancy(pack, deliveryCells);
   const u = unionBounds(pack);
   const perimeter = perimeterOf(u);
-  const asgById = new Map<string, TrackAssignment>();
-  for (const a of pack.trackPlan.assignments) asgById.set(a.id, a);
+  const asgById = new Map<string, ExitAssignment>();
+  for (const a of pack.exitPlan.assignments) asgById.set(a.id, a);
 
   const droppedCellKeys = new Set<string>();
   const addedCells: PlacedCell[] = [];
@@ -242,8 +242,8 @@ export function rePathToPerimeter(
   // (`pushLinkPortEnd` 의 `reusePort` — `module.chests` 에도 안 들어간다).
   //
   // 그런 포트가 여기 들어오면 **아무도 안 맡는 고아**가 된다: 반출 배정기는 짝지어졌다고
-  // 빼고(`planTracks` 의 `pairedChestIds`), 납품은 합류가 하나로 접어서 안 돌아
-  // `strippedChestIds` 에도 안 든다. 그 결과가 `no track assignment` **4건**이었는데,
+  // 빼고(`planExits` 의 `pairedChestIds`), 납품은 합류가 하나로 접어서 안 돌아
+  // `strippedChestIds` 에도 안 든다. 그 결과가 `no exit assignment` **4건**이었는데,
   // 사유가 *"자리를 못 줬다"* 로 읽혀 진짜 원인(**옮길 물건이 없다**)을 가렸다.
   //
   // 판정은 **합류를 몰라도 된다** — *"`module.chests` 에 내 상자가 있나"* 면 충분하다.
@@ -258,11 +258,11 @@ export function rePathToPerimeter(
 
   for (const port of ports) {
     const asg = asgById.get(port.chest.id);
-    if (!asg) { fail(port.chest.id, "no track assignment"); continue; }
+    if (!asg) { fail(port.chest.id, "no exit assignment"); continue; }
     if (AUTO_LAYOUT_COORD_DUMP)
       console.log("[perimeterPass] TRY", port.chest.id, JSON.stringify({
         anchor: port.anchor, face: port.face,
-        exitEdge: asg.exitEdge, host: asg.host, perimeter,
+        exitEdge: asg.exitEdge, exitMode: asg.exitMode, perimeter,
       }));
 
     const fv = faceVector(port.face);
@@ -275,7 +275,7 @@ export function rePathToPerimeter(
     // 예약 배정을 **그대로 재생**한다(탐색 없음).
     //
     // 여기서 탐색 폴백을 두지 않는 것이 핵심이다. 예약은 [ModulePort.moduleWayOuts] 로
-    // "모듈 몸통에 안 막히는 방향"만 골라 배정하고([perimeterTrackPlanner]), 채널 구간은
+    // "모듈 몸통에 안 막히는 방향"만 골라 배정하고([perimeterExitPlanner]), 채널 구간은
     // 장부가 비워두므로 — **예약된 경로는 항상 방출 가능**해야 한다(예약 철학).
     // 따라서 실패는 "탐색으로 우회할 일"이 아니라 **예약 불변식이 깨졌다는 신호**다.
     // 가짜 물류를 만드느니 그 상자만 skip 해 로컬 ring 에 남기고(회귀 0), 사유를 남긴다.
@@ -284,7 +284,7 @@ export function rePathToPerimeter(
       face: port.face,
       perimeter,
       obstacles: occ,
-      hint: { exitEdge: asg.exitEdge, host: asg.host, trackX: asg.trackX },
+      hint: { exitEdge: asg.exitEdge, exitMode: asg.exitMode, trackX: asg.trackX },
     });
     if (!res.ok) { fail(port.chest.id, `reservation not emittable: ${res.reason}`); continue; }
 
