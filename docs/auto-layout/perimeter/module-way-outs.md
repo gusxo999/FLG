@@ -21,7 +21,7 @@ tags: [auto-layout, placement, routing]
 예약의 목적은 "깔기 전에 자리를 잡아 나중에 막히는 일을 없애는 것"이다
 ([.channel-geometry-reservation §1](../channel/channel-geometry-reservation.md)).
 
-그런데 반출 경로 예약([`perimeterTrackPlanner`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts))은
+그런데 반출 경로 예약([`perimeterExitPlanner`](../../../src/autoLayout/planner/perimeterExitPlanner.ts))은
 상자의 **`meta.side`**(포트 계획기가 배정한 깊이 면) 만 보고 출구를 정했다. 모듈 내부는
 안 본다는 원칙(블랙박스) 때문이다. 문제는 **그 방향이 실제로 뚫려 있는지 아무도 확인하지
 않았다**는 것이다.
@@ -51,9 +51,9 @@ tags: [auto-layout, placement, routing]
 - 결과: 방출 단계가 예약을 못 쓰고 **탐색(routeAuto)으로 우회**해 남쪽으로 내보냈고,
   예약된 트랙 x=10 은 **영원히 빈 채** 남아 폭만 낭비됐다.
 
-**핵심 진단:** 정보가 없어서가 아니었다. `planTracks` 가 불리는 시점엔 **모듈들이 이미 생성돼
+**핵심 진단:** 정보가 없어서가 아니었다. `planExits` 가 불리는 시점엔 **모듈들이 이미 생성돼
 있고**([`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) —
-`planTracks(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
+`planExits(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
 몰라도 판정할 수 있었다. 예약기가 **일부러 안 보고 있었을 뿐**이다.
 
 ## 2. 결정 — 모듈이 자기 자신에 대해 답한다
@@ -77,7 +77,7 @@ tags: [auto-layout, placement, routing]
 
 ## 3. 출구 선택은 자유도다 — 하나로 못박지 않는다
 
-예약기는 이제 각 상자마다 **쓸 수 있는 출구 후보(`TrackOption[]`)** 를 나열하고
+예약기는 이제 각 상자마다 **쓸 수 있는 출구 후보(`ExitOption[]`)** 를 나열하고
 `options[0]` 을 기본 확정으로 삼는다. 모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
 
 **왜 후보를 남기나 (사용자 지시):** 출구 선택 자체는 어느 걸 골라도 정합성이 안 깨지는
@@ -86,13 +86,13 @@ tags: [auto-layout, placement, routing]
 느슨한 결정은 느슨하게 두고, 제약이 센 쪽이 먼저 고르게 한다(스도쿠 원리 —
 [.priority-ordering](../common/priority-ordering.md)).
 
-`TrackAssignment` 의 평평한 필드(`exitEdge`/`host`/`interval`/`entry`)는 **현재 확정**이고,
+`ExitAssignment` 의 평평한 필드(`exitEdge`/`exitMode`/`entry`)는 **현재 확정**이고,
 `options` 가 **남은 자유도**다. 장부가 제약 때문에 다른 후보로 양보시킬 수 있다.
 
 > 현재 상태: 자유도는 **표현·보존**되고 있으나(후보 목록), 장부가 아직 이 목록에서 능동적으로
 > 고르지는 않는다. 장부의 기존 해소 사다리(진출 변 N↔S 뒤집기)는 `wayOut`(W/E 가로 진입
-> 방향)을 바꾸지 않으므로 불변식을 깨지 않는다. **장부가 후보에서 양보(예: 트랙 부족 시
-> 채널 후보 → 마진 후보)하도록 배선하는 것은 후속 과제.**
+> 방향)을 바꾸지 않으므로 불변식을 깨지 않는다. **장부가 후보에서 양보하도록 배선하는 것은 후속 과제**
+> (`tempPlanDocs/반출-환승/`). 2026-09-08 확인: `options` 를 읽는 코드가 아직 **하나도 없다.**
 
 **폭은 확정된 출구 하나만 반영한다** — 안 쓸 후보를 위해 채널을 넓히지 않는다.
 나갈 길이 하나도 없는 상자는 **배정을 안 만든다**(예약 0 · 계획된 skip) — 못 쓸 경로를
@@ -130,8 +130,8 @@ advanced-circuit 동형 트리, count 1~8 실측:
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `fillModuleWayOuts` — 전 포트 emit 후(몸통 확정 후) 일괄 계산 |
-| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planTracks` 가 `TrackPortInput.wayOuts` 로 전달 |
-| 소비 | [`perimeterTrackPlanner.ts`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts) | `TrackOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
+| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` 로 전달 |
+| 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) | `ExitOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
 ## 7. 함정 (다음 사람에게)

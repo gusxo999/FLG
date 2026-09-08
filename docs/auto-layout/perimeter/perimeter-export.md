@@ -11,9 +11,9 @@ tags: [auto-layout, placement, routing]
 # perimeter 반출 — 살아남은 무한상자를 전역 외곽으로
 
 > **이 문서를 읽어야 하는 때**
-> - `execution/modulePerimeterPass.ts` · `planner/perimeterTrackPlanner.ts` · `planner/perimeterRouter.ts` ·
+> - `execution/modulePerimeterPass.ts` · `planner/perimeterExitPlanner.ts` · `planner/perimeterRouter.ts` ·
 > `planner/perimeter/{wayOuts,lanes}.ts` 를 수정할 때
-> - `PERIMETER_MARGIN` · `reservedExportCells` · `TrackAssignment` · `rePathToPerimeter` 를 건드릴 때
+> - `PERIMETER_MARGIN` · `reservedExportCells` · `ExitAssignment` · `rePathToPerimeter` 를 건드릴 때
 > - 무한상자가 배치 **안쪽에 남아 있다**는 증상을 조사할 때 (콘솔 `[perimeterPass] SKIP`)
 > - "상자를 바깥으로 빼는 탐색 로직을 새로 짜자"는 생각이 들 때 → **§4 를 먼저 읽을 것**
 
@@ -94,31 +94,42 @@ tags: [auto-layout, placement, routing]
 
 ### ② 예약 — 자리를 먼저 잡는다
 
-**구현:** [`planner/perimeterTrackPlanner.ts`](../../../src/autoLayout/planner/perimeterTrackPlanner.ts) `planPerimeterTracks`
+**구현:** [`planner/perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`
 + [`planner/modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) `packModuleTree`
 
-상자마다 **어느 변으로, 어느 통로를 타고** 나갈지 배정한다. 통로(`TrackHost`)는 세 가지:
+상자마다 **어느 변으로(`exitEdge`), 주행선을 어디서 얻어(`exitMode`)** 나갈지 배정한다.
 
-| host | 경로 | 채널 트랙 소비 |
-|---|---|---|
-| `self` | 자기 열에서 N/S 마진 행까지 **직진** | 없음 |
-| `margin` | 최좌(depth 0)/최우(maxDepth) 열이면 바깥 W/E 마진으로 **직출** | 없음 |
-| `channel` | 인접 채널로 **가로 jog** → 채널 안에서 가까운 N/S 변으로 **세로 주행**(ㄱ자) | **1** |
+> **모델은 하나다 — 주행선 하나를 고르고 그 축의 바깥 변까지 간다.** 갈리는 것은 그
+> 주행선의 **후보가 어디서 오나**뿐이고, **축은 `exitEdge` 가 이미 말한다**(N/S 면 세로
+> 주행, W/E 면 가로 주행).
 
-배정은 하나로 못박지 않고 **선호 순 후보 목록**(`TrackAssignment.options`)으로 남긴다. 뒤에
+| `exitMode` | 주행선 후보 | 경로 | 채널 트랙 소비 |
+|---|---|---|---|
+| `direct` (**직진**) | **1개** — 상자 좌표 그대로. 늘릴 수 없다 | 그 축으로 곧장 바깥 변까지 | 없음 |
+| `channel` (**환승**) | 여럿 — 그 채널이 배정한다. 모자라면 채널이 넓어진다 | 채널로 **가로 진입** → 채널 안에서 N/S 변으로 **세로 주행**(ㄱ자) | **1** |
+
+> **2026-09-08 이전엔 셋이었다** — `self`(세로 직진)·`margin`(가로 직출)·`channel`.
+> 앞 둘은 **같은 것의 두 축**이었고 저장소의 어떤 소비자도 구분하지 않아 합쳤다
+> (방출은 `exitEdge` 로만 축을 골랐고, `margin.edge` 는 언제나 `exitEdge` 와 같았다).
+
+배정은 하나로 못박지 않고 **선호 순 후보 목록**(`ExitAssignment.options`)으로 남긴다. 뒤에
 더 센 제약을 가진 장부가 **양보를 요구**할 수 있기 때문이다(스도쿠: 제약 센 곳부터).
 모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
 
-**핵심 — 폭 역전.** `channel` 로 배정된 상자는 자기가 채널에서 쓸 **세로 구간**(`Interval`)을
-내놓고, `packModuleTree` 가 이를 [[용어사전#납품 경로 (deliveryRoute)|납품 경로]] 구간과 **합쳐서**
-[`channelPlanner.assignTracksLeftEdge`](../../../src/autoLayout/planner/channelPlanner.ts) 에
-넘긴다. 나온 트랙 수가 곧 채널 폭이다.
+**핵심 — 폭 역전.** 환승으로 배정된 상자는 **진입점**(`entry` — 행 + 어느 벽)을 내고,
+`packModuleTree` 가 이를 [[용어사전#납품 경로 (deliveryRoute)|납품 경로]] 와 **한 장부**
+([[channel-geometry-reservation]])에 함께 넣는다. 장부가 도형을 배정하고, **쓴 트랙 수가
+곧 채널 폭**이다.
+
+> 2026-09-08 까지는 반출이 세로 구간(`Interval`)만 내고 `assignTracksLeftEdge` 가 폭을
+> 셌다. 그 계산은 `AUTO_LAYOUT_CHANNEL_GEOMETRY` **off 모드 전용**이었고, off 모드를
+> 지우면서 함께 사라졌다 — 폭의 출처가 **통합 장부 하나**가 됐다.
 
 > 즉 **"상자가 나갈 길"이 채널 폭 계산의 입력**이 된다. 그래서 배치가 끝났을 때 그 길은
 > **이미 비어 있음이 보장**된다. 이것이 "예약 철학"이며, [[channel-geometry-reservation]]
 > 이 상위 문서다.
 
-`self`/`margin` 상자를 위해서는 bbox 사방에 [`PERIMETER_MARGIN`](../../../src/autoLayout/util/helper.ts) `= 2`
+**직진** 상자를 위해서는 bbox 사방에 [`PERIMETER_MARGIN`](../../../src/autoLayout/util/helper.ts) `= 2`
 칸 프레임을 붙인다(`marginNeeds` 가 요구한 변만). 예약한 경로 셀은 `reservedExportCells` 에
 등록해 납품 벨트가 침범하지 못하게 한다.
 
@@ -128,7 +139,7 @@ tags: [auto-layout, placement, routing]
 > **이 값은 세 곳이 공유한다**: `modulePacking` 의 `expandBbox` · `seatRow/seatCol`,
 > `modulePerimeterPass` 의 `perimeterOf`. 어긋나면 예약과 방출이 다른 변을 가리킨다.
 
-이 단계는 **좌표 계획서(`TrackPlan`)만 만든다. 셀은 하나도 안 놓는다.**
+이 단계는 **좌표 계획서(`PerimeterExitPlan`)만 만든다. 셀은 하나도 안 놓는다.**
 
 ### ③ 방출 — 계획서대로 그린다
 
@@ -224,8 +235,8 @@ tags: [auto-layout, placement, routing]
 |---|---|---|
 | ① 계약 | `module/clusterModule.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
 | ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다 |
-| ② 배정 | `planner/perimeterTrackPlanner.ts` | `planPerimeterTracks` · `TrackHost` · `TrackAssignment` · `TrackPlan` |
-| ② 폭 반영 | `planner/modulePacking.ts` | `planTracks` · `expandBbox` · `reservedExportCells` |
+| ② 배정 | `planner/perimeterExitPlanner.ts` | `planPerimeterExits` · `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
+| ② 폭 반영 | `planner/modulePacking.ts` | `planExits` · `expandBbox` · `reservedExportCells` |
 | ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
 | ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |

@@ -71,7 +71,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
 - [modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정),
-  `planTracks` 의 변 판정을 `meta.side` 로 교체.
+  `planExits` 의 변 판정을 `meta.side` 로 교체.
 - [containerModel.ts](../../../src/autoLayout/containerModel.ts) —
   `ModulePortMeta.side` 확장('W'|'E'|'N'|'S').
 
@@ -92,7 +92,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   대기 상태이고, 처리량 모드의 kr-glass 갇힘은 조각 B 가 치료 대상.
 - **⑥C+ (조각 B) — 해결(2026-07-11):** count≥2 기둥의 끝단 상자(face N/S)가 채널 우회
   미지원으로 skip 되던 문제를 방출 단계에서 두 부분으로 치료했다. **planner 는 그대로**
-  (planPerimeterTracks 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
+  (planPerimeterExits 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
   알 수 없기 때문. 대신 occ 를 아는 ⑥C 방출기를 고쳤다:
   1. **trackX 구동 jog**([perimeterRouter.ts](../../../src/autoLayout/planner/perimeterRouter.ts)):
      채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `trackX−anchor.x` 부호로

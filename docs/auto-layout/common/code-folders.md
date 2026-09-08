@@ -112,12 +112,12 @@ autoLayout/
 │   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
-│   │   └ tracks.ts                반출 예약의 입력 준비 (프레임 확장 · 대상 포트 수집)
+│   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점
 │   ├ modulePacking.ts             조율자 — 모듈 배열 + 위 관심사들을 순서대로 엮는다
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
-│   ├ perimeterTrackPlanner.ts      반출 출구 배정
+│   ├ perimeterExitPlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
 │   ├ deliveryRoute.ts                 자식 출력 → 부모 입력 잇기
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
