@@ -41,6 +41,7 @@ import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planExits, expandBbox } from "./perimeter/exits";
+import { rowChannelKey } from "./layoutRegions";
 import type { PerimeterExitPlan } from "./perimeterExitPlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import type { IoLine } from "./module/ioLine";
@@ -1076,7 +1077,16 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //     으로 빼는 출구를 planner 에 맡긴다. colX 전이라 X 없이 abs y+depth 만으로 판정
   //     가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진 반영은 reservePerimeterExits 게이트.
   //     환승 출구가 먹는 트랙은 5c 의 통합 장부가 배정하고, 그 결과에서 폭이 나온다.
-  const exitPlan = planExits(specs, oriented, topY, pairedChestIds, maxDepth, absPortY, orderByDepth);
+  // **행 채널 관통 판정의 재료** — 가로 트랙이 덮는 최대 로컬 x. 세로 직진이 그 열을
+  // 밟는지 판정하는 데 쓴다(`layoutRegions` 의 ③ 관통). 수요 기준이라 보수적이다.
+  const rowChannelReach = new Map<string, number>();
+  for (const n of rowChannelNeeds) {
+    const k = rowChannelKey(n.depth, n.face === "N" ? "below" : "above", n.nodeId);
+    rowChannelReach.set(k, Math.max(rowChannelReach.get(k) ?? -1, n.x2));
+  }
+  const exitPlan = planExits(
+    specs, oriented, topY, pairedChestIds, maxDepth, absPortY, orderByDepth, rowChannelReach,
+  );
 
   // 5c) 채널 기하 예약(통합 장부) — 납품·반출 경로를 한 장부에 모아 트랙을 배정한다
   //     (같은 쪽 판정 + 해소 사다리, docs/…channel-geometry-reservation.md). 폭 역전:

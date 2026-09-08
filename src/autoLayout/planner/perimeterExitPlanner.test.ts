@@ -5,12 +5,14 @@ import type { PortFace } from "../containerModel";
 /** 기본 픽스처: 모듈 몸통이 사방으로 뚫려 있다고 본다(옛 규칙 그대로 재현되는 조건). */
 const ALL: PortFace[] = ["N", "S", "W", "E"];
 const p = (
-  x: Omit<ExitPortInput, "wayOuts" | "moduleId"> & { wayOuts?: PortFace[]; moduleId?: string },
+  x: Omit<ExitPortInput, "wayOuts" | "moduleId" | "localX">
+    & { wayOuts?: PortFace[]; moduleId?: string; localX?: number },
 ): ExitPortInput => ({
   ...x,
   wayOuts: x.wayOuts ?? ALL,
   // 열마다 모듈 하나인 픽스처라 모듈 id 는 깊이에서 나온다.
   moduleId: x.moduleId ?? `d${x.depth}`,
+  localX: x.localX ?? 0,
 });
 
 // 3 열(depth 0..2), 각 열 모듈 1개, 세로 밴드 [0,9].
@@ -21,6 +23,7 @@ const ctx3 = (): ExitContext => ({
     orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]),
     maxDepth: 2,
   },
+  rowChannelReach: new Map(), // 행 채널 수요 없음 = 관통이 언제나 열려 있다
 });
 
 describe("planPerimeterExits", () => {
@@ -81,6 +84,7 @@ describe("planPerimeterExits", () => {
         orderByDepth: new Map([[0, ["root"]], [1, ["sib0", "sib1"]]]), // sib0 위, sib1 아래
         maxDepth: 1,
       },
+      rowChannelReach: new Map(),
     };
     // sib1(아래) 의 N 변 포트 → 위로 쏘면 sib0 을 만난다 → 환승.
     const ports: ExitPortInput[] = [
@@ -112,6 +116,52 @@ describe("planPerimeterExits", () => {
       { kind: "channel", depth: 1 },
     ]);
     expect(plan.assignments.map((x) => x.entry!.y)).toEqual([1, 3]);
+  });
+
+  it("**관통** — 세로 직진이 행 채널의 가로 트랙을 밟으면 직진이 아니다", () => {
+    // 행 채널은 **가로줄**을 파는데 세로 직진은 세로로 지난다 → **살 게 없다.**
+    // 남는 질문은 하나 — *"내가 설 그 한 열이 비었나?"* 가로 트랙은 전부
+    // *상자 → 열의 서쪽 변(로컬 0)* 이라 구간이 `[0, x2]` 다.
+    const ctx: ExitContext = {
+      globalY: { min: 0, max: 9 },
+      maxDepth: 2,
+      grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
+      // d1 의 **북쪽** 행 채널을 지나는 납품이 로컬 x 0..5 를 덮는다.
+      rowChannelReach: new Map([["1:below:d1", 5]]),
+    };
+    const inside = planPerimeterExits(
+      [p({ id: "in", role: "input", depth: 1, side: "N", anchorY: 0, localX: 3 })],
+      ctx,
+    ).assignments[0];
+    expect(inside.exitMode).toEqual({ kind: "channel", depth: 1 }); // 밟는다 → 환승
+
+    const outside = planPerimeterExits(
+      [p({ id: "out", role: "input", depth: 1, side: "N", anchorY: 0, localX: 6 })],
+      ctx,
+    ).assignments[0];
+    expect(outside.exitMode).toEqual({ kind: "direct" }); // 가로 트랙 **동쪽** — 안 밟는다
+    expect(outside.exitEdge).toBe("N");
+  });
+
+  it("관통 검사는 **그 통로의 수요만** 본다 — 반대쪽 행 채널은 상관없다", () => {
+    const ctx: ExitContext = {
+      globalY: { min: 0, max: 9 },
+      maxDepth: 2,
+      grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
+      // **남쪽** 행 채널에만 수요가 있다.
+      rowChannelReach: new Map([["1:above:d1", 9]]),
+    };
+    const north = planPerimeterExits(
+      [p({ id: "n", role: "input", depth: 1, side: "N", anchorY: 0, localX: 3 })],
+      ctx,
+    ).assignments[0];
+    expect(north.exitMode).toEqual({ kind: "direct" }); // 북쪽은 비어 있다
+
+    const south = planPerimeterExits(
+      [p({ id: "s", role: "output", depth: 1, side: "S", anchorY: 9, localX: 3 })],
+      ctx,
+    ).assignments[0];
+    expect(south.exitMode).toEqual({ kind: "channel", depth: 1 }); // 남쪽은 밟는다
   });
 
   it("결정적 — id 순 안정", () => {

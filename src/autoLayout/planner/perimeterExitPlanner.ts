@@ -56,7 +56,7 @@
  */
 
 import type { PortFace } from "../containerModel";
-import { regionsAlong, reachesOutside, type LayoutGrid } from "./layoutRegions";
+import { regionsAlong, reachesOutside, rowChannelKey, type LayoutGrid } from "./layoutRegions";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
@@ -86,6 +86,13 @@ export interface ExitPortInput {
   id: string;
   /** 이 포트를 가진 **모듈**의 id — 광선이 격자에서 나를 찾는 열쇠다. */
   moduleId: string;
+  /**
+   * 상자의 **모듈-로컬 x**(extent 왼쪽 변 기준). 세로 직진이 설 **열**이다.
+   *
+   * 같은 깊이의 모듈은 전부 `colX[depth]` 에 왼쪽 정렬되므로, 이 값끼리의 비교는
+   * 절대 x 로 비교한 것과 답이 같다 — 그래서 좌표 없이 판정할 수 있다.
+   */
+  localX: number;
   role: "input" | "output";
   depth: number;
   /** 포트가 붙은 모듈 *변* (anchor vs 머신 bbox). */
@@ -129,6 +136,17 @@ export interface ExitContext {
   maxDepth: number;
   /** 광선이 훑을 격자 — **좌표가 없다**. 순번과 깊이뿐이다([layoutRegions]). */
   grid: LayoutGrid;
+  /**
+   * [rowChannelKey] → 그 행 채널의 **가로 트랙이 덮는 최대 로컬 x**. 수요가 없으면 없다.
+   *
+   * 세로 직진이 행 채널을 **관통**할 때 밟는지 판정하는 데 쓴다(계획서 §2.4 ③).
+   * 가로 트랙은 전부 *상자 → 그 열의 서쪽 변(로컬 0)* 까지 뻗으므로 구간이 `[0, x2]` 이고,
+   * 그래서 **최댓값 하나**면 충분하다.
+   *
+   * **수요를 본다(배정이 아니라).** 배정에서 밀린 경로도 그 자리를 원했으므로,
+   * 보수적으로 세는 쪽이 맞다.
+   */
+  rowChannelReach: ReadonlyMap<string, number>;
 }
 
 export interface ExitAssignment {
@@ -208,7 +226,20 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
     if (!can(e)) return null;
     const regions = ray(e);
     if (!reachesOutside(regions)) return null;
-    if (regions.slice(1).some((r) => r.kind === "module")) return null;
+    for (const r of regions.slice(1)) {
+      // ① 남의 모듈 몸통 — 협상 불가.
+      if (r.kind === "module") return null;
+      // ③ **관통** — 이 통로는 가로줄을 파는데 나는 세로로 지난다. **살 게 없다.**
+      //    남는 질문은 하나 — *"내가 설 그 한 열이 비었나?"*
+      //    통로를 넓혀도 안 풀린다(가로줄을 더 줘도 내 세로 열은 그대로 밟힌다).
+      if (r.kind === "rowChannel") {
+        const reach = Math.max(
+          r.above === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "above", r.above)) ?? -1,
+          r.below === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "below", r.below)) ?? -1,
+        );
+        if (p.localX <= reach) return null; // 가로 트랙이 `[0, reach]` 를 덮는다 → 밟는다
+      }
+    }
     return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e };
   };
   const directNS = (e: "N" | "S") => directOpt(e);

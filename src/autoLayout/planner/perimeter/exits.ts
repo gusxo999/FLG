@@ -55,6 +55,8 @@ export function planExits(
    * **여기서 다시 계산하지 않고 받는다** — 같은 사실을 두 주체가 두 번 세면 언젠가 어긋난다.
    */
   orderByDepth: ReadonlyMap<number, readonly string[]>,
+  /** [rowChannelKey] → 그 행 채널의 가로 트랙이 덮는 **최대 로컬 x**(수요 기준). */
+  rowChannelReach: ReadonlyMap<string, number>,
 ): PerimeterExitPlan {
   // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
   // (X변 우선), N/S 트랙의 chest 는 트렁크가 트랙을 따라 수평으로 자라 코너 어깨
@@ -79,6 +81,7 @@ export function planExits(
         ports.push({
           id: p.chest.id,
           moduleId: s.id,
+          localX: p.anchor.x - ext.x,
           role: p.line.role,
           depth: s.depth,
           side: sideOf(p),
@@ -90,6 +93,7 @@ export function planExits(
     globalY: { min: gyMin, max: gyMax },
     maxDepth,
     grid: { orderByDepth, maxDepth },
+    rowChannelReach,
   };
   return planPerimeterExits(ports, ctx);
 }

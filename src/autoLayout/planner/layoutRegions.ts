@@ -140,6 +140,19 @@ export function regionsAlong(
   return out;
 }
 
+/**
+ * 행 채널의 **열쇠** — 이웃 모듈이 신원을 말한다(`rowChannels` 와 같은 규약).
+ *
+ * 수요 쪽(`rowChannelNeeds`)은 *"이 모듈의 N 면 바깥 행 채널"* 처럼 **한쪽 이웃**으로만
+ * 그 통로를 부른다(N 면이면 자기가 `below`, S 면이면 `above`). 그래서 열쇠도 한쪽으로
+ * 짓고, `between` 채널은 **양쪽 열쇠로 두 번** 조회한다.
+ */
+export const rowChannelKey = (
+  depth: number,
+  side: "above" | "below",
+  nodeId: string,
+): string => `${depth}:${side}:${nodeId}`;
+
 /** 이 광선이 **그대로 바깥까지 닿나** — 마지막 칸이 마진이면 참. 아니면 거기서 환승해야 한다. */
 export function reachesOutside(regions: ReadonlyArray<RayRegion>): boolean {
   return regions[regions.length - 1]?.kind === "outerMargin";
