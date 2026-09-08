@@ -1,0 +1,602 @@
+<title>배치 격자 도면</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper:      #F2F3EF;
+    --paper-sunk: #E8EAE3;
+    --ink:        #171B1E;
+    --ink-soft:   #5C6560;
+    --ink-faint:  #8B948C;
+    --rule:       #C9CEC3;
+    --rule-faint: #DEE2D8;
+
+    --module:      #4A555F;
+    --module-edge: #333C45;
+    --column:      #66727D;
+    --corridor:    #D3E0E8;
+    --corridor-ed: #A9BDCA;
+    --margin-ed:   #B8BFB2;
+
+    --delivery: #1D6B57;
+    --export:   #AE5227;
+    --chest:    #C9962F;
+
+    --shadow: 0 1px 2px rgba(23,27,30,.06), 0 8px 24px -16px rgba(23,27,30,.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #121619;
+      --paper-sunk: #1A1F23;
+      --ink:        #E6E9E3;
+      --ink-soft:   #9AA49C;
+      --ink-faint:  #6B756D;
+      --rule:       #2E353A;
+      --rule-faint: #232A2E;
+
+      --module:      #2A343D;
+      --module-edge: #4A5661;
+      --column:      #3C4954;
+      --corridor:    #1B2830;
+      --corridor-ed: #35505F;
+      --margin-ed:   #3A423B;
+
+      --delivery: #4FBF9E;
+      --export:   #E28B58;
+      --chest:    #D6AC4C;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #121619;
+    --paper-sunk: #1A1F23;
+    --ink:        #E6E9E3;
+    --ink-soft:   #9AA49C;
+    --ink-faint:  #6B756D;
+    --rule:       #2E353A;
+    --rule-faint: #232A2E;
+
+    --module:      #2A343D;
+    --module-edge: #4A5661;
+    --column:      #3C4954;
+    --corridor:    #1B2830;
+    --corridor-ed: #35505F;
+    --margin-ed:   #3A423B;
+
+    --delivery: #4FBF9E;
+    --export:   #E28B58;
+    --chest:    #D6AC4C;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans KR", system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.72;
+    margin: 0;
+    padding: 40px 24px 96px;
+  }
+  .sheet { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+
+  /* ── 표제란 ─────────────────────────────────────────── */
+  .titleblock {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 20px 32px;
+    align-items: end;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 14px;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 0 0 6px;
+  }
+  h1 { font-size: clamp(28px, 4.4vw, 42px); font-weight: 700; letter-spacing: -.02em;
+       line-height: 1.16; margin: 0; text-wrap: balance; }
+  .titleblock p { margin: 10px 0 0; color: var(--ink-soft); max-width: 60ch; }
+  .stamp {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; line-height: 1.9; color: var(--ink-faint); text-align: right;
+    white-space: nowrap;
+  }
+  .stamp b { color: var(--ink-soft); font-weight: 500; }
+
+  h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--ink-faint); margin: 0 0 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+  /* ── 도면 ───────────────────────────────────────────── */
+  .plan { overflow-x: auto; padding-bottom: 4px; }
+  .plan svg { display: block; min-width: 820px; width: 100%; height: auto; }
+
+  .g-grid       { stroke: var(--rule-faint); stroke-width: 1; }
+  .g-marginbox  { fill: none; stroke: var(--margin-ed); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .g-module     { fill: var(--module); stroke: var(--module-edge); stroke-width: 1.5; }
+  .g-column     { fill: none; stroke: var(--column); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .g-corridor   { fill: var(--corridor); stroke: var(--corridor-ed); stroke-width: 1; }
+  .g-track      { stroke: var(--corridor-ed); stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; }
+  .g-chest      { fill: var(--chest); stroke: var(--ink); stroke-width: 1; }
+  .g-delivery   { fill: none; stroke: var(--delivery); stroke-width: 2.75;
+                  stroke-linejoin: round; stroke-linecap: round; }
+  .g-export     { fill: none; stroke: var(--export); stroke-width: 2.75;
+                  stroke-linejoin: round; stroke-linecap: round; }
+  .g-dim        { stroke: var(--ink-soft); stroke-width: 1; }
+  .g-ext        { stroke: var(--ink-faint); stroke-width: .75; stroke-dasharray: 2 3; }
+  .g-lead       { stroke: var(--ink-faint); stroke-width: .75; fill: none; }
+
+  text { font-family: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, monospace; }
+  .t-dim   { font-size: 11px; fill: var(--ink-soft); font-weight: 500; }
+  .t-note  { font-size: 11px; fill: var(--ink-soft); }
+  .t-onmod { font-size: 12px; fill: #EEF1EC; font-weight: 600; }
+  .t-field { font-size: 11px; fill: var(--ink-faint); }
+  .t-tick  { font-size: 10px; fill: var(--ink-faint); }
+
+  /* ── 연동 강조 ──────────────────────────────────────── */
+  .plan svg [data-key] { transition: opacity .16s ease; }
+  .plan.focus svg [data-key] { opacity: .18; }
+  .plan.focus svg [data-key].on { opacity: 1; }
+
+  /* ── 범례 ───────────────────────────────────────────── */
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 2px 28px; }
+  .legend button {
+    display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 12px; align-items: start;
+    background: none; border: 0; border-bottom: 1px solid var(--rule-faint);
+    padding: 12px 4px; text-align: left; cursor: pointer;
+    color: inherit; font: inherit; width: 100%;
+  }
+  .legend button:hover, .legend button:focus-visible { background: var(--paper-sunk); }
+  .legend button:focus-visible { outline: 2px solid var(--export); outline-offset: -2px; }
+  .swatch { width: 14px; height: 14px; margin-top: 5px; border-radius: 2px; }
+  .legend b { display: block; font-weight: 600; font-size: 14px; }
+  .legend span { display: block; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+  .legend code { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink); }
+
+  /* ── 식 ─────────────────────────────────────────────── */
+  .chain { display: flex; flex-direction: column; gap: 0; }
+  .chain-row {
+    display: grid; grid-template-columns: 132px minmax(0, 1fr);
+    gap: 4px 24px; padding: 14px 0; border-top: 1px solid var(--rule-faint);
+  }
+  .chain-row:last-child { border-bottom: 1px solid var(--rule-faint); }
+  .chain-row > dt {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600;
+    color: var(--export); letter-spacing: .04em; padding-top: 2px;
+  }
+  .chain-row > dd { margin: 0; }
+  .formula {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px;
+    background: var(--paper-sunk); border-left: 2px solid var(--rule);
+    padding: 8px 12px; overflow-x: auto; white-space: pre; color: var(--ink);
+  }
+  .chain-row .why { color: var(--ink-soft); font-size: 13.5px; margin-top: 8px; }
+
+  /* ── 낱말 ───────────────────────────────────────────── */
+  .terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; }
+  .terms section > h3 {
+    font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    font-family: "IBM Plex Mono", monospace; color: var(--export);
+    margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+  }
+  .terms dl { margin: 0; }
+  .terms dt {
+    font-family: "IBM Plex Mono", monospace; font-size: 12.5px; font-weight: 500;
+    margin-top: 14px; color: var(--ink);
+  }
+  .terms dd { margin: 2px 0 0; color: var(--ink-soft); font-size: 13.5px; line-height: 1.62; }
+
+  /* ── 시대 ───────────────────────────────────────────── */
+  .eras { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 1px;
+          background: var(--rule-faint); border: 1px solid var(--rule-faint); }
+  .era { background: var(--paper); padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .era-n { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-faint); }
+  .era b { font-size: 14px; font-weight: 600; }
+  .era ul { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .era li { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-soft); }
+  .era.born-x { box-shadow: inset 0 3px 0 var(--export); }
+  @media (max-width: 860px) { .eras { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+  .footnote { color: var(--ink-faint); font-size: 13px; border-top: 1px solid var(--rule);
+              padding-top: 16px; }
+  .footnote code { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">factorio-LayoutGenerator · auto-layout</p>
+      <h1>배치 격자 도면</h1>
+      <p>모듈·채널·반출이 격자의 <b>어디</b>에 서고, 그 자리가 <b>어떤 식</b>으로 계산되며,
+         우리가 그것을 <b>무엇이라 부르는지</b>. 아래 도면의 수치는 서로 맞물린 실제 값이다 —
+         트랙 수가 폭을 만들고, 폭이 <code>colX</code> 를 만든다.</p>
+    </div>
+    <div class="stamp">
+      축척 <b>1칸 = 16px</b><br>
+      깊이 <b>0 · 1</b> · 모듈 <b>3</b><br>
+      갱신 <b>2026-09-08</b>
+    </div>
+  </header>
+
+  <!-- ════════════════ 도면 ════════════════ -->
+  <div>
+    <h2>평면도</h2>
+    <div class="plan" id="plan">
+      <svg viewBox="0 0 820 560" role="img"
+           aria-label="깊이 0 열에 모듈 A·B, 깊이 1 열에 모듈 C 가 서 있고 그 사이에 열 채널, 모듈 사이에 행 채널이 있는 배치 도면">
+
+        <defs>
+          <pattern id="tile" width="16" height="16" patternUnits="userSpaceOnUse">
+            <path class="g-grid" d="M16 0 L0 0 L0 16" fill="none"></path>
+          </pattern>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-soft)"></path>
+          </marker>
+          <marker id="dot" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5">
+            <circle cx="3" cy="3" r="2.4" fill="var(--ink-faint)"></circle>
+          </marker>
+        </defs>
+
+        <!-- 격자 -->
+        <rect x="138" y="88" width="400" height="336" fill="url(#tile)"></rect>
+
+        <!-- 마진 프레임 -->
+        <g data-key="margin">
+          <rect class="g-marginbox" x="138" y="88" width="400" height="336"></rect>
+          <text class="t-note" x="144" y="82">전역 마진 프레임 · PERIMETER_MARGIN = 2</text>
+        </g>
+
+        <!-- 통로 -->
+        <g data-key="colchan">
+          <rect class="g-corridor" x="298" y="120" width="80" height="272"></rect>
+          <path class="g-track" d="M322 120 V392 M338 120 V392 M354 120 V392"></path>
+          <text class="t-field" x="338" y="114" text-anchor="middle">열 채널 1</text>
+          <text class="t-tick" x="322" y="404" text-anchor="middle">0</text>
+          <text class="t-tick" x="338" y="404" text-anchor="middle">1</text>
+          <text class="t-tick" x="354" y="404" text-anchor="middle">2</text>
+          <text class="t-tick" x="298" y="404" text-anchor="middle">벽</text>
+          <text class="t-tick" x="370" y="404" text-anchor="middle">벽</text>
+        </g>
+
+        <g data-key="rowchan">
+          <rect class="g-corridor" x="170" y="216" width="128" height="64"></rect>
+          <path class="g-track" d="M170 224 H298 M170 240 H298"></path>
+          <text class="t-field" x="234" y="268" text-anchor="middle">행 채널 (사이)</text>
+
+          <rect class="g-corridor" x="378" y="120" width="128" height="48"></rect>
+          <path class="g-track" d="M378 144 H506"></path>
+        </g>
+
+        <!-- 모듈 -->
+        <g data-key="module">
+          <rect class="g-module" x="170" y="120" width="128" height="96"></rect>
+          <text class="t-onmod" x="234" y="172" text-anchor="middle">모듈 A</text>
+          <text class="t-onmod" x="234" y="188" text-anchor="middle" font-size="10" opacity=".72">깊이 0</text>
+
+          <rect class="g-module" x="170" y="280" width="96" height="112"></rect>
+          <text class="t-onmod" x="218" y="332" text-anchor="middle">모듈 B</text>
+          <text class="t-onmod" x="218" y="348" text-anchor="middle" font-size="10" opacity=".72">깊이 0</text>
+
+          <rect class="g-module" x="378" y="168" width="128" height="160"></rect>
+          <rect class="g-column" x="378" y="200" width="128" height="128"></rect>
+          <text class="t-onmod" x="442" y="262" text-anchor="middle">모듈 C</text>
+          <text class="t-onmod" x="442" y="278" text-anchor="middle" font-size="10" opacity=".72">깊이 1 · 자식</text>
+        </g>
+
+        <!-- 납품 -->
+        <g data-key="delivery">
+          <path class="g-delivery" d="M402 176 V144 H338 V192 H290"></path>
+          <rect class="g-chest" x="394" y="168" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="282" y="184" width="16" height="16" rx="2"></rect>
+        </g>
+
+        <!-- 반출 -->
+        <g data-key="direct">
+          <path class="g-export" d="M450 176 V96"></path>
+          <rect class="g-chest" x="442" y="168" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="442" y="88" width="16" height="16" rx="2"></rect>
+        </g>
+
+        <g data-key="transfer">
+          <path class="g-export" d="M258 336 H354 V416"></path>
+          <rect class="g-chest" x="250" y="328" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="346" y="408" width="16" height="16" rx="2"></rect>
+        </g>
+
+        <!-- 세로 치수 (왼쪽) -->
+        <g data-key="dimy">
+          <path class="g-ext" d="M136 120 H120 M136 216 H120 M136 280 H120 M136 392 H120"></path>
+          <path class="g-dim" marker-start="url(#ar)" marker-end="url(#ar)"
+                d="M126 120 V216 M126 216 V280 M126 280 V392"></path>
+          <text class="t-dim" x="118" y="172" text-anchor="end">heightOf(A) = 6</text>
+          <text class="t-dim" x="118" y="252" text-anchor="end">행 채널 높이 = 4</text>
+          <text class="t-dim" x="118" y="340" text-anchor="end">heightOf(B) = 7</text>
+
+          <text class="t-tick" x="164" y="132" text-anchor="end">topY[A] = 0</text>
+          <text class="t-tick" x="164" y="292" text-anchor="end">topY[B] = 10</text>
+        </g>
+
+        <!-- 가로 치수 (아래) -->
+        <g data-key="dimx">
+          <path class="g-ext" d="M170 426 V442 M298 426 V442 M378 426 V442 M506 426 V442"></path>
+          <path class="g-dim" marker-start="url(#ar)" marker-end="url(#ar)"
+                d="M170 448 H298 M298 448 H378 M378 448 H506"></path>
+          <text class="t-dim" x="234" y="466" text-anchor="middle">colWidth[0] = 8</text>
+          <text class="t-dim" x="338" y="466" text-anchor="middle">channelWidth(1) = 5</text>
+          <text class="t-dim" x="442" y="466" text-anchor="middle">colWidth[1] = 8</text>
+
+          <path class="g-ext" d="M170 472 V492 M378 472 V492"></path>
+          <text class="t-dim" x="176" y="504">colX[0] = 0</text>
+          <text class="t-dim" x="384" y="504">colX[1] = 0 + 8 + 5 = 13</text>
+        </g>
+
+        <!-- 지시선 (오른쪽) -->
+        <g data-key="notes">
+          <path class="g-lead" marker-start="url(#dot)" d="M506 144 H556"></path>
+          <text class="t-note" x="562" y="141">행 채널 (marginN · 깊이 1)</text>
+          <text class="t-note" x="562" y="156" fill="var(--ink-faint)">높이 3 · 트랙 1개</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M506 168 H540 V196 H556"></path>
+          <text class="t-note" x="562" y="193">topY[C] = 3</text>
+          <text class="t-note" x="562" y="208" fill="var(--ink-faint)">extent 의 위쪽 변</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M506 240 H556"></path>
+          <text class="t-note" x="562" y="237">기둥 (머신 열)</text>
+          <text class="t-note" x="562" y="252" fill="var(--ink-faint)">extent 안의 일부다 — 같지 않다</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M450 100 H556"></path>
+          <text class="t-note" x="562" y="97">직진 반출 — 상자의 열 그대로</text>
+          <text class="t-note" x="562" y="112" fill="var(--ink-faint)">seatRow(N) = rawBbox.y − 2 = −2</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M354 416 H420 V438 H436"></path>
+          <text class="t-note" x="442" y="435">환승 반출 — 트랙 2</text>
+          <text class="t-note" x="442" y="450" fill="var(--ink-faint)">trackX = 8 + 1 + 2 = 11</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M402 160 H430 V128 H556"></path>
+          <text class="t-note" x="562" y="125">진입 다리 — 계획에 자료가 없다</text>
+        </g>
+
+        <!-- 부등식 주석 -->
+        <g data-key="rule">
+          <rect x="562" y="286" width="246" height="86" fill="var(--paper-sunk)"
+                stroke="var(--rule)" stroke-width="1"></rect>
+          <text class="t-note" x="574" y="306" font-weight="600" fill="var(--ink)">직진이 남을 밟나</text>
+          <text class="t-note" x="574" y="326">반출 로컬 x = 4    (도면의 x 17)</text>
+          <text class="t-note" x="574" y="342">납품 로컬 x = 1    (도면의 x 14)</text>
+          <text class="t-note" x="574" y="360" fill="var(--delivery)">4 &gt; 1 → 안 밟는다</text>
+        </g>
+
+      </svg>
+    </div>
+  </div>
+
+  <!-- ════════════════ 범례 ════════════════ -->
+  <div>
+    <h2>무엇이 그려져 있나</h2>
+    <div class="legend" id="legend">
+      <button type="button" data-target="module">
+        <i class="swatch" style="background: var(--module)"></i>
+        <span><b>모듈</b><span>노드 하나를 지은 덩어리. 사각형은 <code>moduleExtent</code> —
+          <b>모든 칸</b>을 감싼다. 안쪽 점선은 <b>기둥</b>(머신 열)이고, 둘은 같지 않다.</span></span>
+      </button>
+      <button type="button" data-target="colchan">
+        <i class="swatch" style="background: var(--corridor); border: 1px solid var(--corridor-ed)"></i>
+        <span><b>열 채널</b><span>깊이 <code>d−1</code> 과 <code>d</code> 열 <b>사이</b>의 세로 통로.
+          점선이 <b>트랙</b> — 배급되는 세로 주행선이다. 여기서 3개를 썼다.</span></span>
+      </button>
+      <button type="button" data-target="rowchan">
+        <i class="swatch" style="background: var(--corridor); border: 1px solid var(--corridor-ed)"></i>
+        <span><b>행 채널</b><span>같은 열 안, 모듈 <b>사이</b>(또는 열 바깥)의 가로 통로.
+          열 채널을 <b>90° 돌린 같은 기계</b>다 — 트랙이 가로줄이고 그 수가 <b>높이</b>를 만든다.</span></span>
+      </button>
+      <button type="button" data-target="delivery">
+        <i class="swatch" style="background: var(--delivery)"></i>
+        <span><b>납품</b><span>자식(C)의 출력 상자 → 부모(A)의 입력 상자.
+          <code>다리(세로) → 행 채널 트랙 → 열 채널 트랙 → 계단꼴</code>. 네 토막이 세 통로에 나뉜다.</span></span>
+      </button>
+      <button type="button" data-target="direct">
+        <i class="swatch" style="background: var(--export)"></i>
+        <span><b>직진 반출</b><span>상자 좌표 그대로 바깥 변까지. <b>주행선 후보가 1개</b>라
+          고를 게 없고, 그래서 <b>자유도도 0</b>이다(방출 <code>offsets = [0]</code>).</span></span>
+      </button>
+      <button type="button" data-target="transfer">
+        <i class="swatch" style="background: var(--export)"></i>
+        <span><b>환승 반출</b><span>채널로 <b>가로 진입</b> → 트랙 하나를 받아 <b>세로 주행</b> → N/S 변.
+          후보가 여럿이고, 모자라면 <b>채널이 넓어진다</b>.</span></span>
+      </button>
+      <button type="button" data-target="margin">
+        <i class="swatch" style="border: 1.5px dashed var(--margin-ed)"></i>
+        <span><b>마진 프레임</b><span><code>rawBbox</code>(모듈 extent 의 합집합) 사방에 2칸.
+          벨트 1칸 + 인서터 1칸이라 2다. 상자는 여기 <code>seatRow</code>·<code>seatCol</code> 에 앉는다.</span></span>
+      </button>
+      <button type="button" data-target="rule">
+        <i class="swatch" style="background: var(--paper-sunk); border: 1px solid var(--rule)"></i>
+        <span><b>직진의 자격</b><span>직진이 지나는 행 채널을 <b>오늘 아무도 안 본다</b>.
+          검사는 로컬 x 부등식 하나면 된다 — <code>tempPlanDocs/반출-환승/</code>.</span></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════════════ 식 ════════════════ -->
+  <div>
+    <h2>자리는 이 순서로 계산된다</h2>
+    <dl class="chain">
+      <div class="chain-row">
+        <dt>행 채널 높이</dt>
+        <dd>
+          <div class="formula">높이 = channelWidthFromTracks(트랙 수, 3) = max(3, 트랙 수 + 2)</div>
+          <p class="why"><b>폭 역전</b> — 고르는 값이 아니라 <b>수요의 결과</b>다. 도면의 사이 행 채널은
+            트랙 2개라 <code>max(3, 4) = 4</code>. 이 값이 <b>사슬의 맨 앞</b>이라, 이때는 절대 좌표가
+            하나도 없다.</p>
+        </dd>
+      </div>
+      <div class="chain-row">
+        <dt>topY</dt>
+        <dd>
+          <div class="formula">topY[다음] = topY[이전] + heightOf(이전) + gapBelow(이전)
+topY[B]   = 0 + 6 + 4 = 10</div>
+          <p class="why">그 모듈 extent 의 <b>위쪽 변이 앉을 절대 y</b>. 열마다 순번 0부터 누적합이고,
+            더하는 것은 <b>모듈 높이와 행 채널 높이뿐</b> — 상수가 없다.</p>
+        </dd>
+      </div>
+      <div class="chain-row">
+        <dt>absPortY</dt>
+        <dd>
+          <div class="formula">absPortY(id, anchorY) = anchorY + topY[id] − ext.y</div>
+          <p class="why">로컬 행을 <b>절대 행</b>으로 바꾸는 함수. <code>− ext.y</code> 가 붙는 이유는
+            <code>topY</code> 가 <b>extent 의 위쪽 변</b>을 말하는데 <code>anchor.y</code> 는
+            <b>로컬 원점</b> 기준이라서다.</p>
+        </dd>
+      </div>
+      <div class="chain-row">
+        <dt>trackCount</dt>
+        <dd>
+          <div class="formula">통합 장부가 도형을 배정한다 → 쓴 트랙 수가 나온다
+좌표계 = (추상 트랙 열 × 절대 행)</div>
+          <p class="why">절대 y 는 이미 있는데 절대 x 는 <b>아직 없는</b> 한순간이다. 그래서 세로축은
+            실제 값을 쓰고 가로축은 <b>번호</b>를 쓴다 — 취향이 아니라 그때 쓸 수 있는 유일한 좌표계다.</p>
+        </dd>
+      </div>
+      <div class="chain-row">
+        <dt>colX</dt>
+        <dd>
+          <div class="formula">channelWidth(d) = max(3, trackCount + 2) = max(3, 3+2) = 5
+colX[d]        = colX[d−1] + colWidth[d−1] + channelWidth(d)
+colX[1]        = 0 + 8 + 5 = 13</div>
+          <p class="why"><code>colWidth[d]</code> 는 그 열에서 <b>가장 넓은 모듈</b>의 폭이다.
+            모듈 B 는 6칸이지만 열은 8칸 — 그래서 B 의 동쪽에 빈 자리가 남는다.</p>
+        </dd>
+      </div>
+      <div class="chain-row">
+        <dt>절대 x</dt>
+        <dd>
+          <div class="formula">shiftModule(m, colX[depth] − ext.x, topY − ext.y)
+trackX = channelStartX(d) + 1 + track = 8 + 1 + 2 = 11</div>
+          <p class="why">모듈을 로컬에서 절대로 옮긴다. 이 식이 <b>모든 모듈의 extent 왼쪽 변을
+            <code>colX[depth]</code> 에 정렬</b>시키고, 그래서 같은 깊이 안에서
+            <code>절대 x = colX[depth] + 로컬 x</code> 가 성립한다.</p>
+        </dd>
+      </div>
+    </dl>
+  </div>
+
+  <!-- ════════════════ 시대 ════════════════ -->
+  <div>
+    <h2>값은 언제 태어나나</h2>
+    <div class="eras">
+      <div class="era"><span class="era-n">①</span><b>트리</b>
+        <ul><li>노드 · 대수</li><li>depth</li><li class="t-field">좌표 없음</li></ul></div>
+      <div class="era"><span class="era-n">②</span><b>면</b>
+        <ul><li>어느 면 · 어느 깊이</li><li>좌석 순번</li><li class="t-field">좌표 없음</li></ul></div>
+      <div class="era"><span class="era-n">③</span><b>모듈</b>
+        <ul><li>moduleExtent</li><li>anchor (로컬)</li><li class="t-field">모듈-로컬</li></ul></div>
+      <div class="era"><span class="era-n">④</span><b>통로</b>
+        <ul><li>행 채널 높이</li><li>trackCount</li><li class="t-field">트랙 번호</li></ul></div>
+      <div class="era born-x"><span class="era-n">⑤</span><b>좌표</b>
+        <ul><li>topY · absPortY</li><li>colX · trackX</li><li class="t-field">절대 좌표</li></ul></div>
+      <div class="era"><span class="era-n">⑥</span><b>방출</b>
+        <ul><li>occupancy</li><li>seatRow · seatCol</li><li class="t-field">셀</li></ul></div>
+    </div>
+    <p class="footnote" style="margin-top:16px">
+      주황 띠가 <b>절대 좌표가 처음 생기는 시대</b>다. 그 앞 시대의 판단이 절대 좌표를 전제하면
+      그 판단은 조용히 거짓이 된다 — 이 저장소가 반복해 밟은 함정이다
+      (<code>docs/auto-layout/common/pipeline-lifecycle.md</code>).
+    </p>
+  </div>
+
+  <!-- ════════════════ 낱말 ════════════════ -->
+  <div>
+    <h2>낱말</h2>
+    <div class="terms">
+      <section>
+        <h3>격자와 좌표</h3>
+        <dl>
+          <dt>행 / 열</dt><dd>행은 <code>y</code> 값 하나가 가리키는 <b>가로 줄</b>, 열은 <code>x</code> 값 하나가 가리키는 <b>세로 줄</b>.</dd>
+          <dt>모듈-로컬 좌표</dt><dd>모듈을 <b>혼자 지을 때</b> 쓴 좌표. 원점이 그 모듈 안이라 옆 모듈과 비교 불가.</dd>
+          <dt>절대 좌표</dt><dd>모듈을 옮겨 붙인 <b>조립 도면 전체</b>의 좌표. 절대 행 = 그 <code>y</code>.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>모듈과 열</h3>
+        <dl>
+          <dt>depth</dt><dd>트리에서 루트로부터 몇 단계인가. <code>0</code> = 최종 산출물, 깊을수록 원료 쪽.</dd>
+          <dt>moduleExtent</dt><dd>그 모듈의 <b>모든 칸</b>(머신 + 벨트·인서터·상자)을 감싸는 최소 사각형. <b>기둥보다 크다.</b></dd>
+          <dt>colWidth[d]</dt><dd>깊이 d 열의 폭 = 그 열에서 <b>가장 넓은 모듈</b>의 <code>ext.w</code>.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>통로</h3>
+        <dl>
+          <dt>트랙</dt><dd>통로가 <b>배급하는 주행선 한 줄</b>. 열 채널은 세로줄, 행 채널은 가로줄.</dd>
+          <dt>cap · capCol</dt><dd><code>cap</code> = 트랙 번호 상한. <code>capCol = cap+1</code> 은 <b>가상 열</b> — 실제 칸이 아니라 “동쪽 벽”을 뜻하는 자리표다.</dd>
+          <dt>trackX</dt><dd>트랙 번호를 절대 x 로 푼 값. <code>channelStartX(d) + 1 + track</code>.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>반출</h3>
+        <dl>
+          <dt>exitEdge</dt><dd>어느 바깥 변으로 나가나 — <code>N·S·W·E</code>. <b>축을 이 값이 정한다.</b></dd>
+          <dt>exitMode</dt><dd>주행선을 어디서 얻나 — <code>direct</code>(직진) / <code>channel</code>(환승).</dd>
+          <dt>entry</dt><dd>환승의 진입점. <code>y</code> = 가로 진입이 달릴 절대 행, <code>wall</code> = 어느 벽으로 들어오나.</dd>
+          <dt>seatRow / seatCol</dt><dd>상자가 최종적으로 앉을 마진 행·열. <code>rawBbox</code> 에서 2칸 바깥.</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+
+  <p class="footnote">
+    이 도면은 <b>좌표계와 식</b>만 그린다 — 자주 바뀌지 않는 것들이다.
+    낱말의 정본은 <code>docs/용어사전.md</code>, 시대 축은
+    <code>docs/auto-layout/common/pipeline-lifecycle.md</code>,
+    그릴 수 있는 모양의 한계는 <code>docs/auto-layout/common/layout-models.md</code>.
+  </p>
+
+</div>
+
+<script>
+  (function () {
+    var plan = document.getElementById("plan");
+    var legend = document.getElementById("legend");
+    if (!plan || !legend) return;
+    var groups = plan.querySelectorAll("[data-key]");
+
+    function focus(key) {
+      if (!key) {
+        plan.classList.remove("focus");
+        groups.forEach(function (g) { g.classList.remove("on"); });
+        return;
+      }
+      plan.classList.add("focus");
+      groups.forEach(function (g) {
+        g.classList.toggle("on", g.getAttribute("data-key") === key);
+      });
+    }
+
+    legend.querySelectorAll("button").forEach(function (btn) {
+      var key = btn.getAttribute("data-target");
+      btn.addEventListener("mouseenter", function () { focus(key); });
+      btn.addEventListener("focus", function () { focus(key); });
+      btn.addEventListener("mouseleave", function () { focus(null); });
+      btn.addEventListener("blur", function () { focus(null); });
+      btn.addEventListener("click", function () {
+        var on = btn.getAttribute("aria-pressed") === "true";
+        legend.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+        btn.setAttribute("aria-pressed", on ? "false" : "true");
+        focus(on ? null : key);
+      });
+    });
+  })();
+</script>
