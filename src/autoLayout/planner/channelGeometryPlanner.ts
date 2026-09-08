@@ -276,17 +276,73 @@ function conflictsAny(s: Placed, placed: ReadonlyArray<Placed>): boolean {
   return placed.some((p) => conflicts(s, p));
 }
 
-/** 납품 계단꼴: 가로 진입(E벽→트랙) + 세로 주행 + 가로 진출(트랙→W벽). */
-function staircaseShape(d: DeliveryInput, track: number, capCol: number): Shape {
-  return {
-    h: [hseg(d.startY, track, capCol), hseg(d.endY, -1, track)],
-    v: [vseg(track, d.startY, d.endY)],
-  };
+/**
+ * **채널을 지나는 경로의 끝점** — 납품과 반출이 여기서 하나가 된다.
+ *
+ * ```
+ * wall   채널 벽의 **한 점**(상자가 마주 본 행). 행이 고정이고, 그 행에 **가로 조각**이 붙는다
+ * edge   바깥 **N/S 변**. 행이 자유롭고(변의 행), 세로 주행이 **그대로 나가므로** 가로 조각이 없다
+ * ```
+ *
+ * **이 둘의 차이가 곧 납품과 반출의 차이 전부다.** 납품은 양 끝이 `wall`(상자 둘),
+ * 반출은 한쪽이 `edge`(면이지 점이 아니다). 그리고 `edge` 쪽의 **행이 자유롭다**는 것이
+ * 해소 사다리 ①(진출 변 뒤집기)이 반출에만 있는 이유다 — 납품엔 뒤집을 자유가 없다.
+ */
+export type ChannelEndpoint =
+  | { kind: "wall"; row: number; wall: ChannelWall }
+  | { kind: "edge"; edge: NsEdge };
+
+/** 그 끝점이 붙는 **가상 벽 열** — W벽은 `-1`, E벽은 `capCol`. */
+const wallColOf = (wall: ChannelWall, capCol: number): number => (wall === "E" ? capCol : -1);
+
+/** 그 끝점의 **행** — `edge` 는 그 변 바깥 한 칸(seat 행). */
+const rowOf = (e: ChannelEndpoint, ctx: GeometryContext): number =>
+  e.kind === "wall" ? e.row : e.edge === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
+
+/**
+ * **경로 하나의 도형** — 가로 진입 + 세로 주행 + 가로 진출.
+ *
+ * 옛 `staircaseShape`(납품)와 `elbowShape`(반출)를 합친 것이다. **elbow 는 계단꼴에서
+ * 마지막 가로 조각을 뗀 것**이었고, 그 차이는 *"도착 끝점이 벽이냐 변이냐"* 하나에서 나온다.
+ * `edge` 끝점은 세로 주행이 채널을 그대로 빠져나가므로 붙일 가로 조각이 없다.
+ *
+ * **양 끝이 벽이고 행이 같으면** 세로 주행이 길이 0이라 **트랙을 안 먹는다** —
+ * 가로 조각 하나로 접는다(옛 `straightShape`). 세로 조각을 남기면 `trackCount` 가 그
+ * 열을 세어 **안 쓰는 폭이 는다.**
+ */
+export function routeShape(
+  from: ChannelEndpoint,
+  to: ChannelEndpoint,
+  track: number,
+  ctx: GeometryContext,
+  capCol: number,
+): Shape {
+  const r1 = rowOf(from, ctx);
+  const r2 = rowOf(to, ctx);
+  if (from.kind === "wall" && to.kind === "wall" && r1 === r2) {
+    return { h: [hseg(r1, wallColOf(from.wall, capCol), wallColOf(to.wall, capCol))], v: [] };
+  }
+  const h: HSeg[] = [];
+  if (from.kind === "wall") h.push(hseg(r1, track, wallColOf(from.wall, capCol)));
+  if (to.kind === "wall") h.push(hseg(r2, track, wallColOf(to.wall, capCol)));
+  return { h, v: [vseg(track, r1, r2)] };
 }
 
-/** 납품 일자 수평선(출발 행 = 도착 행) — 채널 전 열을 그 행에서 가로지른다. */
-function straightShape(d: DeliveryInput, capCol: number): Shape {
-  return { h: [hseg(d.startY, -1, capCol)], v: [] };
+/** 납품의 두 끝점 — 자식 출력은 **E벽**, 부모 입력은 **W벽**을 마주 본다. */
+const deliveryEnds = (d: DeliveryInput): [ChannelEndpoint, ChannelEndpoint] => [
+  { kind: "wall", row: d.startY, wall: "E" },
+  { kind: "wall", row: d.endY, wall: "W" },
+];
+
+/** 반출의 두 끝점 — 상자가 마주 본 벽에서 들어와 **바깥 변**으로 나간다. */
+const exportEnds = (x: ExportInput, exit: NsEdge): [ChannelEndpoint, ChannelEndpoint] => [
+  { kind: "wall", row: x.entryY, wall: x.entryWall },
+  { kind: "edge", edge: exit },
+];
+
+/** 납품 계단꼴(일자 수평선 포함) — [routeShape] 의 납품판. */
+function staircaseShape(d: DeliveryInput, track: number, ctx: GeometryContext, capCol: number): Shape {
+  return routeShape(...deliveryEnds(d), track, ctx, capCol);
 }
 
 /** 납품 열 갈아타기: 계단꼴 + 중간 한 번 트랙 변경(문서 §5-2). */
@@ -303,14 +359,9 @@ function columnSwitchShape(
   };
 }
 
-/** 반출 한꺾임꼴: 가로 진입(벽→트랙) + 열린 변 밖(seat 행)까지 세로 주행. */
+/** 반출 한꺾임꼴 — [routeShape] 의 반출판. 도착이 `edge` 라 가로 진출 조각이 없다. */
 function elbowShape(x: ExportInput, track: number, exit: NsEdge, ctx: GeometryContext, capCol: number): Shape {
-  const wallCol = x.entryWall === "E" ? capCol : -1;
-  const edgeRow = exit === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
-  return {
-    h: [hseg(x.entryY, track, wallCol)],
-    v: [vseg(track, x.entryY, edgeRow)],
-  };
+  return routeShape(...exportEnds(x, exit), track, ctx, capCol);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -532,8 +583,8 @@ export function planChannelGeometry(
   const delItem = (d: DeliveryInput): Item =>
     d.startY === d.endY
       ? // 일자 수평선 — 트랙 무관, 후보 1개(t=0 로만 호출되게 max=1).
-        { id: d.id, candidates: () => straightShape(d, capCol), max: 1, fluid: d.fluid }
-      : { id: d.id, candidates: (t) => staircaseShape(d, t, capCol), max: cap, fluid: d.fluid };
+        { id: d.id, candidates: () => staircaseShape(d, 0, ctx, capCol), max: 1, fluid: d.fluid }
+      : { id: d.id, candidates: (t) => staircaseShape(d, t, ctx, capCol), max: cap, fluid: d.fluid };
 
   const surfaceDels = deliveries.filter((d) => !cutOff.has(d.id));
   // 순서 = 실패 비용 순(위 주석). 탐욕 폴백에서 앞선 것이 자리를 먼저 가진다.
