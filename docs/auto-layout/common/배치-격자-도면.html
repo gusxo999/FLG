@@ -119,6 +119,49 @@
   /* ── 도면 ───────────────────────────────────────────── */
   .plan { overflow-x: auto; padding-bottom: 4px; }
   .plan svg { display: block; min-width: 820px; width: 100%; height: auto; }
+  .plan[hidden] { display: none; }
+  #plan2 svg { min-width: 1000px; }
+
+  /* 무대 — 넓고 높은 화면에서는 스크롤해도 도면이 위에 남는다 */
+  .stage { display: flex; flex-direction: column; gap: 12px; }
+  .stagebar {
+    display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--rule); padding-bottom: 10px;
+  }
+  .stagebar h2 { margin: 0; }
+  .stagebar h2::after { display: none; }
+  .tabs { display: flex; gap: 2px; }
+  .tab {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+    background: none; border: 0; border-bottom: 2px solid transparent;
+    padding: 6px 12px; cursor: pointer; white-space: nowrap;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--export); }
+  .tab:focus-visible { outline: 2px solid var(--export); outline-offset: 2px; }
+  .pin {
+    margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    letter-spacing: .08em; color: var(--ink-faint); background: none;
+    border: 1px solid var(--rule); border-radius: 3px; padding: 5px 10px; cursor: pointer;
+  }
+  .pin[aria-pressed="true"] { color: var(--ink); border-color: var(--ink-faint); }
+  .pin:focus-visible { outline: 2px solid var(--export); outline-offset: 2px; }
+  .plan-cap { margin: 0; color: var(--ink-soft); font-size: 13.5px; max-width: 76ch; }
+  .plan-cap[hidden] { display: none; }
+  .plan-cap code { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); }
+
+  @media (min-width: 1000px) and (min-height: 720px) {
+    .stage[data-pinned="true"] {
+      position: sticky; top: 0; z-index: 5;
+      background: var(--paper);
+      padding: 14px 0 16px;
+      box-shadow: 0 14px 20px -20px rgba(0, 0, 0, .55);
+    }
+    .stage[data-pinned="true"] .plan { overflow: visible; }
+    .stage[data-pinned="true"] .plan svg {
+      min-width: 0; width: 100%; height: min(52vh, 580px);
+    }
+  }
 
   .g-grid       { stroke: var(--rule-faint); stroke-width: 1; }
   .g-marginbox  { fill: none; stroke: var(--margin-ed); stroke-width: 1.5; stroke-dasharray: 5 4; }
@@ -225,14 +268,26 @@
     </div>
     <div class="stamp">
       축척 <b>1칸 = 16px</b><br>
-      깊이 <b>0 · 1</b> · 모듈 <b>3</b><br>
+      평면도 <b>2</b> · 모듈 <b>9</b><br>
       갱신 <b>2026-09-08</b>
     </div>
   </header>
 
-  <!-- ════════════════ 도면 ════════════════ -->
-  <div>
-    <h2>평면도</h2>
+  <!-- ════════════════ 평면도 (상단 고정) ════════════════ -->
+  <div class="stage" id="stage" data-pinned="true">
+    <div class="stagebar">
+      <h2>평면도</h2>
+      <div class="tabs" role="tablist" aria-label="평면도 고르기">
+        <button class="tab" type="button" role="tab" data-plan="plan" aria-selected="true">&#9312; 열 둘 &middot; 자식 하나</button>
+        <button class="tab" type="button" role="tab" data-plan="plan2" aria-selected="false">&#9313; 열 셋 &middot; 자식 셋 &middot; 손자 둘</button>
+      </div>
+      <button class="pin" type="button" id="pin" aria-pressed="true">상단 고정</button>
+    </div>
+    <p class="plan-cap" data-for="plan">가장 작은 완전한 경우. <b>포트 &middot; 다리 &middot; 트랙</b>이
+      다 보이도록 한 납품을 네 토막으로 펼쳐 두었다.</p>
+    <p class="plan-cap" data-for="plan2" hidden>깊이가 하나 더 붙고 한 열에 모듈이 셋 쌓인 경우.
+      <b>열 채널이 둘</b>이 되고 <code>colX</code> 가 열&middot;채널&middot;열&middot;채널로 이어 붙는다.
+      루트 <b>R</b> 의 세로 자리는 <b>자식 셋의 스팬 중앙</b>에서 나온다.</p>
     <div class="plan" id="plan">
       <svg viewBox="0 0 820 560" role="img"
            aria-label="깊이 0 열에 모듈 A·B, 깊이 1 열에 모듈 C 가 서 있고 그 사이에 열 채널, 모듈 사이에 행 채널이 있는 배치 도면">
@@ -381,9 +436,148 @@
 
       </svg>
     </div>
+
+    <div class="plan" id="plan2" hidden>
+      <svg viewBox="0 0 1000 640" role="img"
+           aria-label="깊이 0 에 루트 R, 깊이 1 에 자식 C1 C2 C3, 깊이 2 에 손자 G1 G2 가 서 있고 열 채널이 둘인 배치 도면">
+
+        <rect x="138" y="78" width="576" height="464" fill="url(#tile)"></rect>
+
+        <g data-key="margin">
+          <rect class="g-marginbox" x="138" y="78" width="576" height="464"></rect>
+        </g>
+
+        <g data-key="colchan">
+          <rect class="g-corridor" x="314" y="110" width="80" height="400"></rect>
+          <path class="g-track" d="M338 110 V510 M354 110 V510 M370 110 V510"></path>
+          <text class="t-field" x="354" y="104" text-anchor="middle">열 채널 1</text>
+          <text class="t-tick" x="338" y="524" text-anchor="middle">0</text>
+          <text class="t-tick" x="354" y="524" text-anchor="middle">1</text>
+          <text class="t-tick" x="370" y="524" text-anchor="middle">2</text>
+
+          <rect class="g-corridor" x="522" y="110" width="64" height="400"></rect>
+          <path class="g-track" d="M546 110 V510 M562 110 V510"></path>
+          <text class="t-field" x="554" y="104" text-anchor="middle">열 채널 2</text>
+          <text class="t-tick" x="546" y="524" text-anchor="middle">0</text>
+          <text class="t-tick" x="562" y="524" text-anchor="middle">1</text>
+        </g>
+
+        <g data-key="rowchan">
+          <rect class="g-corridor" x="394" y="206" width="128" height="48"></rect>
+          <path class="g-track" d="M394 230 H522"></path>
+          <text class="t-field" x="458" y="234" text-anchor="middle">행 채널</text>
+
+          <rect class="g-corridor" x="394" y="366" width="128" height="48"></rect>
+          <path class="g-track" d="M394 390 H522"></path>
+          <text class="t-field" x="458" y="394" text-anchor="middle">행 채널</text>
+
+          <rect class="g-corridor" x="586" y="190" width="96" height="48"></rect>
+          <path class="g-track" d="M586 214 H682"></path>
+          <text class="t-field" x="634" y="218" text-anchor="middle">행 채널</text>
+        </g>
+
+        <g data-key="module">
+          <rect class="g-module" x="170" y="254" width="144" height="128"></rect>
+          <text class="t-onmod" x="242" y="312" text-anchor="middle">모듈 R</text>
+          <text class="t-onmod" x="242" y="328" text-anchor="middle" font-size="10" opacity=".72">깊이 0 &middot; 루트</text>
+
+          <rect class="g-module" x="394" y="110" width="112" height="96"></rect>
+          <text class="t-onmod" x="450" y="156" text-anchor="middle">C1</text>
+          <text class="t-onmod" x="450" y="172" text-anchor="middle" font-size="10" opacity=".72">깊이 1</text>
+
+          <rect class="g-module" x="394" y="254" width="128" height="112"></rect>
+          <text class="t-onmod" x="458" y="306" text-anchor="middle">C2</text>
+          <text class="t-onmod" x="458" y="322" text-anchor="middle" font-size="10" opacity=".72">깊이 1 &middot; 손자 둘</text>
+
+          <rect class="g-module" x="394" y="414" width="112" height="96"></rect>
+          <text class="t-onmod" x="450" y="460" text-anchor="middle">C3</text>
+          <text class="t-onmod" x="450" y="476" text-anchor="middle" font-size="10" opacity=".72">깊이 1</text>
+
+          <rect class="g-module" x="586" y="110" width="96" height="80"></rect>
+          <text class="t-onmod" x="634" y="148" text-anchor="middle">G1</text>
+          <text class="t-onmod" x="634" y="164" text-anchor="middle" font-size="10" opacity=".72">깊이 2</text>
+
+          <rect class="g-module" x="586" y="238" width="96" height="80"></rect>
+          <text class="t-onmod" x="634" y="276" text-anchor="middle">G2</text>
+          <text class="t-onmod" x="634" y="292" text-anchor="middle" font-size="10" opacity=".72">깊이 2</text>
+        </g>
+
+        <g data-key="delivery">
+          <path class="g-delivery" d="M402 150 H338 V294 H306"></path>
+          <path class="g-delivery" d="M402 310 H354 V326 H306"></path>
+          <path class="g-delivery" d="M402 454 H370 V358 H306"></path>
+          <path class="g-delivery" d="M594 150 H546 V294 H514"></path>
+          <path class="g-delivery" d="M594 278 H562 V326 H514"></path>
+
+          <rect class="g-chest" x="298" y="286" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="298" y="318" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="298" y="350" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="394" y="142" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="394" y="302" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="394" y="446" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="506" y="286" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="506" y="318" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="586" y="142" width="16" height="16" rx="2"></rect>
+          <rect class="g-chest" x="586" y="270" width="16" height="16" rx="2"></rect>
+        </g>
+
+        <g data-key="dimy">
+          <path class="g-ext" d="M136 110 H118 M136 510 H118 M136 254 H118"></path>
+          <path class="g-dim" marker-start="url(#ar)" marker-end="url(#ar)" d="M128 110 V510"></path>
+          <text class="t-dim" x="120" y="296" text-anchor="end">자식 스팬</text>
+          <text class="t-dim" x="120" y="312" text-anchor="end">0 &hellip; 25</text>
+          <text class="t-tick" x="164" y="266" text-anchor="end">topY[R] = 9</text>
+          <text class="t-tick" x="164" y="122" text-anchor="end">topY[C1] = 0</text>
+          <text class="t-tick" x="164" y="426" text-anchor="end">topY[C3] = 19</text>
+        </g>
+
+        <g data-key="dimx">
+          <path class="g-ext" d="M170 544 V560 M314 544 V560 M394 544 V560 M522 544 V560 M586 544 V560 M682 544 V560"></path>
+          <path class="g-dim" marker-start="url(#ar)" marker-end="url(#ar)"
+                d="M170 566 H314 M314 566 H394 M394 566 H522 M522 566 H586 M586 566 H682"></path>
+          <text class="t-dim" x="242" y="584" text-anchor="middle">colWidth[0] = 9</text>
+          <text class="t-dim" x="354" y="584" text-anchor="middle">채널 = 5</text>
+          <text class="t-dim" x="458" y="584" text-anchor="middle">colWidth[1] = 8</text>
+          <text class="t-dim" x="554" y="584" text-anchor="middle">채널 = 4</text>
+          <text class="t-dim" x="634" y="584" text-anchor="middle">colWidth[2] = 6</text>
+
+          <path class="g-ext" d="M170 590 V610 M394 590 V610 M586 590 V610"></path>
+          <text class="t-dim" x="176" y="622">colX[0] = 0</text>
+          <text class="t-dim" x="400" y="622">colX[1] = 0+9+5 = 14</text>
+          <text class="t-dim" x="592" y="622">colX[2] = 14+8+4 = 26</text>
+        </g>
+
+        <g data-key="notes">
+          <path class="g-lead" marker-start="url(#dot)" d="M682 150 H706"></path>
+          <text class="t-note" x="712" y="147">손자 &mdash; 깊이 2</text>
+          <text class="t-note" x="712" y="162" fill="var(--ink-faint)">루트에서 두 단계</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M682 214 H706"></path>
+          <text class="t-note" x="712" y="211">행 채널 (깊이 2)</text>
+          <text class="t-note" x="712" y="226" fill="var(--ink-faint)">트랙 1 &rarr; 높이 max(3, 3) = 3</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M586 350 H706"></path>
+          <text class="t-note" x="712" y="347">열 채널 2 &mdash; 납품 둘</text>
+          <text class="t-note" x="712" y="362" fill="var(--ink-faint)">트랙 2 &rarr; 폭 max(3, 4) = 4</text>
+
+          <path class="g-lead" marker-start="url(#dot)" d="M370 486 H706"></path>
+          <text class="t-note" x="712" y="483">열 채널 1 &mdash; 납품 셋</text>
+          <text class="t-note" x="712" y="498" fill="var(--ink-faint)">트랙 3 &rarr; 폭 max(3, 5) = 5</text>
+        </g>
+
+        <g data-key="center">
+          <rect x="712" y="256" width="276" height="72" fill="var(--paper-sunk)"
+                stroke="var(--rule)" stroke-width="1"></rect>
+          <text class="t-note" x="724" y="277" font-weight="600" fill="var(--ink)">중앙 정렬 &mdash; R 이 왜 y 9 인가</text>
+          <text class="t-note" x="724" y="296">자식 스팬 0 &hellip; 25 &rarr; 중점 12.5</text>
+          <text class="t-note" x="724" y="314" fill="var(--delivery)">round(12.5 &minus; 8/2) = 9</text>
+        </g>
+
+      </svg>
+    </div>
   </div>
 
-  <!-- ════════════════ 범례 ════════════════ -->
+  <!-- 범례 -->
   <div>
     <h2>무엇이 그려져 있나</h2>
     <div class="legend" id="legend">
@@ -568,24 +762,54 @@ trackX = channelStartX(d) + 1 + track = 8 + 1 + 2 = 11</div>
 
 <script>
   (function () {
-    var plan = document.getElementById("plan");
+    var stage  = document.getElementById("stage");
     var legend = document.getElementById("legend");
-    if (!plan || !legend) return;
-    var groups = plan.querySelectorAll("[data-key]");
+    var pin    = document.getElementById("pin");
+    if (!stage || !legend) return;
 
-    function focus(key) {
-      if (!key) {
-        plan.classList.remove("focus");
-        groups.forEach(function (g) { g.classList.remove("on"); });
-        return;
-      }
-      plan.classList.add("focus");
-      groups.forEach(function (g) {
-        g.classList.toggle("on", g.getAttribute("data-key") === key);
+    var plans = Array.prototype.slice.call(stage.querySelectorAll(".plan"));
+    var caps  = Array.prototype.slice.call(stage.querySelectorAll(".plan-cap"));
+    var tabs  = Array.prototype.slice.call(stage.querySelectorAll(".tab"));
+
+    /* ── 평면도 고르기 ───────────────────────────────── */
+    function show(id) {
+      plans.forEach(function (el) { el.hidden = el.id !== id; });
+      caps.forEach(function (el) { el.hidden = el.getAttribute("data-for") !== id; });
+      tabs.forEach(function (t) {
+        t.setAttribute("aria-selected", t.getAttribute("data-plan") === id ? "true" : "false");
+      });
+    }
+    tabs.forEach(function (t) {
+      t.addEventListener("click", function () { show(t.getAttribute("data-plan")); });
+    });
+
+    /* ── 상단 고정 ───────────────────────────────────── */
+    if (pin) {
+      pin.addEventListener("click", function () {
+        var on = stage.getAttribute("data-pinned") === "true";
+        stage.setAttribute("data-pinned", on ? "false" : "true");
+        pin.setAttribute("aria-pressed", on ? "false" : "true");
+        pin.textContent = on ? "고정 해제됨" : "상단 고정";
       });
     }
 
-    legend.querySelectorAll("button").forEach(function (btn) {
+    /* ── 범례 ↔ 도면 연동 ─────────────────────────────── */
+    function focus(key) {
+      plans.forEach(function (plan) {
+        var groups = plan.querySelectorAll("[data-key]");
+        if (!key) {
+          plan.classList.remove("focus");
+          Array.prototype.forEach.call(groups, function (g) { g.classList.remove("on"); });
+          return;
+        }
+        plan.classList.add("focus");
+        Array.prototype.forEach.call(groups, function (g) {
+          g.classList.toggle("on", g.getAttribute("data-key") === key);
+        });
+      });
+    }
+
+    Array.prototype.forEach.call(legend.querySelectorAll("button"), function (btn) {
       var key = btn.getAttribute("data-target");
       btn.addEventListener("mouseenter", function () { focus(key); });
       btn.addEventListener("focus", function () { focus(key); });
@@ -593,7 +817,9 @@ trackX = channelStartX(d) + 1 + track = 8 + 1 + 2 = 11</div>
       btn.addEventListener("blur", function () { focus(null); });
       btn.addEventListener("click", function () {
         var on = btn.getAttribute("aria-pressed") === "true";
-        legend.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+        Array.prototype.forEach.call(legend.querySelectorAll("button"), function (b) {
+          b.setAttribute("aria-pressed", "false");
+        });
         btn.setAttribute("aria-pressed", on ? "false" : "true");
         focus(on ? null : key);
       });
