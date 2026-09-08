@@ -34,21 +34,29 @@
  * 구간과 **합쳐** [channelPlanner.assignTracksLeftEdge] 로 트랙 수(=폭)만 산정한다. 실제
  * 몇 번째 트랙에 깔릴지는 검증된 라우터가 정한다(납품 경로와 동일 관행).
  *
- * ## 출구 후보 규칙 (포트 *변* + depth 위치)
- * - **N/S 변**: 세로 직진 → N/S 마진 행에 상자 seat. 같은 열 위/아래 형제에 막히면
- *   인접 채널로 **환승**해 그 채널 안에서 가까운 N/S 로.
- * - **W 변**: 최좌 열(depth 0)이면 가로 직진으로 바깥 W 마진. 아니면 왼쪽 채널로 환승 → 가까운 N/S.
- * - **E 변**: 최우 열(maxDepth)이면 가로 직진으로 바깥 E 마진. 아니면 오른쪽 채널로 환승 → 가까운 N/S.
+ * ## 출구 후보 규칙 — **네 방향에 규칙 하나**([layoutRegions] 의 광선)
  *
- * **직진의 자격을 재는 것은 두 질문뿐이다** — `wayOuts`(모듈 몸통이 막나)와 위 조건
- * (세로는 [selfBlocked], 가로는 끝 열인가). 그 직선이 지나는 **마진 행 채널**은 아직
- * 아무도 안 본다 → `tempPlanDocs/반출-환승/` 이 그 빈칸을 메운다.
+ * 2026-09-08 이전엔 축마다 판정이 달랐다 — 세로는 `selfBlocked`(형제 모듈의 y 구간 비교),
+ * 가로는 *"끝 열인가"*. **둘 다 같은 질문의 특수형**이었다:
  *
- * 좌표 주의: colX 확정 *전* 에 불린다(채널 폭이 colX 를 정하므로). 그래서 X 는 안 쓰고
- * abs **y** 와 depth 만으로 판정한다(납품 경로 구간 산정과 동일 관행).
+ * ```
+ * 그 방향으로 광선을 쏜다
+ *   그대로 바깥에 닿고 · 남의 모듈을 안 만난다  →  **직진**
+ *   열 채널에서 멈춘다                        →  **환승**(그 채널 안에서 가까운 N/S 로)
+ *   남의 모듈을 만난다                        →  그 방향은 후보가 아니다
+ * ```
+ *
+ * **아직 안 보는 것** — 광선이 지나는 **통로가 비었는지**(계획서 §2.4 ③ 관통), 그리고
+ * 남의 모듈에게 *"네 로컬 열이 비었나"* 를 안 묻고 **있기만 하면 막힘**으로 친다.
+ * → `tempPlanDocs/두점-잇기/` Step 2b·2c.
+ *
+ * 좌표 주의: colX 확정 *전* 에 불린다(채널 폭이 colX 를 정하므로). **자격 판정은 좌표를
+ * 아예 안 쓴다** — 광선이 순번으로 답한다. abs `y` 는 *"가까운 N/S 가 어느 쪽인가"* 라는
+ * **선호 순서**에만 쓴다.
  */
 
 import type { PortFace } from "../containerModel";
+import { regionsAlong, reachesOutside, type LayoutGrid } from "./layoutRegions";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
@@ -76,6 +84,8 @@ export type ExitMode =
 export interface ExitPortInput {
   /** 안정 식별자(상자 id). */
   id: string;
+  /** 이 포트를 가진 **모듈**의 id — 광선이 격자에서 나를 찾는 열쇠다. */
+  moduleId: string;
   role: "input" | "output";
   depth: number;
   /** 포트가 붙은 모듈 *변* (anchor vs 머신 bbox). */
@@ -110,29 +120,15 @@ export interface ExitOption {
   entry?: { y: number; wall: "W" | "E" };
 }
 
-/**
- * 한 레이어(depth 열)에서 **모듈 하나가 차지한** 세로 구간(abs y) — 자기-열 막힘 판정용.
- *
- * **[[용어사전#채널 (channel)|채널]]이 아니다** — 채널(행·열 둘 다)은 머신이 안 놓이는
- * *빈* 통로이고 이건 그 반대인 *점유* 구간이다. 2026-08-19 까지 `ColumnBand` 였는데,
- * 같은 `top`/`bottom` 필드로 빈칸을 담는 `RowChannel` 과 뜻이 정반대라 개명했다
- * ("Column" 도 어긋났다 — `spansByDepth` 이므로 기둥(ColumnCluster)이 아니라 레이어다).
- *
- * **높이가 아니라 위치다** — `selfBlocked` 이 `b.top < myTop` 으로 *"형제가 내 위에 있나"*
- * 를 묻는다. 크기(`bottom - top + 1`)는 아무도 안 쓴다.
- */
-export interface ModuleSpan {
-  id: string;
-  top: number;
-  bottom: number;
-}
-
 export interface ExitContext {
-  /** 전역 세로 범위(모듈 union). */
+  /**
+   * 전역 세로 범위(모듈 union). **선호 순서에만 쓴다** — 가까운 N/S 를 고르는 데.
+   * 자격 판정은 이 값을 안 본다(광선이 순번으로 답한다).
+   */
   globalY: { min: number; max: number };
   maxDepth: number;
-  /** depth → 그 열의 모듈 구간들. */
-  spansByDepth: Map<number, ModuleSpan[]>;
+  /** 광선이 훑을 격자 — **좌표가 없다**. 순번과 깊이뿐이다([layoutRegions]). */
+  grid: LayoutGrid;
 }
 
 export interface ExitAssignment {
@@ -173,45 +169,6 @@ function nearerNS(anchorY: number, gy: { min: number; max: number }): "N" | "S" 
 }
 
 /**
- * 같은 열에서 이 포트가 `edge`(N/S) 로 직진할 때 **형제 모듈**에 막히나?
- * N: 나보다 위(top 이 더 작은) 모듈이 있으면 막힘. S: 아래(bottom 이 더 큰) 모듈.
- * 자기 밴드는 anchorY 를 품는 밴드로 식별한다(없으면 안 막힘으로 간주).
- *
- * ## **안 보는 것** — 결함은 여기 있다
- *
- * 이 함수는 `spansByDepth`(그 열의 **모듈 점유 구간**)만 읽는다. 세로 직진이 실제로 지나는
- * 구간은 셋인데 답하는 것은 하나뿐이다:
- *
- * ```
- * ① 자기 모듈 몸통    → `moduleWayOuts` 가 답한다 (모듈이 자기에 대해)
- * ② 같은 열 형제 모듈  → **이 함수**
- * ③ 마진 행 채널      → **아무도 안 본다**  ← 직진이 반드시 지나는 통로다
- * ```
- *
- * 그래서 *"예약된 경로는 항상 방출 가능"*(`modulePerimeterPass` 머리말)이 **직진에서는
- * 아직 거짓**이고, 깨진 자리를 `skip` 이 덮는다. ③을 메우는 계획이
- * `tempPlanDocs/반출-환승/` 다 — 검사는 로컬 x 부등식 하나다:
- * *"그 면의 마진 행 채널을 쓰는 납품 중 내 로컬 x 이상인 것이 있나"*.
- */
-function selfBlocked(
-  depth: number,
-  anchorY: number,
-  edge: "N" | "S",
-  ctx: ExitContext,
-): boolean {
-  const spans = ctx.spansByDepth.get(depth) ?? [];
-  const mine = spans.find((b) => anchorY >= b.top && anchorY <= b.bottom) ?? null;
-  const myTop = mine ? mine.top : anchorY;
-  const myBottom = mine ? mine.bottom : anchorY;
-  for (const b of spans) {
-    if (b === mine) continue;
-    if (edge === "N" && b.top < myTop) return true;
-    if (edge === "S" && b.bottom > myBottom) return true;
-  }
-  return false;
-}
-
-/**
  * 한 포트가 쓸 수 있는 출구 후보를 **선호 순**으로 전부 나열한다.
  *
  * 모든 후보는 `wayOut ∈ p.wayOuts` 를 만족한다 — 즉 **모듈 몸통에 막히지 않음이 보장**된
@@ -226,36 +183,46 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
   const can = (d: PortFace) => p.wayOuts.includes(d);
   const opts: ExitOption[] = [];
 
-  /** **세로 직진** — 자기 열로 N/S 바깥 변까지. 채널 트랙 안 먹음. */
-  const directNS = (e: "N" | "S"): ExitOption | null =>
-    can(e) && !selfBlocked(p.depth, p.anchorY, e, ctx)
-      ? { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e }
-      : null;
+  /** 이 방향으로 나갈 때 **지나는 영역들**([layoutRegions]). 좌표를 안 쓴다. */
+  const ray = (e: ExitEdge) => regionsAlong({ id: p.moduleId, depth: p.depth }, e, ctx.grid);
 
   /**
-   * **가로 직진** — 자기 행으로 바깥 W/E 마진까지. 끝 열에서만 가능하다.
+   * **직진** — 상자 좌표 그대로 그 변까지. 네 방향에 **같은 규칙**이다.
    *
-   * 세로 직진의 **전치**다. 막는 것을 묻는 질문도 같다 — *"직진 경로에 남의 열/모듈이
-   * 있나"*. 세로는 같은 열의 형제 모듈([selfBlocked])이 답하고, 가로는 **끝 열인가**가
-   * 답한다(끝 열이 아니면 옆에 다른 깊이의 열이 있다).
+   * 광선을 쏴서 두 가지만 본다:
+   *  ① **그대로 바깥에 닿나** — 통로에서 멈추면(가로 광선이 열 채널을 만나면) 직진이 아니다.
+   *     거기서 **환승**해야 나간다.
+   *  ② **남의 모듈 몸통을 지나나** — 모듈은 협상 불가라 하나라도 있으면 그 방향은 끝.
+   *
+   * 예전엔 이 판정이 축마다 달랐다 — 세로는 `selfBlocked`(형제 모듈의 y 구간 비교),
+   * 가로는 *"끝 열인가"*. **둘 다 「광선이 남의 모듈을 만나나 / 바깥에 닿나」의 특수형**
+   * 이었다. 같은 답을 낸다: 세로는 순번 목록의 앞(N)/뒤(S)에 모듈이 있으면 막히는데
+   * 순번 순서가 곧 `top` 순서이고(4a 누적합 + 4c 하한 복원), 가로는 끝 열이 아니면
+   * 광선이 열 채널에서 멈춘다.
+   *
+   * **아직 안 보는 것:** 광선이 지나는 **통로**가 비었는지(계획서 §2.4 ③ 관통).
+   * 그리고 남의 모듈에게 *"네 로컬 열이 비었나"* 를 묻지 않고 **있기만 하면 막힘**으로
+   * 친다 — 보수적이라 뚫린 길을 버린다.
    */
-  const directWE = (e: "W" | "E"): ExitOption | null => {
+  const directOpt = (e: ExitEdge): ExitOption | null => {
     if (!can(e)) return null;
-    if (e === "W" && p.depth !== 0) return null;
-    if (e === "E" && p.depth !== ctx.maxDepth) return null;
+    const regions = ray(e);
+    if (!reachesOutside(regions)) return null;
+    if (regions.slice(1).some((r) => r.kind === "module")) return null;
     return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e };
   };
+  const directNS = (e: "N" | "S") => directOpt(e);
+  const directWE = (e: "W" | "E") => directOpt(e);
 
   /**
-   * 인접 채널로 우회 → 채널 안에서 N/S 변으로. 채널 트랙을 하나 먹는다(폭 +).
-   * wayOut=W 면 왼쪽 채널(depth), wayOut=E 면 오른쪽 채널(depth+1).
-   * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 wayOut 의 반대.
+   * **환승** — 광선이 만난 열 채널을 따라 꺾어 N/S 변으로. 채널 트랙을 하나 먹는다(폭 +).
+   * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 `wayOut` 의 반대.
    */
   const channelOpts = (wayOut: "W" | "E"): ExitOption[] => {
     if (!can(wayOut)) return [];
-    const depth = wayOut === "W" ? p.depth : p.depth + 1;
-    if (wayOut === "W" && p.depth < 1) return []; // 최좌 열의 왼쪽엔 채널이 없다(마진).
-    if (wayOut === "E" && p.depth >= ctx.maxDepth) return []; // 최우 열의 오른쪽도 마찬가지.
+    const found = ray(wayOut).find((r) => r.kind === "columnChannel");
+    if (!found) return []; // 끝 열 — 그쪽엔 채널이 없다(마진이다).
+    const depth = found.depth;
     const wall: "W" | "E" = wayOut === "W" ? "E" : "W";
     const near = nearerNS(p.anchorY, gy);
     const far: "N" | "S" = near === "N" ? "S" : "N";

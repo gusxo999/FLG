@@ -5,18 +5,22 @@ import type { PortFace } from "../containerModel";
 /** 기본 픽스처: 모듈 몸통이 사방으로 뚫려 있다고 본다(옛 규칙 그대로 재현되는 조건). */
 const ALL: PortFace[] = ["N", "S", "W", "E"];
 const p = (
-  x: Omit<ExitPortInput, "wayOuts"> & { wayOuts?: PortFace[] },
-): ExitPortInput => ({ ...x, wayOuts: x.wayOuts ?? ALL });
+  x: Omit<ExitPortInput, "wayOuts" | "moduleId"> & { wayOuts?: PortFace[]; moduleId?: string },
+): ExitPortInput => ({
+  ...x,
+  wayOuts: x.wayOuts ?? ALL,
+  // 열마다 모듈 하나인 픽스처라 모듈 id 는 깊이에서 나온다.
+  moduleId: x.moduleId ?? `d${x.depth}`,
+});
 
 // 3 열(depth 0..2), 각 열 모듈 1개, 세로 밴드 [0,9].
 const ctx3 = (): ExitContext => ({
   globalY: { min: 0, max: 9 },
   maxDepth: 2,
-  spansByDepth: new Map([
-    [0, [{ id: "d0", top: 0, bottom: 9 }]],
-    [1, [{ id: "d1", top: 0, bottom: 9 }]],
-    [2, [{ id: "d2", top: 0, bottom: 9 }]],
-  ]),
+  grid: {
+    orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]),
+    maxDepth: 2,
+  },
 });
 
 describe("planPerimeterExits", () => {
@@ -67,25 +71,27 @@ describe("planPerimeterExits", () => {
     expect(byId.get("e")!.entry).toEqual({ y: 7, wall: "W" });
   });
 
-  it("자기 열 위 형제에 막힌 N 변 = 인접 채널로 우회", () => {
+  it("자기 열 위 형제에 막힌 N 변 = 인접 채널로 환승", () => {
+    // **순번이 막힘을 말한다** — 광선이 위로 훑다 남의 모듈을 만나면 그 방향은 끝.
+    // 좌표(top/bottom)를 안 쓴다: 열 안의 순서가 곧 위아래 순서다(4a 누적합 + 4c 하한 복원).
     const ctx: ExitContext = {
       globalY: { min: 0, max: 12 },
       maxDepth: 1,
-      spansByDepth: new Map([
-        [0, [{ id: "root", top: 3, bottom: 9 }]],
-        // depth 1 두 형제 세로 적층: sib0 위, sib1 아래.
-        [1, [
-          { id: "sib0", top: 0, bottom: 5 },
-          { id: "sib1", top: 6, bottom: 12 },
-        ]],
-      ]),
+      grid: {
+        orderByDepth: new Map([[0, ["root"]], [1, ["sib0", "sib1"]]]), // sib0 위, sib1 아래
+        maxDepth: 1,
+      },
     };
-    // sib1(아래) 의 N 변 포트 → 위로 직진하면 sib0 에 막힘 → 채널 우회.
-    const ports: ExitPortInput[] = [p({ id: "p", role: "output", depth: 1, side: "N", anchorY: 6 })];
+    // sib1(아래) 의 N 변 포트 → 위로 쏘면 sib0 을 만난다 → 환승.
+    const ports: ExitPortInput[] = [
+      p({ id: "p", moduleId: "sib1", role: "output", depth: 1, side: "N", anchorY: 6 }),
+    ];
     const plan = planPerimeterExits(ports, ctx);
     expect(plan.assignments[0].exitMode).toEqual({ kind: "channel", depth: 1 });
-    // sib0(위) 의 N 변 포트 → 막힘 없음 → 직진.
-    const top: ExitPortInput[] = [p({ id: "q", role: "output", depth: 1, side: "N", anchorY: 0 })];
+    // sib0(위) 의 N 변 포트 → 위엔 마진 행 채널과 바깥뿐 → 직진.
+    const top: ExitPortInput[] = [
+      p({ id: "q", moduleId: "sib0", role: "output", depth: 1, side: "N", anchorY: 0 }),
+    ];
     const topAsg = planPerimeterExits(top, ctx).assignments[0];
     expect(topAsg.exitMode).toEqual({ kind: "direct" });
     expect(topAsg.exitEdge).toBe("N");

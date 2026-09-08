@@ -50,6 +50,11 @@ export function planExits(
   pairedChestIds: ReadonlySet<string>,
   maxDepth: number,
   absPortY: (id: string, anchorY: number) => number,
+  /**
+   * 깊이 → 그 열의 모듈 id, **위에서 아래** 순서(3a 트리 DFS). 광선이 훑을 격자다.
+   * **여기서 다시 계산하지 않고 받는다** — 같은 사실을 두 주체가 두 번 세면 언젠가 어긋난다.
+   */
+  orderByDepth: ReadonlyMap<number, readonly string[]>,
 ): PerimeterExitPlan {
   // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
   // (X변 우선), N/S 트랙의 chest 는 트렁크가 트랙을 따라 수평으로 자라 코너 어깨
@@ -58,7 +63,6 @@ export function planExits(
   const sideOf = (p: ModulePort): ExitEdge => p.meta.side;
   const ports: ExitPortInput[] = [];
   let gyMin = Infinity, gyMax = -Infinity;
-  const spansByDepth = new Map<number, { id: string; top: number; bottom: number }[]>();
   for (const s of specs) {
     const mod = oriented.get(s.id)!.module;
     const ext = moduleExtent(mod);
@@ -66,7 +70,6 @@ export function planExits(
     const bottom = top + ext.h - 1;
     gyMin = Math.min(gyMin, top);
     gyMax = Math.max(gyMax, bottom);
-    (spansByDepth.get(s.depth) ?? spansByDepth.set(s.depth, []).get(s.depth)!).push({ id: s.id, top, bottom });
     // 반출 대상 = **납품 경로로 짝지어지지 않은 포트 전부**. 입력이면 외부 공급 무한상자,
     // 출력이면 무한 sink — 둘 다 perimeter 로 나가야 한다. (1:1 방출이라 자식 출력이
     // 부모 입력보다 많으면 남는 출력도 여기 들어온다.) wayOuts = 모듈이 답해준
@@ -75,6 +78,7 @@ export function planExits(
       if (!pairedChestIds.has(p.chest.id))
         ports.push({
           id: p.chest.id,
+          moduleId: s.id,
           role: p.line.role,
           depth: s.depth,
           side: sideOf(p),
@@ -82,6 +86,10 @@ export function planExits(
           wayOuts: p.moduleWayOuts,
         });
   }
-  const ctx: ExitContext = { globalY: { min: gyMin, max: gyMax }, maxDepth, spansByDepth };
+  const ctx: ExitContext = {
+    globalY: { min: gyMin, max: gyMax },
+    maxDepth,
+    grid: { orderByDepth, maxDepth },
+  };
   return planPerimeterExits(ports, ctx);
 }
