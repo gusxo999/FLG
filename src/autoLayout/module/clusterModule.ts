@@ -147,6 +147,15 @@ export interface GeneratedModule {
   /** 머신 bbox(ring 기준). 모듈-로컬에서 항상 {x:0,y:0,...}. */
   bbox: { x: number; y: number; w: number; h: number };
   /**
+   * **몸통이 먹는 로컬 열들**(`x − extent.x`) — 남의 **세로 직진**이 *"네 열 c 를 지나가도
+   * 되나"* 를 물을 때의 답이다([bodyColumnsOf]). 여기 없는 열은 위아래로 뚫려 있다.
+   *
+   * 모듈은 여전히 **블랙박스**다 — 배정기가 보는 것은 이 요약뿐이고 안쪽 배치는 안 본다.
+   * `moduleWayOuts` 와 **같은 순간·같은 몸통**에서 나온다([fillModuleWayOuts]): 같은
+   * 사실을 두 곳에서 세면 언젠가 어긋나기 때문이다.
+   */
+  bodyColumns: ReadonlySet<number>;
+  /**
    * **못 앉은 내부 링크의 사유** — `linkId` → [DepthShortage]. 사다리 1단의 입력이다.
    * 쪼개는 주체는 `modulePacking` 이다(링크 객체를 양끝이 공유하므로).
    */
@@ -371,8 +380,8 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   if (!plan.rest.ok) {
     unroutedLines.push(...plan.rest.unplaced);
     finishBeltTermini(); // 나머지 줄이 없어도 링크 줄의 끝 칸은 마무리해야 한다
-    fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
-    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, unroutedLines, pipeCells, beltMerges, depthShortages: plan.depthShortages, unpourableFix: plan.unpourableFix };
+    const bodyColumns = fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
+    return { machines, chests, cells, ring, inputPorts, outputPorts, bbox, bodyColumns, unroutedLines, pipeCells, beltMerges, depthShortages: plan.depthShortages, unpourableFix: plan.unpourableFix };
   }
 
   // ── 방출 ────────────────────────────────────────────────────────────────────
@@ -435,8 +444,9 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   // *"끝 칸의 이웃이 남의 품목이냐"* 를 물을 수 있는 자리다([resolveBeltTermini]).
   finishBeltTermini();
 
-  // 전 포트 emit 완료 → 모듈 몸통이 확정됐으니 각 포트의 moduleWayOuts 를 채운다.
-  fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
+  // 전 포트 emit 완료 → 모듈 몸통이 확정됐으니 각 포트의 moduleWayOuts 와 **열 요약**을
+  // 함께 채운다(같은 몸통에 대한 두 답이라 한 번에 낸다).
+  const bodyColumns = fillModuleWayOuts(machines, cells, [...inputPorts, ...outputPorts]);
 
   return {
     machines,
@@ -446,6 +456,7 @@ export function generateModule(input: ModuleInput): GeneratedModule {
     inputPorts,
     outputPorts,
     bbox,
+    bodyColumns,
     unroutedLines,
     pipeCells,
     beltMerges,

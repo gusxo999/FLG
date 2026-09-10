@@ -61,14 +61,15 @@ function recomputeWayOuts(m: GeneratedModule, port: ModulePort): PortFace[] {
   return out;
 }
 
-describe("moduleWayOuts — 포트가 모듈 몸통을 벗어날 수 있는 방향", () => {
-  const cases: { name: string; count: number; lines: IoLine[] }[] = [
-    { name: "count=1 · 입력3", count: 1, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
-    { name: "count=2 · 입력3", count: 2, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
-    { name: "count=4 · 입력3", count: 4, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
-    { name: "count=3 · 입력2", count: 3, lines: [inL("a", 3), inL("b", 1), outL("z", 2)] },
-  ];
+/** 몸통을 묻는 검사 둘이 **같은 표본**을 본다 — 갈리면 비교가 뜻을 잃는다. */
+const cases: { name: string; count: number; lines: IoLine[] }[] = [
+  { name: "count=1 · 입력3", count: 1, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
+  { name: "count=2 · 입력3", count: 2, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
+  { name: "count=4 · 입력3", count: 4, lines: [inL("a", 4), inL("b", 2), inL("c", 2), outL("z", 1)] },
+  { name: "count=3 · 입력2", count: 3, lines: [inL("a", 3), inL("b", 1), outL("z", 2)] },
+];
 
+describe("moduleWayOuts — 포트가 모듈 몸통을 벗어날 수 있는 방향", () => {
   for (const c of cases) {
     it(`${c.name} — 모든 포트의 wayOuts 가 독립 재계산과 일치`, () => {
       const m = mod(c.count, c.lines);
@@ -115,4 +116,37 @@ describe("moduleWayOuts — 포트가 모듈 몸통을 벗어날 수 있는 방�
         expect(p.moduleWayOuts, `${c.name} / ${p.chest.id} face=${p.face}`).toContain(p.face);
     }
   });
+});
+
+/**
+ * `bodyColumns` 는 `moduleWayOuts` 와 **같은 순간·같은 몸통**에서 나온다. 그래서 여기서
+ * 검사한다 — 둘이 갈라지면 남의 직진이 *"비었다"* 고 믿은 열에 실제로는 셀이 있게 된다.
+ */
+describe("bodyColumns — 남의 세로 직진이 지나도 되는 로컬 열", () => {
+  for (const c of cases) {
+    it(`${c.name} — 몸통이 먹는 로컬 열과 정확히 일치한다`, () => {
+      const m = mod(c.count, c.lines);
+      // 독립 재계산: 머신 footprint + 셀의 x 를 extent 왼쪽 변 기준으로 옮긴다.
+      const xs: number[] = [];
+      for (const mc of m.machines)
+        for (let dx = 0; dx < mc.size.w; dx++) xs.push(mc.origin.x + dx);
+      for (const cell of m.cells) xs.push(cell.x);
+      const minX = Math.min(...xs);
+      expect([...m.bodyColumns].sort((a, b) => a - b))
+        .toEqual([...new Set(xs.map((x) => x - minX))].sort((a, b) => a - b));
+    });
+
+    it(`${c.name} — 요약에 **없는** 열은 위아래로 정말 뚫려 있다`, () => {
+      const m = mod(c.count, c.lines);
+      const occX = new Set<number>();
+      for (const mc of m.machines)
+        for (let dx = 0; dx < mc.size.w; dx++) occX.add(mc.origin.x + dx);
+      for (const cell of m.cells) occX.add(cell.x);
+      const minX = Math.min(...occX);
+      const maxX = Math.max(...occX);
+      for (let x = minX; x <= maxX; x++)
+        if (!m.bodyColumns.has(x - minX))
+          expect(occX.has(x), `로컬 열 ${x - minX} 이 비었다는데 셀이 있다`).toBe(false);
+    });
+  }
 });

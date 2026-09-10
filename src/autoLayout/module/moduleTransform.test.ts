@@ -74,7 +74,8 @@ describe("transformModule (D4)", () => {
     const fake: GeneratedModule = {
       machines: [{ id: "m", kind: "machine", entityName: "x", origin: { x: 0, y: 0 }, size: { w: 2, h: 4 } }],
       chests: [], cells: [], ring: [], inputPorts: [], outputPorts: [],
-      bbox: { x: 0, y: 0, w: 2, h: 4 }, unroutedLines: [], pipeCells: [], beltMerges: [],
+      bbox: { x: 0, y: 0, w: 2, h: 4 }, bodyColumns: new Set([0, 1]),
+      unroutedLines: [], pipeCells: [], beltMerges: [],
     };
     const r = transformModule(fake, { rotation: 90 });
     expect(r.machines[0].size).toEqual({ w: 4, h: 2 });

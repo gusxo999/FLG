@@ -58,6 +58,10 @@ export function planExits(
   /** [rowChannelKey] → 그 행 채널의 가로 트랙이 덮는 **최대 로컬 x**(수요 기준). */
   rowChannelReach: ReadonlyMap<string, number>,
 ): PerimeterExitPlan {
+  // **열 요약은 모듈이 낸다** — 여기서 다시 훑지 않는다. `moduleWayOuts` 를 만드는 그
+  // 계산이 함께 실어 보낸 값이라([fillModuleWayOuts]), 두 답이 같은 순간의 같은 몸통을
+  // 본다는 것이 보장된다. `orderByDepth` 를 다시 세지 않는 것과 같은 이유다.
+  const moduleBodyColumns = new Map<string, ReadonlySet<number>>();
   // 변 = planner 슬롯(meta.side)이 단일 출처. 예전엔 anchor↔bbox 기하로 추측했지만
   // (X변 우선), N/S 트랙의 chest 는 트렁크가 트랙을 따라 수평으로 자라 코너 어깨
   // (x·y 둘 다 bbox 밖)에 앉을 수 있어 W/E 로 오분류된다 — N 트랙 상자는 위가 전역
@@ -68,6 +72,7 @@ export function planExits(
   for (const s of specs) {
     const mod = oriented.get(s.id)!.module;
     const ext = moduleExtent(mod);
+    moduleBodyColumns.set(s.id, mod.bodyColumns);
     const top = topY.get(s.id)!;
     const bottom = top + ext.h - 1;
     gyMin = Math.min(gyMin, top);
@@ -94,6 +99,7 @@ export function planExits(
     maxDepth,
     grid: { orderByDepth, maxDepth },
     rowChannelReach,
+    moduleBodyColumns,
   };
   return planPerimeterExits(ports, ctx);
 }

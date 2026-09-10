@@ -20,6 +20,7 @@
 import { EntityType } from "../../types/layout";
 import type { Direction } from "../../types/layout";
 import type { BeltMerge, GeneratedModule, ModulePort } from "./clusterModule";
+import { bodyColumnsOf } from "../planner/perimeter/wayOuts";
 import type { Container, PlacedCell, PortFace } from "../containerModel";
 import type { PipeFlowPipe } from "../util/pipeFlow";
 import { faceVector, vectorToDirection } from "../util/helper";
@@ -161,14 +162,21 @@ export function transformModule(mod: GeneratedModule, o: Orientation): Generated
     h = Math.max(h, m.origin.y + m.size.h);
   }
 
+  // 셀은 지역 변수로 받는다 — `bodyColumns` 를 **바뀐 기하**에서 다시 세야 하므로.
+  const cells = mod.cells.map(cel);
+
   return {
     machines,
     chests,
-    cells: mod.cells.map(cel),
+    cells,
     ring: mod.ring.map(pt),
     inputPorts: mod.inputPorts.map(port),
     outputPorts: mod.outputPorts.map(port),
     bbox: { x: 0, y: 0, w, h },
+    // **열 요약은 회전에 안 따라온다** — 90° 를 돌면 열이 행이 되므로 옛 집합을 옮겨
+    // 담을 수가 없다. `bbox` 와 같은 처방을 쓴다: 바뀐 기하에서 **같은 함수로 다시 센다**
+    // (출처는 여전히 하나다 — `bodyColumnsOf`).
+    bodyColumns: bodyColumnsOf(machines, cells),
     unroutedLines: mod.unroutedLines,
     unpourableFix: mod.unpourableFix,
     depthShortages: mod.depthShortages,
@@ -294,6 +302,8 @@ export function shiftModule(mod: GeneratedModule, dx: number, dy: number): Gener
     inputPorts: mod.inputPorts.map(port),
     outputPorts: mod.outputPorts.map(port),
     bbox: { x: mod.bbox.x + dx, y: mod.bbox.y + dy, w: mod.bbox.w, h: mod.bbox.h },
+    // **로컬 열은 평행이동에 불변이다** — extent 왼쪽 변 기준이라 통째로 옮겨도 같은 값이다.
+    bodyColumns: mod.bodyColumns,
     unroutedLines: mod.unroutedLines,
     unpourableFix: mod.unpourableFix,
     depthShortages: mod.depthShortages,

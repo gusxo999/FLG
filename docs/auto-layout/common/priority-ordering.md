@@ -43,6 +43,22 @@ tags: [auto-layout, placement, routing]
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channelGeometryPlanner.ts](../../../src/autoLayout/planner/channelGeometryPlanner.ts), [.fluid-delivery-reservation §4.3](../channel/fluid-delivery-reservation.md) |
 | P11 | **납품 경로 방출 순서**                | 유체 납품 경로 먼저, 그다음 아이템 납품 경로                                | **C** | [deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts), [.fluid-delivery-reservation §8.2](../channel/fluid-delivery-reservation.md) |
+| P12 | **반출 출구 확정 순서**              | `options.length` 오름차순 → 동률은 `id` (**자유도 적은 상자 먼저**)      | **C** | [perimeterExitPlanner.ts](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`, [.perimeter-export §3②](../perimeter/perimeter-export.md) |
+
+### P12 — 순회 순서가 **누가 skip 되나**를 정한다 (2026-09-10)
+
+직진 장부가 생기면서 반출 확정이 **접두사 의존**이 됐다 — 먼저 고른 상자가 그은 선을 뒤
+상자가 피한다. 옛 순회는 `id` 오름차순이라 결정적이긴 해도 **제약과 아무 상관이 없었고**,
+후보가 셋인 상자가 후보 하나뿐인 상자보다 먼저 골라 버렸다.
+
+밀린 쪽에 갈 데가 있으면 대가는 **폭**이다. 그런데 끝 열·단일 열 상자는 열 채널이 없어
+**후보가 직진 하나뿐**이라 갈 데가 없다 — 그 상자가 밀리면 대가가 **skip**(상자가 배치
+한복판에 남는다)이다. 그래서 §1 의 fail-first 를 그대로 적용한다: **자유도 0 인 상자가
+먼저 고른다.**
+
+> 실측(2026-09-10, advanced-circuit 동형 7판): `id` 순이면 `n2` 의 유일한 E 직진이
+> `n1` 의 세로 직진에 밀려 `straight blocked to E` 로 skip 됐다. `options.length` 순으로
+> 바꾸면 `n2` 가 먼저 자리를 지키고 `n1` 이 환승으로 내려간다 — **skip 0.**
 
 ### P10·P11 — "제약 센 것" 이 아니라 "실패하면 비싼 것" 먼저 (2026-07-25)
 

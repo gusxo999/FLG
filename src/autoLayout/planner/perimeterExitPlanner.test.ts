@@ -24,6 +24,8 @@ const ctx3 = (): ExitContext => ({
     maxDepth: 2,
   },
   rowChannelReach: new Map(), // 행 채널 수요 없음 = 관통이 언제나 열려 있다
+  // 열마다 모듈 하나뿐인 픽스처라 세로 광선이 남의 모듈을 만날 일이 없다.
+  moduleBodyColumns: new Map(),
 });
 
 describe("planPerimeterExits", () => {
@@ -85,6 +87,8 @@ describe("planPerimeterExits", () => {
         maxDepth: 1,
       },
       rowChannelReach: new Map(),
+      // **요약이 없으면 막힌 것으로 친다** — 이 검사는 그 보수 갈래다.
+      moduleBodyColumns: new Map(),
     };
     // sib1(아래) 의 N 변 포트 → 위로 쏘면 sib0 을 만난다 → 환승.
     const ports: ExitPortInput[] = [
@@ -128,6 +132,7 @@ describe("planPerimeterExits", () => {
       grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
       // d1 의 **북쪽** 행 채널을 지나는 납품이 로컬 x 0..5 를 덮는다.
       rowChannelReach: new Map([["1:below:d1", 5]]),
+      moduleBodyColumns: new Map(),
     };
     const inside = planPerimeterExits(
       [p({ id: "in", role: "input", depth: 1, side: "N", anchorY: 0, localX: 3 })],
@@ -150,6 +155,7 @@ describe("planPerimeterExits", () => {
       grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
       // **남쪽** 행 채널에만 수요가 있다.
       rowChannelReach: new Map([["1:above:d1", 9]]),
+      moduleBodyColumns: new Map(),
     };
     const north = planPerimeterExits(
       [p({ id: "n", role: "input", depth: 1, side: "N", anchorY: 0, localX: 3 })],
@@ -237,10 +243,180 @@ describe("planPerimeterExits — moduleWayOuts 제약", () => {
       ctx3(),
     );
     const a = plan.assignments[0];
-    expect(a.options.length).toBeGreaterThan(1); // 자유도가 남아 있다(양보 가능)
+    expect(a.options.length).toBeGreaterThan(1); // 자유도가 남아 있다(강등 가능)
     // 평평한 확정 필드는 `options[0]` 의 복사본이다 — 그 하나만 통합 장부에 간다.
     expect(a.exitMode).toEqual(a.options[0].exitMode);
     expect(a.exitEdge).toBe(a.options[0].exitEdge);
     expect(a.entry).toEqual(a.options[0].entry);
+  });
+});
+
+describe("직진 장부 — 자리를 안 사는 경로도 등록은 해야 한다", () => {
+  /**
+   * 끝 열(깊이 0)이라 가로 직진이 산다. 세로 직진과 **직교**하고 둘 다 자리를 안 사므로,
+   * 장부가 없으면 서로를 못 본다 — 방출에서야 알고 그때는 남은 수가 포기뿐이다.
+   *
+   * ```
+   *        ║  ← 세로 직진 (로컬 열 2, 행 8 에서 위로)
+   *   ←────╫─────   ← 가로 직진 (행 5, 로컬 열 4 에서 서로).  칸 (2,5) 에서 만난다
+   *        ║
+   * ```
+   */
+  const endCol = (): ExitContext => ({
+    globalY: { min: 0, max: 9 },
+    maxDepth: 2,
+    grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
+    rowChannelReach: new Map(),
+    moduleBodyColumns: new Map(),
+  });
+
+  it("겹치는 직진 후보는 **만들지 않는다** — 뒤에 온 쪽이 환승으로 간다", () => {
+    const plan = planPerimeterExits(
+      [
+        p({ id: "a", moduleId: "d0", role: "input", depth: 0, side: "W", anchorY: 5, localX: 4 }),
+        p({ id: "b", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 8, localX: 2 }),
+      ],
+      endCol(),
+    );
+    const byId = new Map(plan.assignments.map((x) => [x.id, x]));
+    // 후보 수가 같아 `id` 로 갈린다 — a 가 먼저 W 로 선을 긋는다.
+    expect(byId.get("a")!.exitMode).toEqual({ kind: "direct" });
+    expect(byId.get("a")!.exitEdge).toBe("W");
+    // b 의 N 직진은 그 선을 밟는다 → **후보가 안 만들어지고** 환승이 확정된다.
+    // (옛 동작: 그대로 확정됐다가 방출에서 `straight blocked` → skip → 상자가 안 나간다.)
+    expect(byId.get("b")!.exitMode).toEqual({ kind: "channel", depth: 1 });
+  });
+
+  it("낙선 기록 — 누가 어느 자리를 누구에게 뺏겼나", () => {
+    const plan = planPerimeterExits(
+      [
+        p({ id: "a", moduleId: "d0", role: "input", depth: 0, side: "W", anchorY: 5, localX: 4 }),
+        p({ id: "b", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 8, localX: 2 }),
+      ],
+      endCol(),
+    );
+    expect(plan.demotions).toEqual([
+      { id: "b", droppedEdge: "N", blockedBy: "a", cell: "0:2,5" },
+    ]);
+  });
+
+  it("순회는 **후보가 적은 상자부터** — 강등할 데가 없는 쪽이 먼저 고른다", () => {
+    // b 는 N 밖에 못 나간다(wayOuts) → 후보가 **하나**. a 는 다섯이다.
+    // `id` 순이면 a 가 먼저 W 를 가져가고 b 는 갈 곳이 없어 방출에서 skip 된다.
+    const plan = planPerimeterExits(
+      [
+        p({ id: "a", moduleId: "d0", role: "input", depth: 0, side: "W", anchorY: 5, localX: 4 }),
+        p({ id: "b", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 8, localX: 2, wayOuts: ["N"] }),
+      ],
+      endCol(),
+    );
+    const byId = new Map(plan.assignments.map((x) => [x.id, x]));
+    expect(byId.get("b")!.options).toHaveLength(1); // 자유도 0 — 이 상자가 먼저다
+    expect(byId.get("b")!.exitEdge).toBe("N"); // 그래서 자기 유일한 길을 지킨다
+    // 밀린 쪽은 a 다 — W 를 잃고 다음 후보로 내려간다(N 직진, 열이 달라 안 겹친다).
+    expect(byId.get("a")!.exitEdge).toBe("N");
+    expect(plan.demotions.map((d) => [d.id, d.droppedEdge])).toEqual([["a", "W"]]);
+  });
+
+  it("**강등할 데가 없으면 오늘 그대로 둔다** — 배정을 없애지 않는다", () => {
+    // 단일 열(maxDepth 0) — 열 채널이 **아예 없어** 모든 반출이 직진이다.
+    // 게다가 둘 다 N 으로만 나갈 수 있어 후보가 하나씩뿐이다.
+    const single: ExitContext = {
+      globalY: { min: 0, max: 9 },
+      maxDepth: 0,
+      grid: { orderByDepth: new Map([[0, ["d0"]]]), maxDepth: 0 },
+      rowChannelReach: new Map(),
+      moduleBodyColumns: new Map(),
+    };
+    const plan = planPerimeterExits(
+      [
+        p({ id: "b", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 8, localX: 2, wayOuts: ["N"] }),
+        p({ id: "c", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 3, localX: 2, wayOuts: ["N"] }),
+      ],
+      single,
+    );
+    // 같은 열 · 같은 방향이라 **반드시 겹친다** — 그런데 c 에겐 내려갈 후보가 없다.
+    expect(plan.demotions.map((d) => d.id)).toEqual(["c"]);
+    // 그래도 배정은 남는다. 여기서 지우면 **확정 skip** 이라 오늘보다 나쁘다.
+    const c = plan.assignments.find((x) => x.id === "c")!;
+    expect(c.exitMode).toEqual({ kind: "direct" });
+    expect(c.exitEdge).toBe("N");
+  });
+
+  it("기전 — 겹치는 직진 쌍이 없으면 확정은 언제나 `options[0]` 이고 낙선도 0", () => {
+    const plan = planPerimeterExits(
+      [
+        p({ id: "n", role: "input", depth: 1, side: "N", anchorY: 0, localX: 0 }),
+        p({ id: "s", role: "output", depth: 1, side: "S", anchorY: 9, localX: 0 }),
+        p({ id: "w", role: "input", depth: 0, side: "W", anchorY: 4, localX: 0 }),
+        p({ id: "e", role: "output", depth: 2, side: "E", anchorY: 4, localX: 0 }),
+      ],
+      ctx3(),
+    );
+    expect(plan.demotions).toEqual([]);
+    for (const a of plan.assignments) {
+      expect(a.exitEdge).toBe(a.options[0].exitEdge);
+      expect(a.exitMode).toEqual(a.options[0].exitMode);
+    }
+  });
+});
+
+describe("모듈 정밀 판정 — 블랙박스에게 「네 열이 비었나」를 묻는다", () => {
+  /** 한 열에 형제 둘: sib0 위, sib1 아래. sib1 의 N 직진이 sib0 을 지나야 한다. */
+  const siblings = (sib0Body: number[]): ExitContext => ({
+    globalY: { min: 0, max: 12 },
+    maxDepth: 1,
+    grid: { orderByDepth: new Map([[0, ["root"]], [1, ["sib0", "sib1"]]]), maxDepth: 1 },
+    rowChannelReach: new Map(),
+    moduleBodyColumns: new Map([["sib0", new Set(sib0Body)], ["sib1", new Set(sib0Body)]]),
+  });
+
+  const upward = (localX: number) =>
+    p({ id: "u", moduleId: "sib1", role: "output", depth: 1, side: "N", anchorY: 6, localX });
+
+  it("몸통이 안 먹는 열이면 **지나간다** — 옛 판정은 여기서 무조건 막았다", () => {
+    // sib0 의 몸통은 로컬 열 0~4 만 먹는다. 열 7 로 올라가는 직진은 뚫린 길이다.
+    const a = planPerimeterExits([upward(7)], siblings([0, 1, 2, 3, 4])).assignments[0];
+    expect(a.exitMode).toEqual({ kind: "direct" });
+    expect(a.exitEdge).toBe("N");
+  });
+
+  it("몸통이 먹는 열이면 여전히 막힌다 — 협상 불가는 그대로다", () => {
+    const a = planPerimeterExits([upward(3)], siblings([0, 1, 2, 3, 4])).assignments[0];
+    expect(a.exitMode).toEqual({ kind: "channel", depth: 1 });
+  });
+
+  it("요약이 없으면 **막힌 것으로 친다** — 정확도를 잃을지언정 없는 자리를 뚫지 않는다", () => {
+    const ctx = siblings([0, 1, 2, 3, 4]);
+    const blind: ExitContext = { ...ctx, moduleBodyColumns: new Map() };
+    expect(planPerimeterExits([upward(7)], blind).assignments[0].exitMode)
+      .toEqual({ kind: "channel", depth: 1 });
+  });
+
+  /**
+   * **2026-09-08 의 함정이 여기 있다.** 모듈 정밀 판정만 켰더니 `oneToOneGuarantee ②` 가
+   * 6건 깨졌다 — 세로 직진이 남의 모듈의 빈 열을 뚫자, 그 칸을 비었다고 믿던 **가로 직진**이
+   * 방출에서 막혔다(`straight blocked to E`). 둘 다 자리를 안 사서 서로를 못 봤다.
+   *
+   * 이제는 장부가 배정 시점에 잡는다 — 진 쪽의 대가가 **skip 에서 폭으로** 바뀐다.
+   */
+  it("뚫린 열로 나가려는 세로 직진이 **가로 직진과 만나면** 환승으로 내려간다", () => {
+    const ctx = siblings([0, 1, 2, 3, 4]);
+    const plan = planPerimeterExits(
+      [
+        // sib0 의 열 7 은 비어 있다 → sib1 의 N 직진이 새로 후보가 된다(정밀 판정).
+        upward(7),
+        // 그런데 sib0 의 상자가 그 위쪽 행에서 **동쪽으로** 직진한다. 끝 열이라 E 가 산다.
+        // 나갈 길이 이것뿐이라(wayOuts) 후보가 하나 — **먼저 고른다.**
+        p({ id: "h", moduleId: "sib0", role: "input", depth: 1, side: "E", anchorY: 2, localX: 5, wayOuts: ["E"] }),
+      ],
+      ctx,
+    );
+    const byId = new Map(plan.assignments.map((x) => [x.id, x]));
+    expect(byId.get("h")!.exitMode).toEqual({ kind: "direct" }); // 가로 직진이 자리를 지킨다
+    expect(byId.get("h")!.exitEdge).toBe("E");
+    expect(byId.get("u")!.exitMode).toEqual({ kind: "channel", depth: 1 }); // 세로가 내려간다
+    expect(plan.demotions.map((d) => [d.id, d.droppedEdge, d.blockedBy]))
+      .toEqual([["u", "N", "h"]]);
   });
 });

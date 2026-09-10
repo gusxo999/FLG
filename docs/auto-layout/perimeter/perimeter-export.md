@@ -113,8 +113,76 @@ tags: [auto-layout, placement, routing]
 > (방출은 `exitEdge` 로만 축을 골랐고, `margin.edge` 는 언제나 `exitEdge` 와 같았다).
 
 배정은 하나로 못박지 않고 **선호 순 후보 목록**(`ExitAssignment.options`)으로 남긴다. 뒤에
-더 센 제약을 가진 장부가 **양보를 요구**할 수 있기 때문이다(스도쿠: 제약 센 곳부터).
-모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
+더 센 제약을 가진 장부가 앞 후보를 **강등**시킬 수 있기 때문이다(스도쿠: 제약 센 곳부터).
+모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다. 실제로 강등시키는 장부는 아래 **직진
+장부** 하나다(2026-09-10 — 그전까지 `options` 를 읽는 코드는 하나도 없었다).
+
+#### 직진 장부 — **자리를 안 사는 경로도 등록은 해야 한다**
+
+**구현:** [`planner/perimeter/directRay.ts`](../../../src/autoLayout/planner/perimeter/directRay.ts) `DirectRay` · `directRaysCross`
+
+이 저장소의 자리 모델은 한 문장이다 — *"통로가 자기 축의 줄을 판다 → 경로가 자기 축의 줄을
+산다 → 모자라면 통로가 넓어진다."* **직진은 이 모델 밖이다.** 주행선 후보가 하나뿐이라 고를
+게 없고, 그래서 사지 않는다. 그런데 **선은 긋는다.**
+
+```
+사는 것      여럿 중 하나를 고르고, 모자라면 통로를 늘린다   ← 고를 게 있어야 성립
+등록하는 것   내가 여기 있다                              ← **고를 게 없어도 할 수 있다**
+```
+
+그 선이 어느 장부에도 없으면 두 직진이 만났을 때 **방출 순서로 갈린다** — 방출은 상자를
+하나씩 깔면서 `occ` 를 그때그때 갱신하므로 먼저 깔린 쪽이 이기고, 나중 것은
+`straight blocked` 로 skip 돼 상자가 조립 블루프린트 **한복판에** 남는다.
+
+> **고칠 수 있는 것은 「부딪힌다」가 아니라 「너무 늦게 안다」다.** 방출에서 알면 남은 수가
+> 포기뿐이다(직진은 `offsets: [0]` 이라 옆으로 한 칸도 못 비끼고, 방출은 배정을 재생만
+> 한다). **배정에서 알면 다른 길이 있다** — `options` 의 다음 후보로 내려가면 되고,
+> 환승은 통로가 자리를 팔아 **대가를 폭으로 치환한다.**
+
+**끝점이 필요 없다 — 직진은 반직선이다.** seat 행/열은 `rawBbox` 에서 나오고 그건 배치
+뒤인데, 직진의 선은 *"상자에서 도면 끝까지"* 라 한쪽이 열려 있다:
+
+```
+세로 직진   (열 c, 상자 행 y₀, N)  =  { (c, y) : y ≤ y₀ }
+가로 직진   (행 r, 상자 열 x₀, E)  =  { (x, r) : x ≥ x₀ }
+```
+
+**교차 판정은 `toward` 를 반드시 읽는다.** 축만 보면 **등지고 뻗는** 쌍을 겹친다고 오판한다:
+
+```
+세로(c, y₀, ↑N) × 가로(r, x₀, →E)   ⟺  r ≤ y₀ ∧ c ≥ x₀     (방향 조합마다 부등식이 다르다)
+세로(c, y₀, ↑N) × 세로(c′, y₁, ↑N)  ⟺  c = c′               (같은 방향이면 반드시 겹친다)
+세로(c, y₀, ↑N) × 세로(c′, y₁, ↓S)  ⟺  c = c′ ∧ y₁ ≤ y₀      (마주 볼 때만)
+```
+
+**넷이면 완전하다 — `(깊이, 로컬 열, 절대 행, 방향)`.** 가로 직진은 **끝 열에서만** 나오고
+바깥쪽으로 뻗으므로 다른 열의 세로선과는 만날 수가 없고, 같은 깊이의 모듈은 전부 `colX[d]`
+에 왼쪽 정렬되므로 **로컬 x 끼리의 비교가 절대 x 로 비교한 것과 답이 같다.** 그래서 `colX`
+도 `rawBbox` 도 기다리지 않는다.
+
+**바뀌는 것은 승자가 아니라 패자의 대가다.** *"먼저 온 쪽이 이긴다"* 는 그대로다 — 방출에
+있던 선점이 배정으로 **옮겨 왔을 뿐**이고, 진 쪽이 치르는 값이 바뀐다:
+
+```
+옛   방출에서 선점  →  진 쪽의 대가 = skip   (상자가 블루프린트 한복판에 남는다)
+새   배정에서 선점  →  진 쪽의 대가 = 환승   (트랙 1 + 폭)
+```
+
+**순회는 `options.length` 오름차순**(동률은 `id`)이다. 옛 순회는 `id` 순이라 결정적이긴
+해도 **제약과 아무 상관이 없었다** — 후보가 셋인 상자가 후보 하나뿐인 상자보다 먼저 골라
+버린다. 후보가 없어질 수 있는 쪽부터 고르게 한다(→ [[priority-ordering]]).
+
+> **강등할 데가 없는 경우가 실재한다** — 깊이 0 의 W 상자·최대 깊이의 E 상자·단일 열 트리는
+> 열 채널이 없어 후보가 직진 하나뿐이다. 그때는 **오늘 그대로 두고**(`options[0]`) 방출에
+> 맡긴다. 그 갈래를 안 적으면 배정이 통째로 사라져 **확정 skip** 이라 오늘보다 나쁘다.
+
+**낙선 기록**(`PerimeterExitPlan.demotions`)은 강등이 일어난 자리를 `{상자, 버린 변, 승자,
+칸}` 으로 쌓는다. **동작을 안 바꾼다** — *"셋 이상이 다투는 자리가 몇 건인가"* 를 처음으로
+셀 수 있게 하는 계측이다(`tempPlanDocs/셀장부/judgements.md` **J-충돌차수**).
+
+> **여기 있는 것은 「양보」가 아니다.** 그 낱말은 *이미 잡은 주인이 비켜 주는 것*(철회·선점)을
+> 뜻하고 자리마다 `owner` 가 있어야 성립한다. 여기서 일어나는 것은 **아직 확정 안 된 후보를
+> 건너뛰는 것**뿐이라 철회가 없다 — **후보 강등**이다.
 
 **핵심 — 폭 역전.** 환승으로 배정된 상자는 **진입점**(`entry` — 행 + 어느 벽)을 내고,
 `packModuleTree` 가 이를 [[용어사전#납품 경로 (deliveryRoute)|납품 경로]] 와 **한 장부**
@@ -234,8 +302,9 @@ tags: [auto-layout, placement, routing]
 | 단계 | 파일 | 핵심 심볼 |
 |---|---|---|
 | ① 계약 | `module/clusterModule.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
-| ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다 |
+| ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
 | ② 배정 | `planner/perimeterExitPlanner.ts` | `planPerimeterExits` · `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
+| ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
 | ② 폭 반영 | `planner/modulePacking.ts` | `planExits` · `expandBbox` · `reservedExportCells` |
 | ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |

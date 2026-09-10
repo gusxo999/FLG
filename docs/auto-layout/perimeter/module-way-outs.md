@@ -75,24 +75,56 @@ tags: [auto-layout, placement, routing]
 **상자 ghost·인서터도 장애물로 센다** — 재배치 때 그 두 칸은 belt 로 다시 깔리므로
 (`modulePerimeterPass` 가 `path=[feeder, anchor, …]` 로 재사용) 여전히 점유 상태다.
 
+### 2.1 같은 몸통에 대한 **두 번째 답** — `bodyColumns` (2026-09-10)
+
+방을 나가는 문이 어디냐는 **내 상자**의 질문이다. 그런데 **남의 직진**도 이 방에 묻는 게
+있다 — *"네 몸통을 세로로 지나가도 되나."* 세로 직진은 자기 열을 따라 곧장 바깥 변까지
+가는데, 그 길에 남의 모듈이 있으면 **그 모듈의 그 한 열**만 비어 있으면 된다.
+
+```
+moduleWayOuts   "**내** 상자가 어느 쪽으로 나갈 수 있나"     — 포트마다, 방향 집합
+bodyColumns     "**남의** 직진이 내 어느 열을 지날 수 있나"   — 모듈마다, 로컬 열 집합
+```
+
+`bodyColumns` 는 몸통이 **먹는** 로컬 열(`x − extent.x`)이다. 여기 **없는** 열이 뚫린
+열이고, 모듈 폭 밖의 열도 자동으로 뚫린 것이 된다(집합에 없으니까) — 그래서 폭을 따로
+실어 보낼 필요가 없다. 로컬 열끼리의 비교가 절대 x 와 답이 같은 이유는 같은 깊이의 모듈이
+전부 `colX[d]` 에 왼쪽 정렬되기 때문이다(`shiftModule`).
+
+> **둘을 한 번에 낸다** — `fillModuleWayOuts` 가 `moduleWayOuts` 를 채우면서 이 요약도
+> 함께 반환한다. 같은 몸통에 대한 두 답이라 따로 계산하면 **언젠가 다른 순간의 몸통**을
+> 보게 된다(`perimeter/exits.ts` 가 `orderByDepth` 를 다시 세지 않고 받는 것과 같은 이유).
+> `transformModule` 은 기하가 실제로 바뀌므로 `bbox` 와 똑같이 **다시 센다**;
+> `shiftModule` 은 extent 기준값이라 그대로 넘긴다.
+
+**모듈은 여전히 블랙박스다.** 배정기가 보는 것은 이 요약 하나뿐이고 안쪽 배치는 안 본다.
+요약이 안 실려 온 모듈은 **막힌 것으로 친다** — 정확도를 잃을지언정 없는 자리를 뚫지 않는다.
+
+> **이 요약만 켜면 안 된다.** 2026-09-08 에 그렇게 했다가 `oneToOneGuarantee ②` 가 6건
+> 깨졌다 — 세로 직진이 남의 빈 열을 뚫자 그 칸을 믿던 **가로 직진**이 방출에서 막혔다.
+> 둘 다 자리를 안 사서 서로를 못 봤기 때문이다. **직진 장부**가 먼저 서야 한다
+> (→ [[perimeter-export]] §3②, [[exit-ray]] §5).
+
 ## 3. 출구 선택은 자유도다 — 하나로 못박지 않는다
 
 예약기는 이제 각 상자마다 **쓸 수 있는 출구 후보(`ExitOption[]`)** 를 나열하고
 `options[0]` 을 기본 확정으로 삼는다. 모든 후보는 `wayOut ∈ moduleWayOuts` 를 만족한다.
 
 **왜 후보를 남기나 (사용자 지시):** 출구 선택 자체는 어느 걸 골라도 정합성이 안 깨지는
-**자유도**다. 나중에 더 **까다로운 제약**을 가진 쪽(절단선이 납품 경로를 가둠, 채널 트랙
-부족 등)이 **양보를 요구**할 수 있으므로, planner 가 미리 하나로 못박아 자유도를 없애면 안 된다.
-느슨한 결정은 느슨하게 두고, 제약이 센 쪽이 먼저 고르게 한다(스도쿠 원리 —
-[.priority-ordering](../common/priority-ordering.md)).
+**자유도**다. 나중에 더 **까다로운 제약**을 가진 쪽이 앞 후보를 **강등**시킬 수 있으므로,
+planner 가 미리 하나로 못박아 자유도를 없애면 안 된다. 느슨한 결정은 느슨하게 두고, 제약이
+센 쪽이 먼저 고르게 한다(스도쿠 원리 — [.priority-ordering](../common/priority-ordering.md)).
 
 `ExitAssignment` 의 평평한 필드(`exitEdge`/`exitMode`/`entry`)는 **현재 확정**이고,
-`options` 가 **남은 자유도**다. 장부가 제약 때문에 다른 후보로 양보시킬 수 있다.
+`options` 가 **남은 자유도**다.
 
-> 현재 상태: 자유도는 **표현·보존**되고 있으나(후보 목록), 장부가 아직 이 목록에서 능동적으로
-> 고르지는 않는다. 장부의 기존 해소 사다리(진출 변 N↔S 뒤집기)는 `wayOut`(W/E 가로 진입
-> 방향)을 바꾸지 않으므로 불변식을 깨지 않는다. **장부가 후보에서 양보하도록 배선하는 것은 후속 과제**
-> (`tempPlanDocs/반출-환승/`). 2026-09-08 확인: `options` 를 읽는 코드가 아직 **하나도 없다.**
+> **2026-09-10 부터 실제로 강등된다.** `options` 를 읽는 첫 장부는 **직진 장부**
+> (`DirectRay`)이고, 확정된 직진이 그은 반직선과 겹치는 후보를 건너뛴다. 순회도 그때
+> `id` 순에서 **`options.length` 오름차순**으로 바뀌었다 — 강등할 데가 없는 상자가
+> 먼저 골라야 하기 때문이다(P12). → [[perimeter-export]] §3②
+>
+> **「양보」라고 쓰지 않는다.** 그 낱말은 *이미 잡은 주인이 비켜 주는 것*(철회·선점)이고
+> 자리마다 `owner` 가 있어야 성립한다. 여기 있는 것은 **확정 전의 후보 강등**이다.
 
 **폭은 확정된 출구 하나만 반영한다** — 안 쓸 후보를 위해 채널을 넓히지 않는다.
 나갈 길이 하나도 없는 상자는 **배정을 안 만든다**(예약 0 · 계획된 skip) — 못 쓸 경로를
@@ -129,8 +161,8 @@ advanced-circuit 동형 트리, count 1~8 실측:
 
 | 단계 | 파일 | 구현 |
 |---|---|---|
-| 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `fillModuleWayOuts` — 전 포트 emit 후(몸통 확정 후) 일괄 계산 |
-| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` 로 전달 |
+| 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
+| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
 | 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) | `ExitOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
@@ -139,3 +171,6 @@ advanced-circuit 동형 트리, count 1~8 실측:
 - `moduleTransform.ts` 의 `xfPort`/`shiftPort` 는 `ModulePort` 를 **명시 필드로 재구성**해
   좌표와 무관한 필드를 조용히 떨어뜨린다. `transformModule` 은 현재 프로덕션 호출자가 없어
   (패킹은 항상 `IDENTITY` 방위) 드러나지 않을 뿐이다. 되살릴 땐 필드 누락부터 고쳐야 한다.
+- **`bodyColumns` 는 회전에 안 따라온다** — 90° 를 돌면 열이 행이 되므로 옛 집합을 옮겨
+  담을 수가 없다. `transformModule` 은 `bbox` 와 같은 처방을 쓴다(바뀐 기하에서 다시 센다).
+  방위 정렬을 되살릴 때 이 줄을 지우면 남의 직진이 **엉뚱한 열**을 비었다고 믿는다.
