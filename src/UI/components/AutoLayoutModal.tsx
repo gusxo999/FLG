@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { useGameDataStore } from '../store/gameDataStore';
 import type { Entity, Recipe } from '../store/gameDataStore';
+import { useCustomEditorStore } from '../store/customEditorStore';
 import { useT } from '../i18n';
 import {
   expandRecipeTree,
@@ -549,15 +550,29 @@ function RecipeStep(props: RecipeStepProps) {
         <label className="text-xs uppercase tracking-wider text-gray-400 block mb-1">
           {t('autoLayoutModal.targetRecipe')}
         </label>
-        <RecipeCombobox
-          recipes={recipes}
-          value={targetRecipe}
-          onChange={setTargetRecipe}
-          disabled={!loaded}
-          placeholder={t('autoLayoutModal.recipeDefault')}
-          searchPlaceholder={t('autoLayoutModal.recipeSearchPlaceholder')}
-          emptyMessage={t('autoLayoutModal.recipeNoMatch')}
-        />
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <RecipeCombobox
+              recipes={recipes}
+              value={targetRecipe}
+              onChange={setTargetRecipe}
+              disabled={!loaded}
+              placeholder={t('autoLayoutModal.recipeDefault')}
+              searchPlaceholder={t('autoLayoutModal.recipeSearchPlaceholder')}
+              emptyMessage={t('autoLayoutModal.recipeNoMatch')}
+            />
+          </div>
+          {/*
+            만들려는 레시피가 게임에 없을 때 필요가 생기는 자리다 — 목록을 뒤지다 없는 걸
+            확인한 직후. 목록·삭제는 툴바가 맡는다(만드는 자리와 관리하는 자리를 나눈다).
+          */}
+          <button
+            onClick={() => useCustomEditorStore.getState().openEditor()}
+            className="shrink-0 text-xs px-3 py-2 rounded border border-gray-700 text-gray-400 hover:border-orange-600 hover:text-orange-300 transition-colors"
+          >
+            {t('customRecipe.open')}
+          </button>
+        </div>
       </div>
 
       {recipe && (

@@ -6,6 +6,8 @@ import Tutorial from './UI/components/Tutorial';
 import ToastContainer from './UI/components/ToastContainer';
 import EntityInfoModal from './UI/components/EntityInfoModal';
 import RoutingConnectionModal from './UI/components/RoutingConnectionModal';
+import CustomRecipeModal from './UI/components/CustomRecipeModal';
+import CustomRecipeList from './UI/components/CustomRecipeList';
 import AutoLayoutSidebar from './UI/components/AutoLayoutModal';
 import ModuleInfoPanel from './UI/components/ModuleInfoPanel';
 import { useInspectStore } from './UI/store/inspectStore';
@@ -122,6 +124,8 @@ export default function App() {
         open={!!selectedRoutingId}
         onClose={() => setSelectedRouting(null)}
       />
+      <CustomRecipeModal />
+      <CustomRecipeList />
 
       {/* Top toolbar */}
       <Toolbar />

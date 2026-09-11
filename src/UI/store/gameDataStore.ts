@@ -93,6 +93,13 @@ export interface Recipe {
   allowed_module_categories?: string[];
   /** 이 레시피를 만들 수 있는 표면 조건. nil이면 모든 표면. */
   surface_conditions?: SurfaceCondition[];
+  /**
+   * 사용자가 앱 안에서 만든 항목 — 게임 export 에서 온 것이 아니다.
+   * 원천(spec)은 `customDataStore` 가 들고 있고, 여기 있는 것은 그 **합성 결과**다.
+   * 이 표시가 있어야 재임포트 때 커스텀만 골라 걷어내고 다시 넣을 수 있다.
+   * → src/factorio/customRecipe.ts
+   */
+  custom?: true;
 }
 
 /**
@@ -262,6 +269,15 @@ export interface Entity {
   items_to_place_this?: string[];
 
   icon?: string;
+
+  /**
+   * 사용자가 앱 안에서 만든 머신 — 게임 export 에서 온 것이 아니다.
+   * [Recipe.custom] 과 같은 뜻이고 같은 이유로 있다. → src/factorio/customRecipe.ts
+   *
+   * **블루프린트에 실리면 게임이 거부한다** — 이 이름의 프로토타입이 게임에 없기 때문이다.
+   * 내보내기가 이 표시를 세어 경고한다.
+   */
+  custom?: true;
 }
 
 /**

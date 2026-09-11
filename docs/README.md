@@ -116,12 +116,17 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 > **필드를 늘릴 때는 양쪽을 같이 고친다** — 파서가 문지기라 exporter 가 뽑아도 여기서 안
 > 담으면 그 필드는 앱에 없다(2026-07-16 `amount_min`/`amount_max`·`fluidbox_index` 가
 > 재추출까지 하고도 문 앞에서 사라졌다).
+>
+> **생산자가 하나 더 있다** — [customRecipe.ts](../src/factorio/customRecipe.ts) 는 사용자가
+> 앱 안에서 만든 spec 을 같은 `GameData` 모양으로 합성한다(파서의 형제). 필드를 늘릴 때
+> 그쪽도 채울 값이 있는지 본다.
 
 | 문서 | 주제 |
 |------|------|
 | [pipe-semantics](factorio/pipe-semantics.md) | **파이프의 작동 방식 — 벨트와 항목별 대조**(방향 없음·처리량 무한·합류 가드) |
 | [belt-lane-semantics](factorio/belt-lane-semantics.md) | **벨트의 좌/우 두 레인** — 45/s = 22.5 + 22.5 · 사이드로드가 레인을 접는다 · **곡선은 「유입 하나」의 이름** |
 | [fluid-box-semantics](factorio/fluid-box-semantics.md) | `production_type` vs `flow_direction`, 상자의 **면**과 **받는 유체 이름** |
+| [custom-recipe](factorio/custom-recipe.md) | **게임에 없는 레시피·머신을 앱에서 만든다** — 면·행 → 좌표 합성, 게임데이터 합류, 저장 시점 판정 |
 | [map-position-parsing](factorio/map-position-parsing.md) | MapPosition 의 keyed/positional 이중 형태와 3중 방어 정규화 |
 | [direction-encoding](factorio/direction-encoding.md) | 내부 `Direction` 을 Factorio 2.0 16-방향으로 통일 (1.x ×2 업그레이드) |
 

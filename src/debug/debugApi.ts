@@ -38,11 +38,21 @@ import {
   setAutoLayoutLaneMerge,
 } from '../autoLayout/debugFlags';
 import type { CandidateLeaf } from '../autoLayout/containerModel';
+import type { CustomDataSpec } from '../factorio/customRecipe';
+import { validateCustomData } from '../factorio/customRecipeValidate';
+import { gameDataContext, useCustomDataStore } from '../UI/store/customDataStore';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { useLayoutStore } from '../UI/store/layoutStore';
 import { useUiDebugStore } from '../UI/store/uiDebugStore';
 import { useWizardStore, WIZARD_STEPS, type WizardStep } from '../UI/store/wizardStore';
 import { checkLayout, formatViolations } from './checkRules';
+import {
+  customTemplate,
+  renderCustomMachine,
+  renderFit,
+  renderIssues,
+  renderSummary,
+} from './customData';
 import { cellHistogram, listModules, renderFace, type FaceOptions } from './faceTable';
 import { currentView, type Face } from './layoutView';
 import { buildReport, screenState } from './report';
@@ -311,6 +321,150 @@ const flags = defineGroup('flags', {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 커스텀 레시피 — **게임데이터를 콘솔로 넣는 유일한 길**
+//
+// 나머지 게임데이터는 여전히 파일 업로드뿐이다(ai-console.md §4). 커스텀만 예외인 이유는
+// 원천이 파일이 아니라 우리가 만든 spec 이기 때문이다 — 다이얼로그가 낄 자리가 없다.
+//
+// 검증·합성·합류는 전부 스토어 아래(customRecipe · customRecipeValidate · customDataStore)에
+// 있다. 그래서 이 명령들은 **방식 A**(스토어 직행)로 정직하다 — 편집기 버튼과 같은 함수를
+// 부르고, 패널이 안 떠 있어도 같은 일이 일어난다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 이름 하나로 머신·레시피 어느 쪽이든 찾는다 — 사용자는 둘을 구분해 외우지 않는다. */
+function findCustom(name: string) {
+  const { machines, recipes } = useCustomDataStore.getState().data;
+  return {
+    machine: machines.find((m) => m.name === name),
+    recipe: recipes.find((r) => r.name === name),
+  };
+}
+
+/** 이 레시피를 맡는 커스텀 머신들 — `map`/`check` 가 짝을 지을 때. */
+function machinesFor(recipe: { category: string }) {
+  return useCustomDataStore.getState().data.machines.filter((m) =>
+    m.craftingCategories.includes(recipe.category),
+  );
+}
+
+const custom = defineGroup('custom', {
+  template: {
+    usage: '(size?)',
+    desc: '채워 넣을 spec 뼈대 — 입력·출력이 마주보는 성립 예다. 여기서 시작한다',
+    fn: (size = 3) => customTemplate(size),
+  },
+  add: {
+    label: '커스텀 레시피 [저장]',
+    usage: '({ machines?, recipes? })',
+    desc: '검증 → 합성 → 게임데이터 합류. 이름이 같으면 덮어쓴다(= 편집)',
+    fn: (spec: Partial<CustomDataSpec>) => {
+      const rejects = useCustomDataStore.getState().merge(spec);
+      if (rejects.length > 0) throw new Error(`\n${renderIssues(rejects)}`);
+      const { machines, recipes } = useCustomDataStore.getState().data;
+      return `머신 ${machines.length} · 레시피 ${recipes.length}`;
+    },
+  },
+  check: {
+    usage: '(이름?)',
+    desc: '저장 안 하고 판정만. 이름을 주면 그 레시피의 유체 적합까지',
+    fn: (name?: string) => {
+      const state = useCustomDataStore.getState().data;
+      const out: string[] = [renderIssues(validateCustomData(state, gameDataContext()))];
+      if (name) {
+        const { machine, recipe } = findCustom(name);
+        if (!machine && !recipe) throw new Error(`커스텀에 그런 이름이 없다: ${name}`);
+        if (recipe) for (const m of machinesFor(recipe)) out.push('', ...renderFit(m, recipe));
+        if (machine) {
+          for (const r of state.recipes.filter((x) => machine.craftingCategories.includes(x.category))) {
+            out.push('', ...renderFit(machine, r));
+          }
+        }
+      }
+      const s = out.join('\n');
+      console.log(s);
+      return s;
+    },
+  },
+  map: {
+    usage: '(머신이름?)',
+    desc: '발자국 그림 — 어느 면 어느 행에 유체 상자가 앉았나 (회전 0 기준)',
+    available: () =>
+      useCustomDataStore.getState().data.machines.length > 0
+        ? null
+        : '커스텀 머신이 없습니다 — flg.custom.add(flg.custom.template()) 를 먼저.',
+    fn: (name?: string) => {
+      const { machines, recipes } = useCustomDataStore.getState().data;
+      const targets = name ? machines.filter((m) => m.name === name) : machines;
+      if (targets.length === 0) throw new Error(`커스텀 머신이 아니다: ${name}`);
+      const s = targets
+        .map((m) =>
+          renderCustomMachine(
+            m,
+            recipes.filter((r) => m.craftingCategories.includes(r.category)),
+          ),
+        )
+        .join('\n\n');
+      console.log(s);
+      return s;
+    },
+  },
+  list: {
+    desc: '커스텀 전부 요약 + 판정',
+    fn: () => {
+      const s = renderSummary(useCustomDataStore.getState().data, gameDataContext());
+      console.log(s);
+      return s;
+    },
+  },
+  get: {
+    usage: '(이름)',
+    desc: 'spec 원본 — 고쳐서 flg.custom.add() 로 되돌린다',
+    fn: (name: string) => {
+      const { machine, recipe } = findCustom(name);
+      if (!machine && !recipe) throw new Error(`커스텀에 그런 이름이 없다: ${name}`);
+      return machine ?? recipe;
+    },
+  },
+  remove: {
+    label: '커스텀 목록 [삭제]', usage: '(이름)',
+    fn: (name: string) => {
+      const store = useCustomDataStore.getState();
+      const removed = [
+        store.removeMachine(name) ? '머신' : null,
+        store.removeRecipe(name) ? '레시피' : null,
+      ].filter(Boolean);
+      if (removed.length === 0) throw new Error(`커스텀에 그런 이름이 없다: ${name}`);
+      return `${removed.join('·')} 삭제`;
+    },
+  },
+  clear: {
+    label: '커스텀 목록 [전체 삭제]',
+    fn: () => {
+      useCustomDataStore.getState().clear();
+      return '비움';
+    },
+  },
+  export: {
+    // 파일이 아니라 **문자열**이다 — 다운로드된 파일을 AI 는 못 읽는다(ai-console.md §4).
+    desc: 'spec 한 벌을 JSON 문자열로 — copy(flg.custom.export()) 로 복사',
+    fn: () => JSON.stringify(useCustomDataStore.getState().data, null, 2),
+  },
+  import: {
+    usage: '(json문자열 | 객체)',
+    desc: '한 벌을 통째로 교체. 검증에 걸리면 아무것도 안 바꾼다',
+    fn: (json: string | CustomDataSpec) => {
+      const spec = typeof json === 'string' ? (JSON.parse(json) as CustomDataSpec) : json;
+      const rejects = useCustomDataStore.getState().replace({
+        machines: spec.machines ?? [],
+        recipes: spec.recipes ?? [],
+      });
+      if (rejects.length > 0) throw new Error(`\n${renderIssues(rejects)}`);
+      return `머신 ${spec.machines?.length ?? 0} · 레시피 ${spec.recipes?.length ?? 0}`;
+    },
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 최상위 — 표면을 안 가리키는 것들
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -480,6 +634,12 @@ function renderHelp(only?: string): string {
     '  flg.check()                      규칙 위반만',
     "  flg.snapshot('before') … flg.diff('before')   같은 코드에서 입력만 바꾼 비교",
     '',
+    '게임에 없는 레시피를 만들어 시험하려면:',
+    '  flg.custom.add(flg.custom.template(3))   뼈대 그대로 넣어 본다',
+    "  flg.custom.map()                         유체 상자가 어느 면 어느 행에 앉았나",
+    "  flg.custom.check('my-thing')             회전이 성립하나 · 남는 칸은 어디인가",
+    '  나머지 게임데이터는 여전히 파일 업로드뿐이다 — 커스텀만 콘솔로 들어간다.',
+    '',
     '머신 **대수**는 직접 못 정한다 — 화면에 그런 입력이 없다. { perTarget: n } 이 처리량 기준으로 유도한다.',
   );
   return out.join('\n');
@@ -493,11 +653,12 @@ export type FlgApi = typeof top & {
   grid: typeof grid;
   wizard: typeof wizard;
   flags: typeof flags;
+  custom: typeof custom;
   store: typeof useLayoutStore;
 };
 
 export function installLayoutDebugApi(): void {
-  const api = { ...top, grid, wizard, flags, store: useLayoutStore } as FlgApi;
+  const api = { ...top, grid, wizard, flags, custom, store: useLayoutStore } as FlgApi;
   (window as unknown as { flg: FlgApi }).flg = api;
   console.log('[flg] 콘솔 디버그 API 설치됨. flg.help() 로 명령 목록.');
 }

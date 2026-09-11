@@ -30,7 +30,9 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 ```
 
 목록은 `flg.help()`, 규약·괴리는 [docs/debug/ai-console.md](docs/debug/ai-console.md).
-**게임데이터는 콘솔로 못 넣는다** — 파일 업로드뿐이고 localStorage 에 남는다(§정직한 괴리).
+**게임 프로토타입은 콘솔로 못 넣는다** — 파일 업로드뿐이고 localStorage 에 남는다(§정직한 괴리).
+다만 **커스텀 레시피·머신은 콘솔로 넣는다**(`flg.custom.add` · `flg.custom.map`) — 게임에 없는
+레시피나 유체 상자 배치를 실데이터 없이 시험하는 길이다([custom-recipe](docs/factorio/custom-recipe.md)).
 
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
 사유 카탈로그는 `layoutIssue.LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —

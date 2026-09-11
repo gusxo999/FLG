@@ -2,6 +2,8 @@ import { useRef, useCallback, useState } from 'react';
 import { exportBlueprint, importBlueprint } from '../../blueprint/blueprintCodec';
 import { useLayoutStore } from '../store/layoutStore';
 import { useGameDataStore } from '../store/gameDataStore';
+import { syncCustomData, useCustomDataStore } from '../store/customDataStore';
+import { useCustomEditorStore } from '../store/customEditorStore';
 import { useToastStore } from '../store/toastStore';
 import { parseGameData } from '../../factorio/parseGameData';
 import { useI18nStore, useT } from '../i18n';
@@ -24,6 +26,7 @@ export default function Toolbar() {
   const { fillGridFromCells, clearGrid, undo, redo } = useLayoutStore.getState();
   const gameDataLoaded = useGameDataStore((s) => s.loaded);
   const gameDataRecipeCount = useGameDataStore((s) => s.recipes.length);
+  const customCount = useCustomDataStore((s) => s.data.recipes.length);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importInput, setImportInput] = useState('');
   const [importError, setImportError] = useState('');
@@ -83,6 +86,16 @@ export default function Toolbar() {
       },
     });
 
+    // **커스텀 엔티티는 게임에 없다.** 이름이 그대로 실리므로 가져오기에서 통째로 거부된다.
+    // 막지는 않는다 — 이 앱의 산출이 블루프린트만은 아니고, 거부는 게임에서 즉시 드러나
+    // 조용하지 않다. 다만 나중에 알면 왜 거부됐는지 못 짚으므로 여기서 말해 준다.
+    const customCells = entities.filter((e) => entityMap.get(e.name)?.custom).length;
+    if (customCells > 0) {
+      useToastStore
+        .getState()
+        .show(t('customRecipe.blueprintWarning', { count: customCells }), 'warning');
+    }
+
     const blob = new Blob([blueprintStr], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -90,7 +103,7 @@ export default function Toolbar() {
     a.download = 'blueprint.txt';
     a.click();
     URL.revokeObjectURL(url);
-  }, [grid]);
+  }, [grid, t]);
 
   const handleImportString = useCallback((str: string) => {
     try {
@@ -295,6 +308,11 @@ export default function Toolbar() {
         const gameData = parseGameData(raw);
         useGameDataStore.getState().setGameData(gameData);
 
+        // **재임포트에서 커스텀이 살아남는 지점이다.** `setGameData` 는 배열을 통째로 갈아
+        // 끼우므로 방금 커스텀 항목이 전부 날아갔다. 원천(spec)은 따로 살아 있으니 다시
+        // 합성해 넣는다. → src/UI/store/customDataStore.ts
+        syncCustomData();
+
         // 새로 로드된 entityMap에 없는 stale 선택은 초기화
         const layoutStore = useLayoutStore.getState();
         if (
@@ -388,6 +406,14 @@ export default function Toolbar() {
             {t('toolbar.recipeCount', { count: gameDataRecipeCount })}
           </span>
         )}
+        <button
+          onClick={() => useCustomEditorStore.getState().openList()}
+          title={t('customRecipe.manage')}
+          className="toolbar-btn"
+        >
+          {t('customRecipe.manage')}
+          {customCount > 0 && <span className="ml-1 text-orange-400">{customCount}</span>}
+        </button>
       </div>
 
       {/* Blueprint actions */}
