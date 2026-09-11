@@ -1233,8 +1233,9 @@ function materializeChannelGeometry(args: {
     if (!seed.eligible) {
       // **계단꼴이 못 그리는 기하 → 되꺾기로 계획한다**(2026-08-17). 대개 부모 입력이 반대
       // 면으로 스필한 경우다. 여태 여기서 조용히 빠져 dijkstra 가 맡았고, 그 폴백이 남의
-      // 예약을 밟아 연쇄했다. 랩 행은 **배치 위쪽 여백 한 줄** — 세로로 올라와 가로로 건너고
-      // 다시 내려간다. 유체는 제외한다(유체는 언제나 적격이라 여기 오면 그게 사고다).
+      // 예약을 밟아 연쇄했다. 모양은 **ㄱ자** — 자기 행을 따라 가로로 간 뒤 목표 열에서
+      // 세로로 (근거는 `wrapAround` 자료형 주석: 상자의 자기 열은 늘 붐빈다).
+      // 유체는 제외한다(유체는 언제나 적격이라 여기 오면 그게 사고다).
       if (seed.fluid !== undefined) {
         skips.push({ key: seed.key, reason: "not-eligible-fluid" });
         if (AUTO_LAYOUT_COORD_DUMP)
