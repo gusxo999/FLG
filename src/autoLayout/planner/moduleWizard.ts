@@ -43,7 +43,10 @@ import {
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
 // 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
-import { beginRunStats, recordDeliveryStats, recordPerimeterStats, recordRowChannelStats } from "../../debug/runStats";
+import {
+  beginRunStats, recordChannelLedgerStats, recordDeliveryStats, recordExitPlanStats,
+  recordPerimeterStats, recordRowChannelStats,
+} from "../../debug/runStats";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../debugFlags";
 import { inserterThroughput } from "../inserterThroughput";
 import { clusterLineRate } from "../recipeTree";
@@ -618,6 +621,21 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   // 나오므로 **폭 역전이 실제로 돌았는지**를 한 줄로 읽을 수 있다: 트랙 n 이면 높이는
   // `max(3, n+2)` 라야 한다. 예전엔 높이가 `STACK_GAP` 고정이라 둘이 갈릴 수 있었고,
   // 그 갈림을 `수요` 로 따로 적어야 했다.
+  // **반출 배정** — 나갈 길을 **못 준** 자리. 방출의 `skipped` 보다 한 단계 앞이라,
+  // 트리가 납품에서 거절돼도 남는다(그게 진단이다 — 어디까지 갔는지).
+  //
+  // **다툰 칸** — 같은 열쇠가 두 번 이상 나오면 그 자리를 셋 이상이 다툰 것이다
+  // (`셀장부/judgements.md` J-충돌차수 의 트리거. 읽는 법은 `ExitDemotion` 주석).
+  const cellHits = new Map<string, number>();
+  for (const d of pack.exitPlan.demotions) cellHits.set(d.cell, (cellHits.get(d.cell) ?? 0) + 1);
+  recordExitPlanStats({
+    blocked: pack.exitPlan.blocked,
+    demotions: pack.exitPlan.demotions.length,
+    contestedCells: [...cellHits.values()].filter((n) => n >= 2).length,
+    noSideWayOut: pack.exitPlan.noSideWayOut,
+  });
+  // **계획 단계의 포기** — 방출의 `dijkstraFallback` 보다 한 단계 앞이다(둘은 다른 수다).
+  recordChannelLedgerStats({ skips: pack.channelGeometry.skips });
   recordRowChannelStats({
     count: pack.rowChannels.length,
     channels: pack.rowChannels.map(

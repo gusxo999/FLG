@@ -219,6 +219,57 @@ export function buildReport(): string {
     for (const n of rc.needs) out.push(sub(`수요 ${n}`));
   }
 
+  // **반출 배정** — 나갈 길을 **못 준** 자리. 아래 `반출` 줄(방출 결과)보다 한 단계 앞이다.
+  //
+  // 읽는 법: `강등` 은 **모수가 아니다** — 직진이 막혀도 환승으로 내려갔으면 손해가 없다.
+  // 값을 말하는 것은 **막힘**이고, 그중 `행채널가능` 인 것만 `tempPlanDocs/통로-갈아타기/`
+  // 가 구할 수 있다. `1홉` 은 끝 열(앞 조각으로 충분) · `2홉` 은 중간 깊이(전 단계 필요).
+  const xp = stats.exitPlan;
+  if (xp) {
+    const can = xp.blocked.filter((b) => b.canEnterRowChannel);
+    const hop1 = can.filter((b) => b.hops === 1).length;
+    const hop2 = can.filter((b) => b.hops === 2).length;
+    out.push(
+      line(
+        '반출배정',
+        xp.blocked.length === 0
+          ? `막힘 0 (강등 ${xp.demotions} · 다툰칸 ${xp.contestedCells} · 위험군 ${xp.noSideWayOut})`
+            + (xp.noSideWayOut === 0
+              ? '  — **구조적으로** 0 이다(W·E 중 하나만 열려도 후보가 늘 선다)'
+              : '  — 위험군은 N/S 직진으로 나갔다')
+          : `**막힘 ${xp.blocked.length}**`
+            + ` (후보0 ${xp.blocked.filter((b) => b.kind === 'noOption').length}`
+            + ` · 강행 ${xp.blocked.filter((b) => b.kind === 'forced').length})`
+            + ` · 강등 ${xp.demotions} · 다툰칸 ${xp.contestedCells} · 위험군 ${xp.noSideWayOut}`
+            + `  ← 행채널로 구제가능 ${can.length} (**1홉 ${hop1} · 2홉 ${hop2}**)`
+            + ` · 행채널로도 불가 ${xp.blocked.length - can.length}`,
+      ),
+    );
+    for (const b of xp.blocked)
+      out.push(sub(`${b.id} [${b.kind}] d${b.depth} ${b.hops ? `${b.hops}홉` : '행채널불가'}  ${b.why}`));
+  }
+
+  // **채널 통합 장부** — 계획 단계에서 포기한 납품 경로. 아래 `납품` 줄(방출 결과)과 **다른 수**다:
+  // 저건 *"계획을 못 썼다"* 이고 이건 *"계획이 아예 없었다"* 이다.
+  //
+  // `채널-장부-충실도` J-교차지하 와 `트랙-배정-개념정리` T-C 가 이 줄을 트리거로 삼는다
+  // (2026-09-11 재감사 전까지 **만들어지기만 하고 읽는 곳이 없었다**).
+  const cl = stats.channelLedger;
+  if (cl) {
+    const byReason = new Map<string, number>();
+    for (const s of cl.skips) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+    out.push(
+      line(
+        '납품장부',
+        cl.skips.length === 0
+          ? '포기 0 — 모든 납품이 장부에서 도형을 받았다'
+          : `**포기 ${cl.skips.length}**  ← `
+            + [...byReason].sort(([a], [b]) => a.localeCompare(b)).map(([r, n]) => `${r}×${n}`).join(' · '),
+      ),
+    );
+    for (const s of cl.skips.slice(0, 8)) out.push(sub(`${s.key}: ${s.reason}`));
+  }
+
   const p = stats.perimeter;
   out.push(
     line(

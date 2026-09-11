@@ -31,6 +31,7 @@
  */
 import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/link';
 import type { LinkDepthNeed } from '../autoLayout/planner/module/depthBudget';
+import type { ExitBlocked } from '../autoLayout/planner/perimeterExitPlanner';
 export type { BeltFormCounters };
 
 /** 납품 경로 — [deliveryRoute.routeDeliveryRoutes] 의 카운터 그대로. */
@@ -45,6 +46,54 @@ export interface DeliveryCounters {
   failures: number;
   /** 시도한 납품 경로 총수. */
   routes: number;
+}
+
+/**
+ * **반출 배정** — 나갈 길을 못 준 자리([perimeterExitPlanner.PerimeterExitPlan]).
+ *
+ * 왜 방출 카운터(`PerimeterCounters`)와 갈라 두나: 방출의 `skipped` 는 **결과**라
+ * 사유가 뭉쳐 있다(`no exit assignment` 가 후보 0·짝지어짐·고아 포트를 합쳐 찍는다).
+ * 이 계수기는 **배정 시점**의 분류라 *"무엇을 지어야 그 상자가 나가나"* 를 묻는다.
+ *
+ * `tempPlanDocs/통로-갈아타기/` 의 착수 조건이 이 수다 — `blocked` 중
+ * `canEnterRowChannel` 인 것이 그 계획이 구할 수 있는 상자이고, `hops` 가 **어느 조각이
+ * 필요한지**(끝 열 1홉 · 중간 깊이 2홉)를 가른다.
+ */
+export interface ExitPlanCounters {
+  /** 나갈 길이 없는 상자들 — 빈 배열이 정상이고, 그게 곧 답이다. */
+  blocked: ReadonlyArray<ExitBlocked>;
+  /** 후보 강등이 일어난 자리 수 — **모수가 아니다.** 강등돼도 환승으로 내려갔으면 손해가 없다. */
+  demotions: number;
+  /**
+   * **셋 이상이 다툰 자리 수** — 같은 `cell` 열쇠가 강등 기록에 두 번 이상 나온 것
+   * (먼저 앉은 하나 + 강등된 둘 이상).
+   *
+   * `tempPlanDocs/셀장부/judgements.md` **J-충돌차수** 의 트리거가 이 수다 —
+   * *"셋 이상이 다투는 자리가 실제로 몇 건인가"*. `ExitDemotion` 이 2026-09-10 에 그
+   * 재료를 만들었지만 **세는 자리가 없었다**(2026-09-11 재감사).
+   */
+  contestedCells: number;
+  /**
+   * **위험군** — 모듈이 W·E 를 둘 다 막은 반출 포트 수. `blocked` 가 0 일 때 *"왜 0인가"*
+   * 를 가른다: 0 이면 막힘 0 이 **구조적**이고(W·E 중 하나만 열려도 후보가 늘 선다),
+   * 0 이 아니면 그 포트들이 N/S 직진으로 나갔다는 뜻이다.
+   */
+  noSideWayOut: number;
+}
+
+/**
+ * **채널 통합 장부** — [modulePacking.PackChannelGeometry] 가 **계획 단계**에서 포기한 납품 경로.
+ *
+ * 방출의 `dijkstraFallback` 보다 **한 단계 앞**이다: 저건 *"계획을 못 썼다"* 이고 이건
+ * *"계획이 아예 없었다"* 라, 같은 경로가 두 곳에 잡힐 수도 한 곳에만 잡힐 수도 있다.
+ *
+ * **만들어지기만 하고 읽는 곳이 0곳이었다**(2026-09-11 재감사에서 발견). 그동안 두 판단이
+ * 이 수를 트리거로 삼고 있었다 — `채널-장부-충실도` J-교차지하(*"관측 방법: report 에 찍힌다"*
+ * 는 거짓이었다) · `트랙-배정-개념정리` T-C(`no-surface-assignment` 1건이라도).
+ */
+export interface ChannelLedgerCounters {
+  /** 장부에 못 들어간 납품 경로와 사유. 빈 배열이 정상이다. */
+  skips: ReadonlyArray<{ key: string; reason: string }>;
 }
 
 /** 반출 — [modulePerimeterPass.rePathToPerimeter] 의 카운터 그대로. */
@@ -242,6 +291,13 @@ export interface RunStats {
    * **"0건 이사" 와 "안 돌았다" 는 다르다.**
    */
   perimeter: PerimeterCounters | null;
+  /**
+   * 반출 **배정**. 패킹까지 갔으면 채워진다 — 방출(`perimeter`)보다 한 단계 앞이라
+   * 트리가 납품에서 거절돼도 남는다.
+   */
+  exitPlan: ExitPlanCounters | null;
+  /** 채널 통합 장부. 패킹까지 갔으면 채워진다. */
+  channelLedger: ChannelLedgerCounters | null;
   /** 행 채널. 패킹까지 갔으면 채워진다. */
   rowChannels: RowChannelCounters | null;
   /**
@@ -263,7 +319,8 @@ const freshBeltTermini = (): BeltTerminusCounters => ({
 });
 
 const fresh = (): RunStats => ({
-  startedAt: null, delivery: null, perimeter: null, rowChannels: null, beltForms: null,
+  startedAt: null, delivery: null, perimeter: null, exitPlan: null, channelLedger: null,
+  rowChannels: null, beltForms: null,
   faceDepths: freshFaceDepths(), laneShare: freshLaneShare(), beltTermini: freshBeltTermini(),
 });
 
@@ -360,6 +417,21 @@ export function recordRowChannelStats(c: RowChannelCounters): void {
   current.rowChannels = { count: c.count, channels: [...c.channels], needs: [...c.needs] };
 }
 
+/** 반출 배정 — `packModuleTree` 가 낸 `exitPlan` 을 그대로 옮긴다(관측만). */
+export function recordExitPlanStats(c: ExitPlanCounters): void {
+  current.exitPlan = {
+    blocked: c.blocked.map((b) => ({ ...b })),
+    demotions: c.demotions,
+    contestedCells: c.contestedCells,
+    noSideWayOut: c.noSideWayOut,
+  };
+}
+
+/** 채널 통합 장부 — `packModuleTree` 가 낸 `channelGeometry.skips` 를 그대로 옮긴다(관측만). */
+export function recordChannelLedgerStats(c: ChannelLedgerCounters): void {
+  current.channelLedger = { skips: c.skips.map((s) => ({ ...s })) };
+}
+
 export function recordPerimeterStats(c: PerimeterCounters): void {
   current.perimeter = { relocated: c.relocated, skipped: c.skipped, skips: [...c.skips] };
 }
@@ -374,6 +446,12 @@ export function readRunStats(): RunStats {
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter
       ? { ...current.perimeter, skips: current.perimeter.skips.map((s) => ({ ...s })) }
+      : null,
+    exitPlan: current.exitPlan
+      ? { ...current.exitPlan, blocked: current.exitPlan.blocked.map((b) => ({ ...b })) }
+      : null,
+    channelLedger: current.channelLedger
+      ? { skips: current.channelLedger.skips.map((s) => ({ ...s })) }
       : null,
     rowChannels: current.rowChannels
       ? {

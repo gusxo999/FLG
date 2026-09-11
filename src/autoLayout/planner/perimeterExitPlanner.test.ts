@@ -420,3 +420,89 @@ describe("모듈 정밀 판정 — 블랙박스에게 「네 열이 비었나」
       .toEqual([["u", "N", "h"]]);
   });
 });
+
+describe("막힌 상자 계측 — **강등이 못 세는 것**을 센다", () => {
+  /**
+   * 왜 별도 계측인가: 강등(`demotions`)은 *"직진이 막혔다"* 를 세지 *"갈 데가 없다"* 를
+   * 안 센다. 그리고 후보가 0인 상자는 강등 루프에 **들어가기도 전에** 걸러지므로
+   * (`cands` 필터) 강등 기록에 **원리적으로** 안 나온다. `tempPlanDocs/통로-갈아타기/` 의
+   * 착수 조건이 바로 그 수라, 여기서 안 세면 아무 데도 안 남는다.
+   */
+
+  /** 한 열에 형제 둘(a 위, b 아래) — b 의 N 직진이 a 를 지나야 한다. `maxDepth` 로 끝 열 여부를 가른다. */
+  const stack = (maxDepth: number): ExitContext => ({
+    globalY: { min: 0, max: 12 },
+    maxDepth,
+    grid: {
+      orderByDepth: new Map(
+        [[0, ["d0"]], [1, ["a", "b"]], [2, ["d2"]]].slice(0, maxDepth + 1) as [number, string[]][],
+      ),
+      maxDepth,
+    },
+    rowChannelReach: new Map(),
+    moduleBodyColumns: new Map(), // 요약 없음 = 막힌 것으로 친다
+  });
+
+  /** N 으로만 나갈 수 있는데 위 형제에 막힌 상자 — 후보가 하나도 안 선다. */
+  const stuck = p({ id: "x", moduleId: "b", role: "output", depth: 1, side: "N", anchorY: 6, wayOuts: ["N"] });
+
+  it("후보 0 — 배정이 없어 방출이 `no exit assignment` 로 skip 하는 자리", () => {
+    const plan = planPerimeterExits([stuck], stack(2));
+    expect(plan.assignments).toEqual([]); // 오늘 동작 그대로 — 예약 0, 계획된 skip
+    expect(plan.demotions).toEqual([]); // **강등엔 안 나온다** — 이게 별도 계측의 이유다
+    expect(plan.blocked).toHaveLength(1);
+    expect(plan.blocked[0].kind).toBe("noOption");
+    expect(plan.blocked[0].canEnterRowChannel).toBe(true); // N 이 열려 있다 → 행 채널에 들어갈 수 있다
+    // 왜 넷이 다 떨어졌나가 한 줄에 남는다 — 수만으로는 무엇을 지어야 하는지 못 묻는다.
+    expect(plan.blocked[0].why).toContain("direct:N=요약없음(a)");
+    expect(plan.blocked[0].why).toContain("channel:W=모듈몸통(wayOuts)");
+  });
+
+  it("**홉이 조각을 가른다** — 중간 깊이는 2홉, 끝 열은 1홉", () => {
+    // 열이 셋이면 깊이 1 은 중간 → 행 채널을 타도 옆 열 채널에서 **갈아타야** 한다.
+    expect(planPerimeterExits([stuck], stack(2)).blocked[0].hops).toBe(2);
+    // 열이 둘이면 깊이 1 이 끝 열 → 그 행 채널의 동쪽이 바깥 마진이라 **1홉**이다.
+    expect(planPerimeterExits([stuck], stack(1)).blocked[0].hops).toBe(1);
+  });
+
+  it("N/S 가 둘 다 막히면 행 채널로도 못 구한다 — 다른 계획의 몫", () => {
+    const noWay = p({ id: "z", moduleId: "b", role: "output", depth: 1, side: "N", anchorY: 6, wayOuts: [] });
+    const b = planPerimeterExits([noWay], stack(2)).blocked[0];
+    expect(b.canEnterRowChannel).toBe(false);
+    expect(b.hops).toBe(null);
+  });
+
+  it("강행 — 후보가 **전부** 강등돼 `options[0]` 으로 밀린 자리도 막힘이다", () => {
+    // 단일 열(maxDepth 0): 채널이 없어 강등할 데가 없다. 같은 열·같은 방향이라 반드시 겹친다.
+    const single: ExitContext = {
+      globalY: { min: 0, max: 12 },
+      maxDepth: 0,
+      grid: { orderByDepth: new Map([[0, ["d0"]]]), maxDepth: 0 },
+      rowChannelReach: new Map(),
+      moduleBodyColumns: new Map(),
+    };
+    const plan = planPerimeterExits(
+      [
+        p({ id: "b", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 8, localX: 2, wayOuts: ["N"] }),
+        p({ id: "c", moduleId: "d0", role: "output", depth: 0, side: "N", anchorY: 3, localX: 2, wayOuts: ["N"] }),
+      ],
+      single,
+    );
+    // 배정은 남는다(오늘 동작 그대로) — 그런데 방출에서 `straight blocked` 로 막힌다.
+    expect(plan.assignments.map((a) => a.id)).toEqual(["b", "c"]);
+    expect(plan.blocked.map((x) => [x.id, x.kind, x.hops])).toEqual([["c", "forced", 1]]);
+    expect(plan.blocked[0].why).toContain("강행=N");
+  });
+
+  it("기전 — 나갈 길을 받은 상자는 막힘에 안 실린다(빈 배열이 정상)", () => {
+    const plan = planPerimeterExits(
+      [
+        p({ id: "n", role: "input", depth: 1, side: "N", anchorY: 0, localX: 0 }),
+        p({ id: "w", role: "input", depth: 0, side: "W", anchorY: 4, localX: 0 }),
+        p({ id: "e", role: "output", depth: 2, side: "E", anchorY: 4, localX: 0 }),
+      ],
+      ctx3(),
+    );
+    expect(plan.blocked).toEqual([]);
+  });
+});

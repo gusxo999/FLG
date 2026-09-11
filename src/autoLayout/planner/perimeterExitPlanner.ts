@@ -220,12 +220,66 @@ export interface ExitDemotion {
   cell: string;
 }
 
+/**
+ * **막힌 상자** — 오늘 나갈 길이 **없는** 자리 하나. 읽기 전용 계측이라 동작을 안 바꾼다.
+ *
+ * 여기 있는 이유는 이 파일 밖이다: `tempPlanDocs/통로-갈아타기/` 의 착수 조건이
+ * *"행 채널 환승이 없어서 못 나가는 상자가 몇 건인가"* 인데, **[ExitDemotion] 은 그 수를
+ * 원리적으로 못 센다.** 강등은 *"직진이 막혔다"* 를 세지 *"갈 데가 없다"* 를 안 세고,
+ * 후보가 0인 상자는 강등 루프에 **들어가기도 전에** 걸러지기 때문이다([planPerimeterExits]
+ * 의 `cands` 필터). 그래서 두 부류를 **여기서 따로** 센다.
+ *
+ * ```
+ * noOption  후보가 0 — 배정 자체가 없다 → 방출이 `no exit assignment` 로 skip
+ * forced    후보가 전부 강등됐는데 대안이 없어 `options[0]` 강행 → 방출에서 `straight blocked`
+ * ```
+ *
+ * **분류가 곧 계측의 값이다.** 수 하나로는 *"무엇을 지어야 그 상자가 나가나"* 를 못 묻는다:
+ * `canEnterRowChannel` 이 거짓이면 행 채널을 지어도 못 구하고(모듈 몸통이 막았다),
+ * 참이면 `hops` 가 **어느 조각이 필요한지**를 말한다(끝 열 1홉 · 중간 깊이 2홉).
+ */
+export interface ExitBlocked {
+  /** 막힌 상자. */
+  id: string;
+  /** 후보가 0인가(`noOption`), 전부 강등됐는데 대안이 없었나(`forced`). */
+  kind: "noOption" | "forced";
+  /** 그 상자가 있는 열. */
+  depth: number;
+  /**
+   * **행 채널로 들어갈 수 있나** — `wayOuts` 에 N 이나 S 가 있나.
+   * 거짓이면 행 채널 환승을 지어도 못 구한다(모듈 몸통이 막고 있으니 다른 계획의 몫).
+   */
+  canEnterRowChannel: boolean;
+  /**
+   * 행 채널을 타고 달렸을 때 **몇 홉이면 바깥인가**. `null` = 행 채널에 못 들어감.
+   *
+   * 끝 열(`depth 0` 의 서쪽 · `maxDepth` 의 동쪽)은 그 방향이 바깥 마진이라 **1홉**이고,
+   * 중간 깊이는 옆 열 채널에서 한 번 더 갈아타야 하므로 **2홉**이다.
+   */
+  hops: 1 | 2 | null;
+  /** 네 방향이 각각 왜 떨어졌나 — `direct:N=남의모듈(sib0) channel:W=끝열` 꼴. */
+  why: string;
+}
+
 export interface PerimeterExitPlan {
   assignments: ExitAssignment[];
   /** 바깥/변 마진 수요. N/S = 상자 seat 행 필요 여부, W/E = 마진 열 필요 여부. */
   marginNeeds: { N: boolean; S: boolean; W: boolean; E: boolean };
   /** 후보 강등이 일어난 자리들 — **계측 전용**. 소비처가 없어도 정상이다. */
   demotions: ExitDemotion[];
+  /** 나갈 길이 없는 상자들 — **계측 전용**. 빈 배열이 정상이고, 그게 곧 답이다. */
+  blocked: ExitBlocked[];
+  /**
+   * **위험군** — 모듈이 W·E 를 **둘 다** 막은 반출 포트 수. 계측 전용.
+   *
+   * `blocked` 가 0 일 때 *"왜 0인가"* 를 가르는 수다. W 나 E 중 하나만 열려 있으면
+   * 중간 깊이 상자는 **언제나** 열 채널 환승 후보를 둘 받고(`channelOpts`), 끝 열 상자는
+   * 가로 직진을 받는다 — 즉 **막히려면 먼저 이 조건을 통과해야** 한다.
+   *
+   * 그래서 `noSideWayOut === 0` 이면 막힘 0 은 *"운이 좋았다"* 가 아니라 **구조적**이고,
+   * `> 0` 인데 막힘이 0 이면 그 포트들은 N/S 직진으로 나간 것이다.
+   */
+  noSideWayOut: number;
 }
 
 /** N/S 중 anchor 에 더 가까운 변. */
@@ -246,11 +300,23 @@ function nearerNS(anchorY: number, gy: { min: number; max: number }): "N" | "S" 
  * **이 함수는 순서와 무관하다** — `regionsAlong` 이 (모듈·방향·격자)의 순수 함수라 어떤
  * 순서로 물어도 같은 목록이 나온다. 앞선 상자의 선택을 보는 것은 [planPerimeterExits]
  * 쪽이고, 그 경계가 여기 있다.
+ *
+ * `why` 를 주면 **떨어진 방향마다 사유를 적는다**([ExitBlocked] 의 재료). 안 주면 아무것도
+ * 안 만든다 — 후보가 0인 상자에만 한 번 더 부르는 자리라, 본 경로는 예전 그대로다.
  */
-function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
+function enumerateOptions(
+  p: ExitPortInput,
+  ctx: ExitContext,
+  why?: Map<string, string>,
+): ExitOption[] {
   const gy = ctx.globalY;
   const can = (d: PortFace) => p.wayOuts.includes(d);
   const opts: ExitOption[] = [];
+  /** 이 방향이 떨어졌다 — 사유를 적고 `null`. 같은 방향을 두 번 물으면 답이 같다(순수). */
+  const no = (e: ExitEdge, reason: string): null => {
+    why?.set(`direct:${e}`, reason);
+    return null;
+  };
 
   /** 이 방향으로 나갈 때 **지나는 영역들**([layoutRegions]). 좌표를 안 쓴다. */
   const ray = (e: ExitEdge) => regionsAlong({ id: p.moduleId, depth: p.depth }, e, ctx.grid);
@@ -276,9 +342,10 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
    * 이제 그 장부가 명시적으로 있으므로([DirectRay]) 정확도를 올릴 수 있다.
    */
   const directOpt = (e: ExitEdge): ExitOption | null => {
-    if (!can(e)) return null;
+    if (!can(e)) return no(e, "모듈몸통(wayOuts)");
     const regions = ray(e);
-    if (!reachesOutside(regions)) return null;
+    // 가로 광선이 열 채널에서 멈춘 것 — 못 나가는 게 아니라 **거기서 환승해야** 한다.
+    if (!reachesOutside(regions)) return no(e, "통로에서멈춤");
     for (const r of regions.slice(1)) {
       // ① 남의 모듈 몸통 — **협상 불가지만 블랙박스는 아니다.** 내가 설 그 한 열이
       //    그 모듈 안에서도 비어 있으면 지나갈 수 있다. 여기서 먹는 칸은 남의 extent
@@ -286,9 +353,10 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
       if (r.kind === "module") {
         // 가로 광선은 남의 모듈을 만날 수 없다 — 1홉이라 첫 통로/마진에서 멈춘다
         // ([regionsAlong]). 도달 불가지만, 만나면 안전한 쪽으로 끝낸다.
-        if (e === "W" || e === "E") return null;
+        if (e === "W" || e === "E") return no(e, `남의모듈(${r.id})`);
         const cols = ctx.moduleBodyColumns.get(r.id);
-        if (!cols || cols.has(p.localX)) return null;
+        if (!cols) return no(e, `요약없음(${r.id})`);
+        if (cols.has(p.localX)) return no(e, `남의모듈(${r.id})`);
         continue;
       }
       // ③ **관통** — 이 통로는 가로줄을 파는데 나는 세로로 지난다. **살 게 없다.**
@@ -299,7 +367,8 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
           r.above === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "above", r.above)) ?? -1,
           r.below === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "below", r.below)) ?? -1,
         );
-        if (p.localX <= reach) return null; // 가로 트랙이 `[0, reach]` 를 덮는다 → 밟는다
+        // 가로 트랙이 `[0, reach]` 를 덮는다 → 밟는다.
+        if (p.localX <= reach) return no(e, `행채널관통(d${r.depth})`);
       }
     }
     return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e };
@@ -312,9 +381,15 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
    * 모듈은 그 채널의 반대 벽에 붙으므로 진입 벽은 `wayOut` 의 반대.
    */
   const channelOpts = (wayOut: "W" | "E"): ExitOption[] => {
-    if (!can(wayOut)) return [];
+    if (!can(wayOut)) {
+      why?.set(`channel:${wayOut}`, "모듈몸통(wayOuts)");
+      return [];
+    }
     const found = ray(wayOut).find((r) => r.kind === "columnChannel");
-    if (!found) return []; // 끝 열 — 그쪽엔 채널이 없다(마진이다).
+    if (!found) {
+      why?.set(`channel:${wayOut}`, "끝열(채널없음)"); // 그쪽엔 채널이 없다(마진이다).
+      return [];
+    }
     const depth = found.depth;
     const wall: "W" | "E" = wayOut === "W" ? "E" : "W";
     const near = nearerNS(p.anchorY, gy);
@@ -367,6 +442,36 @@ function enumerateOptions(p: ExitPortInput, ctx: ExitContext): ExitOption[] {
  * 좌표계는 [DirectRay] 의 규약 그대로다 — 세로는 `line`=로컬 열/`from`=절대 행, 가로는
  * 그 반대. 둘 다 **배정 시점에 이미 있는 값**이라 `colX`·`rawBbox` 를 안 기다린다.
  */
+/**
+ * 막힌 상자 하나를 **분류한다** — 계측 전용([ExitBlocked]).
+ *
+ * 사유를 받으려고 [enumerateOptions] 를 한 번 더 부른다. 순수 함수라 같은 답이 나오고,
+ * 부르는 자리가 *막힌 상자에만* 이라 본 경로의 비용이 안 는다.
+ */
+function describeBlocked(
+  p: ExitPortInput,
+  ctx: ExitContext,
+  kind: ExitBlocked["kind"],
+  extra?: string,
+): ExitBlocked {
+  const why = new Map<string, string>();
+  enumerateOptions(p, ctx, why);
+  // **행 채널에 들어가려면 모듈 몸통을 N/S 로 빠져나가야 한다** — 그 판정은 이미 모듈이
+  // 답해 놓았다(`moduleWayOuts`). 여기서 모듈 내부를 다시 보지 않는다.
+  const canEnterRowChannel = p.wayOuts.includes("N") || p.wayOuts.includes("S");
+  // 끝 열의 행 채널은 한쪽 끝이 **바깥 마진**이라 갈아탈 필요가 없다(1홉).
+  const hops = !canEnterRowChannel ? null : p.depth === 0 || p.depth === ctx.maxDepth ? 1 : 2;
+  const reasons = [...why].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
+  return {
+    id: p.id,
+    kind,
+    depth: p.depth,
+    canEnterRowChannel,
+    hops,
+    why: [...(extra ? [extra] : []), ...reasons].join(" "),
+  };
+}
+
 function directRayOf(o: ExitOption, p: ExitPortInput): DirectRay | null {
   if (o.exitMode.kind !== "direct") return null;
   return o.exitEdge === "N" || o.exitEdge === "S"
@@ -418,11 +523,14 @@ function directRayOf(o: ExitOption, p: ExitPortInput): DirectRay | null {
 export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: ExitContext): PerimeterExitPlan {
   const marginNeeds = { N: false, S: false, W: false, E: false };
   const demotions: ExitDemotion[] = [];
+  const blocked: ExitBlocked[] = [];
 
   // 후보를 **먼저** 전부 나열한다 — 순회 순서가 후보 수에 달려 있기 때문이다.
-  const cands = ports
-    .map((p) => ({ p, options: enumerateOptions(p, ctx) }))
-    .filter((c) => c.options.length > 0); // 나갈 길 없음 — 예약 0, 계획된 skip.
+  const all = ports.map((p) => ({ p, options: enumerateOptions(p, ctx) }));
+  const cands = all.filter((c) => c.options.length > 0); // 나갈 길 없음 — 예약 0, 계획된 skip.
+  // **그 「계획된 skip」이 이 계획의 트리거다** — 여기서 안 세면 아무 데도 안 남는다.
+  // 방출은 `no exit assignment` 로 사유 셋(후보 0 · 짝지어짐 · 고아 포트)을 합쳐 찍는다.
+  for (const c of all) if (c.options.length === 0) blocked.push(describeBlocked(c.p, ctx, "noOption"));
 
   // **제약 센 곳부터.** 후보가 하나뿐인 상자는 강등할 데가 없으니 먼저 고른다.
   const order = [...cands].sort(
@@ -454,6 +562,10 @@ export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: Exi
     // **배정이 통째로 사라져 확정 skip** 이 된다 — 오늘보다 나쁘다. 그러니 오늘 그대로
     // 두고(`options[0]`) 방출에 맡긴다. 이 자리를 구제하는 것은 다른 계획의 몫이다.
     const pick = chosen ?? options[0];
+    // **강행이다 — 계측에 남긴다.** 이 상자는 남이 이미 그은 선 위에 서므로 방출에서
+    // `straight blocked` 로 skip 될 것이다(`occ` 가 앞 상자의 belt 를 품는다). 강등 기록만
+    // 보면 *"내려갈 데가 있었나"* 를 못 묻는다 — 그 답이 여기 있다.
+    if (!chosen) blocked.push(describeBlocked(p, ctx, "forced", `강행=${pick.exitEdge}`));
 
     // 상자 seat 는 진출 변의 마진에 앉는다 — 직진이든 환승이든 같다.
     marginNeeds[pick.exitEdge] = true;
@@ -471,5 +583,10 @@ export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: Exi
       return { id: p.id, role: p.role, options, exitEdge: c.exitEdge, exitMode: c.exitMode, entry: c.entry };
     });
 
-  return { assignments, marginNeeds, demotions };
+  // 계측은 **`id` 순**으로 낸다 — 순회 순서(후보 수)가 새어 나가지 않게(출력 안정).
+  blocked.sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind));
+  const noSideWayOut = ports.filter(
+    (p) => !p.wayOuts.includes("W") && !p.wayOuts.includes("E"),
+  ).length;
+  return { assignments, marginNeeds, demotions, blocked, noSideWayOut };
 }
