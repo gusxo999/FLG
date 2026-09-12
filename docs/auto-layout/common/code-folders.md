@@ -3,7 +3,9 @@ tags: [auto-layout, placement, routing]
 ---
 
 > **부모 문서:** [auto-layout-wizard.md](../wizard.md)
-> **관련 문서:** [.placement-search](placement-search.md), [.channel-geometry-reservation](../channel/channel-geometry-reservation.md)
+> **관련 문서:** [.placement-search](placement-search.md), [.channel-geometry-reservation](../channel/channel-geometry-reservation.md),
+> [[work-kinds]] — **직교하는 축**: 파일이 *무슨 종류의 일*을 하나(셈·장부·도형·정책 …).
+> 이 문서가 *"어느 폴더인가"* 에 답한다면 그쪽은 *"한 파일 안에서 어디를 자르나"* 에 답한다
 
 # auto-layout 코드 폴더 — 두 축으로 나눈다
 
@@ -223,7 +225,7 @@ npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0�
 npx vitest run
 ```
 
-기준선: **타입 에러 0 · 56파일 684테스트**(기존 실패 2건 — trunkPipe 유체 면). (`manualEdit/` 는 양쪽에서 제외돼 있다.)
+기준선: **타입 에러 0 · 62파일 784테스트**(기존 실패 2건 — trunkPipe 유체 면). (`manualEdit/` 는 양쪽에서 제외돼 있다.)
 
 > **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
 > 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가
