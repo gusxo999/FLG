@@ -21,6 +21,8 @@ import { faceSeatArms, inserterForReach, type SpecInserter } from "../../buildSp
 import type { PortFace } from "../../containerModel";
 import { armsAt, machinesOn, resolveSpanBlock, spansAllMachines, type Link } from "../../module/link";
 import { recordFaceDepthStats } from "../../../debug/runStats";
+// **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
+import { linkShape, shapeCells } from "../../module/linkShape";
 import type { PlannedSide } from "./ioLine";
 import {
   claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear, makeFaceTable,
@@ -457,40 +459,26 @@ function splitByTable(
 }
 
 /**
- * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`.
+ * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`. **검사 전용**이고, 확정 청구와 방출이
+ * 부르는 [linkShape] 와 **같은 함수에서 답을 받는다**(2026-09-12 D1).
  *
- * **방향이 `portEnd` 로 갈린다.** 계획서가 한동안 *"포트는 언제나 `d+1`·`d+2`"* 라고 적었는데
- * **관통 그룹은 그렇지 않다**(2026-08-26 코드 확인):
- *
- * ```
- * 옆 포트 (portEnd 없음)   벨트에서 **바깥으로**  → (topT, d+1) · (topT, d+2)
- * 기둥 끝 (portEnd N/S)    벨트에서 **행 방향**   → (topT∓1, d) · (topT∓2, d)
- * ```
- *
- * `makeLinkPortChest` 가 `trunkEnd + pfv`·`+2·pfv` 에 놓고, `pfv = faceVector(portEnd ?? face)`
- * 이기 때문이다(`emitModule.ts:66`·`:214`·`:381`). 관통이면 그 두 칸이 기둥 **밖**이라
- * 대개 표를 안 건드리지만, 앞선 그룹이 첫 행을 먼저 먹었으면 **표 안으로 들어온다.**
- *
- * `topT` 는 흐름이 향하는 끝이다 — [flowEnd] 가 `"S"` 면 구간의 아래 끝, 아니면 위 끝
- * (`emitOutputLinks`·`emitInputLinks` 가 같은 규칙을 쓴다).
- *
- * **`portEnd` 가 모양을 정하고 [flowEnd] 가 방향을 정한다** — 둘이 갈린 것이 2026-09-05 이다.
- * 그전에는 구간 줄의 `topT` 가 `span[0]` 상수여서 **부모가 아래에 있어도 위로 나갔다.**
+ * 예전엔 이 파일이 그 도형을 직접 계산했고, 주석이 근거로 `emitModule` 의 **줄 번호**를
+ * 인용하고 있었다. 그래서 방출이 도형을 바꾸면 여기가 조용히 낡았다.
  */
 function portCells(
   cand: Pick<LinkFaceCandidate, "clusterBeltDepth" | "portEnd" | "exitEnd">,
   span: readonly [number, number],
 ): Array<readonly [number, number]> {
-  const topT = flowEnd(cand) === "S" ? span[1] : span[0];
-  const cells: Array<readonly [number, number]> = cand.portEnd
-    ? (() => {
-        const dir = cand.portEnd === "S" ? 1 : -1;
-        return [[topT + dir, cand.clusterBeltDepth], [topT + 2 * dir, cand.clusterBeltDepth]] as const;
-      })()
-    : [[topT, cand.clusterBeltDepth + 1], [topT, cand.clusterBeltDepth + 2]];
+  const port = linkShape({
+    role: "output", // 포트 두 칸은 역할과 무관하다 — 흐름만 반대이고 자리는 같다
+    clusterBeltDepth: cand.clusterBeltDepth,
+    portEnd: cand.portEnd,
+    flowToSouth: flowEnd(cand) === "S",
+    rows: span,
+    outRow: 0, // 합류 도형을 안 물으므로 안 쓰인다
+  }).port;
   // **거르지 않는다**(2026-09-06) — 기둥 밖 행은 `ctx.outside` 가 센다([splitByTable]).
-  // 예전엔 여기서 버렸고, 그래서 기둥 끝 포트의 두 칸이 **아무 장부에도 안 올라갔다.**
-  return cells;
+  return port ? [[port.inserter.t, port.inserter.depth], [port.chest.t, port.chest.depth]] : [];
 }
 
 /**
@@ -789,63 +777,38 @@ export function commitLinkFace(
     for (const s of slots) note(SEAT_DEPTH, rowIndex(table, mi, s), rowIndex(table, mi, s));
     slotIndex.set(mi, slots);
   }
-  // 벨트 칸 — gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
-  // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
+  // 벨트·합류·포트 칸 — **도형은 [linkShape] 한 곳에서 온다**(2026-09-12 D1). 방출기가
+  // 부르는 그 함수이고, 여기서는 **순번 축**으로 부를 뿐이다(방출은 좌표 축).
+  //
+  // gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
+  // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다(그래서 도형도 갈릴 일이 없다).
   if (span) {
-    claimDepth(table, cand.clusterBeltDepth, span[0], span[1], owner);
-    note(cand.clusterBeltDepth, span[0], span[1]);
     const end = flowEnd(cand);
-    const endRow = end === "S" ? span[1] : span[0];
     const dir = end === "S" ? 1 : -1;
-    /** 기둥 **밖** 첫 행 — 합류는 여기서 일어난다. 표 밖이라 아무도 청구할 수 없다. */
+    /** 기둥 **밖** 첫 행 — 합류는 여기서 일어난다. */
     const outRow = dir > 0 ? table.rowsPerMachine * table.machineCount : -1;
-    if (opts?.merged) {
-      // **비켜 가는 열** — 깊이 +1 로 한 칸, 깊이 +2 를 따라 **기둥 밖**까지 내려가 합류 칸으로.
-      // 깊이 +2 는 팔이 안 닿는 열이라 벨트만 지날 수 있다.
-      claimDepth(table, cand.clusterBeltDepth + 1, endRow, endRow, owner);
-      claimDepth(table, cand.clusterBeltDepth + 2, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
-      note(cand.clusterBeltDepth + 1, endRow, endRow);
-      note(cand.clusterBeltDepth + 2, endRow, outRow);
-    } else if (opts?.mergeLead) {
-      // **이끄는 줄은 자기 구간을 지나 기둥 끝까지 달린다** — 합류 칸이 기둥 **밖**이라야
-      // 남의 옆 포트 자리를 안 뺏는다(2026-09-04 실측: 기둥 안에 세웠더니 `포트칸 (13,d3)`
-      // 다툼으로 남의 줄이 통째로 못 앉았다). 합류 칸·포트는 표 밖이라 청구할 것이 없다.
-      claimDepth(table, cand.clusterBeltDepth, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
-      note(cand.clusterBeltDepth, endRow, outRow);
-      // **합류 칸과 포트 두 칸도 이 그룹 것이다**(2026-09-12 도형 대조 F1).
-      //
-      // 셋 다 기둥 **밖**이라 표가 아니라 `ctx.outside` 가 든다 — 비합류 경로가 [splitByTable]
-      // 로 하는 것과 **같은 규약**인데 이 분기만 우회하고 있었다. 그래서 방출이 놓는 세 칸을
-      // 어느 장부도 모르는 채였다. 오늘 `ctx.outside` 는 대조만 하므로(A1) 배치는 안 바뀐다 —
-      // 결정권이 그 장부로 넘어가는 A2 에서 이 등록이 전제가 된다.
-      const mergeCells = [
-        [outRow, cand.clusterBeltDepth + 1], // 합류 칸 — 벨트가 여기서 꺾인다
-        [outRow + dir, cand.clusterBeltDepth + 1], // 포트 인서터
-        [outRow + 2 * dir, cand.clusterBeltDepth + 1], // 포트 상자
-      ] as const;
-      // 셋은 **구성상 언제나 표 밖**이다(`outRow` 가 기둥 밖 첫 행이고 `dir` 이 더 바깥을 본다).
-      const band = ctx.outside.get(cand.face) ?? new Set<string>();
-      for (const [r, d] of mergeCells) {
-        const o = outsideOf(r, table);
-        if (o) band.add(outsideKey(o, d));
-        note(d, r, r);
-      }
-      ctx.outside.set(cand.face, band);
-    } else {
-      // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
-      // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
-      //
-      // 검사([tryLinkFace])와 **같은 함수**로 가른다 — 모양이 갈리면 못 본 다툼이 생긴다.
-      const claimed = splitByTable(portCells(cand, span), table);
-      for (const [r, d] of claimed.inside) { claimDepth(table, d, r, r, owner); note(d, r, r); }
-      // **기둥 밖 칸도 적는다** — 표 밖이라 `claimDepth` 는 못 받지만 방출은 거기에 놓는다.
-      for (const [r, d] of portCells(cand, span)) if (outsideOf(r, table)) note(d, r, r);
-      if (claimed.outside.length > 0) {
-        const band = ctx.outside.get(cand.face) ?? new Set<string>();
-        for (const k of claimed.outside) band.add(k);
-        ctx.outside.set(cand.face, band);
-      }
+    const shape = linkShape({
+      role: side === "from" ? "output" : "input",
+      clusterBeltDepth: cand.clusterBeltDepth,
+      portEnd: cand.portEnd,
+      flowToSouth: end === "S",
+      mergeRole: opts?.merged ? "follow" : opts?.mergeLead ? "lead" : undefined,
+      rows: span,
+      outRow,
+    });
+    // **청구는 칸의 종류가 가른다** — 벨트는 표에 바로 적고(구간이라 기둥 밖도 표가 든다),
+    // 합류 칸·포트는 [splitByTable] 로 표 안/밖을 갈라 밖은 `ctx.outside` 가 든다.
+    // 그 비대칭은 오늘의 규약 그대로다 — **도형만 한 곳으로 모으고 청구 정책은 안 건드린다**
+    // (건드리면 배치가 바뀐다. 장부를 하나로 접는 것은 `구간-밖-주행` A2 의 일이다).
+    const band = ctx.outside.get(cand.face) ?? new Set<string>();
+    for (const c of shapeCells(shape)) {
+      note(c.depth, c.t, c.t);
+      if (c.kind === "belt") { claimDepth(table, c.depth, c.t, c.t, owner); continue; }
+      const o = outsideOf(c.t, table);
+      if (o) band.add(outsideKey(o, c.depth));
+      else claimDepth(table, c.depth, c.t, c.t, owner);
     }
+    ctx.outside.set(cand.face, band);
   }
   if (cand.portEnd && !opts?.merged) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
