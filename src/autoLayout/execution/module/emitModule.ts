@@ -320,14 +320,15 @@ export function emitOutputLinks(args: {
     // 짝의 **둘째** 줄이면 첫 줄이 만든 합류 칸·포트를 그대로 쓴다. 첫 줄이면 합류 칸을
     // 새로 만든다. 기하가 안 서면(gap · 끝 없음 · 반출 줄로 내려감) 합류하지 않는다 —
     // 그런 짝은 배정이 이미 풀었으므로 정상 경로에선 여기 오지 않는다.
-    const canMerge = group.sharedLineId !== undefined && !isGap
-      && plan.portEnd !== undefined && exitDepth === clusterBeltDepth;
+    // **역할은 배정이 정한다**(2026-09-12 F2). 예전엔 여기서 신원(`sharedLineId`)과 기하
+    // (면·깊이·끝)를 **다시 판정**했는데, 배정이 짝을 푼 뒤에도 신원이 남아 둘이 갈렸다.
+    const canMerge = plan.mergeRole === "lead";
     // **자기도 합류 도형을 세울 수 있을 때만 첫 줄을 따른다**(2026-09-04).
     //
     // 예전엔 `sharedExit` 에 신원만 있으면 따랐다. 그런데 따르는 줄이 **끝을 못 받았거나
     // gap 으로 밀렸으면** 포트 면이 W/E 라 아래 순회가 **열을 걸으면서 행을 목표로 삼는다**
     // — 영영 안 끝난다(실측: 힙 소진으로 워커 사망, 사유도 스택도 안 남았다).
-    const followed = canMerge && group.sharedLineId !== undefined
+    const followed = plan.mergeRole === "follow" && group.sharedLineId !== undefined
       ? sharedExit.get(group.sharedLineId)
       : undefined;
     /**
@@ -580,7 +581,12 @@ export function emitInputLinks(args: {
     const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
     const inward = { x: -fv.x, y: -fv.y };
 
-    const reuse = group.sharedLineId !== undefined ? sharedBelts.get(group.sharedLineId) : undefined;
+    // **얹힐지는 배정이 정한다**([LinkFacePlan.sharesBelt] · 2026-09-12 F2). 예전엔 신원만
+    // 보고 먼저 나온 벨트에 무조건 얹었는데, 배정이 짝을 풀어 **자기 벨트를 청구한 줄**까지
+    // 얹혀 버렸다 — 청구한 칸은 유령 예약이 되고 그 줄의 팔은 벨트 없는 칸에 섰다.
+    const reuse = plan.sharesBelt && group.sharedLineId !== undefined
+      ? sharedBelts.get(group.sharedLineId)
+      : undefined;
 
     // 벨트 경로를 **먼저 전부 계산하고**, 다 놓을 수 있을 때만 놓는다. 반만 놓인 벨트는
     // 포트에서 물건이 사라지는 것과 같아서, 한 칸이라도 막히면 통째로 물러난다.
@@ -664,7 +670,7 @@ export function emitInputLinks(args: {
     }
     // **짝의 둘째 줄은 포트를 안 센다** — 첫 줄의 것을 그대로 쓴다([emitOutputLinks] 와 같다).
     if (!reuse) { noteCell(seatCell); noteCell(chestAt); }
-    probeLinkShape({ face, claim: plan.claimT, used, who: `${group.id ?? line.name}${reuse ? " [재사용]" : group.sharedLineId !== undefined ? " [첫줄]" : ""}` });
+    probeLinkShape({ face, claim: plan.claimT, used, who: `${group.id ?? line.name}${plan.sharesBelt ? " [얹힘]" : ""}` });
     // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로).
     // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(W 면이면 서쪽 끝).
     pushLinkPortEnd({

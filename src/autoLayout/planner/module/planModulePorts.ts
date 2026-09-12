@@ -460,12 +460,27 @@ export function seatLinkEdge(
       }
     }
 
+    /**
+     * **이 줄이 지금도 짝의 이끄는 쪽인가** — 커밋 **직전에** 다시 묻는다.
+     *
+     * `inPair` 는 큐를 세울 때의 사실이라 그 뒤 짝이 풀렸어도(`g.sharedLineId = undefined`)
+     * 참으로 남는다. 그 값으로 `mergeLead` 를 주면 **합칠 상대가 없는데 합류 도형을 청구**
+     * 하고, 방출은 신원이 지워졌으니 평범한 도형을 놓아 둘이 갈린다(2026-09-12 F2 와 같은 뿌리).
+     *
+     * 기하가 안 서는 경우도 여기서 걸러 낸다 — 끝을 못 받았거나 gap 면이면 합류 칸이 설 자리가
+     * 없다. 그래야 방출이 [LinkFacePlan.mergeRole] 하나만 보고 따를 수 있다.
+     */
+    const leadNow = (): boolean =>
+      g.sharedLineId !== undefined && mergePairs.has(g.sharedLineId)
+      && candFrom !== undefined && candFrom.portEnd !== undefined
+      && candFrom.face !== "N" && candFrom.face !== "S";
+
     // **집는 쪽 — 짝의 둘째 줄은 자리를 안 고른다.** 첫 줄이 잡은 벨트에 좌석만 얹는다.
     const partner = g.sharedLineId !== undefined ? sharedTo.get(g.sharedLineId) : undefined;
     if (candFrom && partner) {
       const onShared = seatOnSharedBelt(toSeat.ctx, g, "to", partner);
       if (onShared) {
-        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: inPair && !merged }), onShared);
+        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: !merged && leadNow() }), onShared);
         continue;
       }
       // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
@@ -476,7 +491,7 @@ export function seatLinkEdge(
     const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
     if (candFrom && candTo) {
       const toPlan = commitLinkFace(toSeat.ctx, candTo, "to");
-      const fromPlan = commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: inPair && !merged });
+      const fromPlan = commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: !merged && leadNow() });
       if (g.sharedLineId !== undefined && !sharedTo.has(g.sharedLineId)) {
         sharedTo.set(g.sharedLineId, toPlan); // 첫 줄 — 다음 줄이 이 벨트에 얹힌다
         sharedFrom.set(g.sharedLineId, fromPlan); // 〃 — 다음 줄이 이 옆에 나란히 앉는다

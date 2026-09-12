@@ -71,7 +71,8 @@ describe("도형 대조 — 계획의 청구와 방출의 실물", () => {
       links: sd.links, clean: sd.clean, onlyPlan: sd.onlyPlan, onlyEmit: sd.onlyEmit,
       skipped: sd.skipped,
     }));
-    console.log("[레인공유]", JSON.stringify(readRunStats().laneShare));
+    const fd = readRunStats().faceDepths;
+    console.log("[안전망]", JSON.stringify({ netTrips: fd.netTrips, endsDisagree: fd.endsDisagree, endsCoarse: fd.endsCoarse }));
     for (const s of sd.samples) console.log("  ·", s);
   });
 });

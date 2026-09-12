@@ -119,6 +119,26 @@ export interface LinkFacePlan {
    */
   slotIndex: Map<number, number[]>;
   /**
+   * **합류에서 이 줄의 역할** — 싣는 쪽(from)에서 두 줄이 기둥 끝 바깥에서 만날 때.
+   *
+   * ```
+   * lead    자기 구간을 지나 기둥 밖까지 달려 **합류 칸**을 세운다. 포트도 그 칸에서 난다
+   * follow  깊이 +2 로 비켜 올라와 이끄는 줄의 합류 칸 옆구리를 친다. 포트가 없다
+   * ```
+   *
+   * **방출은 이 값만 본다.** 예전엔 방출이 `Link.sharedLineId` 와 기하 조건(면·깊이·끝)을
+   * 스스로 다시 판정했는데, 배정이 짝을 푼 뒤에도 그 신원이 남아 **둘의 답이 갈렸다**
+   * (2026-09-12 도형 대조 **F2**). 판정 주체는 배정 하나다.
+   */
+  mergeRole?: "lead" | "follow";
+  /**
+   * **집는 쪽(to)에서 첫 줄의 벨트에 얹혔나** — [seatOnSharedBelt] 가 성공했을 때만 참.
+   *
+   * 이 값이 거짓이면 이 줄은 **자기 벨트를 갖는다**(청구도 그렇게 했다). 방출이 신원만 보고
+   * 남의 벨트에 얹으면 청구한 칸이 유령 예약이 되고, 그 줄의 팔은 벨트 없는 칸에 선다(F2).
+   */
+  sharesBelt?: boolean;
+  /**
    * **관측 전용 — 이 그룹이 장부에 청구한 칸 전부**(`[깊이, 행]`). 지워도 배치가 안 바뀐다.
    *
    * `slotIndex` 와 같은 **순번 공간**이다(좌표 변환은 [placeLinkSeats]). 방출이 실제로 쓰는
@@ -130,7 +150,7 @@ export interface LinkFacePlan {
 }
 
 /** [commitLinkFace] 전의 배정안 — 순번(`slotIndex`)은 확정 시점에야 정해진다. */
-type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex" | "claim">;
+type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex" | "claim" | "mergeRole" | "sharesBelt">;
 
 /**
  * **이 줄이 향하는 끝** — 배정과 방출이 같은 값을 보게 하는 단일 출처.
@@ -792,6 +812,25 @@ export function commitLinkFace(
       // 다툼으로 남의 줄이 통째로 못 앉았다). 합류 칸·포트는 표 밖이라 청구할 것이 없다.
       claimDepth(table, cand.clusterBeltDepth, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
       note(cand.clusterBeltDepth, endRow, outRow);
+      // **합류 칸과 포트 두 칸도 이 그룹 것이다**(2026-09-12 도형 대조 F1).
+      //
+      // 셋 다 기둥 **밖**이라 표가 아니라 `ctx.outside` 가 든다 — 비합류 경로가 [splitByTable]
+      // 로 하는 것과 **같은 규약**인데 이 분기만 우회하고 있었다. 그래서 방출이 놓는 세 칸을
+      // 어느 장부도 모르는 채였다. 오늘 `ctx.outside` 는 대조만 하므로(A1) 배치는 안 바뀐다 —
+      // 결정권이 그 장부로 넘어가는 A2 에서 이 등록이 전제가 된다.
+      const mergeCells = [
+        [outRow, cand.clusterBeltDepth + 1], // 합류 칸 — 벨트가 여기서 꺾인다
+        [outRow + dir, cand.clusterBeltDepth + 1], // 포트 인서터
+        [outRow + 2 * dir, cand.clusterBeltDepth + 1], // 포트 상자
+      ] as const;
+      // 셋은 **구성상 언제나 표 밖**이다(`outRow` 가 기둥 밖 첫 행이고 `dir` 이 더 바깥을 본다).
+      const band = ctx.outside.get(cand.face) ?? new Set<string>();
+      for (const [r, d] of mergeCells) {
+        const o = outsideOf(r, table);
+        if (o) band.add(outsideKey(o, d));
+        note(d, r, r);
+      }
+      ctx.outside.set(cand.face, band);
     } else {
       // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
       // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
@@ -813,7 +852,11 @@ export function commitLinkFace(
     set.add(cand.portEnd);
     ctx.ends.set(cand.face, set);
   }
-  return { ...cand, slotIndex, claim };
+  return {
+    ...cand, slotIndex, claim,
+    // **역할은 배정이 정하고 방출은 따르기만 한다**(F2). 청구한 도형과 놓는 도형이 한 판정에서 난다.
+    mergeRole: opts?.merged ? "follow" : opts?.mergeLead ? "lead" : undefined,
+  };
 }
 
 /**
@@ -869,7 +912,7 @@ export function seatOnSharedBelt(
   }
   // 벨트·포트 칸·기둥 끝은 **안 청구한다** — 첫 줄의 것을 그대로 쓴다.
   // (관측 전용 `claim` 도 그래서 좌석뿐이다 — 첫 줄의 것을 물려받으면 대조가 거짓이 된다.)
-  return { ...shared, arms, slotIndex: want, claim };
+  return { ...shared, arms, slotIndex: want, claim, mergeRole: undefined, sharesBelt: true };
 }
 
 /**
