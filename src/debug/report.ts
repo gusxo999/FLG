@@ -204,6 +204,24 @@ export function buildReport(): string {
       ),
     );
 
+  // **도형 대조**(관측 전용) — 계획이 청구한 칸과 방출이 쓴 칸이 같은가.
+  // 읽는 법: **`방출만` 이 유일한 경보**다(장부에 없는 칸에 놓았다). `계획만` 은 청구가
+  // 넉넉했다는 뜻이라 안전하지만, 둘 다 0 이라야 도형을 한 함수로 합칠 수 있다.
+  // 합치면 이 줄은 지운다 — `tempPlanDocs/구조-2축/1-도형-단일출처/`
+  const sd = stats.shapeDiff;
+  if (sd.links + sd.skipped.gap + sd.skipped.merged > 0) {
+    out.push(
+      line(
+        '도형대조',
+        `링크 ${sd.links} · 일치 ${sd.clean}`
+          + (sd.onlyEmit > 0 ? ` · **방출만 ${sd.onlyEmit}칸**` : '')
+          + (sd.onlyPlan > 0 ? ` · 계획만 ${sd.onlyPlan}칸` : '')
+          + ` · 뺀 것 ${sd.skipped.gap + sd.skipped.merged}(gap ${sd.skipped.gap} · 합류 ${sd.skipped.merged})`,
+      ),
+    );
+    for (const s of sd.samples) out.push(sub(s));
+  }
+
   const rc = stats.rowChannels;
   out.push(
     line(

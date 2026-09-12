@@ -490,7 +490,22 @@ function placeLinkSeats(
       const origin = isGap ? m.origin.x : m.origin.y;
       slots.set(mi, idx.map((i) => origin + i));
     }
-    return { ...plan, slots };
+    // **관측 전용** — 장부 청구(순번)를 같은 덧셈으로 `t` 로 옮긴다([LinkSeats.claimT]).
+    // 행 번호는 머신을 가로지르는 **통 순번**이라 어느 머신의 몇 번째 칸인지 먼저 가른다.
+    // 기둥 밖 행(음수 · 마지막 초과)은 양 끝 머신에서 그만큼 더 나간 자리다.
+    const m0 = machines[0];
+    const rows = isGap ? m0?.size.w : m0?.size.h;
+    const claimT = plan.claim && m0 && rows
+      ? plan.claim.map(([d, r]) => {
+          const last = rows * machines.length - 1;
+          const at = (mi: number): number => (isGap ? machines[mi].origin.x : machines[mi].origin.y);
+          if (r < 0) return [d, at(0) + r] as const;
+          if (r > last) return [d, at(machines.length - 1) + (rows - 1) + (r - last)] as const;
+          const mi = Math.floor(r / rows);
+          return [d, at(mi) + (r - mi * rows)] as const;
+        })
+      : undefined;
+    return { ...plan, slots, claimT };
   });
 }
 

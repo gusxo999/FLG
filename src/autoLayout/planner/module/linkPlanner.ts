@@ -24,7 +24,7 @@ import { recordFaceDepthStats } from "../../../debug/runStats";
 import type { PlannedSide } from "./ioLine";
 import {
   claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear, makeFaceTable,
-  rowIndex, seatsTaken, takeOwner, type FaceTable,
+  rowIndex, seatsTaken, takeOwner, SEAT_DEPTH, type FaceTable,
 } from "./faceTable";
 
 export interface LinkFacePlan {
@@ -118,10 +118,19 @@ export interface LinkFacePlan {
    * 플래그를 밖으로 내보내지 않는다).
    */
   slotIndex: Map<number, number[]>;
+  /**
+   * **관측 전용 — 이 그룹이 장부에 청구한 칸 전부**(`[깊이, 행]`). 지워도 배치가 안 바뀐다.
+   *
+   * `slotIndex` 와 같은 **순번 공간**이다(좌표 변환은 [placeLinkSeats]). 방출이 실제로 쓰는
+   * 칸과 대조하기 위해서만 존재한다 — 계획과 방출이 도형을 **각자** 계산하고 있어서
+   * (`docs/auto-layout/common/work-kinds.md` §7 D1), 둘이 같은 답인지 먼저 재고 합친다.
+   * → `tempPlanDocs/구조-2축/1-도형-단일출처/`
+   */
+  claim?: readonly (readonly [number, number])[];
 }
 
 /** [commitLinkFace] 전의 배정안 — 순번(`slotIndex`)은 확정 시점에야 정해진다. */
-type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex">;
+type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex" | "claim">;
 
 /**
  * **이 줄이 향하는 끝** — 배정과 방출이 같은 값을 보게 하는 단일 출처.
@@ -250,6 +259,11 @@ export function summarizeRungs(shortages: Map<string, DepthShortage[]>): string 
 export interface LinkSeats extends LinkFacePlan {
   /** 머신 index → 그 머신 면에서 이 그룹이 쓰는 연속 `t` 값들. */
   slots: Map<number, number[]>;
+  /**
+   * **관측 전용** — [LinkFacePlan.claim] 을 `t` 좌표로 옮긴 것(`[깊이, t]`). 지워도 배치가
+   * 안 바뀐다. 변환은 [placeLinkSeats] 가 `slots` 와 **같은 덧셈**으로 한다.
+   */
+  claimT?: readonly (readonly [number, number])[];
 }
 
 /**
@@ -737,6 +751,11 @@ export function commitLinkFace(
   const fromEast = isGap && side === "to";
   const owner = takeOwner(table);
   const slotIndex = new Map<number, number[]>();
+  /** 관측 전용 — 아래에서 청구하는 칸을 그대로 받아 적는다([LinkFacePlan.claim]). */
+  const claim: [number, number][] = [];
+  const note = (d: number, lo: number, hi: number): void => {
+    for (let r = Math.min(lo, hi); r <= Math.max(lo, hi); r++) claim.push([d, r]);
+  };
   // 머신 index 오름차순 — 방출 순서가 결정적이어야 한다.
   for (const [mi, k] of [...cand.arms].sort((a, b) => a[0] - b[0])) {
     // W/E 는 빈 칸을 앞에서부터(유체 칸은 이미 차 있어 저절로 건너뛴다),
@@ -747,12 +766,14 @@ export function commitLinkFace(
       ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
       : freeSeatRows(table, mi).slice(0, k);
     claimSeats(table, mi, slots, owner);
+    for (const s of slots) note(SEAT_DEPTH, rowIndex(table, mi, s), rowIndex(table, mi, s));
     slotIndex.set(mi, slots);
   }
   // 벨트 칸 — gap(N/S)은 안 적는다. 그쪽은 모두가 서쪽 변까지 달려야 해서 겹침을 행이 아니라
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다.
   if (span) {
     claimDepth(table, cand.clusterBeltDepth, span[0], span[1], owner);
+    note(cand.clusterBeltDepth, span[0], span[1]);
     const end = flowEnd(cand);
     const endRow = end === "S" ? span[1] : span[0];
     const dir = end === "S" ? 1 : -1;
@@ -763,21 +784,26 @@ export function commitLinkFace(
       // 깊이 +2 는 팔이 안 닿는 열이라 벨트만 지날 수 있다.
       claimDepth(table, cand.clusterBeltDepth + 1, endRow, endRow, owner);
       claimDepth(table, cand.clusterBeltDepth + 2, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
+      note(cand.clusterBeltDepth + 1, endRow, endRow);
+      note(cand.clusterBeltDepth + 2, endRow, outRow);
     } else if (opts?.mergeLead) {
       // **이끄는 줄은 자기 구간을 지나 기둥 끝까지 달린다** — 합류 칸이 기둥 **밖**이라야
       // 남의 옆 포트 자리를 안 뺏는다(2026-09-04 실측: 기둥 안에 세웠더니 `포트칸 (13,d3)`
       // 다툼으로 남의 줄이 통째로 못 앉았다). 합류 칸·포트는 표 밖이라 청구할 것이 없다.
       claimDepth(table, cand.clusterBeltDepth, Math.min(endRow, outRow), Math.max(endRow, outRow), owner);
+      note(cand.clusterBeltDepth, endRow, outRow);
     } else {
       // **포트 칸도 이 그룹 것이다**([portCells] — 결함 B). 안 적으면 남이 그 위를 지나가고,
       // 그 다툼이 배정에는 안 보이다가 **방출에서 터진다.**
       //
       // 검사([tryLinkFace])와 **같은 함수**로 가른다 — 모양이 갈리면 못 본 다툼이 생긴다.
-      const claim = splitByTable(portCells(cand, span), table);
-      for (const [r, d] of claim.inside) claimDepth(table, d, r, r, owner);
-      if (claim.outside.length > 0) {
+      const claimed = splitByTable(portCells(cand, span), table);
+      for (const [r, d] of claimed.inside) { claimDepth(table, d, r, r, owner); note(d, r, r); }
+      // **기둥 밖 칸도 적는다** — 표 밖이라 `claimDepth` 는 못 받지만 방출은 거기에 놓는다.
+      for (const [r, d] of portCells(cand, span)) if (outsideOf(r, table)) note(d, r, r);
+      if (claimed.outside.length > 0) {
         const band = ctx.outside.get(cand.face) ?? new Set<string>();
-        for (const k of claim.outside) band.add(k);
+        for (const k of claimed.outside) band.add(k);
         ctx.outside.set(cand.face, band);
       }
     }
@@ -787,7 +813,7 @@ export function commitLinkFace(
     set.add(cand.portEnd);
     ctx.ends.set(cand.face, set);
   }
-  return { ...cand, slotIndex };
+  return { ...cand, slotIndex, claim };
 }
 
 /**
@@ -836,9 +862,14 @@ export function seatOnSharedBelt(
     want.set(mi, slots);
   }
   const owner = takeOwner(table);
-  for (const [mi, slots] of want) claimSeats(table, mi, slots, owner);
+  const claim: [number, number][] = [];
+  for (const [mi, slots] of want) {
+    claimSeats(table, mi, slots, owner);
+    for (const s of slots) claim.push([SEAT_DEPTH, rowIndex(table, mi, s)]);
+  }
   // 벨트·포트 칸·기둥 끝은 **안 청구한다** — 첫 줄의 것을 그대로 쓴다.
-  return { ...shared, arms, slotIndex: want };
+  // (관측 전용 `claim` 도 그래서 좌석뿐이다 — 첫 줄의 것을 물려받으면 대조가 거짓이 된다.)
+  return { ...shared, arms, slotIndex: want, claim };
 }
 
 /**
