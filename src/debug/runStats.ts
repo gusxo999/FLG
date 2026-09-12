@@ -275,29 +275,6 @@ export interface BeltTerminusCounters {
   merged: number;
 }
 
-/**
- * **도형 대조** — 계획이 청구한 칸과 방출이 쓴 칸이 같은가
- * ([shapeProbe](../autoLayout/module/shapeProbe.ts)).
- *
- * 세는 이유: 같은 도형을 두 곳이 각자 계산하고 있다(work-kinds §7 **D1**). 합치기 전에
- * 오늘 답이 같은지 재는 것이고, **`onlyEmit` 이 유일한 경보**다 — 장부에 없는 칸에 놓았다는
- * 뜻이라 남과 부딪힌다. 합친 뒤에는 이 계수기를 통째로 지운다.
- */
-export interface ShapeDiffCounters {
-  /** 대조한 링크 수(W/E · 비합류). */
-  links: number;
-  /** 청구와 실물이 **완전히 같은** 링크 수. */
-  clean: number;
-  /** 계획만 청구하고 방출은 안 쓴 칸(합계). */
-  onlyPlan: number;
-  /** **방출만 쓴 칸**(합계) — 장부에 없는 자리다. */
-  onlyEmit: number;
-  /** 규약이 달라 대조에서 뺀 링크 — gap 면 · 레인 합류. */
-  skipped: { gap: number; merged: number };
-  /** 어긋난 자리의 서술(최대 8건). */
-  samples: string[];
-}
-
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
@@ -335,23 +312,16 @@ export interface RunStats {
   laneShare: LaneShareCounters;
   /** 벨트 끝 칸. **null 이 아니라 언제나 있다** — 0 이 유의미한 답이다(위 주석). */
   beltTermini: BeltTerminusCounters;
-  /** 도형 대조. **관측 전용** — 지워도 배치가 안 바뀐다. */
-  shapeDiff: ShapeDiffCounters;
 }
 
 const freshBeltTermini = (): BeltTerminusCounters => ({
   ends: 0, turned: 0, underground: 0, merged: 0,
 });
 
-const freshShapeDiff = (): ShapeDiffCounters => ({
-  links: 0, clean: 0, onlyPlan: 0, onlyEmit: 0, skipped: { gap: 0, merged: 0 }, samples: [],
-});
-
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, exitPlan: null, channelLedger: null,
   rowChannels: null, beltForms: null,
   faceDepths: freshFaceDepths(), laneShare: freshLaneShare(), beltTermini: freshBeltTermini(),
-  shapeDiff: freshShapeDiff(),
 });
 
 let current: RunStats = fresh();
@@ -359,22 +329,6 @@ let current: RunStats = fresh();
 /** 실행 1회 시작 — `runModulePipeline` 진입에서 부른다. */
 export function beginRunStats(): void {
   current = { ...fresh(), startedAt: Date.now() };
-}
-
-/**
- * **도형 대조 한 건** — [probeLinkShape](../autoLayout/module/shapeProbe.ts) 가 링크마다 부른다.
- * **관측 전용**이라 아무 계산도 안 바꾼다.
- */
-export function recordShapeDiff(c: {
-  onlyPlan?: number; onlyEmit?: number; sample?: string; skip?: "gap" | "merged";
-}): void {
-  const s = current.shapeDiff;
-  if (c.skip) { s.skipped[c.skip] += 1; return; }
-  s.links += 1;
-  s.onlyPlan += c.onlyPlan ?? 0;
-  s.onlyEmit += c.onlyEmit ?? 0;
-  if ((c.onlyPlan ?? 0) + (c.onlyEmit ?? 0) === 0) s.clean += 1;
-  if (c.sample && s.samples.length < 8) s.samples.push(c.sample);
 }
 
 /** 레인 공유 짝짓기 결과 — `packModuleTree` 가 링크 캐시를 다 만든 뒤 한 번 부른다. */
@@ -488,11 +442,6 @@ export function readRunStats(): RunStats {
     startedAt: current.startedAt,
     laneShare: { ...current.laneShare },
     beltTermini: { ...current.beltTermini },
-    shapeDiff: {
-      ...current.shapeDiff,
-      skipped: { ...current.shapeDiff.skipped },
-      samples: [...current.shapeDiff.samples],
-    },
     beltForms: current.beltForms ? { ...current.beltForms } : null,
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter

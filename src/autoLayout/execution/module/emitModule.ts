@@ -50,9 +50,6 @@ import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
 // (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
 import { recordFaceDepthStats, recordLaneMerge } from "../../../debug/runStats";
-// **관측 전용** — 계획이 청구한 칸과 여기서 쓰는 칸을 대조한다. 지워도 배치가 안 바뀐다.
-// 도형이 두 벌인 동안만 산다(work-kinds §7 D1 · `tempPlanDocs/구조-2축/1-도형-단일출처/`).
-import { probeLinkShape, shapeTrace } from "../../module/shapeProbe";
 // **도형의 단일 출처** — 배정이 청구할 때 부른 그 함수를 방출도 부른다(work-kinds §7 D1).
 import { linkShape, type ShapeCell } from "../../module/linkShape";
 
@@ -305,7 +302,6 @@ export function emitOutputLinks(args: {
     // 깊이가 상자를 가두지 못한다. 구간이면 오늘처럼 옆이다.
     const portFace: PortFace = plan.portEnd ?? (isGap ? "W" : face);
     const pfv = faceVector(portFace);
-    const { used, noteCell } = shapeTrace(face, mExt);
     // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
     // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
     const clusterBeltDepth = plan.clusterBeltDepth;
@@ -372,7 +368,6 @@ export function emitOutputLinks(args: {
     const beltCells: PlacedCell[] = [];
     let blocked = false;
     const push = (at: { x: number; y: number }, v: { x: number; y: number }): void => {
-      noteCell(at); // 관측 전용 — **놓으려 한** 칸을 센다(막혀서 못 놓은 것도 도형이다)
       if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; return; }
       // **티어는 그룹이 든다**(2026-08-23) — 실으려는 양을 정한 곳([determineBeltCount])과
       // 깔 벨트를 고르는 곳이 갈리면 용량이 거짓이 된다. 모르면 기본 벨트로 떨어진다.
@@ -423,7 +418,6 @@ export function emitOutputLinks(args: {
     for (const s of seats) {
       for (const t of s.rows) {
         const seat = faceCell(mExt, face, 1, t);
-        noteCell(seat);
         const pair: PortPair = {
           producer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
           consumer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
@@ -432,10 +426,6 @@ export function emitOutputLinks(args: {
         occupancy.add(cellKey(seat.x, seat.y));
       }
     }
-    // 포트 두 칸(인서터·상자)도 이 그룹의 도형이다 — 계획의 [portCells] 와 짝이 맞아야 한다.
-    // **따르는 줄은 빼고 센다** — 그 포트는 첫 줄의 것이라 이 그룹이 청구하지도, 놓지도 않는다.
-    if (!followed) { noteCell(seatCell); noteCell(chestAt); }
-    probeLinkShape({ face, claim: plan.claimT, used, who: `${group.id ?? line.name}${followed ? " [따름]" : canMerge ? " [이끔]" : ""}` });
     // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로).
     // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(E 면이면 동쪽 끝).
     // **tapAnchor = 트렁크 끝** — 납품/반출 라우팅의 machine-side 끝점이고, 포트 계약이
@@ -543,7 +533,6 @@ export function emitInputLinks(args: {
     // 링크 입력은 선호 면이 E 라 예전의 하드코딩과 값이 같고, W 로 밀려나는 것은 원료 줄뿐이다.
     const portFace: PortFace = plan.portEnd ?? (isGap ? "E" : face);
     const pfv = faceVector(portFace);
-    const { used, noteCell } = shapeTrace(face, geomExt);
 
     // 좌석(d1)이 막히면 폴백한다 — **깊이는 고를 것이 없다**(배정이 들고 온 값이다).
     const seatCells = allRows.map((t) => faceCell(geomExt, face, 1, t));
@@ -616,9 +605,6 @@ export function emitInputLinks(args: {
       }
     }
 
-    // 관측 전용 — 놓으려 한 벨트 칸. **재사용이면 세지 않는다**: 위에서 `path` 를 만들긴
-    // 하지만 아래에서 첫 줄의 `beltCells` 로 갈아치워 **한 칸도 안 놓기** 때문이다.
-    if (!reuse) for (const c of path) noteCell(c.at);
     const te = trunkEndOf(belt.d);
     const span = [
       ...path.map((c) => c.at),
@@ -661,7 +647,6 @@ export function emitInputLinks(args: {
     for (const s of seats) {
       for (const t of s.rows) {
         const seat = faceCell(geomExt, face, 1, t);
-        noteCell(seat);
         const pair: PortPair = {
           producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
           consumer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
@@ -670,9 +655,6 @@ export function emitInputLinks(args: {
         occupancy.add(cellKey(seat.x, seat.y));
       }
     }
-    // **짝의 둘째 줄은 포트를 안 센다** — 첫 줄의 것을 그대로 쓴다([emitOutputLinks] 와 같다).
-    if (!reuse) { noteCell(seatCell); noteCell(chestAt); }
-    probeLinkShape({ face, claim: plan.claimT, used, who: `${group.id ?? line.name}${plan.sharesBelt ? " [얹힘]" : ""}` });
     // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로).
     // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(W 면이면 서쪽 끝).
     pushLinkPortEnd({
