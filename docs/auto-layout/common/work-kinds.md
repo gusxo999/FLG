@@ -30,7 +30,7 @@ tags: [auto-layout]
 |---|---|
 | `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule.ts:37](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts:23](../../../src/autoLayout/module/moduleTransform.ts)) |
 | "좌석 배정" | 한 이름 아래 성질이 다른 다섯이 있다 — 장부 · 가격표 · 적합성 · 청구 · 정책. 그래서 `tryLinkFace` 가 `forceEnd`·`preferEnd`·`preferDepth` 라는 **정책 인자 셋**을 들고 있다 |
-| 포트 칸 도형 | 같은 도형이 계획([linkPlanner.ts `portCells`](../../../src/autoLayout/planner/module/linkPlanner.ts))과 방출([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts))에 **두 벌** 있고, 둘을 붙들고 있는 것은 줄 번호를 적은 주석뿐이다 |
+| 포트 칸 도형 | 같은 도형이 계획과 방출에 **두 벌** 있었고, 둘을 붙들고 있는 것이 줄 번호를 적은 주석뿐이었다. 2026-09-12 에 [linkShape](../../../src/autoLayout/module/linkShape.ts) 로 합쳤다 — **종류를 물었더니 답이 나온 자리**다(도형은 도형끼리) |
 
 셋 다 *"이 코드가 **무슨 종류의 일**을 하는가"* 를 묻지 않아서 생겼다. 폴더 축과 직교하는 축이
 하나 더 필요하다.
@@ -130,17 +130,20 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 | # | 어긋남 | 실물 |
 |---|---|---|
-| **D1** | **도형이 두 벌이다** — 계획과 방출이 같은 모양을 각자 계산한다 | `linkPlanner.portCells` 의 주석이 `emitModule.ts:66`·`:214`·`:381` 을 **줄 번호로** 인용한다. 바로 옆 `splitByTable` 은 *"검사와 청구가 같은 함수를 부르게 해서 둘이 갈리지 않게 한다"* 고 적는데, 그 원칙이 계획–방출 **사이**에는 적용돼 있지 않다 |
 | **D2** | **방출이 고른다** — `emitModule` 머리말은 *"자리를 고르지 않는다"* 고 적지만, 두 면이 다 차면 그 줄을 포기하고(`unroutedLines`), 좌석이 막히면 폴백한다 | `emitModule.ts` 의 `unroutedLines.push` **여섯 곳** · `netTrips` 계측 |
-| **D3** | **모순된 주석** — *"깊이는 막히면 다음 후보로"*(553) 와 *"깊이는 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다"*(564) 가 열한 줄 간격으로 있다 | 탐색이 계획으로 옮겨 가며 남은 자국 |
 | **D4** | **런타임 순환** — `execution/CLAUDE.md` 는 `clusterModule ⇄ emitModule` 역방향이 `import type` 이라 순환이 아니라고 적지만, `emitModule` 이 `trunkEndKey` 를 런타임으로 가져온다 | `emitModule.ts:45` |
 
-> **2026-09-12 에 둘이 닫혔다.** 도형 대조 계측이 **D5**(합류 여부를 계획과 방출이 다른
+> **2026-09-12 에 넷이 닫혔다.** **D1**(도형이 두 벌)은 [linkShape](../../../src/autoLayout/module/linkShape.ts)
+> 로 합쳤고 — 계획의 청구·검사와 방출이 같은 함수에서 답을 받는다(축은 호출자의 것) — 그때
+> 낡은 주석 **D3** 도 함께 지웠다. 실측: 4모듈 배치에서 좌표 **차이 없음** · 도형대조 84/84.
+> 도형 대조 계측이 **D5**(합류 여부를 계획과 방출이 다른
 > 근거로 판정 → 유령 예약 + 조용한 굶주림)와 **D6**(합류 리드의 기둥 밖 세 칸이 어느 장부에도
 > 없음)를 찾아냈고 같은 날 고쳤다. 판정 주체를 배정 하나로 모은 결과가 `LinkFacePlan.mergeRole`
 > · `sharesBelt` 다. → `tempPlanDocs/구조-2축/1-도형-단일출처/` §2단계
 
-D1 이 나머지의 뿌리다 — 도형이 한 벌이면 D2 의 발견이 대부분 계획 단계로 올라간다.
+**남은 D2 는 D1 의 그림자였다** — 도형이 한 벌이 됐으니, 방출이 여전히 무엇을 "고르는지"
+(`unroutedLines` 여섯 곳)를 다시 세어야 한다. 그 발견이 계획 단계로 올라갈 수 있는지는
+`구간-밖-주행` A2 와 함께 볼 일이다.
 
 ## 8. 폴더는 아직 이 축을 안 따른다
 
