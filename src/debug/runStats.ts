@@ -55,9 +55,9 @@ export interface DeliveryCounters {
  * 사유가 뭉쳐 있다(`no exit assignment` 가 후보 0·짝지어짐·고아 포트를 합쳐 찍는다).
  * 이 계수기는 **배정 시점**의 분류라 *"무엇을 지어야 그 상자가 나가나"* 를 묻는다.
  *
- * `tempPlanDocs/통로-갈아타기/` 의 착수 조건이 이 수다 — `blocked` 중
- * `canEnterRowChannel` 인 것이 그 계획이 구할 수 있는 상자이고, `hops` 가 **어느 조각이
- * 필요한지**(끝 열 1홉 · 중간 깊이 2홉)를 가른다.
+ * `blocked` 중 `canEnterRowChannel` 인 것이 행 채널 환승(`exit-ray.md` §4 의 빈칸 — 미구현)으로
+ * 구할 수 있는 상자이고, `hops` 가 **어느 조각이 필요한지**(끝 열 1홉 · 중간 깊이 2홉)를 가른다.
+ * 행 채널에도 못 들어가는 상자는 모듈 몸통에 갇힌 것이다(`known-limits.md` §12).
  */
 export interface ExitPlanCounters {
   /** 나갈 길이 없는 상자들 — 빈 배열이 정상이고, 그게 곧 답이다. */
@@ -87,9 +87,9 @@ export interface ExitPlanCounters {
  * 방출의 `dijkstraFallback` 보다 **한 단계 앞**이다: 저건 *"계획을 못 썼다"* 이고 이건
  * *"계획이 아예 없었다"* 라, 같은 경로가 두 곳에 잡힐 수도 한 곳에만 잡힐 수도 있다.
  *
- * **만들어지기만 하고 읽는 곳이 0곳이었다**(2026-09-11 재감사에서 발견). 그동안 두 판단이
- * 이 수를 트리거로 삼고 있었다 — `채널-장부-충실도` J-교차지하(*"관측 방법: report 에 찍힌다"*
- * 는 거짓이었다) · `트랙-배정-개념정리` T-C(`no-surface-assignment` 1건이라도).
+ * **만들어지기만 하고 읽는 곳이 0곳이었다**(2026-09-11 재감사에서 발견). 그동안
+ * `채널-장부-충실도` J-교차지하가 이 수를 보고 있다고 적었다(*"관측 방법: report 에 찍힌다"*
+ * 는 거짓이었다). 사유 `no-surface-assignment` 의 한계는 `channel-geometry-reservation.md` §10.4.
  */
 export interface ChannelLedgerCounters {
   /** 장부에 못 들어간 납품 경로와 사유. 빈 배열이 정상이다. */

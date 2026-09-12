@@ -1,7 +1,7 @@
 /**
  * layoutRegions — **광선**: 어느 방향으로 나가면 **무엇을 지나나**.
  *
- * 단일 출처: `docs/auto-layout/common/exit-ray.md` (옛 계획서 `tempPlanDocs/두점-잇기/` 는 실행됐다)
+ * 단일 출처: `docs/auto-layout/common/exit-ray.md`
  *
  * ## 이 파일이 있는 이유
  *
@@ -50,7 +50,8 @@
  *
  * 세로 광선은 언제나 `outerMargin` 으로 끝난다 — 자기 열의 행 채널들을 지나면 바로 바깥이다.
  *
- * 2홉(통로 갈아타기)은 `tempPlanDocs/통로-갈아타기/` 소관이다. 그때 이 함수는 재귀가 된다.
+ * 2홉(통로 갈아타기)은 미구현이다 — 무엇이 필요한지는 `exit-ray.md` §4(2×2 의 빈칸).
+ * 그때 이 함수는 재귀가 된다.
  *
  * **순수·결정적.** 좌표도 `PlacedCell` 도 안 만든다 → `planner/`(코드 폴더 축 1).
  */

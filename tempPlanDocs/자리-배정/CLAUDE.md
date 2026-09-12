@@ -23,8 +23,8 @@
 - `docs/auto-layout/module/face-occupancy.md` — **행 구간을 계산으로 낼 수 있나**.
   이 계획의 물음과 같은 자리다
 - `docs/auto-layout/module/trunk-blocked.md` — 막힐 때(지하·진출·gap) · `LadderRung`
-- `tempPlanDocs/계획-배정-개념정리/judgements.md` **C1** — *수로 풀리는 것 ↔ 행이 필요한 것*.
-  **이 계획의 전제가 거기 있다**
+- `docs/auto-layout/common/pipeline-lifecycle.md` **§8.3** — *수로 풀리는 것 ↔ 행이 필요한 것*.
+  **이 계획의 전제가 거기 있다**(옛 `계획-배정-개념정리` C1, 2026-09-12 이관)
 
 **코드 — 호출 사슬 순서대로**
 

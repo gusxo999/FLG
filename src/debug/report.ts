@@ -222,8 +222,9 @@ export function buildReport(): string {
   // **반출 배정** — 나갈 길을 **못 준** 자리. 아래 `반출` 줄(방출 결과)보다 한 단계 앞이다.
   //
   // 읽는 법: `강등` 은 **모수가 아니다** — 직진이 막혀도 환승으로 내려갔으면 손해가 없다.
-  // 값을 말하는 것은 **막힘**이고, 그중 `행채널가능` 인 것만 `tempPlanDocs/통로-갈아타기/`
-  // 가 구할 수 있다. `1홉` 은 끝 열(앞 조각으로 충분) · `2홉` 은 중간 깊이(전 단계 필요).
+  // 값을 말하는 것은 **막힘**이고, 그중 `행채널가능` 인 것만 행 채널 환승(`exit-ray.md` §4 의
+  // 빈칸 — 미구현)이 구할 수 있다. `1홉` 은 끝 열 · `2홉` 은 중간 깊이. 행 채널로도 불가한
+  // 상자는 모듈 몸통에 갇힌 것이다(`known-limits.md` §12).
   const xp = stats.exitPlan;
   if (xp) {
     const can = xp.blocked.filter((b) => b.canEnterRowChannel);
@@ -252,8 +253,9 @@ export function buildReport(): string {
   // **채널 통합 장부** — 계획 단계에서 포기한 납품 경로. 아래 `납품` 줄(방출 결과)과 **다른 수**다:
   // 저건 *"계획을 못 썼다"* 이고 이건 *"계획이 아예 없었다"* 이다.
   //
-  // `채널-장부-충실도` J-교차지하 와 `트랙-배정-개념정리` T-C 가 이 줄을 트리거로 삼는다
-  // (2026-09-11 재감사 전까지 **만들어지기만 하고 읽는 곳이 없었다**).
+  // `채널-장부-충실도` J-교차지하 가 이 줄을 본다(2026-09-11 재감사 전까지 **만들어지기만 하고
+  // 읽는 곳이 없었다**). 사유 `no-surface-assignment` 은 폭 부족인지 순서 그래프의 순환인지를
+  // 아직 못 가른다 — `channel-geometry-reservation.md` §10.4 T-C.
   const cl = stats.channelLedger;
   if (cl) {
     const byReason = new Map<string, number>();

@@ -58,13 +58,13 @@ docs/
 |------|------|
 | [layout-models](auto-layout/common/layout-models.md) | **모델 넷이 각자 무엇을 그릴 수 있나** — 좌표계 · 고정/자유 · 도형 · **경계**. 새 능력을 넣기 전에 *"이건 어느 모델의 일인가"* 를 여기서 답한다 |
 | [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
-| [pipeline-lifecycle](auto-layout/common/pipeline-lifecycle.md) | **무엇이 언제 정해지나** — 시대 여섯 · 각 시대가 볼 수 있는 것 · 장부의 낟알. *"이 값은 어느 단계가 답하나"* 를 여기서 답한다. **layout-models 가 공간 축이면 이건 시간 축** |
+| [pipeline-lifecycle](auto-layout/common/pipeline-lifecycle.md) | **무엇이 언제 정해지나** — 시대 여섯 · 각 시대가 볼 수 있는 것 · 장부의 낟알. *"이 값은 어느 단계가 답하나"* 를 여기서 답한다. **layout-models 가 공간 축이면 이건 시간 축**. 고리처럼 보이는 자리를 끊는 **처방 셋**(§8) |
 | [배치-격자-도면](auto-layout/common/배치-격자-도면.html) 🖼 | **한 장 그림** — 모듈·열 채널·행 채널·마진·납품·반출이 격자 어디에 서고 그 자리가 어떤 식으로 계산되나. 도면의 수치는 서로 맞물린 실제 값이다(트랙 수 → 폭 → `colX`). 낱말·식·시대를 한 화면에서 본다 — **글보다 먼저 여기를 연다** |
-| [exit-ray](auto-layout/common/exit-ray.md) | **광선 — 이 방향으로 나가면 무엇을 지나나.** 배치는 이름 붙은 영역의 격자이고 그 목록은 **좌표보다 먼저** 서므로, 자격 판정이 좌표를 안 쓴다. 네 경우(모듈 몸통 · 환승 · 관통 · 마진)가 규칙 전부다. **직진 × 직진도 관통이라는 함정**이 §5 에 있다 |
+| [exit-ray](auto-layout/common/exit-ray.md) | **광선 — 이 방향으로 나가면 무엇을 지나나.** 배치는 이름 붙은 영역의 격자이고 그 목록은 **좌표보다 먼저** 서므로, 자격 판정이 좌표를 안 쓴다. 네 경우(모듈 몸통 · 환승 · 관통 · 마진)가 규칙 전부다. **직진 × 직진도 관통이라는 함정**이 §5 에 있다. 1홉 한계와 **2×2 의 빈칸**(행 채널 환승)은 §4 |
 | [placement-search](auto-layout/common/placement-search.md) | **모델 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M). Part II 의 S-LAYER 흐름은 삭제됨 |
 | [entity-roles](auto-layout/common/entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
 | [belt-merge-guards](auto-layout/common/belt-merge-guards.md) | **벨트 합류 가드 — 지금 코드는 어디까지 막고 있나**(현황 조사) — 방출기 넷 × 가드 셋 실측 · `collectBeltFlow` 는 호출자 0 · 계획 체인은 가드를 안 거친다 · **합류의 절반은 의도된 것**. **[[known-limits]] §11 을 고치기 전에 읽는다** |
-| [known-limits](auto-layout/common/known-limits.md) | 알려진 약점·한계 11건 + 우선순위(P1~P3) |
+| [known-limits](auto-layout/common/known-limits.md) | 알려진 약점·한계 12건 + 우선순위(P1~P3) |
 | [priority-ordering](auto-layout/common/priority-ordering.md) | 배치·라우팅 순서 결정점 등록부 |
 | [tech-tree-resolution](auto-layout/common/tech-tree-resolution.md) | 선택한 머신/레시피의 필요 기술 closure 산출 (배치 이전 단계) |
 
@@ -93,7 +93,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
-| [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 같은 쪽 판정 (구현 완료) |
+| [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 같은 쪽 판정 (구현 완료). 트랙 배정이 **두 그래프(구간 · 순서)의 문제**라는 것과 탐색기의 알려진 비용은 §10 |
 | [fluid-delivery-reservation](auto-layout/channel/fluid-delivery-reservation.md) | **[구현됨]** 유체 납품 경로를 채널 기하 예약 안으로. 인접(합류) 규칙 + 유체 지상 우선권 |
 | [fluid-underground-crossing](auto-layout/channel/fluid-underground-crossing.md) | **[계획]** 유체 지하 횡단을 장부 안으로 |
 | [s-layer-channel-reservation](auto-layout/channel/s-layer-channel-reservation.md) | **[역사]** S-LAYER 채널 예약 — 본체는 삭제됨. 남긴 이유 = "왜 채널을 비워 두는가" |
