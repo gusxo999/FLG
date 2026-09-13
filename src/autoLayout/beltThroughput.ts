@@ -1,4 +1,4 @@
-import type { Entity } from '../UI/store/gameDataStore';
+import type { Entity } from '../types/gameData';
 import type { SpecBelt } from './buildSpec';
 
 /**

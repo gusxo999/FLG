@@ -64,7 +64,7 @@
  * 순수 — store 를 안 본다. 호출자가 게임데이터를 읽어 넘긴다.
  */
 
-import type { Entity } from "../../UI/store/gameDataStore";
+import type { Entity } from "../../types/gameData";
 import type { Direction } from "../../types/layout";
 import { cellKey } from "./helper";
 import { fluidPortSlots } from "../module/fluidPorts";

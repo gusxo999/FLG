@@ -146,7 +146,7 @@ autoLayout/
 │   ├ helper.ts                    격자 위에서 셈만 한다
 │   └ pipeFlow.ts                  파이프 합류 가드 (판정만 — 자리를 고르지 않는다)
 └ (루트)                       **배치 이전 단계** — 좌표가 없어 계층 축이 무의미하다
-                               layeredWizard(최상위 진입점) · recipeTree · buildSpec ·
+                               layeredWizard(최상위 진입점 · **게임데이터를 읽는 유일한 곳**) · recipeTree · buildSpec ·
                                wizardUtils · beltThroughput · inserterThroughput
                                + containerModel(타입) · types · debugFlags ·
                                moduleInspect(진단) · areaUnification(배치 결과 표시)
@@ -176,6 +176,9 @@ rg "^import" src/autoLayout/planner/link/allocateFlows.ts
 
 # 방출기는 조율자도 계획 계층도 import 하지 않는다 — 둘 다 0 (2026-09-13 D4 해소 뒤).
 rg 'from ".*(clusterModule|planner/module)' src/autoLayout/execution/module --glob '!*.test.ts'
+
+# 게임데이터 형식은 src/types/gameData.ts — autoLayout 이 UI 스토어를 보는 곳은 입구뿐이다(2026-09-14).
+rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts' -g '!**/manualEdit/**'   # → layeredWizard 하나
 ```
 
 2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:

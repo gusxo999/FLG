@@ -1,4 +1,4 @@
-import { useGameDataStore, type Entity, type Recipe } from "../UI/store/gameDataStore";
+import type { Entity, GameDataLookup, Recipe } from "../types/gameData";
 import type { Area, ContainerWizardInput } from "./containerModel";
 import { clusterLineRate, type MachineParamsLookup } from "./recipeTree";
 import { allocateArms } from "./planner/module/allocateArms";
@@ -15,9 +15,10 @@ export function makeEmptyArea(kind: Area["kind"]): Area {
 
 export function makeMachinePicker(
   input: ContainerWizardInput,
+  gameData: GameDataLookup,
 ): (recipeName: string) => { name: string } | undefined {
   return (recipeName: string) => {
-    const state = useGameDataStore.getState();
+    const state = gameData;
     const recipe = state.recipeMap.get(recipeName);
     if (!recipe) return undefined;
     for (const name of input.selectedMachines) {
@@ -37,15 +38,19 @@ export function makeMachinePicker(
  * 없으면 머신은 그만큼만 돌므로, 그 비율을 `speedFraction` 으로 함께 낸다 →
  * `countForDemand` 가 **부족분만큼 머신을 더 놓는다**(2026-07-16 사용자 설계).
  * 안 주면 `speedFraction` 미지정 = 1 = 옛 동작(굶어도 모른 척).
+ *
+ * `gameData` 는 부르는 쪽이 [gameDataLookupOf] 로 떼어 넘긴다 — 실행 입구와, 레시피 단계 트리가 머신 대수를
+ * 미리 세는 화면(`AutoLayoutModal`)이다.
  */
 export function makeMachineParamsLookup(
   selectedMachines: ReadonlyArray<string>,
-  inserters?: ReadonlyArray<SpecInserter>,
+  inserters: ReadonlyArray<SpecInserter> | undefined,
+  gameData: GameDataLookup,
 ): MachineParamsLookup {
   // lookup 은 노드마다 여러 번 불린다(countForDemand + buildThroughput) — 경고는 조합당 한 번만.
   const warned = new Set<string>();
   return (recipeName: string) => {
-    const state = useGameDataStore.getState();
+    const state = gameData;
     const recipe = state.recipeMap.get(recipeName);
     if (!recipe) return undefined;
     for (const name of selectedMachines) {

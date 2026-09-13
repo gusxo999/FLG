@@ -20,6 +20,7 @@
  */
 
 import { useGameDataStore } from "../UI/store/gameDataStore";
+import { gameDataLookupOf } from "../types/gameData";
 import type {
   CandidateTree,
   Container,
@@ -76,7 +77,10 @@ export const runLayeredWizard: RunContainerWizard = async (
     signal?: AbortSignal;
   },
 ): Promise<ContainerWizardResult> => {
-  const { recipeMap, itemToRecipe, entityMap } = useGameDataStore.getState();
+  // **게임데이터를 읽는 곳은 autoLayout 에서 여기 하나다.** 필요한 셋만 떼어([gameDataLookupOf]) 끝까지 넘긴다 —
+  // 아래 `await emit` 이 이벤트 루프에 양보하는 사이 스토어가 갈아 끼워져도 이 실행은 **한 스냅샷**을 본다.
+  const gameData = gameDataLookupOf(useGameDataStore.getState());
+  const { recipeMap, itemToRecipe, entityMap } = gameData;
   // 협조적 양보(cooperative yield): 실제 실행(hooks 존재) 시에만 phase/루프 경계에서
   // 이벤트 루프에 제어를 돌려준다 — 무거운 라우팅 중에도 UI 가 멈추지 않고(10초 freeze
   // 방지) 진행 표시·중단·"오래 걸림" 모달이 동작하도록. 트레이스(hooks 없음)는 양보 없이
@@ -105,7 +109,7 @@ export const runLayeredWizard: RunContainerWizard = async (
           recipeMap,
           // 인서터를 함께 넘겨 **굶주림 보상**을 켠다 — 팔을 다 앉힐 자리가 없는 머신은
           // 그만큼만 돌므로(speedFraction), 부족분만큼 머신이 더 놓인다.
-          makeMachineParamsLookup(input.selectedMachines, makeBuildSpec(input).inserters),
+          makeMachineParamsLookup(input.selectedMachines, makeBuildSpec(input, gameData).inserters, gameData),
         );
 
   if (!tree.recipeName) {
@@ -118,7 +122,7 @@ export const runLayeredWizard: RunContainerWizard = async (
     ]);
   }
 
-  const pickMachine = makeMachinePicker(input);
+  const pickMachine = makeMachinePicker(input, gameData);
 
   // 2. 메타 수집 + 부모 맵 — DFS. 머신 매칭 실패 노드가 있으면 즉시 실패 반환.
   const metas = new Map<RecipeTreeNode, NodeMeta>();
@@ -178,7 +182,7 @@ export const runLayeredWizard: RunContainerWizard = async (
   // 3. 배치 — 모듈 파이프라인이 후보를 만든다(generateModule 자족 경로: 루트·자식을 같은
   //    방식으로 생성해 "자식 == 루트" 를 실현). 실패하면 **사유 그대로** 실패를 반환한다.
   //    폴백할 다른 경로는 없다 — 옛 S-LAYER 는 삭제됐다(2026-07-25, Phase 3).
-  const res = tryRunModulePipeline({ input, metas, parentOf, order, makeId: nextId });
+  const res = tryRunModulePipeline({ input, gameData, metas, parentOf, order, makeId: nextId });
   if (!res.ok) return failureResult(res.issues, res.snapshot);
 
   const leaf = res.leaf;

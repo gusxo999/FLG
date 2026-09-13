@@ -12,6 +12,7 @@ import {
   assignThroughputCounts,
 } from '../../autoLayout/recipeTree';
 import { makeMachineParamsLookup } from '../../autoLayout/wizardUtils';
+import { gameDataLookupOf } from '../../types/gameData';
 import type { RecipeTreeNode } from '../../autoLayout/types';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
 import AutoLayoutDebugTab from './AutoLayoutDebugTab';
@@ -162,11 +163,12 @@ export default function AutoLayoutSidebar() {
         tree,
         perTarget,
         recipeMap,
-        makeMachineParamsLookup(Array.from(selectedMachines)),
+        // 배치와 같은 단계로 게임데이터를 넘긴다 — 필요한 셋만 떼어서([gameDataLookupOf]).
+        makeMachineParamsLookup(Array.from(selectedMachines), undefined, gameDataLookupOf({ recipeMap, entityMap, itemToRecipe })),
       );
     }
     return assignMinimumCounts(tree);
-  }, [targetRecipe, recipeMap, itemToRecipe, internalIngredients, recipeOverridesMap, countMode, perTarget, selectedMachines]);
+  }, [targetRecipe, recipeMap, itemToRecipe, entityMap, internalIngredients, recipeOverridesMap, countMode, perTarget, selectedMachines]);
 
   // 2단계 머신 후보: 트리 안 비-외부 레시피의 category 합집합을 처리할 수 있는 머신
   const machineCandidates: Entity[] = useMemo(() => {

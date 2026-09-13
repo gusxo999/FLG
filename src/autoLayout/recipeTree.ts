@@ -1,4 +1,4 @@
-import { productYield, type Recipe } from '../UI/store/gameDataStore';
+import { productYield, type Recipe } from '../types/gameData';
 import type { RecipeTreeNode } from './types';
 
 interface ExpandContext {

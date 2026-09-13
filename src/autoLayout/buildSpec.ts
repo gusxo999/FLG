@@ -22,7 +22,7 @@
  * 코드 곳곳에 하드코딩하지 않고 **여기 한 곳**에서만 읽는다.
  */
 
-import { useGameDataStore, type Entity } from "../UI/store/gameDataStore";
+import type { Entity, GameDataLookup } from "../types/gameData";
 import type { ContainerWizardInput } from "./containerModel";
 import { inserterReach, inserterThroughput } from "./inserterThroughput";
 import { beltThroughput, laneCapOfTier } from "./beltThroughput";
@@ -200,8 +200,8 @@ export function inserterForReach(
   return best;
 }
 
-export function makeBuildSpec(input: ContainerWizardInput): BuildSpec {
-  const { entityMap } = useGameDataStore.getState();
+export function makeBuildSpec(input: ContainerWizardInput, gameData: GameDataLookup): BuildSpec {
+  const { entityMap } = gameData;
   // 고른 벨트 전부 → 처리량 내림차순. 같은 처리량이 둘이면 하나만(자리를 두고 다툴 뿐
   // 더 나르지 못한다 — 인서터를 reach 별로 하나만 남기는 것과 같은 이유).
   const byThroughput = new Map<number, SpecBelt>();

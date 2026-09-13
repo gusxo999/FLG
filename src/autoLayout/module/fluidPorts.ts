@@ -31,7 +31,7 @@
  * 그건 안 본다.
  */
 
-import type { Entity, PipeConnection } from "../../UI/store/gameDataStore";
+import type { Entity, PipeConnection } from "../../types/gameData";
 import type { Direction } from "../../types/layout";
 import type { PortFace } from "../containerModel";
 

@@ -70,5 +70,6 @@ emit*(...)                                      ← execution/module/emitModule
 
 ## 게임데이터를 안 본다
 
-`module/` 은 순수하다 — store 를 안 본다. 유체 면·머신 회전처럼 prototype 이 정하는 값은
+`module/` 은 순수하다 — store 를 안 본다(검사: `rg "UI/store" src/autoLayout/module -g '*.ts' -g '!*.test.ts'` → 0). 게임데이터 **타입**은
+`src/types/gameData.ts` 에서 온다. 유체 면·머신 회전처럼 prototype 이 정하는 값은
 **호출자가 계산해 `ModuleInput.fluidTrunk` 로 넘긴다**(계산은 `fluidPorts.chooseFluidTrunkPlan` — 회전 하나 + 유체 줄 N개).

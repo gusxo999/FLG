@@ -17,7 +17,7 @@
  * (IO 라벨). placed=납품 경로 belt 셀(없으면 직선 폴백).
  */
 
-import { useGameDataStore } from "../../UI/store/gameDataStore";
+import type { GameDataLookup } from "../../types/gameData";
 import { EntityType } from "../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing, UndergroundCorridor } from "../containerModel";
 import type { IoLine } from "../module/types/line";
@@ -70,6 +70,8 @@ export interface ModuleNodeMeta {
 
 export interface ModulePipelineArgs {
   input: ContainerWizardInput;
+  /** 입구([runLayeredWizard])가 한 번 읽은 게임데이터 — 이 실행은 이것만 본다. */
+  gameData: GameDataLookup;
   metas: Map<RecipeTreeNode, ModuleNodeMeta>;
   parentOf: Map<RecipeTreeNode, RecipeTreeNode | null>;
   /** DFS pre-order(루트 먼저). */
@@ -146,10 +148,10 @@ export function tryRunModulePipeline(args: ModulePipelineArgs): ModulePipelineRe
 
 function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   beginRunStats(); // 실행 1회 = 진단 카운터 1벌 (`flg.report()` 가 읽는다)
-  const { input, metas, parentOf, order, makeId } = args;
-  const { recipeMap, entityMap } = useGameDataStore.getState();
+  const { input, gameData, metas, parentOf, order, makeId } = args;
+  const { recipeMap, entityMap } = gameData;
 
-  const options = makeBuildSpec(input);
+  const options = makeBuildSpec(input, gameData);
 
   /**
    * 이 실행에서 모은 문제 전부 — **왜** 안 됐는지 반드시 남긴다.
