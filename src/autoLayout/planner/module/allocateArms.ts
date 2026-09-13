@@ -2,7 +2,7 @@
  * **팔 산술** — 이 줄을 먹이는 데 팔이 몇 개 드나([requiredInserterCount])와, 자리가
  * 모자랄 때 **누구부터 줄이나**([allocateArms]).
  *
- * 낱말은 [ioLine] 에 있다. 여기엔 자리도 좌표도 없다 — **수만 센다.**
+ * 타입은 [ioLine] 에 있다. 여기엔 자리도 좌표도 없다 — **수만 센다.**
  *
  * > `clusterPortPlanner.ts` 에서 갈라져 나왔다(2026-09-02). 짝 테스트가 이미
  * > `allocateArms.test.ts` 라는 이름으로 있었다.

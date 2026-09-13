@@ -58,9 +58,9 @@ docs/
 |------|------|
 | [layout-models](auto-layout/common/layout-models.md) | **모델 넷이 각자 무엇을 그릴 수 있나** — 좌표계 · 고정/자유 · 도형 · **경계**. 새 능력을 넣기 전에 *"이건 어느 모델의 일인가"* 를 여기서 답한다 |
 | [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
-| [work-kinds](auto-layout/common/work-kinds.md) | **일의 종류 여덟** — 결정하는 넷(셈·장부·도형·정책) + 결정하지 않는 넷(낱말·어댑터·찍기·조율) · 표식 둘. **파일이 커졌을 때 *어디서* 자를지**를 여기서 답한다 — 47파일 전수 분류로 *"크다 = 섞였다"* 를 실측했다 |
+| [work-kinds](auto-layout/common/work-kinds.md) | **일의 종류 여덟** — 결정하는 넷(셈·장부·도형·정책) + 결정하지 않는 넷(타입·어댑터·찍기·조율) · 표식 둘. **파일이 커졌을 때 *어디서* 자를지**를 여기서 답한다 — 47파일 전수 분류로 *"크다 = 섞였다"* 를 실측했다 |
 | [pipeline-lifecycle](auto-layout/common/pipeline-lifecycle.md) | **무엇이 언제 정해지나** — 시대 여섯 · 각 시대가 볼 수 있는 것 · 장부의 낟알. *"이 값은 어느 단계가 답하나"* 를 여기서 답한다. **layout-models 가 공간 축이면 이건 시간 축**. 고리처럼 보이는 자리를 끊는 **처방 셋**(§8) |
-| [배치-격자-도면](auto-layout/common/배치-격자-도면.html) 🖼 | **한 장 그림** — 모듈·열 채널·행 채널·마진·납품·반출이 격자 어디에 서고 그 자리가 어떤 식으로 계산되나. 도면의 수치는 서로 맞물린 실제 값이다(트랙 수 → 폭 → `colX`). 낱말·식·시대를 한 화면에서 본다 — **글보다 먼저 여기를 연다** |
+| [배치-격자-도면](auto-layout/common/배치-격자-도면.html) 🖼 | **한 장 그림** — 모듈·열 채널·행 채널·마진·납품·반출이 격자 어디에 서고 그 자리가 어떤 식으로 계산되나. 도면의 수치는 서로 맞물린 실제 값이다(트랙 수 → 폭 → `colX`). 용어·식·시대를 한 화면에서 본다 — **글보다 먼저 여기를 연다** |
 | [exit-ray](auto-layout/common/exit-ray.md) | **광선 — 이 방향으로 나가면 무엇을 지나나.** 배치는 이름 붙은 영역의 격자이고 그 목록은 **좌표보다 먼저** 서므로, 자격 판정이 좌표를 안 쓴다. 네 경우(모듈 몸통 · 환승 · 관통 · 마진)가 규칙 전부다. **직진 × 직진도 관통이라는 함정**이 §5 에 있다. 1홉 한계와 **2×2 의 빈칸**(행 채널 환승)은 §4 |
 | [placement-search](auto-layout/common/placement-search.md) | **모델 단일 출처** — 컨테이너 모델(불변) + 정합성 조건(C/O/M). Part II 의 S-LAYER 흐름은 삭제됨 |
 | [entity-roles](auto-layout/common/entity-roles.md) | 엔티티 4분류 (변환기 / 핸드오프 / 고체운반 / 액체운반) |
@@ -75,7 +75,7 @@ docs/
 |------|------|
 | [module-planning](auto-layout/module/module-planning.md) | **모듈 안쪽 계획은 어떻게 도는가** — 자리를 정하는 주체는 하나(`planModulePorts`) · 순서가 제약의 세기인 이유 · 좌표의 경계 · **면의 자리는 `FaceTable` 한 장**(§4.5). **모듈 생성 순서를 바꾸기 전에 읽는다** |
 | [trunk-assignment](auto-layout/module/trunk-assignment.md) | **배정 모델 — 면 하나를 어떻게 쓰나** — 자원(좌석·레인) · 수요(`k`·`g`·`c`) · 배정 여섯 단계 · 상한 · **깊이는 결과이지 입력이 아니다** · 경로는 탐색이 아니라 배분. **§0 구현 상태가 모델과 코드의 차를 들고, §0.1 이 갈라져 나간 둘의 행선지를 든다**(2026-09-02 분리) |
-| [trunk-concepts](auto-layout/module/trunk-concepts.md) | ↳ **무대와 낱말 — 트렁크가 정확히 무엇인가** — 다이렉트/트렁크의 정의 · 합치기 조건 여섯 · **직선은 특수해** · 왜 "경로"가 핵심 객체인가 · 좌표의 고리. **처음 읽는 사람용**(절 번호 `A1`~`A8` 유지) |
+| [trunk-concepts](auto-layout/module/trunk-concepts.md) | ↳ **무대와 용어 — 트렁크가 정확히 무엇인가** — 다이렉트/트렁크의 정의 · 합치기 조건 여섯 · **직선은 특수해** · 왜 "경로"가 핵심 객체인가 · 좌표의 고리. **처음 읽는 사람용**(절 번호 `A1`~`A8` 유지) |
 | [trunk-blocked](auto-layout/module/trunk-blocked.md) | ↳ **막힐 때 — 지하 · 진출 · gap** — 지하는 아끼는 자원이 아니다 · 진출이 막히는 실물 · **좌석이 넘치면 gap 을 연다**(TR8) · 배치1/배치2 검산. **`LadderRung` 을 다룰 때** |
 | [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 의 `insertingPlanner`+`emitTapInserting` 은 **둘 다 삭제됐다**(2026-08-16 · 2026-09-02) — 문서가 낡았다 |
 | [trunk-pipe](auto-layout/module/trunk-pipe.md) | **[구현됨]** 트렁크 파이프 — 유체를 모듈 파이프라인에. 기둥 유지 + 머신 90° 회전 |

@@ -3,7 +3,7 @@ tags: [auto-layout, placement, module]
 ---
 
 > **부모 문서:** [[module-planning]] — 계획의 **구조**(누가 언제 정하나)
-> **여기서 갈라져 나간 둘**(2026-09-02 · §0.1): [[trunk-concepts]] — 무대와 낱말
+> **여기서 갈라져 나간 둘**(2026-09-02 · §0.1): [[trunk-concepts]] — 무대와 용어
 > (트렁크가 **무엇인가**) · [[trunk-blocked]] — 자리가 없을 때(지하 · 진출 · gap)
 > **관련 문서:** [[trunk-redesign]] — *왜* 1:1 을 합치는 쪽으로 갔나 ·
 > [[machine-link]] — 링크(간선) 쪽 기하 · [[face-occupancy]] — 면 점유를 어느 낟알로 아는가

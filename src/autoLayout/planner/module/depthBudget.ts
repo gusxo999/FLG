@@ -186,7 +186,7 @@ export function planBundles(input: DepthBudgetInput): Map<string, number> {
  * 의 **J14**(손잡이 기본값)를 본다 — *무엇을 자동으로 켤 것인가*의 근거가 거기다.
  * 분포는 `flg.report()` 의 **링크눈금** 줄이 낸다.
  *
- * > **"사다리" 라고 부르지 않는다.** 그 낱말은 이미 **링크 토막내기**(`LadderRung` —
+ * > **"사다리" 라고 부르지 않는다.** 그 용어는 이미 **링크 토막내기**(`LadderRung` —
  * > 구간막힘 1단 · 포트막힘 2단)의 것이다. 이건 *무엇을 내주나*의 축이라 다른 것이다.
  */
 export type LinkDepthNeed = "free" | "opposite-face" | "direct" | "depth-starved";

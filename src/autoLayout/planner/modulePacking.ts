@@ -593,7 +593,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
         depthsOf: (f) => clusterBeltDepthsOf(probe.ctx, f).length,
       });
       if (need === "free") continue;
-      // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 낱말이다.
+      // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 값이다.
       for (const s of specs) {
         if (s.parentId !== p.id || !linkCache.get(s.id)?.length) continue;
         const re = edgeLinkGroups(s, p, productOf(s)!, config, { side: "to", g: 1 });
