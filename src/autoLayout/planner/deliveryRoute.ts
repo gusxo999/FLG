@@ -36,7 +36,7 @@
  *    방지)·`requiredEndJump`(트렁크 유출 방향 — 어기면 출구가 seat 를 안 향해 물류 누수)
  *    로 막는다.
  *  - corridor 는 납품 경로 간 누적 전달(같은 직선 위 페어링 절단 방지)하고 결과로 내보내
- *    호출자(moduleWizard)가 Area/Routing 에 기록한다.
+ *    호출자(`run/emit`)가 Area/Routing 에 기록한다.
  *  - 게이트: `undergroundBeltEntityName` 이 없거나 distance≤0 이면 지상 전용(기존 동작).
  *
  * 무배선·순수 — Area·store 의존 0. 단위 테스트 + 브라우저 ASCII harness 로만 검증.

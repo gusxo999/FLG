@@ -122,12 +122,12 @@ export interface NodeSpec {
   /**
    * [트렁크 파이프](../../../../docs/auto-layout/module/trunk-pipe.md) 계획 — 유체 줄이
    * 있는 노드만. 머신 회전 각도 + 파이프가 달릴 면. `fluid_boxes` 를 봐야 알 수 있어서
-   * 게임데이터에 닿는 moduleWizard 가 계산해 넣는다.
+   * 게임데이터에 닿는 `run/gamedata` 가 계산해 넣는다.
    */
   fluidTrunk?: ModuleInput["fluidTrunk"];
   /**
    * [Parallel Inserting](../../../../docs/용어사전.md#parallel-inserting) 용량 — 줄별 클러스터
-   * rate(items/sec) + 탭(인서터) 처리량. 게임데이터(레시피 시간·머신 속도)를 보는 moduleWizard 가
+   * rate(items/sec) + 탭(인서터) 처리량. 게임데이터(레시피 시간·머신 속도)를 보는 `run/gamedata` 가
    * 계산해 넣는다(module/ 는 순수). 미지정이면 탭 1개(휴면).
    */
   supplyCapacity?: ModuleInput["supplyCapacity"];
@@ -1346,10 +1346,10 @@ function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): Modul
     undergroundBelts: config.undergroundBelts,
     inserters: config.inserters,
     idPrefix: s.id,
-    // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(moduleWizard)가 이미
+    // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(`run/policy` · `run/gamedata`)가 이미
     // 풀어서 spec 에 실어 보낸다. module/ 는 store 를 안 본다(순수).
     fluidTrunk: s.fluidTrunk,
-    // [Parallel Inserting] 용량 — 마찬가지로 게임데이터를 보는 moduleWizard 가 계산해 실었다.
+    // [Parallel Inserting] 용량 — 마찬가지로 게임데이터를 보는 `run/gamedata` 가 계산해 실었다.
     supplyCapacity: s.supplyCapacity,
   };
 }

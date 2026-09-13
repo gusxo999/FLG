@@ -65,7 +65,7 @@ const EMPTY_PIPE_FLOW: PipeFlow = {
   hardDirs: new Map(), softDirs: new Map(),
 };
 
-/** 상자 하나의 이사 결과 — moduleWizard 가 Area/routing 에 반영한다. */
+/** 상자 하나의 이사 결과 — `run/emit` 이 Area/routing 에 반영한다. */
 export interface ChestRelocation {
   /** 이사한 상자 id. */
   chestId: string;
@@ -94,10 +94,10 @@ export interface PerimeterPassResult {
   reason?: string;
   /**
    * 떼어낼 옛 셀 좌표("x,y") — 이사한 상자의 옛 ghost(@anchor)·feeder(@anchor−fv).
-   * moduleWizard 가 mod.cells 순회에서 이 좌표를 건너뛴다(모듈 그래프는 안 건드림).
+   * `run/emit` 이 mod.cells 순회에서 이 좌표를 건너뛴다(모듈 그래프는 안 건드림).
    */
   droppedCellKeys: Set<string>;
-  /** 새로 놓을 셀(belt + feeder + 이사한 chest 셀). moduleWizard 가 Area 로 분류한다. */
+  /** 새로 놓을 셀(belt + feeder + 이사한 chest 셀). `run/emit` 이 Area 로 분류한다. */
   addedCells: PlacedCell[];
   /** 상자별 이사 결과(origin·belts). */
   relocations: ChestRelocation[];
@@ -204,7 +204,7 @@ function perimeterOf(u: { minX: number; minY: number; maxX: number; maxY: number
  * 살아남은 외부상자(stripped 아님)를 ⑥A exitPlan 배정대로 전역 perimeter 로 재배치할
  * **계획을 산정**한다. deliveryRoute 과 같은 규약: 모듈 그래프(mod.cells·port·chest)를 **건드리지
  * 않고**, 무엇을 떼고(droppedCellKeys) 무엇을 놓고(addedCells) 상자가 어디로 가는지
- * (relocations)를 **설명으로 반환**한다 — 적용은 호출자(moduleWizard)가 Area 를 지을 때 한다.
+ * (relocations)를 **설명으로 반환**한다 — 적용은 `run/emit` 이 Area 를 지을 때 한다.
  * 실패한 상자만 skip(로컬 ring 유지) — 항상 ok:true.
  */
 export function rePathToPerimeter(

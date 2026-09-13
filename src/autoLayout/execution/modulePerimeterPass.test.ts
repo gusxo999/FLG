@@ -48,7 +48,7 @@ function onEdge(p: { x: number; y: number }, u: { minX: number; minY: number; ma
   return p.x <= u.minX || p.x >= u.maxX || p.y <= u.minY || p.y >= u.maxY;
 }
 
-/** 순수 결과 적용 후의 유효 셀 = (mod.cells − droppedCellKeys) + addedCells. moduleWizard 어댑터 동형. */
+/** 순수 결과 적용 후의 유효 셀 = (mod.cells − droppedCellKeys) + addedCells. `run/emit` 의 찍기와 동형. */
 function effectiveCells(
   pack: ReturnType<typeof packModuleTree>,
   res: ReturnType<typeof rePathToPerimeter>,

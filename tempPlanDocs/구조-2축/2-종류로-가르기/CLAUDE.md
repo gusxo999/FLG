@@ -1,8 +1,13 @@
 # 계획 2 · 종류로 가르기 — 상태
 
-> 상태: **Step 1 완료**(2026-09-13 — module 관심사의 타입 → `module/types/`, D4 닫힘). Step 2·3·4 는 방향이다.
-> 다음은 Step 2(게임데이터 어댑터 · `runModulePipeline` 714줄)를 **확정하는 일**이다 — 착수 전에 §4.2 를
-> Step 1 과 같은 밀도(전제·불변 기전·관문)로 다시 쓴다.
+> 상태: **Step 1 완료**(2026-09-13 — module 관심사의 타입 → `module/types/`, D4 닫힘). Step 3·4 는 방향이다.
+> **Step 2 완료**(2026-09-14, 계획서 §4.2) — 2a 게임데이터를 입구에서 한 번 · 2b `runModulePipeline` 714 → 82줄 뼈대 +
+> `planner/run/` 넷. **D7 닫힘.** 전 파이프라인 대조 32 픽스처 바이트 동일.
+>
+> **사용자 결정(2026-09-14)** — 레시피 단계 트리의 머신 대수 계산(`AutoLayoutModal`)도 게임데이터를 **넘긴다**.
+> 넘기는 일은 `gameDataLookupOf` — 필요한 셋만 떼어 내는 단계. 스토어 읽기는 autoLayout 에서 입구 한 곳.
+
+**Step 2 에서 사용자가 확인한 것**(2026-09-14): 게임데이터 타입의 주소 `src/types/gameData.ts` · `planner/run/` 과 목표 트리 `run.ts → run/`.
 
 **파일 하나가 한 가지 종류의 일만 하게 자른다.** 종류의 정의와 전수 분류는
 [docs/work-kinds.md](../../../docs/auto-layout/common/work-kinds.md) 가 단일 출처다.

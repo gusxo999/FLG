@@ -105,7 +105,7 @@ function run(specs: NodeSpec[]) {
     inserterEntityName: "inserter",
   });
 
-  // moduleWizard 와 동형으로 최종 셀 맵을 합성한다: 모듈 셀 − 떼어낸 것 + 납품 경로 + 반출.
+  // `run/emit` 과 동형으로 최종 셀 맵을 합성한다: 모듈 셀 − 떼어낸 것 + 납품 경로 + 반출.
   const dropped = new Set([...delivery.strippedCellKeys, ...perim.droppedCellKeys]);
   const grid = new Map<string, PlacedCell>();
   for (const pl of pack.placements)

@@ -114,7 +114,12 @@ autoLayout/
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
 │   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
-│   ├ moduleWizard.ts            ★ 배치 전체 진입점
+│   ├ run/                       한 번의 실행 전체 — 종류마다 한 파일
+│   │   ├ gamedata.ts              어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
+│   │   ├ policy.ts                정책 — 받을지 물릴지 · 처방 (LayoutIssue 를 짓는 유일한 곳)
+│   │   ├ ledger.ts                장부 — 유체 관망 · 종착 구간
+│   │   └ emit.ts                  찍기 — CandidateLeaf(Area · Routing) · 실패 그림
+│   ├ moduleWizard.ts            ★ 배치 전체 진입점 — run/ 을 여덟 단계로 부르는 뼈대
 │   ├ modulePacking.ts             조율자 — 모듈 배열 + 위 관심사들을 순서대로 엮는다
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄

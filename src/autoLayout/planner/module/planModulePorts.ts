@@ -196,7 +196,7 @@ export function planLinkFaces(
   const ft = input.fluidTrunk;
   // [isJumpableToClusterPipe] — "이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
   // **면마다 따로 판정한다** — 면마다 유체 줄 수가 다르고, 그 수가 아래 ②③을 둘 다 바꾼다.
-  // 판정 자체는 [fluidJumpBlocker] 가 단독으로 갖는다 — [moduleWizard] 가 `n ≥ 2` 인 면을
+  // 판정 자체는 [fluidJumpBlocker] 가 단독으로 갖는다 — [admitFluidTrunks] 가 `n ≥ 2` 인 면을
   // **거절**할 때 같은 공식을 봐야 하기 때문이다(둘로 갈리면 계획과 사유가 어긋난다).
   // 유체 한 줄이면 못 넘어도 옛 스파인으로 **연속적 저하**이고, 두 줄이면 거절이다.
   const jumpBudget = {

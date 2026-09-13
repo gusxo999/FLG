@@ -70,7 +70,7 @@ tags: [auto-layout]
 **어댑터가 따로 서는 것이 중요하다.** 게임데이터 조회(`useGameDataStore.getState()`)가 파이프라인
 안쪽 다섯 곳에 흩어져 있었고, 그 다섯이 전부 이 종류였다. 2026-09-14 **입구(`layeredWizard`) 한 곳**에서
 읽어 `GameDataLookup` 으로 넘기게 모았다 — 게임데이터를 **보는** 함수는 그것을 받는 `buildSpec` ·
-`wizardUtils` · `planner/moduleWizard` 뿐이다. 넘기는 일 자체도 한 단계다: `gameDataLookupOf` 가 스토어가 가진
+`wizardUtils` · `planner/run/gamedata` 뿐이다. 넘기는 일 자체도 한 단계다: `gameDataLookupOf` 가 스토어가 가진
 것 중 **배치에 필요한 셋만** 떼어 낸다 — 실행 입구와 화면(레시피 단계 트리의 대수 계산)이 같은 함수로 넘긴다.
 
 ## 4. 표식 둘 — 종류가 아니라 꼬리표
@@ -126,6 +126,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
         어댑터(:150, 조회 9곳) · 정책(:172-290 적격성·폴백) · 장부(:508-560 유체 관망) ·
         조율이 함께 있다.  옛 분류 "조율 하나"는 이 문서 §3 스스로와 어긋났다
         (§3 이 그 파일의 store 조회를 어댑터로 세어 뒀다).  → §7 **D7**
+        2026-09-14 D7 해소 뒤: moduleWizard 285 (뼈대 82줄) + planner/run/ 넷 — 500줄 이상 = 10 파일
 
 종류 하나만 담은 파일의 최대 = 335줄 (recipeTree, 셈)
 ```
@@ -176,7 +177,14 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 | # | 어긋남 | 실물 |
 |---|---|---|
 | **D2** | **방출이 고른다** — `emitModule` 머리말은 *"자리를 고르지 않는다"* 고 적지만, 두 면이 다 차면 그 줄을 포기하고(`unroutedLines`), 좌석이 막히면 폴백한다 | `emitModule.ts` 의 `unroutedLines.push` **여섯 곳** · `netTrips` 계측 |
-| **D7** | **조율자가 조율만 하지 않는다** — `moduleWizard` 머리말은 *"무상태·결정적"* 이라 적고 이 문서 §5 는 *"결정하지 않는 일만 담았다"* 고 적었지만, 한 함수 안에서 게임데이터를 읽고(어댑터) 트리를 거절하고(정책) 유체 관망을 쌓는다(장부) | `moduleWizard.ts:147` `runModulePipeline` **714줄** — `:150` 조회 · `:172-290` 적격성 · `:508-560` 유체 |
+| **D8** | **링크 신원 불일치가 난다** — `PackResult.linkMismatches` 주석은 *"정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"* 이라 적지만, 합성 트리에서 재현된다. **원인은 안 봤다** | 자식 셋이 한 부모를 먹이는 트리(`gadget` ← `widget`·`gear`·`wire`)에서 `n4-wire→n0-gadget:wire#0: no matching parent input port (child emitted, parent didn't)` — 계획 구조-2축 · 2 §4.2 의 대조 픽스처가 찾았다(2026-09-14) |
+
+> **2026-09-14 에 D7 이 닫혔다.** **D7**(조율자가 조율만 하지 않는다 — `runModulePipeline` 714줄이 게임데이터를
+> 읽고 · 트리를 거절하고 · 유체 관망을 쌓고 · 셀을 놓았다)은 게임데이터를 입구에서 한 번 읽어 넘기고, 함수를
+> **아는 것이 자라는 여덟 단계**로 가른 뒤 종류를 [planner/run/](../../../src/autoLayout/planner/run/) 넷(`gamedata` ·
+> `policy` · `ledger` · `emit`)으로 보내 닫혔다. 뼈대는 82줄이고 게임데이터·issue·셀을 직접 안 만진다. 전 파이프라인
+> 대조 픽스처 32개의 결과(issue 순서 · Area · Routing · 실패 그림 · 진단 로그)가 **바이트 단위로 같다.**
+> → `tempPlanDocs/구조-2축/2-종류로-가르기/` §4.2
 
 > **2026-09-13 에 D4 가 닫혔다.** **D4**(런타임 순환 — `execution/CLAUDE.md` 가 `clusterModule ⇄
 > emitModule` 역방향을 *"import type 이라 순환이 아니다"* 라 적었지만 `emitModule` 이 `trunkEndKey`

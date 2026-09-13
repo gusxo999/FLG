@@ -41,7 +41,7 @@ const fluidTrunk = (side: "W" | "E") => ({
 });
 
 // 자식 gasmaker 가 petroleum-gas 를 만들어 부모 user 가 쓴다(docs/…fluid-delivery.md 의 그 트리).
-// 출력 유체는 W 면(부모 쪽), 입력 유체는 E 면(자식 쪽) — moduleWizard.ts:149 의 wantFace.
+// 출력 유체는 W 면(부모 쪽), 입력 유체는 E 면(자식 쪽) — `run/policy.admitFluidTrunks` 의 면 배정.
 const fluidSpecs: NodeSpec[] = [
   {
     id: "user", depth: 0, machine: M, count: 2,
@@ -80,7 +80,7 @@ describe("유체 납품 경로가 장부의 계획대로 깔린다", () => {
   });
 
   // §1.1 — 납품 경로 입력 생성에 품목 종류 필터가 없다. 유체 포트는 wantFace 로 W/E 가 강제되고
-  // (moduleWizard.ts:149, 못 맞추면 트리째 reject), 그게 eligible 조건과 정확히 같다.
+  // (`run/policy.admitFluidTrunks`, 못 맞추면 트리째 reject), 그게 eligible 조건과 정확히 같다.
   // 따라서 유체 납품 경로는 **예외 없이** 장부에 들어가 트랙을 하나 차지한다.
   it("장부가 유체 납품 경로의 경로를 이미 계획한다", () => {
     const key = deliveryKey(fluidDelivery!);

@@ -19,6 +19,7 @@
 | `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · `linkPlanner` · `laneBudget` · `faceTable` | `docs/auto-layout/module/` |
 | `link/` | 두 모듈의 **식별자**를 안다 | `allocateFlows` · `edgeLinks` | `docs/auto-layout/link/` |
 | `perimeter/` | **전역 외곽**을 안다 | `wayOuts` · `lanes` | `docs/auto-layout/perimeter/` |
+| `run/` | **한 번의 실행 전체**(입력 → 후보) | `gamedata`(어댑터) · `policy`(LayoutIssue 를 짓는 곳) · `ledger`(유체 관망·종착 구간) · `emit`(CandidateLeaf) — 뼈대는 `moduleWizard` | `docs/auto-layout/common/work-kinds.md` |
 | (평면) | 조율·통로·탐색 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `deliveryRoute` · `containerRouting` | `docs/auto-layout/channel/` |
 
 **문서 폴더가 코드 폴더의 거울이다** — 위 표의 오른쪽 폴더를 열면 그 관심사의 설계 문서가 다 있다.
@@ -32,8 +33,9 @@
 
 ## 실패는 삼키지 않는다
 
-자리가 없으면 **만들어 내지 말고** 정직하게 실패시킨다. 실패 사유는
-`moduleWizard.RejectReason` 이 단일 출처이고, 그 문구가 UI 실패 라벨로 그대로 나간다.
+자리가 없으면 **만들어 내지 말고** 정직하게 실패시킨다. 실패 사유의 카탈로그는
+`layoutIssue.LayoutIssue` 이고(2026-08-04 `RejectReason` 을 흡수), 그 issue 를 **짓는 곳은 `run/policy.ts` 하나**다.
+`moduleWizard` 뼈대는 받은 것을 정해진 자리에 쌓고 관문만 세운다 — 경고가 오류 관문 앞에 쌓이면 배치가 통째로 물러난다.
 
 ## `link/` 는 아무것도 import 하지 않는다
 

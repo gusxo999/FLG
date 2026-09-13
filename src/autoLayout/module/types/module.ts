@@ -233,7 +233,7 @@ export interface GeneratedModule {
    * 품목과 만나는데 지하벨트를 하나도 안 골라 [벨트 종착](../../execution/module/beltTerminus.ts)을
    * 못 세운 자리다. 비어 있는 것이 정상이다.
    *
-   * 모듈은 **판정만** 하고 화면에 못 올린다(형제도 위저드도 모른다). `moduleWizard` 가
+   * 모듈은 **판정만** 하고 화면에 못 올린다(형제도 위저드도 모른다). `planner/run/policy` 가
    * 이 배열을 `belt-terminus-merge` **경고**로 빚어 그 칸을 화면에 찍는다.
    */
   beltMerges: BeltMerge[];

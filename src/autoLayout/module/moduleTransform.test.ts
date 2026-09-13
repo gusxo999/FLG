@@ -199,7 +199,7 @@ describe("좌표 프레임 경계 — 옮길 것을 다 옮기나", () => {
     },
   };
 
-  /** `moduleWizard` 의 합류 가드와 **같은 방식**으로 검사한다. */
+  /** `run/policy.judgePipeMerges` 의 합류 가드와 **같은 방식**으로 검사한다. */
   const conflicts = (mods: GeneratedModule[]): string[] => {
     const pipes = mods.flatMap((m) => m.pipeCells);
     const hits: string[] = [];

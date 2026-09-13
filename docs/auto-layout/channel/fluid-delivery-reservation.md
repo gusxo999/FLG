@@ -50,7 +50,7 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 **즉 유체 상자가 W/E 변에 오면 그 납품 경로는 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 
 그리고 **유체는 항상 W/E 변에 온다** — 선택이 아니라 강제다
-([moduleWizard.ts:149](../../../src/autoLayout/planner/moduleWizard.ts#L149)):
+([run/policy.ts](../../../src/autoLayout/planner/run/policy.ts) `admitFluidTrunks` → [fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) `chooseFluidTrunkPlan`):
 
 ```ts
 // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E)
@@ -118,7 +118,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 
 다른 유체가 나란히 지나가면 두 유체가 한 통이 된다 = 공장이 조용히 망가진다.
 지금은 이걸 `pipeFlow` 의 `blockedTilesHard` 가 **탐색 시점에** 막고 있다
-([moduleWizard.ts:417](../../../src/autoLayout/planner/moduleWizard.ts#L417)).
+([run/ledger.ts](../../../src/autoLayout/planner/run/ledger.ts) `fluidNetworksOf` · `fluidBlockedOf`).
 계획 시점으로 올리려면 장부가 같은 규칙을 알아야 한다.
 
 **이 한 줄이 이번 작업의 알고리즘 변경 전부다.** 나머지는 배선이다.

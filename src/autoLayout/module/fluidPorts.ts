@@ -190,7 +190,7 @@ export interface FluidTrunkInput {
 /**
  * 점프 판정에 드는 재료 전부 — **한 면**을 본다.
  *
- * 계획([planModulePorts])과 거절([moduleWizard])이 **같은 함수**를 봐야 어긋나지 않는다.
+ * 계획([planModulePorts])과 거절([admitFluidTrunks])이 **같은 함수**를 봐야 어긋나지 않는다.
  * 예전엔 판정이 계획 쪽에만 있어서, 넘지 못하는 면은 조용히 옛 스파인으로 물러났다 — 유체가
  * 한 줄일 땐 그게 맞는 저하지만 **두 줄이면 오답**이다(스파인 둘이 같은 d1 을 다툰다).
  */
