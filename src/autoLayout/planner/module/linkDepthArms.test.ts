@@ -17,8 +17,9 @@
  * *머신 하나짜리 줄*(`from` 이 한 머신)에만 건다.
  */
 import { describe, it, expect } from "vitest";
-import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
-import type { Link } from "../../module/link";
+import { generateModule } from "../../module/clusterModule";
+import type { Link } from "../../module/types/line";
+import type { GeneratedModule, ModuleInput } from "../../module/types/module";
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 

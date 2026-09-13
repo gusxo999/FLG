@@ -55,5 +55,7 @@ planner/moduleWizard → execution/           (오케스트레이터 예외)
 역방향(계획이 실행을 참조)은 **오케스트레이터뿐**이다. 그 외에 계획 계층이 여기를
 import 하려 한다면 계층이 뒤집힌 것이다.
 
-`module/clusterModule ⇄ execution/module/emitModule` 은 **런타임 한 방향**
-(`clusterModule → emitModule`)이고 역방향은 `import type` 이라 순환이 아니다.
+`module/clusterModule → execution/module/emitModule` 은 **한 방향**이다 — `emitModule` 은
+`clusterModule` 을 import 하지 않는다. 둘이 함께 읽는 타입은 `module/types/`, 함께 부르는
+셈은 `module/arith` 에 산다(2026-09-13 전까지 `trunkEndKey` 하나 때문에 역방향 **런타임**
+간선이 있었고, 이 문장은 그것을 *"import type 이라 순환이 아니다"* 로 잘못 적고 있었다).

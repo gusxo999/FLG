@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { faceVector, PERIMETER_MARGIN } from "../util/helper";
 import { scaledPack, scaledSpecs } from "../module/testScale";
 

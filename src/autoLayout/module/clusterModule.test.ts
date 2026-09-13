@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type GeneratedModule, type ModuleInput } from "./clusterModule";
-import type { IoLine } from "../planner/module/ioLine";
+import { generateModule } from "./clusterModule";
+import type { IoLine } from "./types/line";
+import type { GeneratedModule, ModuleInput } from "./types/module";
 import { scaled } from "./testScale";
 import { EntityType } from "../../types/layout";
 

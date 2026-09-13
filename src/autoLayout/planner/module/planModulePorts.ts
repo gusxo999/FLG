@@ -37,16 +37,14 @@
  * [placeLinkSeats] 의 **덧셈 한 줄**뿐이다.
  */
 
-import {
-  type IoLine,
-  type PlannedLine,
-  type PortSide,
-} from "./ioLine";
-import type { ModuleInput } from "../../module/clusterModule";
+import type { IoLine, Link, PlannedLine, PortSide } from "../../module/types/line";
+import type { ModuleInput } from "../../module/types/module";
+import type {
+  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage,
+} from "../../module/types/seat";
 import { fluidJumpBlocker, fluidLineOf, fluidLinesOnSide, clusterBeltDepthCap } from "../../module/fluidPorts";
 import {
   externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows, summarizeBeltForms,
-  type Link,
 } from "../../module/link";
 import { recordBeltFormStats, recordFaceDepthStats, recordLaneUnshare } from "../../../debug/runStats";
 import { inserterForReach } from "../../buildSpec";
@@ -54,19 +52,8 @@ import { determineBeltCount, laneCapOfTier } from "../../beltThroughput";
 import { planBundles } from "./depthBudget";
 import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../debugFlags";
 import {
-  allocateLinkFaces,
-  commitLinkFace,
-  tryLinkFace,
-  seatOnSharedBelt,
-  clusterBeltDepthsOf,
-  spillLinkFacesToGap,
-  gapRowsFromPlans,
-  gapExitSidesFromPlans,
-  linkFaceDepths,
-  type FaceAllocation,
-  type DepthShortage,
-  type LinkFaceContext,
-  type LinkFacePlan,
+  allocateLinkFaces, commitLinkFace, tryLinkFace, seatOnSharedBelt, clusterBeltDepthsOf,
+  spillLinkFacesToGap, gapRowsFromPlans, gapExitSidesFromPlans, linkFaceDepths,
 } from "./linkPlanner";
 import { copyFaceTable, type FaceTable } from "./faceTable";
 import type { PortFace } from "../../containerModel";
@@ -183,27 +170,6 @@ export interface ModulePortPlan {
  * 한 모듈의 포트 자리를 전부 배정한다. `count` 는 호출자가 정규화한 머신 대수
  * (`layoutCluster` 가 만드는 머신 수와 **같아야** 한다 — 배정이 없는 머신을 가리키면 안 된다).
  */
-/**
- * **① 링크 면 배정의 산출** — [planLinkFaces] 가 내고 [planModulePorts] 가 받는다.
- *
- * 이 번들이 있는 이유는 하나다 — **배정을 `generateModule` 밖에서 돌리기 위해**
- * 배정이 방출 안에 갇혀 있으면
- * 그 결과를 보려고 방출까지 해야 하고, 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다
- * — 그게 되먹임 A·B 의 뿌리다.
- *
- * `pipeFaces`·`pipeFaceRows` 까지 담는 것은 ⓪ 가 ① 뿐 아니라 ③도 먹이기 때문이다 —
- * 둘로 나누어 각자 유도하면 **같은 사실을 두 곳이 세게 된다**(R3).
- */
-export interface LinkFaceStage {
-  tables: Map<PortFace, FaceTable>;
-  ctx: LinkFaceContext;
-  outLinks: Link[];
-  inLinks: Link[];
-  out: FaceAllocation;
-  in: FaceAllocation;
-  pipeFaces: { side: PortSide; fluidRows: number; depthCap: number }[];
-  isJumpableToClusterPipe: (side: PortSide) => boolean;
-}
 
 /**
  * **⓪ 유체 면 + ① 링크 면 배정** — 좌표도 방출도 안 본다.

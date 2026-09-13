@@ -15,7 +15,7 @@
 
 import type { Container, PlacedCell, PortFace } from "../../containerModel";
 import { cellKey, faceVector } from "../../util/helper";
-import type { ModulePort } from "../../module/clusterModule";
+import type { ModulePort } from "../../module/types/module";
 
 
 /**

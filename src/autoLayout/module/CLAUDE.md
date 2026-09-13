@@ -4,6 +4,26 @@
 모듈은 자기 ring 위에 입·출력 포트를 갖는 **불투명 블록**이고, 모듈끼리 잇는 일은
 `planner/` 소관이다.
 
+## 타입은 `types/` 에, 셈은 `arith.ts` 에
+
+계획(`planner/module`)·조율(`clusterModule`)·방출(`execution/module`)이 **함께 읽는** 타입은
+`types/` 세 파일에 산다 — 가르는 기준은 읽는 사람의 질문이다.
+
+```
+types/line.ts     무엇을 나르나      IoLine · PlannedLine · SupplyCapacity · Link
+types/seat.ts     어디에 앉나        LinkFacePlan · LinkSeats · DepthShortage · LinkFaceStage
+types/module.ts   무엇을 받고 내나   ModuleInput · GeneratedModule · ModulePort · TrunkContext · BeltTerminus
+arith.ts          셈                 trunkEndKey · flowEnd
+```
+
+**함수의 서명에만 쓰이는 타입은 옮기지 않는다**(`ModulePortPlan`·`EdgeSeatResult`·`LadderRung` 은
+`planner/module` 제자리). 여러 층이 함께 읽을 때만 여기로 온다. 여기 두는 이유는 하나다 —
+타입이 계획 계층에 있으면 방출기가 그걸 가지러 **위로** 올라가고, 값까지 얹혀 있으면 순환이 된다
+(2026-09-13 전까지 `emitModule → clusterModule` 이 `trunkEndKey` 하나 때문에 런타임 간선이었다).
+
+**남은 상향 간선 둘은 알고 둔 것이다:** `types/seat.ts → planner/module/faceTable`(타입 — 좌석표는
+장부째 옮긴다) · `clusterModule → planner/module/planModulePorts`(값 — 조율자가 이 폴더에 있어서다).
+
 ## 자리 배정은 여기서 안 한다
 
 `generateModule` 은 계획 함수를 **하나만** 부른다:

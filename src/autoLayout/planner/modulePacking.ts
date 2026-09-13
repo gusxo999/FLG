@@ -28,23 +28,22 @@ import {
   type DeliveryInput,
   type ExportInput,
 } from "./channelGeometryPlanner";
-import { generateModule, type GeneratedModule, type ModuleInput, type ModulePort } from "../module/clusterModule";
-import {
-  cloneLinkFaceStage, planLinkFaces, seatLinkEdge,
-  type LinkFaceStage,
-} from "./module/planModulePorts";
-import { clusterBeltDepthsOf, type DepthShortage, type LinkFacePlan } from "./module/linkPlanner";
+import { generateModule } from "../module/clusterModule";
+import type { IoLine, Link } from "../module/types/line";
+import type { GeneratedModule, ModuleInput, ModulePort } from "../module/types/module";
+import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
+import { cloneLinkFaceStage, planLinkFaces, seatLinkEdge } from "./module/planModulePorts";
+import { clusterBeltDepthsOf } from "./module/linkPlanner";
 import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
 import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { summarizeBeltForms, shareLanes, type Link } from "../module/link";
+import { summarizeBeltForms, shareLanes } from "../module/link";
 import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../debugFlags";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planExits, expandBbox } from "./perimeter/exits";
 import { rowChannelKey } from "./layoutRegions";
 import type { PerimeterExitPlan } from "./perimeterExitPlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
-import type { IoLine } from "./module/ioLine";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 import { recordBeltFormStats, recordFaceDepthStats, recordLaneShareStats } from "../../debug/runStats";

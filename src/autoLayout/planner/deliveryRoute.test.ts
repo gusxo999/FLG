@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig, type PackResult } from "./modulePacking";
 import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
 import { faceVector } from "../util/helper";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 import { scaledPack, scaledSpecs } from "../module/testScale";
 

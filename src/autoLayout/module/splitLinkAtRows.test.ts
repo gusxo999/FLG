@@ -10,7 +10,8 @@
  * ```
  */
 import { describe, it, expect } from "vitest";
-import { resolveSpanBlock, splitLinkAtRows, type Link } from "./link";
+import { resolveSpanBlock, splitLinkAtRows } from "./link";
+import type { Link } from "./types/line";
 
 /** 부모 머신 `0..n-1` 에게 각각 `rate` 씩 주는 입력 링크 하나(팔 1개씩). */
 const inputLink = (n: number, rate = 1): Link => ({

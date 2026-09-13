@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { packModuleTree, edgeLinkGroups, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes } from "./deliveryRoute";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { groupRate } from "../module/link";
 import * as allocateFlowsModule from "./link/allocateFlows";
 import { faceVector } from "../util/helper";

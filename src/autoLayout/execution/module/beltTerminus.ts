@@ -64,44 +64,11 @@
  * 코드는 여기뿐이다).
  */
 
-import type { PlacedCell, PortPair } from "../../containerModel";
 import type { SpecUndergroundBelt } from "../../buildSpec";
 import { cellKey, vectorToDirection } from "../../util/helper";
 import { makeUndergroundBeltCell } from "../../util/cellBuilder";
 import { recordBeltTerminus } from "../../../debug/runStats";
-
-/** 흐름의 끝 칸 하나 — 방출기가 등록하고 [resolveBeltTermini] 가 마무리한다. */
-export interface BeltTerminus {
-  /**
-   * 끝 칸의 셀 **그 자체**(사본이 아니다). 해결은 이 객체를 **제자리에서** 고친다 —
-   * 같은 객체가 `GeneratedModule.cells` 와 `ModulePort.cells` 양쪽에 들어가 있어서,
-   * 새 객체로 갈아끼우면 한쪽만 바뀌고 다른 쪽이 옛 벨트로 남는다.
-   */
-  cell: PlacedCell;
-  /** 이 줄이 나르는 품목 — 같은 품목이면 합류가 오염이 아니다. */
-  item: string;
-  /** 들어오는 흐름 방향(= 벨트 진행 방향). 역방향이 금지 방향이고, 지하 종착이 볼 방향이다. */
-  flow: { x: number; y: number };
-  /** 머신 쪽(= 오늘까지의 기본값). 나머지 후보(바깥 쪽)는 이것의 반대다. */
-  inward: { x: number; y: number };
-  /** 지하 종착으로 바꿀 때 쓸 `entityId` 재료. */
-  pair: PortPair;
-}
-
-/**
- * **피할 수 없어 합류한 채로 남긴 끝 칸** — 화면 경고([LayoutIssue] `belt-terminus-merge`)의
- * 재료다. 세 방향이 다 남의 품목이고 지하벨트도 없을 때만 생긴다.
- *
- * 좌표는 **모듈-로컬**이다 — `moduleTransform` 이 셀과 **같은 변환**으로 옮긴다.
- */
-export interface BeltMerge {
-  x: number;
-  y: number;
-  /** 이 끝 칸이 나르던 품목. */
-  item: string;
-  /** 흘러드는 상대 품목. */
-  into: string;
-}
+import type { BeltMerge, BeltTerminus } from "../../module/types/module";
 
 /**
  * **가장 느린 지하벨트** — 종착은 아무것도 나르지 않으므로 빠른 티어를 태울 이유가 없다.

@@ -13,7 +13,7 @@ import { packModuleTree, deliveryKey, type NodeSpec, type PackConfig } from "./m
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../util/helper";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 
 const ctx = { yMin: 0, yMax: 10 };
 

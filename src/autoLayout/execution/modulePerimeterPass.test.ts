@@ -4,7 +4,7 @@ import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";
 import { seatIsBeltFeeder } from "../planner/deliveryRoute";
-import type { IoLine } from "../planner/module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 import { scaledPack, scaledSpecs } from "../module/testScale";
 

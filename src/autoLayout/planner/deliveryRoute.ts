@@ -52,7 +52,7 @@ import type {
 import { dijkstraWithJumps, type DijkstraResult } from "./containerRouting";
 import { emitItemPath, emitFluidPath } from "../execution/emitPath";
 import { cellKey, faceVector, segment } from "../util/helper";
-import type { ModulePort } from "../module/clusterModule";
+import type { ModulePort } from "../module/types/module";
 import { deliveryKey, type DeliveryDirective, type DeliverySpec, type PackResult } from "./modulePacking";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
 import { EntityType } from "../../types/layout";

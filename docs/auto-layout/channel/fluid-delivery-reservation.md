@@ -43,7 +43,7 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
   ([modulePacking.ts:521](../../../src/autoLayout/planner/modulePacking.ts#L521)).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
-  ([clusterModule.ts:1749](../../../src/autoLayout/module/clusterModule.ts#L1749)).
+  ([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitTrunkPipe` 의 포트 `meta`).
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
   ([modulePacking.ts:558-561](../../../src/autoLayout/planner/modulePacking.ts#L558-L561)).
 

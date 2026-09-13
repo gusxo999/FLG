@@ -11,17 +11,11 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  beltLineForm,
-  flowsOn,
-  machinesOn,
-  externalLineGroups,
-  spansAllMachines,
-  summarizeBeltForms,
-  type Link,
-  type LinkCarry,
+  beltLineForm, flowsOn, machinesOn, externalLineGroups, spansAllMachines, summarizeBeltForms,
 } from "./link";
+import type { IoLine, Link, LinkCarry } from "./types/line";
 import { edgeLinkGroups, type NodeSpec, type PackConfig } from "../planner/modulePacking";
-import type { IoLine } from "../planner/module/ioLine";
+
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });
 

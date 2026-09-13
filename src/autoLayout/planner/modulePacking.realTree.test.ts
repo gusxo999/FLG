@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes } from "./deliveryRoute";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { readRunStats } from "../../debug/runStats";
 
 // 실제 트리(advanced-circuit, count=1)가 링크 기반 새 경로로 라우팅되는지 — 토이 2노드가

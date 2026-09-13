@@ -1,6 +1,8 @@
 # 계획 2 · 종류로 가르기 — 상태
 
-> 상태: **승인 대기** — Step 1(module 관심사의 타입)만 확정이고 Step 2·3·4 는 방향이다.
+> 상태: **Step 1 완료**(2026-09-13 — module 관심사의 타입 → `module/types/`, D4 닫힘). Step 2·3·4 는 방향이다.
+> 다음은 Step 2(게임데이터 어댑터 · `runModulePipeline` 714줄)를 **확정하는 일**이다 — 착수 전에 §4.2 를
+> Step 1 과 같은 밀도(전제·불변 기전·관문)로 다시 쓴다.
 
 **파일 하나가 한 가지 종류의 일만 하게 자른다.** 종류의 정의와 전수 분류는
 [docs/work-kinds.md](../../../docs/auto-layout/common/work-kinds.md) 가 단일 출처다.

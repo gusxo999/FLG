@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type GeneratedModule, type ModuleInput } from "../../module/clusterModule";
+import { generateModule } from "../../module/clusterModule";
+import type { Link } from "../../module/types/line";
+import type { GeneratedModule, ModuleInput } from "../../module/types/module";
 import type { Flow } from "../../planner/link/allocateFlows";
-import type { Link } from "../../module/link";
 import { directionToVector } from "../../planner/containerRouting";
 import { EntityType } from "../../../types/layout";
 

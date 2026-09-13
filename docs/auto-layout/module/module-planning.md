@@ -479,7 +479,7 @@ B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ gen       
 ### 남긴 것 하나 — `rowsPerFace` 의 `max(W, E)`
 
 `clusterPortPlanner` 613줄. **껍데기가 아니라 살아 있는 탭 로직의 결함**이라 위 정리에서 뺐다.
-(그 탭 로직 자체가 2026-09-02 에 삭제됐고, 파일은 `ioLine.ts`·`allocateArms.ts` 로 갈렸다.)
+(그 탭 로직 자체가 2026-09-02 에 삭제됐고, 파일은 `ioLine.ts`·`allocateArms.ts` 로 갈렸다. `ioLine.ts` 는 2026-09-13 `module/types/line.ts` 로 옮겼다.)
 
 ```ts
 const linkUsedWE = Math.max(seatRowsUsed.W ?? 0, seatRowsUsed.E ?? 0);  // 더 붐비는 면 기준

@@ -11,8 +11,9 @@
  * → docs/auto-layout-wizard.trunk-pipe.md
  */
 import { describe, it, expect } from "vitest";
-import { generateModule, type ModuleInput } from "./clusterModule";
-import type { IoLine } from "../planner/module/ioLine";
+import { generateModule } from "./clusterModule";
+import type { IoLine } from "./types/line";
+import type { ModuleInput } from "./types/module";
 import { EntityType } from "../../types/layout";
 import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
 import { scaled } from "./testScale";

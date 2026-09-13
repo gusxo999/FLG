@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type GeneratedModule, type ModulePort } from "./clusterModule";
-import type { IoLine } from "../planner/module/ioLine";
+import { generateModule } from "./clusterModule";
+import type { IoLine } from "./types/line";
+import type { GeneratedModule, ModulePort } from "./types/module";
 import type { PortFace } from "../containerModel";
 import { PER_MACHINE, scaled } from "./testScale";
 

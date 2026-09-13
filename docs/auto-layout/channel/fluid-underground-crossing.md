@@ -54,7 +54,7 @@ const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
 ### 1.3 모듈 내부 지하파이프는 corridor 기록이 **아예 없다** — 선행 결함
 
 `pipeJumpToClusterPipe` 는 머신 유체 상자 행에서 지하파이프 쌍을 놓는다
-([clusterModule.ts:1706-1731](../../../src/autoLayout/module/clusterModule.ts#L1706-L1731)).
+([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitTrunkPipe` 의 `makeUndergroundPipeCell` 쌍).
 그런데 `GeneratedModule` 에 `corridors` 필드가 없고, `clusterModule` 은 corridor 를 한 번도
 만들지 않는다.
 

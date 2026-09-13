@@ -54,7 +54,7 @@
 
 import { bundleCap } from "../../module/link";
 import type { SpecBelt } from "../../buildSpec";
-import type { IoLine } from "./ioLine";
+import type { IoLine } from "../../module/types/line";
 
 /** 아이템 줄이 앉을 수 있는 기둥 옆면. gap(N/S)은 `g=1` 전용이라 예산에 안 들어간다. */
 export type BudgetFace = "W" | "E";

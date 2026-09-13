@@ -8,7 +8,8 @@
  * → 유체 면 회수 (2026-08-09) · git log --grep="유체 면에 앉는다"
  */
 import { describe, it, expect } from "vitest";
-import { linkFaceDepths, type LinkFacePlan } from "./linkPlanner";
+import { linkFaceDepths } from "./linkPlanner";
+import type { LinkFacePlan } from "../../module/types/seat";
 import type { PortFace } from "../../containerModel";
 
 const plan = (face: PortFace, clusterBeltDepth: number, exitDepth?: number): LinkFacePlan => ({

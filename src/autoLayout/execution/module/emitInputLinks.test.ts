@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type ModuleInput } from "../../module/clusterModule";
-import type { Link } from "../../module/link";
+import { generateModule } from "../../module/clusterModule";
+import type { Link } from "../../module/types/line";
+import type { ModuleInput } from "../../module/types/module";
 import { EntityType } from "../../../types/layout";
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.

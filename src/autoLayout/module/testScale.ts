@@ -17,7 +17,7 @@
  * - 머신 한 대 몫 `0.25/s` — 팔 하나 안에 들어가고(줄마다 인서터 1개), 웬만한 머신 수를
  *   곱해도 벨트 한 줄 안에 든다(줄 수가 1로 고정). 그래야 기하 검사가 **줄 수에 안 흔들린다.**
  */
-import type { ModuleInput } from "./clusterModule";
+import type { ModuleInput } from "./types/module";
 
 /** 머신 한 대가 한 줄에서 주고받는 초당 개수 — 팔 하나(0.83/s) 안에 든다. */
 export const PER_MACHINE = 0.25;

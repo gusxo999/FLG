@@ -20,7 +20,7 @@
 import { useGameDataStore } from "../../UI/store/gameDataStore";
 import { EntityType } from "../../types/layout";
 import type { Area, CandidateLeaf, ContainerPort, ContainerWizardInput, PortFace, Routing, UndergroundCorridor } from "../containerModel";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { summarizeRungs } from "./module/linkPlanner";
 import { externalLineGroups, groupRate } from "../module/link";
 import { chooseFluidTrunkPlan, fluidJumpBlocker, type FluidLineSpec } from "../module/fluidPorts";

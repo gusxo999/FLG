@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { allocateArms } from "./allocateArms";
-import type { IoLine } from "./ioLine";
+import type { IoLine } from "../../module/types/line";
 import type { SpecInserter } from "../../buildSpec";
 
 const inL = (n: string): IoLine => ({ name: n, kind: "belt", role: "input" });

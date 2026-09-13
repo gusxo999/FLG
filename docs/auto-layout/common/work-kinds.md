@@ -28,7 +28,7 @@ tags: [auto-layout]
 
 | 실물 | 무엇이 갈렸나 |
 |---|---|
-| `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule.ts:37](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts:23](../../../src/autoLayout/module/moduleTransform.ts)) |
+| `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule.ts:34](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts:23](../../../src/autoLayout/module/moduleTransform.ts)) |
 | "좌석 배정" | 한 이름 아래 성질이 다른 다섯이 있다 — 장부 · 가격표 · 적합성 · 청구 · 정책. 그래서 `tryLinkFace` 가 `forceEnd`·`preferEnd`·`preferDepth` 라는 **정책 인자 셋**을 들고 있다 |
 | 포트 칸 도형 | 같은 도형이 계획과 방출에 **두 벌** 있었고, 둘을 붙들고 있는 것이 줄 번호를 적은 주석뿐이었다. 2026-09-12 에 [linkShape](../../../src/autoLayout/module/linkShape.ts) 로 합쳤다 — **종류를 물었더니 답이 나온 자리**다(도형은 도형끼리) |
 
@@ -51,7 +51,7 @@ tags: [auto-layout]
 
 | 종류 | 무엇인가 | 판정 | 예 |
 |---|---|---|---|
-| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 → `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.1 | `containerModel`(524줄 전부 타입) · `ioLine` · `Link` · `LayoutIssue` |
+| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 → `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.1 | `containerModel`(524줄 전부 타입) · `module/types/`(`IoLine`·`Link`·`LinkFacePlan`·`ModuleInput` …) · `LayoutIssue` |
 | **어댑터** | 게임데이터를 우리 타입으로 번역. **prototype 을 보는 유일한 층** | 지우면 게임데이터 접근이 하나 사라진다 — prototype 필드를 직접 읽는 줄이 있다 | `buildSpec.makeBuildSpec` · `fluidPorts.resolveFluidConnection` · `wizardUtils` |
 | **찍기** | 도형 → 셀. 결정은 0, 대신 방향 인코딩 같은 **규약**을 안다 | 입력 도형이 같으면 출력 셀도 같다 — 고를 대안이 없다 | `cellBuilder` · `emitPath` · `machinePlacer` |
 | **조율** | 순서대로 부르고 결과를 엮는다. 고르지 않고 좌표도 안 낸다 | 본문에 계산·비교·상태가 없다 — 호출과 결과 조립뿐이다 | `packModuleTree` 뼈대 · `generateModule` 본문 · `runModulePipeline` 뼈대 |
@@ -127,6 +127,18 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 종류 하나만 담은 파일의 최대 = 335줄 (recipeTree, 셈)
 ```
 
+> **위 수는 2026-09-12 분류 시점의 것이다.** 2026-09-13 계획 구조-2축 · 2 Step 1 이 module
+> 관심사의 타입을 `module/types/` 로 옮긴 뒤 다시 재면(`wc -l`):
+>
+> ```
+> linkPlanner 1037 → 793 · planModulePorts 934 → 900 · link 917 → 790 · clusterModule 611 → 350
+> 500줄 이상 = 11 파일 (clusterModule 이 빠졌다).  결정 종류 셋 이상 일곱은 여전히 전부 500줄 이상
+> 비테스트 파일 47 → 50  (ioLine 하나가 사라지고 types/ 셋 · arith 하나가 섰다 — 넷 다 종류 하나)
+> ```
+>
+> 표의 분류 칸수(22·11·12·2)는 다시 매기지 않았다 — 파일마다 종류를 판정해야 하는 일이라
+> 줄 수처럼 기계적으로 옮겨 적을 수 없다.
+
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —
 200줄 넘는 함수가 여덟이고 최대가 `packModuleTree` **868줄** · `runModulePipeline`
 **714줄**이다. 60줄 넘는 **중첩** 함수는 셋뿐(최대 87줄)이라, 큰 함수는 작은 함수를
@@ -162,7 +174,14 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 |---|---|---|
 | **D2** | **방출이 고른다** — `emitModule` 머리말은 *"자리를 고르지 않는다"* 고 적지만, 두 면이 다 차면 그 줄을 포기하고(`unroutedLines`), 좌석이 막히면 폴백한다 | `emitModule.ts` 의 `unroutedLines.push` **여섯 곳** · `netTrips` 계측 |
 | **D7** | **조율자가 조율만 하지 않는다** — `moduleWizard` 머리말은 *"무상태·결정적"* 이라 적고 이 문서 §5 는 *"결정하지 않는 일만 담았다"* 고 적었지만, 한 함수 안에서 게임데이터를 읽고(어댑터) 트리를 거절하고(정책) 유체 관망을 쌓는다(장부) | `moduleWizard.ts:147` `runModulePipeline` **714줄** — `:150` 조회 · `:172-290` 적격성 · `:508-560` 유체 |
-| **D4** | **런타임 순환** — `execution/CLAUDE.md` 는 `clusterModule ⇄ emitModule` 역방향이 `import type` 이라 순환이 아니라고 적지만, `emitModule` 이 `trunkEndKey` 를 런타임으로 가져온다 | `emitModule.ts:45` |
+
+> **2026-09-13 에 D4 가 닫혔다.** **D4**(런타임 순환 — `execution/CLAUDE.md` 가 `clusterModule ⇄
+> emitModule` 역방향을 *"import type 이라 순환이 아니다"* 라 적었지만 `emitModule` 이 `trunkEndKey`
+> 를 런타임으로 가져왔다)는 **소유권 판단은 옳고 주소가 틀린** 경우였다 — 6줄짜리 셈 하나가
+> 조율자 파일에 얹혀 있었다. 타입을 [module/types/](../../../src/autoLayout/module/types/) 로,
+> `trunkEndKey`·`flowEnd` 를 [module/arith](../../../src/autoLayout/module/arith.ts) 로 옮기자
+> `autoLayout` 의 런타임 순환이 **1 → 0**, `execution/module → planner/module` 간선이 **2 → 0** 이 됐다.
+> 좌표는 픽스처 다섯에서 **바이트 단위로 같다.** → `tempPlanDocs/구조-2축/2-종류로-가르기/` §4.1
 
 > **2026-09-12 에 넷이 닫혔다.** **D1**(도형이 두 벌)은 [linkShape](../../../src/autoLayout/module/linkShape.ts)
 > 로 합쳤고 — 계획의 청구·검사와 방출이 같은 함수에서 답을 받는다(축은 호출자의 것) — 그때

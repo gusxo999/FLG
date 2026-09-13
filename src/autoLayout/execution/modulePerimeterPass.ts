@@ -34,7 +34,7 @@
  * 데이터라 공유/영속 객체 아님). 단위 테스트로 검증.
  */
 
-import type { ModulePort } from "../module/clusterModule";
+import type { ModulePort } from "../module/types/module";
 import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";

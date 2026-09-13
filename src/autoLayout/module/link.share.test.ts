@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { shareLanes, physicalLines, type Link } from "./link";
+import { shareLanes, physicalLines } from "./link";
+import type { Link } from "./types/line";
 import { determineBeltCount } from "../beltThroughput";
 
 /**

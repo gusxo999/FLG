@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { packModuleTree, type NodeSpec, type PackConfig } from "./modulePacking";
 import { routeDeliveryRoutes } from "./deliveryRoute";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 import { setAutoLayoutLaneMerge } from "../debugFlags";
 import { readRunStats } from "../../debug/runStats";
 

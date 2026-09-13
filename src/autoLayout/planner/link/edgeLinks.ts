@@ -18,8 +18,9 @@
  * 조율자는 `modulePacking` 이고, 여기는 그 조율자가 부르는 **link 관심사의 계산**이다.
  */
 
-import type { GeneratedModule, ModulePort } from "../../module/clusterModule";
-import { createLinks, type Link, type LinkCarry } from "../../module/link";
+import type { Link, LinkCarry } from "../../module/types/line";
+import type { GeneratedModule, ModulePort } from "../../module/types/module";
+import { createLinks } from "../../module/link";
 import { allocateFlows, type Flow } from "./allocateFlows";
 import { faceSeatArms, inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";

@@ -20,7 +20,7 @@ import {
   type NodeSpec,
   type PackConfig,
 } from "./modulePacking";
-import type { IoLine } from "./module/ioLine";
+import type { IoLine } from "../module/types/line";
 
 const belt = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });
 const pipe = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "pipe", role });

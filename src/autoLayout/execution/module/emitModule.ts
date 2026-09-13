@@ -15,12 +15,18 @@
  * **공통 규약:** 인자 객체로 받은 누적기(`occupancy`·`cells`·`chests`·`inputPorts`·
  * `outputPorts`·`unroutedLines`)를 **in-place 로 채운다.** 모듈 스코프 상태는 없다.
  *
- * `clusterModule` 과의 관계: 이쪽이 저쪽 타입을 **`import type` 으로만** 본다
- * (런타임 간선은 `clusterModule → emitModule` 한 방향뿐 — 순환 아님).
+ * `clusterModule` 과의 관계: 이쪽은 **저쪽을 import 하지 않는다**. 둘이 함께 읽는 타입은
+ * `module/types/`, 함께 부르는 셈(`trunkEndKey`·`flowEnd`)은 `module/arith` 에 있다 — 그래서
+ * 런타임 간선은 `clusterModule → emitModule` 한 방향뿐이다.
  */
 
-import type { IoLine, PlannedLine, PortSide } from "../../planner/module/ioLine";
-import { groupRate, type Link } from "../../module/link";
+import { flowEnd, trunkEndKey } from "../../module/arith";
+import type { IoLine, Link, PlannedLine, PortSide } from "../../module/types/line";
+import type {
+  BeltTerminus, ModuleInput, ModulePort, TrunkContext,
+} from "../../module/types/module";
+import type { LinkSeats } from "../../module/types/seat";
+import { groupRate } from "../../module/link";
 import type { Container, PlacedCell, PortFace, PortPair } from "../../containerModel";
 import { cellKey, faceCell, faceVector, vectorToDirection } from "../../util/helper";
 import { EntityType } from "../../../types/layout";
@@ -31,18 +37,6 @@ import {
   makePipeCell,
   makeUndergroundPipeCell,
 } from "../../util/cellBuilder";
-// 타입 전용 — 런타임 간선이 아니므로 clusterModule 과 순환이 되지 않는다.
-import type {
-  ModuleInput,
-  ModulePort,
-  TrunkContext,
-} from "../../module/clusterModule";
-import { flowEnd, type LinkSeats } from "../../planner/module/linkPlanner";
-// 끝 칸의 **방향**은 여기서 못 정한다 — 모듈의 벨트가 다 깔린 뒤라야 이웃을 안다.
-// 여기선 등록만 하고 [resolveBeltTermini] 가 마무리한다(그 파일 머리말이 근거다).
-import type { BeltTerminus } from "./beltTerminus";
-// trunkEndKey 는 계획 산출물(트렁크 종착 키)이라 clusterModule 소유 — 런타임 import.
-import { trunkEndKey } from "../../module/clusterModule";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
 import { fluidLineOf } from "../../module/fluidPorts";
 import type { PipeFlowPipe } from "../../util/pipeFlow";

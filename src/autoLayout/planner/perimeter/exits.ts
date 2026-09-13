@@ -14,8 +14,7 @@
  * 와 `exports` 를 함께 받는 것과 같은 이유). 관심사로 가르려면 그 다툼을 먼저 풀어야 한다.
  */
 
-import type { GeneratedModule } from "../../module/clusterModule";
-import type { ModulePort } from "../../module/clusterModule";
+import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/moduleTransform";
 import { moduleExtent } from "../../module/moduleTransform";
 import {

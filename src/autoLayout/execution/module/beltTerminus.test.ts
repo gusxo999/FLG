@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { generateModule, type ModuleInput } from "../../module/clusterModule";
-import type { Link } from "../../module/link";
+import { generateModule } from "../../module/clusterModule";
+import type { Link } from "../../module/types/line";
+import type { BeltMerge, BeltTerminus, ModuleInput } from "../../module/types/module";
 import type { PlacedCell, PortPair } from "../../containerModel";
 import { EntityType } from "../../../types/layout";
 import { makeBeltCell } from "../../util/cellBuilder";
 import { cellKey } from "../../util/helper";
-import { resolveBeltTermini, slowestUnderground, type BeltMerge, type BeltTerminus } from "./beltTerminus";
+import { resolveBeltTermini, slowestUnderground } from "./beltTerminus";
 
 // 벨트 흐름의 **끝 칸** — 방향은 아무래도 좋지만 **남의 품목과 합류해선 안 된다.**
 // 규칙과 근거는 [beltTerminus.ts] 머리말.

@@ -15,8 +15,9 @@
 import { describe, it, expect } from "vitest";
 import { planLinkFaces, planModulePorts, seatLinkEdge } from "./planModulePorts";
 import { commitLinkFace, tryLinkFace } from "./linkPlanner";
-import type { ModuleInput } from "../../module/clusterModule";
-import type { Link } from "../../module/link";
+import type { Link } from "../../module/types/line";
+import type { ModuleInput } from "../../module/types/module";
+
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 

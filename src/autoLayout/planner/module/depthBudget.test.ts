@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planBundles, type DepthBudgetInput } from "./depthBudget";
-import type { IoLine } from "./ioLine";
+import type { IoLine } from "../../module/types/line";
 
 /**
  * **깊이 예산** — 관통을 *공짜일 때만* 산다는 규칙 하나를 잰다.

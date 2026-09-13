@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { externalLineGroups } from "./link";
-import type { IoLine, SupplyCapacity } from "../planner/module/ioLine";
+import type { IoLine, SupplyCapacity } from "./types/line";
 import type { SpecInserter } from "../buildSpec";
 
 /**

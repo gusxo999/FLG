@@ -11,7 +11,8 @@
  * ```
  */
 import { describe, it, expect } from "vitest";
-import { rungOfLine, summarizeRungs, type DepthShortage } from "./linkPlanner";
+import { rungOfLine, summarizeRungs } from "./linkPlanner";
+import type { DepthShortage } from "../../module/types/seat";
 
 /** 머신 90대가 각자 **칸 1** 을 쓴다 — 실측(electronic-circuit)의 `stone-tablet` 이 이 꼴이다. */
 const seatRows = Array.from({ length: 90 }, (_, mi) => mi * 3 + 1);
