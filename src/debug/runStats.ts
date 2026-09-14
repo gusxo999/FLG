@@ -337,7 +337,7 @@ export function recordLaneShareStats(c: Pick<LaneShareCounters, "candidates" | "
   current.laneShare = { ...c, unshared: { shape: 0, seats: 0 }, merged: 0 };
 }
 
-/** 배정이 짝을 되돌렸다 — `planModulePorts` 가 도형·좌석을 못 세운 자리에서 부른다. */
+/** 배정이 짝을 되돌렸다 — `planner/module/policy.seatLinkEdge` 가 도형·좌석을 못 세운 자리에서 부른다. */
 export function recordLaneUnshare(why: "shape" | "seats"): void {
   current.laneShare.unshared[why] += 1;
 }

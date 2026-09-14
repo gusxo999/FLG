@@ -1,6 +1,6 @@
 /**
- * **링크 면 배정의 장부** — 면마다 좌석표 · 기둥 끝 · 기둥 밖 칸. 묻고([fitOnGap] · [fitOnFace])
- * 적는다([commitLinkFace] · [seatOnSharedBelt]).
+ * **링크 면 배정의 장부** — 면마다 좌석표 · 기둥 끝 · 기둥 밖 칸. 차리고([openLinkFaceContext] · [cloneLinkFaceStage])
+ * 묻고([fitOnGap] · [fitOnFace]) 적는다([commitLinkFace] · [seatOnSharedBelt]).
  *
  * **고르지 않는다.** 어느 면 · 어느 끝 · 어느 깊이를 먼저 볼지는 정책([linkPlanner])이 정하고,
  * 여기는 *"그 자리가 비었나"* 와 *"그 자리를 적는다"* 만 답한다. 묻는 함수는 장부를 **읽기만**
@@ -12,6 +12,7 @@
  * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
  *
  * > **내력.** `linkPlanner.ts` 에 정책과 섞여 있다가 2026-09-14 여기로 왔다(계획 구조-2축 · 2 Step 3a).
+ * > 무대를 차리고 베끼는 둘은 `planModulePorts.ts` 에서 왔다(Step 3b).
  */
 
 import { faceSeatArms, inserterForReach } from "../../buildSpec";
@@ -19,11 +20,14 @@ import type { PortFace } from "../../containerModel";
 import { armsAt, machinesOn } from "../../module/link";
 import { flowEnd } from "../../module/arith";
 import type { Link } from "../../module/types/line";
-import type { DepthShortage, LinkFaceContext, LinkFacePlan } from "../../module/types/seat";
+import type { ModuleInput } from "../../module/types/module";
+import type {
+  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage,
+} from "../../module/types/seat";
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../../module/linkShape";
 import {
-  claimDepth, claimSeats, freeSeatRows, groupsOn, depthClear, makeFaceTable,
+  claimDepth, claimSeats, copyFaceTable, freeSeatRows, groupsOn, depthClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceTable,
 } from "./faceTable";
 import { LINK_LANE_DEPTH } from "./arith";
@@ -375,4 +379,54 @@ export function seatOnSharedBelt(
   for (const [mi, slots] of want) claimSeats(table, mi, slots, owner);
   // 벨트·포트 칸·기둥 끝은 **안 청구한다** — 첫 줄의 것을 그대로 쓴다.
   return { ...shared, arms, slotIndex: want, mergeRole: undefined, sharesBelt: true };
+}
+
+/**
+ * **① 무대를 차린다** — 면마다 빈 좌석표 자리 · 끝 장부 · 기둥 밖 칸 장부.
+ *
+ * **면마다 좌석표 한 장** — 이 배정이 아는 자리의 전부다(옛 장부 셋이 여기로 접혔다).
+ * 표는 [tableOf] 가 그 면을 처음 볼 때 만들어진다(유체 칸을 미리 찍어서).
+ */
+export function openLinkFaceContext(
+  input: Pick<ModuleInput, "machine" | "inserters">,
+  count: number,
+  pipeFaceRows: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>,
+): LinkFaceContext {
+  const faceTables = new Map<PortFace, FaceTable>();
+  return {
+    machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
+    ends: new Map(), outside: new Map(), inserters: input.inserters,
+  };
+}
+
+/** 아직 아무도 안 앉은 배정 — 간선 축([seatLinkEdge])이 자리를 잡기 전의 모양. */
+export const emptyAllocation = (n: number): FaceAllocation => ({
+  plans: Array.from({ length: n }, () => undefined),
+  deferred: [],
+  shortages: Array.from({ length: n }, () => []),
+});
+
+/**
+ * **무대의 사본** — `gen` 이 여러 번 돌 때 **꼭 필요하다.**
+ *
+ * 배정(①)은 `P0b` 에서 한 번 끝나지만, `planModulePorts` 의 ③′(기계별 포트)가 **같은
+ * 좌석표에 이어서 앉는다.** 그래서 무대를 그대로 재사용하면 두 번째 `gen` 이
+ * **①이 아니라 ①+③′ 이 앉은 표**를 보고 시작해 자리가 조용히 줄어든다.
+ *
+ * 2026-08-29 에 실제로 그렇게 깨졌다 — 21개 테스트가 *"인서터 수 ≠ 줄 수"* 로 떨어졌다.
+ * [FaceTable] 이 값인 것([copyFaceTable])이 이 사본을 싸게 만든다.
+ *
+ * `out`/`in` 의 [LinkFacePlan] 은 확정된 결과라 **참조로 나눠 쓴다**(아무도 안 고친다).
+ */
+export function cloneLinkFaceStage(stage: LinkFaceStage): LinkFaceStage {
+  const tables = new Map([...stage.tables].map(([f, t]) => [f, copyFaceTable(t)] as const));
+  const ends = new Map([...stage.ctx.ends].map(([f, set]) => [f, new Set(set)] as const));
+  const outside = new Map([...stage.ctx.outside].map(([f, set]) => [f, new Set(set)] as const));
+  return {
+    ...stage,
+    tables,
+    ctx: { ...stage.ctx, tables, ends, outside },
+    out: { ...stage.out, plans: [...stage.out.plans], deferred: [...stage.out.deferred] },
+    in: { ...stage.in, plans: [...stage.in.plans], deferred: [...stage.in.deferred] },
+  };
 }

@@ -71,7 +71,7 @@ export interface DepthBudgetInput {
   /**
    * 나머지 줄 — **우선순위 순**(출력 → 자식-공급 입력 → 원료 입력).
    *
-   * 예산이 넘치면 **뒤에서부터** 내린다. 순서는 `planModulePorts` 가 쓰는 그 순서 그대로다
+   * 예산이 넘치면 **뒤에서부터** 내린다. 순서는 `policy.seatRestLines` 가 쓰는 그 순서 그대로다
    * (제약이 센 것에 좋은 자리를 먼저 — 원료 입력은 납품 경로가 없어 밀려도 안전하다).
    */
   readonly lines: readonly IoLine[];

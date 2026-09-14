@@ -63,7 +63,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 ## 4. 구현 위치
 
 - [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) — 노출 끝면 완화는
-  `planModulePorts` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
+  [policy.ts](../../../src/autoLayout/planner/module/policy.ts) `seatRestLines` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
   `PlannedSide`(W/E/N/S), `IoLine.external`, `PortPlannerInput.nsFaces`, 입력 풀 소비
   순서(E→N/S→W), depth 재배정 루프 N/S 포함.
 - [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) —

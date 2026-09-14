@@ -205,6 +205,35 @@ export interface FluidJumpBudget {
   beltDepths: number;
 }
 
+/**
+ * **점프 예산을 조립하는 한 곳** — 계획([planLinkFaces])과 거절([admitFluidTrunks])이 이 함수를 부른다.
+ * 식은 [FluidJumpBudget.beltDepths] 머리말의 문장 그대로다.
+ *
+ * **면당 깊이 = 서로 다른 reach 값 개수.** 예전엔 `longInserter ? 2 : 1` 로 세어 reach 3종을 골라도
+ * 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(`docs/용어사전.md §BuildSpec`).
+ *
+ * 예전엔 두 호출자가 **각자** 조립했다 — 거절은 `min(max(1, reach 종류 수), 아이템 줄 수)`, 계획은
+ * `min(인서터 목록 길이, 파이프 아닌 줄 수)`. 둘이 같은 답을 낸 것은 설정 관문(`admitBuildSpec` — 인서터가
+ * 없으면 먼저 물러난다)과 `makeBuildSpec`(reach 마다 하나만 남긴다)에 기댄 결과였다(2026-09-14 두 식을 나란히
+ * 계측해 불일치 0 을 확인하고 합쳤다 — 계획 구조-2축 · 2 Step 3b). 거절 쪽이 함께 들던 `maxInserterReach` 는
+ * 이 모양에 없는 필드라 아무도 읽지 않았다(2026-08-16 식을 뒤집을 때 남은 것).
+ */
+export function fluidJumpBudgetOf(a: {
+  undergroundPipeEntityName?: string;
+  pipeMaxUndergroundDistance?: number;
+  seatRows: number;
+  inserters: ReadonlyArray<{ reach: number }>;
+  /** 이 레시피의 **아이템** 줄 수(재료 + 산출). */
+  itemLineCount: number;
+}): FluidJumpBudget {
+  return {
+    undergroundPipeEntityName: a.undergroundPipeEntityName,
+    pipeMaxUndergroundDistance: a.pipeMaxUndergroundDistance,
+    seatRows: a.seatRows,
+    beltDepths: Math.min(new Set(a.inserters.map((i) => i.reach)).size, a.itemLineCount),
+  };
+}
+
 /** 못 넘는 사유 — 셋은 처방이 다르다(파이프 고르기 · 더 긴 지하파이프 · 더 큰 머신). */
 export type FluidJumpBlocker =
   | { kind: "no-underground"; detail: string }

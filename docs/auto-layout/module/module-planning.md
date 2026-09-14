@@ -587,7 +587,8 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
 | ③ 줄마다 `g` | `planner/module/depthBudget.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |
 | ③ 붓기 | `module/link.ts` | `externalLineGroups` · `bundleCap` |
-| ③ 자리 | `planner/module/linkPlanner.ts` | ①과 **같은 함수**를 탄다(2026-09-02 통합) |
+| ③ 자리 | `planner/module/policy.ts` | `seatRestLines` — ①과 **같은 함수**(`allocateLinkFaces`)를 탄다(2026-09-02 통합) |
+| 간선 축 좌석 | `planner/module/policy.ts` | `seatLinkEdge` — 한 링크의 양끝을 함께 |
 | 좌표 입히기 | `module/clusterModule.ts` | `placeLinkSeats` (덧셈만) |
 | 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`(`emitTapInserting` 은 2026-08-16 삭제) |
 

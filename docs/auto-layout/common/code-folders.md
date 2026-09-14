@@ -104,7 +104,8 @@ planner/ →  module/    :  다수       ← modulePacking · moduleWizard · de
 autoLayout/
 ├ planner/                     계획 — 조율 주체. 아무것도 놓지 않는다
 │   ├ module/                    한 모듈 안쪽 계획
-│   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
+│   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점 — 순서만 쥐는 뼈대
+│   │   ├ policy.ts                정책 — 모듈 축(링크 · 나머지 줄 · 처방)과 간선 축(seatLinkEdge)에서 고른다
 │   │   ├ allocateArms.ts          팔 산술(requiredInserterCount·allocateArms)
 │   │   ├ depthBudget.ts            깊이 예산 — 줄마다 `g` 를 정한다
 │   │   ├ linkPlanner.ts           정책 — 링크 면 · 끝 · 깊이 순서를 고른다 (좌표 없음)

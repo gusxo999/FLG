@@ -3,13 +3,20 @@
  *
  * 깊이 목록은 인서터와 유체 면에서, gap 폭 · 빠져나가는 옆면 · 옆면 최대 깊이는 **확정된
  * 배정([LinkFacePlan])** 에서 유도된다. 그래서 배정이 끝난 뒤 몇 번을 불러도 같은 답이다.
+ * 유체 면 · 줄 가르기(링크 몫 · 유체 · 나머지) · 사다리 사유는 입력과 무대에서 유도된다.
  *
- * > **내력.** 넷 다 `linkPlanner.ts` 에 정책·장부와 섞여 있다가 2026-09-14 여기로 왔다
- * > (계획 구조-2축 · 2 Step 3a — 파일 하나가 한 가지 종류의 일만 하게).
+ * > **내력.** 앞 넷은 `linkPlanner.ts` 에 정책·장부와 섞여 있다가 2026-09-14 여기로 왔다
+ * > (계획 구조-2축 · 2 Step 3a — 파일 하나가 한 가지 종류의 일만 하게). 뒤 다섯은 `planModulePorts.ts`
+ * > 에서 왔다(Step 3b).
  */
 
 import type { PortFace } from "../../containerModel";
-import type { LinkFaceContext, LinkFacePlan } from "../../module/types/seat";
+import type { IoLine, PlannedLine, PortSide } from "../../module/types/line";
+import type { ModuleInput } from "../../module/types/module";
+import type { DepthShortage, LinkFaceContext, LinkFacePlan, LinkFaceStage } from "../../module/types/seat";
+import {
+  clusterBeltDepthCap, fluidJumpBlocker, fluidJumpBudgetOf, fluidLineOf, fluidLinesOnSide,
+} from "../../module/fluidPorts";
 
 /**
  * 링크 벨트의 기본 깊이 — 좌석(d1) 바로 바깥. v1 은 그룹마다 이 한 줄뿐이다
@@ -116,4 +123,144 @@ export function linkFaceDepths(
       by[p.face] = Math.max(by[p.face] ?? 0, p.clusterBeltDepth + 2);
     }
   return by;
+}
+
+/**
+ * **⓪ 유체 면 — 모든 배정보다 먼저.** 면마다 유체 줄 수 · 깊이 상한 · 점프 가능.
+ *
+ * 머신 `fluid_boxes` 가 강제하는 값이라 우리가 협상할 수 없다(제약이 가장 센 것 먼저 —
+ * 스도쿠 원칙). 그리고 ①도 이 답을 알아야 한다: 유체가 가져간 면에 링크를 앉히면 인서터가
+ * 파이프 칸에 선다. 예전엔 ①이 ② 앞에 있어 그 사실을 **모른 채** 배정했다.
+ * 슬롯 목록은 **접히지 않고 그대로 온다**(`docs/용어사전.md §BuildSpec`). 예전엔 이진 필드에서 다시 폈다.
+ */
+export function fluidFacesOf(input: Pick<ModuleInput, "machine" | "lines" | "inserters" | "fluidTrunk">): {
+  pipeFaces: { side: PortSide; fluidRows: number; depthCap: number }[];
+  pipeFaceRows: Map<PortFace, { rows: readonly number[]; depthCap: number }>;
+  isJumpableToClusterPipe: (side: PortSide) => boolean;
+} {
+  const ft = input.fluidTrunk;
+  // [isJumpableToClusterPipe] — "이 면에서 파이프가 좌석을 비우고 밖으로 점프할 수 있나".
+  // **면마다 따로 판정한다** — 면마다 유체 줄 수가 다르고, 그 수가 아래 ②③을 둘 다 바꾼다.
+  // 판정 자체는 [fluidJumpBlocker] 가 단독으로 갖는다 — [admitFluidTrunks] 가 `n ≥ 2` 인 면을
+  // **거절**할 때 같은 공식을 봐야 하기 때문이다(둘로 갈리면 계획과 사유가 어긋난다).
+  // 유체 한 줄이면 못 넘어도 옛 스파인으로 **연속적 저하**이고, 두 줄이면 거절이다.
+  // 예산은 거절과 **같은 함수**가 조립한다([fluidJumpBudgetOf]).
+  const jumpBudget = fluidJumpBudgetOf({
+    undergroundPipeEntityName: ft?.undergroundPipeEntityName,
+    pipeMaxUndergroundDistance: ft?.pipeMaxUndergroundDistance,
+    seatRows: input.machine.h,
+    inserters: input.inserters,
+    itemLineCount: input.lines.filter((l) => l.kind !== "pipe").length,
+  });
+  /**
+   * 이 면의 **깊이 상한** — 지하파이프 사거리가 정한다([clusterBeltDepthCap]). 유체가 없는 면은
+   * 상한이 없다. *"사거리가 짧으면 파이프 배치를 우선한다"* 가 이 한 줄이다(2026-08-16).
+   */
+  const depthCapOf = (side: PortSide): number => {
+    const n = fluidLinesOnSide(ft, side).length;
+    return n === 0 ? Infinity : clusterBeltDepthCap(n, ft?.pipeMaxUndergroundDistance);
+  };
+  const isJumpableToClusterPipe = (side: PortSide): boolean => {
+    const n = fluidLinesOnSide(ft, side).length;
+    if (n === 0) return false; // 유체가 없는 면은 점프할 것도 없다.
+    return fluidJumpBlocker(n, jumpBudget) === null;
+  };
+  /** ③ 이 보는 면별 요약 — 유체 행 수와 점프 여부. 없는 면은 목록에 안 넣는다. */
+  const pipeFaces = (["W", "E"] as const)
+    .map((side) => ({ side, fluidRows: fluidLinesOnSide(ft, side).length, depthCap: depthCapOf(side) }))
+    .filter((f) => f.fluidRows > 0);
+  /**
+   * ① 이 보는 같은 사실 — 다만 **행 번호까지** 필요하다(③ 은 개수만 쓴다). 링크는 점프 면의
+   * 유체 상자 행을 건너뛰고 앉아야 하므로 `fluidboxOffset` 을 그대로 넘긴다.
+   */
+  const pipeFaceRows = new Map<PortFace, { rows: readonly number[]; depthCap: number }>(
+    pipeFaces.map((f) => [
+      f.side as PortFace,
+      { rows: fluidLinesOnSide(ft, f.side).map((l) => l.fluidboxOffset), depthCap: f.depthCap },
+    ]),
+  );
+  return { pipeFaces, pipeFaceRows, isJumpableToClusterPipe };
+}
+
+/**
+ * **② 링크가 맡은 줄의 열쇠** `${role}:${name}`.
+ *
+ * 링크가 맡은 줄은 **자기 기하를 스스로 갖는다**(emitOutputLinks/emitInputLinks) — 그래서
+ * ③의 tap/direct 판정 대상이 아니다. ③ 입력에서 빼되, 그 줄이 먹은 좌석은 ①의 장부에
+ * 남아 있어 ③이 정확한 예산을 본다. 빼지 않으면 두 문제가 생긴다:
+ *  ① 링크 줄이 좌석을 넘겨 ③이 direct 로 떨어지면, 링크 방출이 안 불려 포트가 통째로
+ *     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 납품 경로가 샌다 — 2026-07-19 실측).
+ *  ② ③이 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
+ */
+export function linkedKeysOf(st: Pick<LinkFaceStage, "outLinks" | "inLinks">): Set<string> {
+  const { outLinks, inLinks } = st;
+  const linkedKeys = new Set([
+    ...outLinks.map((g) => `output:${g.item}`),
+    ...inLinks.map((g) => `input:${g.item}`),
+  ]);
+  return linkedKeys;
+}
+
+/**
+ * **③ 유체(pipe) 줄 — 면을 우리가 못 고른다.**
+ *
+ * 머신 fluid_box 가 강제하고 [FluidTrunkInput.lines] 로 **줄마다** 온다(면·행·순번). 그래서
+ * ③에 안 보내고 여기서 [PlannedLine] 을 만든다(depth=1, reach 없음). ③의 **케이스 B 아이템
+ * 예약은 그대로**다 — 아래 `pipeFaces` 로 그 면 아이템을 깊이로 밀 뿐, 유체 **줄**은 안 본다.
+ *
+ * 유체는 트렁크(tap)로만 성립한다 — 배정을 못 받은 유체 줄이 하나라도 있으면 통째로
+ * 정직히 실패한다([restOutcomeOf]). 반만 놓으면 유체를 못 받는 머신이 **조용히 굶는다.**
+ */
+export function pipeLinesOf(input: Pick<ModuleInput, "lines" | "fluidTrunk">): {
+  planned: PlannedLine[];
+  /** 배정을 못 받은 유체 줄이 있다. 유체 줄이 없으면 언제나 거짓이다(루프 안에서만 참이 된다). */
+  cannotPlace: boolean;
+} {
+  const pipeLines = input.lines.filter((l) => l.kind === "pipe");
+  const pipePlanned: PlannedLine[] = [];
+  let fluidCannotPlace = false;
+  for (const line of pipeLines) {
+    const assigned = fluidLineOf(input.fluidTrunk, line);
+    if (!assigned) {
+      fluidCannotPlace = true;
+      continue;
+    }
+    pipePlanned.push({ line, side: assigned.side, clusterBeltDepth: 1, reach: undefined });
+  }
+  return { planned: pipePlanned, cannotPlace: fluidCannotPlace };
+}
+
+/**
+ * **④ 나머지 줄** — 파이프도 링크도 아닌 줄. ①이 남긴 예산 안에서 앉는다([seatRestLines]).
+ *
+ * **여기 있던 [insertingPlanner] 호출은 사라졌다**(2026-09-02). 그것이 내던 것은 모듈
+ * 하나의 라벨(`tap`/`direct`)과 사유 문장이었는데, 배치 흐름에는 그 라벨로 갈리는 분기가
+ * 하나도 없었고(방출 통합 2026-08-16), `g` 는 깊이 예산이 정하고(⑤-2), 화면의 처방은
+ * 사실에서 나온다([unpourableFix]·[DepthShortage]). 남은 독자가 0이 되어 지웠다.
+ */
+export function restLinesOf(input: Pick<ModuleInput, "lines">, linkedKeys: ReadonlySet<string>): IoLine[] {
+  return input.lines.filter(
+    (l) => l.kind !== "pipe" && !linkedKeys.has(`${l.role}:${l.name}`),
+  );
+}
+
+/**
+ * **⑥ 사다리로 올려 보낼 사유** — 신원이 있는(= 간선인) 줄만. 쪼갬은 양끝이 함께라야 한다.
+ */
+export function depthShortagesOf(
+  st: Pick<LinkFaceStage, "outLinks" | "inLinks" | "out" | "in">,
+): Map<string, DepthShortage[]> {
+  const { outLinks, inLinks } = st;
+  const outFaces = st.out;
+  const inFaces = st.in;
+  const depthShortages = new Map<string, DepthShortage[]>();
+  for (const [groups, alloc] of [[outLinks, outFaces], [inLinks, inFaces]] as const) {
+    alloc.plans.forEach((p, i) => {
+      const id = groups[i]?.id;
+      const w = alloc.shortages[i];
+      if (p || id === undefined || !w?.length) return;
+      depthShortages.set(id, w);
+    });
+  }
+  return depthShortages;
 }

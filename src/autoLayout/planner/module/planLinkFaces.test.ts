@@ -13,7 +13,8 @@
  * **바뀌기 전이 같았다는 사실**이 잠겨 있어야 한다.
  */
 import { describe, it, expect } from "vitest";
-import { planLinkFaces, planModulePorts, seatLinkEdge } from "./planModulePorts";
+import { planLinkFaces, planModulePorts } from "./planModulePorts";
+import { seatLinkEdge } from "./policy";
 import { tryLinkFace } from "./linkPlanner";
 import { commitLinkFace } from "./ledger";
 import type { Link } from "../../module/types/line";

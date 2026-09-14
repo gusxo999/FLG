@@ -32,7 +32,9 @@ import { generateModule } from "../module/clusterModule";
 import type { IoLine, Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../module/types/module";
 import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
-import { cloneLinkFaceStage, planLinkFaces, seatLinkEdge } from "./module/planModulePorts";
+import { planLinkFaces } from "./module/planModulePorts";
+import { seatLinkEdge } from "./module/policy";
+import { cloneLinkFaceStage } from "./module/ledger";
 import { clusterBeltDepthsOf } from "./module/arith";
 import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).

@@ -18,7 +18,7 @@ import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
 import type { BuildSpec } from "../../buildSpec";
 import type { RecipeTreeNode } from "../../types";
 import { summarizeRungs } from "../module/linkPlanner";
-import { chooseFluidTrunkPlan, fluidJumpBlocker } from "../../module/fluidPorts";
+import { chooseFluidTrunkPlan, fluidJumpBlocker, fluidJumpBudgetOf } from "../../module/fluidPorts";
 import { pipeFlowConflict, type PipeFlow } from "../../util/pipeFlow";
 import type { IssueScope, LayoutIssue } from "../../layoutIssue";
 import type { ResolvedNode } from "./gamedata";
@@ -125,18 +125,14 @@ export function admitFluidTrunks(nodes: readonly ResolvedNode[], options: BuildS
     // 판정은 [fluidJumpBlocker] 하나가 갖는다 — 계획([planModulePorts])이 같은 함수를 본다.
     // 삼키면 스파인 둘이 같은 d1 을 다투다 한 줄이 끊겨(`unrouted-lines`) **원인에서 멀리
     // 떨어진 곳**에 증상만 남는다.
-    const jumpBudget = {
+    // 예산은 계획과 **같은 함수**가 조립한다([fluidJumpBudgetOf]).
+    const jumpBudget = fluidJumpBudgetOf({
       undergroundPipeEntityName: options.undergroundPipeEntityName,
       pipeMaxUndergroundDistance: options.pipeMaxUndergroundDistance,
       seatRows: m.h,
-      // **면당 깊이 = 서로 다른 reach 값 개수**([depthSlots]). 예전엔 `longInserter ? 2 : 1` 로
-      // 세어 reach 3종을 골라도 2에서 잘렸다 — 배분기의 주장과 배선이 어긋나던 자리다(`docs/용어사전.md §BuildSpec`).
-      beltDepths: Math.min(
-        Math.max(1, new Set(options.inserters.map((i) => i.reach)).size),
-        itemLineCount,
-      ),
-      maxInserterReach: options.inserters.reduce((m2, i) => Math.max(m2, i.reach), 1),
-    };
+      inserters: options.inserters,
+      itemLineCount,
+    });
     let crowded: LayoutIssue | undefined;
     for (const side of ['W', 'E'] as const) {
       const n = plan.lines.filter((l) => l.side === side).length;

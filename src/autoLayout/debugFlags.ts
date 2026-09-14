@@ -105,7 +105,7 @@ export function setAutoLayoutLaneMerge(v: boolean): void {
  * 받으므로(`machinesOn !== 1`) 관통 줄은 **갈 곳이 없어 통째로 실패한다.**
  *
  * `true` 면 반대 면을 **gap 앞에** 넣는다 — 자매 경로가 자기 줄에 이미 쓰는 그 순서다
- * (`planModulePorts`: `["E","W","S","N"]` · `["W","E","S","N"]`).
+ * (`planner/module/policy.seatRestLines`: `["E","W","S","N"]` · `["W","E","S","N"]`).
  *
  * ## 왜 이것이 먼저인가 — **관통을 지키기 때문**
  *

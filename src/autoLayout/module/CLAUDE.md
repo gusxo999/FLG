@@ -29,8 +29,9 @@ arith.ts          셈                 trunkEndKey · flowEnd
 `generateModule` 은 계획 함수를 **하나만** 부른다:
 
 ```
-planner/module/planModulePorts(input, count)   ← 좌표 없는 계획 전부
-  ① 링크 면 배정  ② 유체 줄 조립  ③ 나머지 줄 배정  ④ gap 폭
+planner/module/planModulePorts(input, count)   ← 좌표 없는 계획 전부 (순서만 쥐는 뼈대)
+  ① 무대  ② 링크 몫  ③ 유체 줄  ④ 나머지 줄  ⑤ 못 부은 줄  ⑥ gap 폭 등 부산물
+  고르기 = policy · linkPlanner   묻고 적기 = ledger   세기 = arith
         ↓
 layoutCluster(plan.rowGaps) → 머신 좌표 생성
 placeLinkSeats(machines, plan.linkFaces)       ← 덧셈뿐

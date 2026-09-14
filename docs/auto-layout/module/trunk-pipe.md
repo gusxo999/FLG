@@ -289,7 +289,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 | `containerModel.Container` | 방향 필드 없음 | `direction?` 추가 |
 | [`machinePlacer.commitContainer`](../../../src/autoLayout/execution/machinePlacer.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
 | [`moduleWizard`](../../../src/autoLayout/planner/moduleWizard.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
-| [`planModulePorts`](../../../src/autoLayout/planner/module/planModulePorts.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
+| [`planModulePorts`](../../../src/autoLayout/planner/module/planModulePorts.ts) → [`pipeLinesOf`](../../../src/autoLayout/planner/module/arith.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
 | [`clusterModule`](../../../src/autoLayout/module/clusterModule.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
 | [`modulePerimeterPass`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
 | `deliveryRoute` | — | **안 건드린다**(§5) |
