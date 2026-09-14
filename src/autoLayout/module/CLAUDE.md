@@ -21,22 +21,32 @@ arith.ts          셈                 trunkEndKey · flowEnd
 타입이 계획 계층에 있으면 방출기가 그걸 가지러 **위로** 올라가고, 값까지 얹혀 있으면 순환이 된다
 (2026-09-13 전까지 `emitModule → clusterModule` 이 `trunkEndKey` 하나 때문에 런타임 간선이었다).
 
-**남은 상향 간선 둘은 알고 둔 것이다:** `types/seat.ts → planner/module/faceTable`(타입 — 좌석표는
-장부째 옮긴다) · `clusterModule → planner/module/planModulePorts`(값 — 조율자가 이 폴더에 있어서다).
+**남은 상향 간선은 알고 둔 것이다:** `types/seat.ts → planner/module/faceTable`(타입 — 좌석표는
+장부째 옮긴다) · `clusterModule → planner/module/planModulePorts`(계획을 부른다) · `clusterModule → execution/module`
+(방출을 부른다 — 둘 다 조율자가 이 폴더에 있어서다) · `clusterModule` · `moduleTransform → planner/perimeter/wayOuts`
+(모듈이 자기 몸통에 대해 답하는 함수가 반출 쪽에 있다 — work-kinds §1).
+조율자를 `planner/module/` 로 옮기지 않은 이유(2026-09-14): 옮겨서 얻는 것이 경로 문자열뿐이고, 폴더 이관이
+계층 축을 없애면 이 간선들은 폴더 안 간선이 된다. 대신 **조율자가 조율만** 하게 했다 — 도형은 `shape`, 트렁크 틀은 `policy`.
 
 ## 자리 배정은 여기서 안 한다
 
-`generateModule` 은 계획 함수를 **하나만** 부른다:
+`generateModule` 은 계획 함수를 **하나만** 부른다. 뼈대는 순서만 쥔다:
 
 ```
-planner/module/planModulePorts(input, count)   ← 좌표 없는 계획 전부 (순서만 쥐는 뼈대)
-  ① 무대  ② 링크 몫  ③ 유체 줄  ④ 나머지 줄  ⑤ 못 부은 줄  ⑥ gap 폭 등 부산물
-  고르기 = policy · linkPlanner   묻고 적기 = ledger   세기 = arith
+① planner/module/planModulePorts(input, count)   ← 좌표 없는 계획 전부 (순서만 쥐는 뼈대)
+     고르기 = policy · linkPlanner   묻고 적기 = ledger   세기 = arith
         ↓
-layoutCluster(plan.rowGaps) → 머신 좌표 생성
-placeLinkSeats(machines, plan.linkFaces)       ← 덧셈뿐
-emit*(...)                                      ← execution/module/emitModule
+② shape.layoutModule(plan.rowGaps)              ← 머신 좌표가 여기서 생긴다
+③ openModuleSheet                               ← 점유 = 머신 발자국
+④ layLinkLines   shape.placeLinkSeats(덧셈뿐) → emitOutputLinks · emitInputLinks
+⑤ 판정 받기      못 부은 줄 · 나머지 줄 실패(조기 반환)
+⑥ layRestLines   같은 방출기
+⑦ layFluidLines  policy.buildTrunkContext → emitTrunkPipe
+⑧ finishModule   끝 칸 방향(늦은 결정) · wayOuts
 ```
+
+**파일 = 종류**: `shape`(머신 좌표 위의 도형 — 방출기도 틀과 길을 여기서 받는다) · `policy`(트렁크 틀) ·
+`linkShape`(순번 축의 도형 — 계획과 방출이 함께 부른다) · `clusterModule`(조율).
 
 **이 순서는 바꿀 수 없다.** gap 으로 넘어간 링크는 gap 안에 가로 벨트를 놓고,
 *gap 폭 = 그 gap 을 지나는 가로 벨트 수*인데, 그 폭이 다시 머신 좌표를 정한다.

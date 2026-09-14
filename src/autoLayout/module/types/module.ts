@@ -240,7 +240,7 @@ export interface GeneratedModule {
 }
 
 /**
- * **트렁크 방출이 줄마다 되묻는 값** — [buildTrunkContext] 가 좌표 배치 전에 `plan.lines`
+ * **트렁크 방출이 줄마다 되묻는 값** — [buildTrunkContext] 가 머신이 놓인 뒤 `plan.lines`(유체 줄)
  * 전체를 한 번 훑어 만든다. 방출기 [emitTrunkPipe] 가 읽는다.
  */
 export interface TrunkContext {

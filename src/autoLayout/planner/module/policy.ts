@@ -16,7 +16,7 @@
  * > (계획 구조-2축 · 2 Step 3b).
  */
 
-import type { IoLine, Link, PlannedLine } from "../../module/types/line";
+import type { IoLine, Link } from "../../module/types/line";
 import type { ModuleInput } from "../../module/types/module";
 import type {
   DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage,
@@ -246,10 +246,10 @@ export function restOutcomeOf(
   input: Pick<ModuleInput, "lines">,
   linkedKeys: ReadonlySet<string>,
   pipe: { cannotPlace: boolean },
-): { ok: true; lines: PlannedLine[] } | { ok: false; unplaced: IoLine[] } {
+): { ok: true } | { ok: false; unplaced: IoLine[] } {
   return pipe.cannotPlace
     ? { ok: false, unplaced: input.lines.filter((l) => !linkedKeys.has(`${l.role}:${l.name}`)) }
-    : { ok: true, lines: [] };
+    : { ok: true };
 }
 
 /**

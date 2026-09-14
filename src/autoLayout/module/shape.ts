@@ -2,6 +2,8 @@
  * **모듈 도형 — 머신이 놓인 뒤.** 배정(순번 · 면 · 깊이 · 끝)에 머신 좌표를 입혀 **모듈-로컬 좌표**를 낸다.
  *
  * ```
+ * layoutModule             몸통 — 머신 좌표 · 틀 · ring (gap 폭은 계획이 준다)
+ * placeLinkSeats           좌석 좌표 — 배정의 순번 + 머신 원점(덧셈뿐)
  * machineExtent            기둥 틀 — 머신 전부가 덮는 범위
  * seatsOf · linkFrameOf    링크 틀 — 면 · 좌석(머신 × 행) · 포트 면 · 깊이 · 흐름 끝
  * seatCellsOf              좌석(d1) 칸
@@ -22,17 +24,18 @@
  * 장부(`occupancy`)를 안 본다 — 칸이 비었는지는 방출기가 **길을 다 받은 뒤** 묻는다(반만 놓인 벨트는 없다).
  * 셀도 안 만든다 — 찍기는 `execution/module/emitModule` 의 일이다.
  *
- * > **내력.** 2026-09-14 까지 틀과 길은 방출기(`emitOutputLinks` · `emitInputLinks`) 안에 있었고, 기둥 틀 식이
- * > 세 벌이었다(계획 구조-2축 · 2 Step 4).
+ * > **내력.** 2026-09-14 까지 틀과 길은 방출기(`emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`) 안에, 몸통과
+ * > 좌석 좌표는 조율자(`clusterModule`) 안에 있었고, 기둥 틀 식이 세 벌이었다(계획 구조-2축 · 2 Step 4).
  */
 
 import { flowEnd, trunkEndKey } from "./arith";
+import { layoutCluster } from "./clusterLayout";
 import { linkShape, type ShapeCell } from "./linkShape";
 import type { PlannedLine } from "./types/line";
 import type { ModuleInput, TrunkContext } from "./types/module";
-import type { LinkSeats } from "./types/seat";
+import type { LinkFacePlan, LinkSeats } from "./types/seat";
 import type { Container, PortFace } from "../containerModel";
-import { faceCell, faceVector } from "../util/helper";
+import { enumeratePerimeterCells, faceCell, faceVector } from "../util/helper";
 
 type Cell = { x: number; y: number };
 
@@ -372,4 +375,76 @@ export function pipeFrameOf(planned: PlannedLine, ctx: TrunkContext, lineEnds: M
   const lo = Math.min(t0, tBeltEnd);
   const hi = Math.max(t1, tBeltEnd);
   return { face, fv, d, vertical, ext, exitFace, beltEnd, seat, chestAt, lo, hi };
+}
+
+/**
+ * 모듈 머신 사이 세로 gap = 0(밀착). 모듈은 **간단 레시피**(W/E 두 면만으로 모든 I/O 를
+ * 처리 — demand ≤ 용량이 구조적으로 보장)만 다루므로 N/S 면을 안 쓴다. 트렁크는 W/E 변을
+ * 따라 세로로 흐르고 인서터 좌석도 각 머신 면(3칸) 안에 들어가, 머신 사이 공백은 트렁크
+ * belt 길이만 늘릴 뿐 아무 기능이 없다 → 밀착. (N/S spill 이 있는 옛 라이브 경로는 ROW_GAP=3
+ * 유지.) 복잡 레시피(2D)가 도입되면 그 경로가 자기 gap 을 따로 정한다.
+ */
+const MODULE_ROW_GAP = 0;
+
+/** **몸통** — 머신 좌표(모듈-로컬) · 머신 bbox · 자기 perimeter ring. */
+export interface ModuleBody {
+  machines: Container[];
+  bbox: { x: number; y: number; w: number; h: number };
+  ring: { x: number; y: number }[];
+}
+
+/**
+ * **몸통을 놓는다** — 계획이 준 gap 폭(`rowGaps`)으로 머신 N대의 좌표를 낸다. gap 폭은 우리가 고르는 값이 아니라
+ * 면 배정의 부산물이고, 그래서 이 함수는 계획 **뒤**에만 불린다.
+ */
+export function layoutModule(input: ModuleInput, count: number, rowGaps: number[], prefix: string): ModuleBody {
+  const layout = layoutCluster(
+    { w: input.machine.w, h: input.machine.h, count },
+    rowGaps.some((g) => g > 0) ? rowGaps : MODULE_ROW_GAP,
+  );
+
+  const machines: Container[] = layout.positions.map((pos, i) => ({
+    id: `${prefix}-m${i}`,
+    kind: "machine",
+    entityName: input.machine.entityName,
+    origin: { x: pos.dx, y: pos.dy },
+    size: { w: input.machine.w, h: input.machine.h },
+    // 유체 레시피면 머신을 돌려 유체 입구가 트렁크 파이프 쪽(W/E)을 보게 한다. 아이템
+    // 전용이면 0 — 인서터는 어느 면에나 붙으므로 돌릴 이유가 없다(trunk-pipe §3).
+    direction: input.fluidTrunk?.direction,
+  }));
+
+  const bbox = { x: 0, y: 0, w: layout.size.w, h: layout.size.h };
+  const ring = enumeratePerimeterCells(bbox);
+  return { machines, bbox, ring };
+}
+
+/**
+ * 면 배정에 **좌표를 입힌다** — 머신이 놓인 뒤에 부른다. 하는 일은 덧셈뿐이다.
+ *
+ * "면에서 몇 번째 칸" 은 배정의 일이라 [commitLinkFace] 가 이미 끝냈고
+ * ([LinkFacePlan.slotIndex] — 채우는 방향까지 거기서 정해진다), 여기서는 그 순번에
+ * 머신 원점을 더해 `t` 로 바꾼다. `t` 의 뜻은 [faceCell] 과 같다:
+ * W/E 면이면 y(행), N/S 면이면 x(열).
+ *
+ * **이 함수가 장부를 안 쓴다는 것이 요점이다.** 예전엔 여기서 빈 장부(`placeLedger`)를
+ * 새로 만들어 배정이 이미 센 누적을 처음부터 다시 셌다 — 같은 사실을 두 주체가 두 번
+ * 계산하면 언젠가 어긋난다.
+ */
+export function placeLinkSeats(
+  machines: Container[],
+  plans: (LinkFacePlan | undefined)[],
+): (LinkSeats | undefined)[] {
+  return plans.map((plan) => {
+    if (!plan) return undefined;
+    const isGap = plan.face === "N" || plan.face === "S";
+    const slots = new Map<number, number[]>();
+    for (const [mi, idx] of plan.slotIndex) {
+      const m = machines[mi];
+      if (!m) return undefined;
+      const origin = isGap ? m.origin.x : m.origin.y;
+      slots.set(mi, idx.map((i) => origin + i));
+    }
+    return { ...plan, slots };
+  });
 }

@@ -28,7 +28,7 @@ tags: [auto-layout]
 
 | 실물 | 무엇이 갈렸나 |
 |---|---|
-| `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule.ts:34](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts:23](../../../src/autoLayout/module/moduleTransform.ts)) |
+| `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule](../../../src/autoLayout/module/clusterModule.ts) 의 `finishModule` · [moduleTransform](../../../src/autoLayout/module/moduleTransform.ts) 의 `bodyColumnsOf`) |
 | "좌석 배정" | 한 이름 아래 성질이 다른 다섯이 있다 — 장부 · 가격표 · 적합성 · 청구 · 정책. 그래서 `tryLinkFace` 가 `forceEnd`·`preferEnd`·`preferDepth` 라는 **정책 인자 셋**을 들고 있다 |
 | 포트 칸 도형 | 같은 도형이 계획과 방출에 **두 벌** 있었고, 둘을 붙들고 있는 것이 줄 번호를 적은 주석뿐이었다. 2026-09-12 에 [linkShape](../../../src/autoLayout/module/linkShape.ts) 로 합쳤다 — **종류를 물었더니 답이 나온 자리**다(도형은 도형끼리) |
 
@@ -95,7 +95,10 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 - [planModulePorts.ts](../../../src/autoLayout/planner/module/planModulePorts.ts) `recordPortPlanStats` *"계측 — 관측만 한다(계산도 분기도 반환값도 안 바꾼다)"*
 - [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) `recordEndsAudit`(`endsDisagree`·`endsCoarse`) *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
 - `perimeterExitPlanner` 의 `ExitDemotion`·`ExitBlocked` *"읽기 전용 계측이라 동작을 안 바꾼다"*
-- `emitModule` 의 `netTrips` 안전망 · `clusterModule` 의 *"아직 아무 배치도 바꾸지 않는다"*
+- `emitModule` 의 `netTrips` 안전망
+
+> 2026-09-14 까지 이 목록에 `clusterModule` 의 *"아직 아무 배치도 바꾸지 않는다"*(트렁크 틀의 링크 깊이 항)가 있었다.
+> **거짓이었다** — 그 항이 ClusterPipe 깊이를 옮기고 점프를 켠다(계측: 시험 33 · 대조 5). 주석을 사실로 고치고 목록에서 뺐다.
 
 **이건 이 저장소의 작업 방식이다** — 새 모델을 넣기 전에 옛 모델과 나란히 돌려 답을 대조한다.
 찾는 법은 이름 규약이다: `record*` 로 시작하는 함수가 그것이다(`debug/runStats.ts`).
@@ -149,6 +152,14 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > 200줄 넘는 함수 = 4   packModuleTree 868 → 53 · planModulePorts 317 → 37 · tryLinkFace 208 → 54 가 빠졌다
 >                       남은 넷: planChannelGeometry · searchWithJumps(탐색) · emitOutputLinks · emitInputLinks(D2)
 > 500줄 이상 = 8 파일  linkPlanner · planModulePorts · modulePacking 이 빠지고 planner/module/policy 529 가 섰다(종류 하나)
+> ```
+>
+> **2026-09-14 Step 4 뒤**(모듈 하나를 만드는 사슬 — 방출기 셋과 조율자를 단계로):
+>
+> ```
+> 200줄 넘는 함수 = 2   emitOutputLinks 253 → 96 · emitInputLinks 209 → 98 이 빠졌다. 남은 둘은 탐색이다(planChannelGeometry · searchWithJumps)
+> 100줄 넘는 함수 = 11  emitTrunkPipe 174 → 86 · generateModule 176 → 33 이 더 빠졌다
+> 500줄 이상 = 8 파일  emitModule 898 → 720 (찍기 하나 — 틀과 길은 module/shape 450 으로)
 > ```
 
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —

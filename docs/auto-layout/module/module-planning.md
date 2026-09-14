@@ -52,8 +52,8 @@ planModulePorts(input, count)              ← 좌표가 없다
   → ModulePortPlan
 
 generateModule
-  layoutCluster(plan.rowGaps) → machines   ← 좌표가 여기서 생긴다
-  placeLinkSeats(machines, plan.linkFaces) ← 덧셈뿐
+  layoutModule(plan.rowGaps) → machines    ← 좌표가 여기서 생긴다(module/shape)
+  placeLinkSeats(machines, plan.linkFaces) ← 덧셈뿐(module/shape)
   emit*(...)                                ← 방출
 ```
 
@@ -593,7 +593,9 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | ③ 붓기 | `module/link.ts` | `externalLineGroups` · `bundleCap` |
 | ③ 자리 | `planner/module/policy.ts` | `seatRestLines` — ①과 **같은 함수**(`allocateLinkFaces`)를 탄다(2026-09-02 통합) |
 | 간선 축 좌석 | `planner/module/policy.ts` | `seatLinkEdge` — 한 링크의 양끝을 함께 |
-| 좌표 입히기 | `module/clusterModule.ts` | `placeLinkSeats` (덧셈만) |
+| 좌표 입히기 | `module/shape.ts` | `layoutModule`(머신) · `placeLinkSeats`(좌석 — 덧셈만) |
+| 트렁크 틀 | `module/policy.ts` | `buildTrunkContext` — 점프 여부 · ClusterPipe 깊이 · 엇갈림 기준 |
+| 조율 | `module/clusterModule.ts` | `generateModule` — 순서만 쥐는 뼈대 |
 | 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`(`emitTapInserting` 은 2026-08-16 삭제) |
 
 ## 7. 함정

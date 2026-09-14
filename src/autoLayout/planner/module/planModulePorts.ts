@@ -107,8 +107,8 @@ export interface ModulePortPlan {
   gapExitSides: ReadonlySet<PortFace>;
   /**
    * 옆면(W/E)마다 링크·다이렉트가 먹는 **가장 깊은 칸**([linkFaceDepths]) — [ClusterPipe] 가
-   * 이보다 바깥으로 물러나야 한다. 파이프 깊이를 내는 `buildTrunkContext.beltMaxOn` 은
-   * **탭 계획만** 훑으므로, 이 값을 안 주면 링크가 앉은 면에서 0 을 답하고 파이프가 링크
+   * 이보다 바깥으로 물러나야 한다. 파이프 깊이를 내는 `buildTrunkContext.beltMaxOn` 이
+   * **이 값 하나만** 본다 — 안 주면 링크가 앉은 면에서 0 을 답하고 파이프가 링크
    * 포트 끝 위로 지나간다(끊겨도 겹침이 아니라 아무도 못 알아챈다).
    */
   linkFaceDepths: Partial<Record<PortFace, number>>;
@@ -119,11 +119,11 @@ export interface ModulePortPlan {
    * 실패했다는 뜻인지 *나머지 줄*이 실패했다는 뜻인지 알 수 없어, 이미 성공한 링크 예약까지
    * 함께 버리는 순서 버그를 불렀다. 링크의 성패는 여기 없다 — 링크는 자기 방출에서 갈린다.
    *
-   * 성공·실패가 **서로 다른 자료**를 들고 있어(줄 배정 ↔ 못 놓은 줄), 방출기가 실패를
-   * 확인하지 않고 배정을 꺼낼 수 없다.
+   * 실패만 자료를 든다(못 놓은 줄). 성공한 나머지 줄의 배정은 [restLinks] 가 든다 — 예전의 성공 갈래 `lines` 는
+   * 탭 배정기가 사라진 뒤(2026-09-02) 언제나 빈 목록이라 2026-09-14 에 지웠다.
    */
   rest:
-    | { ok: true; lines: PlannedLine[] }
+    | { ok: true }
     | { ok: false; unplaced: IoLine[] };
   /**
    * **부을 수 없어 줄이 하나도 안 난 나머지 줄들** — 수량 미상이거나(저울 없음) 팔이 면
