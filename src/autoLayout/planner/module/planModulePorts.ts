@@ -170,8 +170,8 @@ export interface ModulePortPlan {
 /**
  * **⓪ 유체 면 + ① 링크 면 배정** — 좌표도 방출도 안 본다.
  *
- * `generateModule` 밖(`modulePacking` 의 `P0b`)에서 불러도 같은 답을 낸다 — 입력이
- * 전부 스펙과 링크이고, 그 둘은 `P0` 에 이미 확정되어 있다.
+ * `generateModule` 밖(`modulePacking.seatTree`)에서 불러도 같은 답을 낸다 — 입력이
+ * 전부 스펙과 링크이고, 그 둘은 링크 단계(`link/policy.edgeLinksOf`)에서 이미 확정되어 있다.
  */
 export function planLinkFaces(
   input: ModulePortPlannerInput,

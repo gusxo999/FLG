@@ -256,7 +256,7 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 ### 다섯 수를 누가 쓰나 — **쓰기는 한 번뿐이다**
 
 > **2026-08-29 — 루프 축이 간선으로 바뀌었다**([trunk-assignment](./trunk-assignment.md) §0 구현 상태).
-> 배정은 이제 `modulePacking` 의 `P0b` 에서 **트리 전체를 한 번에** 돈다: 모듈마다 좌석표를
+> 배정은 이제 `modulePacking.seatTree`(좌석 단계)에서 **트리 전체를 한 번에** 돈다: 모듈마다 좌석표를
 > 차리고, **간선마다** 그 그룹을 **양끝(자식 `from` · 부모 `to`)에 함께** 앉힌다
 > ([seatLinkEdge]). 아래 규칙들은 그대로이고, 바뀐 것은 셋이다:
 >
@@ -309,18 +309,18 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 ```
 
 **되먹임 — 지금은 0이다.** `generateModule` 은 트리마다 **한 번**만 돈다
-(`modulePacking.ts` 의 `gen` 호출부가 하나 — `pass1`).
+(`modulePacking.generateModules` 의 `gen` 호출부가 하나).
 
 > **2026-09-04 정정.** 이 절은 *"둘뿐이고, 그래서 `generateModule` 이 세 번 돈다"* 라고
 > 적고 있었다. **고리 둘이 각각 닫혔는데 이 문서가 안 따라왔다.**
 
 ```
 A  gen ─→ moduleExtent ─→ tidy-tree topY ─→ lineEnds ─→ gen   (2026-07-11~)
-   닫힘: 끝 선호를 P0 의 **형제 순번**으로 확정 → `gen` 보다 앞이다 (`modulePacking.ts:718`)
+   닫힘: 끝 선호를 P0 의 **형제 순번**으로 확정 → `gen` 보다 앞이다 (`planner/link/policy.lineEndsOf`)
 
 B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ gen         (2026-08-26~)
    닫힘: 못을 만나면 **배정 안에서** 그 자리에 쪼개고 토막을 이어 앉힌다([seatLinkEdge]) —
-         밖에서 `linkCache` 를 고치고 1차를 다시 만들지 않는다 (`modulePacking.ts:633`)
+         밖에서 `linkCache` 를 고치고 1차를 다시 만들지 않는다 (`modulePacking.seatTree`)
 ```
 
 **그래서 파이프라인의 모든 단계가 정확히 한 번씩 불린다**(`packModuleTree` ·

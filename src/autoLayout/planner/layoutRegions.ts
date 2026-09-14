@@ -83,7 +83,7 @@ export type RayRegion =
 /**
  * 광선이 훑을 격자. **좌표가 하나도 없다** — 순번과 깊이뿐이다.
  *
- * 둘 다 3a·3b 단계(`modulePacking`)에서 나오고 `topY` 보다 **앞**이다.
+ * 둘 다 좌표 이전 단계(`tree/arith.treeIndexOf` · `channel/ledger.rowChannelsOf`)에서 나오고 `topY` 보다 **앞**이다.
  */
 export interface LayoutGrid {
   /** 깊이 → 그 열의 모듈 id 들, **위에서 아래** 순서(트리 DFS 순서 = 세로 순서). */

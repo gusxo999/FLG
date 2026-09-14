@@ -5,7 +5,7 @@
  *
  * ```
  * planModulePorts(input, count)                              ← 자기가 돌린다(옛 경로)
- * planModulePorts(input, count, planLinkFaces(input, count))  ← 밖에서 받는다(P0b)
+ * planModulePorts(input, count, planLinkFaces(input, count))  ← 밖에서 받는다(modulePacking.seatTree)
  * ```
  *
  * **이 단언이 없으면 "동작 무변경" 이 말뿐이다.** 앞으로 Step 2(루프 축을 간선으로)가

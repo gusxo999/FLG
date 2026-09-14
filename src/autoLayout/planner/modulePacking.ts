@@ -20,7 +20,7 @@
 
 import { channelWidthFromTracks, type Interval } from "./channelPlanner";
 import { laneCapOfTier } from "../beltThroughput";
-import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
+import { ROW_CHANNEL_MIN } from "./rowChannelPlanner";
 import {
   planChannelGeometry,
   type ChannelGeometryPlan,
@@ -28,7 +28,7 @@ import {
   type ExportInput,
 } from "./channelGeometryPlanner";
 import type {
-  DeliveryDirective, DeliverySpec, ModulePlacement, NodeSpec, PackChannelGeometry, PackConfig, PackResult, RowChannel,
+  DeliveryDirective, DeliverySpec, ModulePlacement, NodeSpec, PackChannelGeometry, PackConfig, PackResult,
   RowChannelEntry,
 } from "./tree/types";
 import { generateModule } from "../module/clusterModule";
@@ -40,18 +40,22 @@ import { seatLinkEdge } from "./module/policy";
 import { cloneLinkFaceStage } from "./module/ledger";
 import { clusterBeltDepthsOf } from "./module/arith";
 import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
-// link 관심사 — 두 모듈의 식별자를 아는 계산(신원 생성·간선 링크 유도·포트 짝짓기).
-import { deliveryKey, pairDeliveryPorts, edgeLinkGroups } from "./link/edgeLinks";
-import { summarizeBeltForms, shareLanes } from "../module/link";
-import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../debugFlags";
+import { summarizeBeltForms } from "../module/link";
+import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
+// 트리 관심사 — 좌표 없이 트리가 답하는 것(부모·자식 · 깊이마다 순서 · 모듈 하나의 계획 입력).
+import { moduleInputOf, treeIndexOf, type TreeIndex } from "./tree/arith";
+// link 관심사 — 두 모듈의 식별자를 아는 계산(간선마다 줄 · 끝 · 레인 짝 · 포트 짝짓기).
+import { edgeLinksOf, type EdgeLinks } from "./link/policy";
+import { pairDeliveries } from "./link/arith";
+// channel 관심사 — 행 채널 장부.
+import { rowChannelsOf } from "./channel/ledger";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planExits, expandBbox } from "./perimeter/exits";
-import { rowChannelKey } from "./layoutRegions";
 import type { PerimeterExitPlan } from "./perimeterExitPlanner";
 import { segment , PERIMETER_MARGIN } from "../util/helper";
 import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
-import { recordBeltFormStats, recordFaceDepthStats, recordLaneShareStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
@@ -67,632 +71,33 @@ const MODULE_CHANNEL_MIN = 4;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResult {
-  const byId = new Map(specs.map((s) => [s.id, s]));
-  const childIdsByParent = new Map<string, string[]>();
-  for (const s of specs) {
-    if (!s.parentId) continue;
-    (childIdsByParent.get(s.parentId) ?? childIdsByParent.set(s.parentId, []).get(s.parentId)!).push(s.id);
-  }
-  /**
-   * 노드가 **부모에게 실제로 넘기는** 품목.
-   *
-   * 예전엔 첫 출력 라인을 그냥 집었다. 산출물이 하나뿐인 레시피에선 맞지만 **다산출
-   * 레시피에선 엉뚱한 걸 집는다** — `empty-sulfuric-acid-barrel` 은 `barrel + sulfuric-acid`
-   * 를 내는데 배열 순서상 `barrel` 이 잡혀, 부모(battery)에게서 "barrel 입력"을 찾다
-   * 실패했다. 그러면 [pairDeliveryPorts] 가 짝을 못 만들어 **납품 경로가 0개**가 되고, 자식의 산
-   * 출력과 부모의 산 입력이 **각각 외부 포트로** 떨어진다. 실측에서는 그 둘이 나란히
-   * 붙어 한 관망이 됐다 — 한쪽은 "항상 가득"(at-least 1), 다른 쪽은 "항상 비움"(at-most 0)
-   * 인 무한파이프 두 개가 같은 네트워크에(2026-07-26 브라우저 실측).
-   *
-   * 그래서 **부모가 먹는 것**으로 고른다. 나머지 산출물은 부산물이라 외부로 나간다.
-   */
-  const productOf = (s: NodeSpec): string | undefined => {
-    const outs = s.lines.filter((l) => l.role === "output");
-    if (outs.length === 0) return undefined;
-    const parent = s.parentId ? byId.get(s.parentId) : undefined;
-    if (parent) {
-      const wanted = new Set(
-        parent.lines.filter((l) => l.role === "input").map((l) => l.name),
-      );
-      const match = outs.find((o) => wanted.has(o.name));
-      if (match) return match.name;
-    }
-    // 부모가 없거나(루트) 겹치는 게 없으면 옛 동작 — 없는 답을 지어내지 않는다.
-    return outs[0].name;
-  };
-  /** 부모 입력 중 자식-공급인 품목 집합. */
-  const childFedItems = (s: NodeSpec): Set<string> => {
-    const set = new Set<string>();
-    for (const cid of childIdsByParent.get(s.id) ?? []) {
-      const p = productOf(byId.get(cid)!);
-      if (p) set.add(p);
-    }
-    return set;
-  };
-
-  // 노출 끝면(N/S) — count=1 완화의 노출 판정. 세로 순서는 tidy-tree 가 DFS 방문
-  // 순서를 보존하므로(형제 재배열 없음) 좌표 확정 *전에* 열-내 서열로 유도할 수 있다
-  // (스도쿠 닻: 트리 구조가 외생). 열의 첫 모듈 위(N)·마지막 모듈 아래(S)는 전역
-  // 마진뿐 — 그 방향 깊이가 형제와 충돌하지 않는다.
-  const dfsByDepth = new Map<number, string[]>();
-  const dfsVisit = (id: string) => {
-    const s = byId.get(id)!;
-    (dfsByDepth.get(s.depth) ?? dfsByDepth.set(s.depth, []).get(s.depth)!).push(id);
-    for (const cid of childIdsByParent.get(id) ?? []) dfsVisit(cid);
-  };
-  for (const s of specs) if (!s.parentId) dfsVisit(s.id);
-  const nsExposureOf = (s: NodeSpec): ("N" | "S")[] | undefined => {
-    if (s.count !== 1) return undefined; // 기둥(count≥2)은 N/S 깊이가 끝 머신만 서빙 — 제외.
-    const col = dfsByDepth.get(s.depth)!;
-    const faces: ("N" | "S")[] = [];
-    if (col[0] === s.id) faces.push("N");
-    if (col[col.length - 1] === s.id) faces.push("S");
-    return faces.length ? faces : undefined;
-  };
-
-  // 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위.
-  const IDENTITY: Orientation = { rotation: 0, reflect: false };
-
-  // 간선당 [edgeLinkGroups] 를 **한 번만** 계산해 자식 id 로 캐시한다(간선 = 자식→부모,
-  // 자식 하나는 출력 품목이 하나뿐이므로 childId 만으로 간선이 유일하게 식별된다).
-  // 자식 쪽(outputLinksOf)과 부모 쪽(inputLinksOf)이 예전엔 이 계산을 각자 독립으로
-  // 두 번 돌려 "결정적 함수+같은 입력이면 같은 출력"이라는 결정성만 믿고 일치를 기대했다
-  // (2026-07-21 이전) — 이제 한 번 계산된 같은 객체를 양쪽이 그대로 참조한다.
-  /**
-   * **형제 순번이 끝을 정한다** — 좌표 없이.
-   *
-   * `layoutY` 는 자식을 **배열 순서대로 위 → 아래**로 놓고, 부모를 **첫·마지막의 중점**에
-   * 둔다(`:489-501`). 그래서 좌표를 몰라도 이것만은 확정이다:
-   *
-   * ```
-   * 앞쪽 형제 → 부모보다 위    → 자식은 **아래 끝**으로 나가고 부모는 **위 끝**에서 받는다
-   * 뒤쪽 형제 → 부모보다 아래  → 자식은 **위 끝**,           부모는 **아래 끝**
-   * ```
-   *
-   * **거리가 아니라 교차를 노린다.** *"가장 가까운 끝"* 은 두 기둥의 **모서리**(= topY + 높이)를
-   * 알아야 하고, 높이는 `gen` 이 준다 — 그 목표를 지키는 한 `gen → 높이 → 끝 → gen` 이
-   * 반드시 닫힌다(**되먹임 A**). 순서만 보면 고리가 없다.
-   *
-   * 가운데 형제는 부모 중심의 어느 쪽인지 **트리로 못 가른다**(간격 = 높이에 달렸다).
-   * 그래도 **절반으로 갈라 두면 서로 안 교차한다** — 위 절반은 부모 위 끝, 아래 절반은
-   * 아래 끝. 전부 한 끝으로 몰면 그 줄들이 서로를 건넌다.
-   *
-   * 형제가 하나뿐이면 부모가 그 위에 겹쳐 있어 선호가 없다 → `undefined`.
-   */
-  const siblingHalf = (s: NodeSpec): "top" | "bottom" | undefined => {
-    if (!s.parentId) return undefined;
-    const kids = childIdsByParent.get(s.parentId) ?? [];
-    if (kids.length < 2) return undefined;
-    const i = kids.indexOf(s.id);
-    return i < kids.length / 2 ? "top" : "bottom";
-  };
-
-  /**
-   * **트렁크 줄의 끝 선호** — 링크와 **같은 규칙**을 쓴다(`min` = 위끝 · `max` = 아래끝).
-   *
-   * 예전엔 tidy-tree 뒤에서 |Δy| 최소 조합으로 골랐고, 그 값이 `gen` 의 입력으로 돌아가
-   * **2차 생성**을 불렀다(되먹임 A). 형제 순번으로 정하면 `gen` 보다 **앞**에서 확정되므로
-   * 고리가 열린다. 대가는 거리 최적화를 버린 것이고, 대신 **교차가 없다**.
-   */
-  const lineEndsById = new Map<string, Map<string, "min" | "max">>();
-  {
-    const setEnd = (id: string, key: string, end: "min" | "max") => {
-      (lineEndsById.get(id) ?? lineEndsById.set(id, new Map()).get(id)!).set(key, end);
-    };
-    for (const s of specs) {
-      if (!s.parentId) continue;
-      const product = productOf(s);
-      if (!product) continue;
-      const half = siblingHalf(s);
-      if (!half) continue; // 형제가 하나뿐 — 선호가 없다. 방출의 기본값(`min`)을 쓴다
-      setEnd(s.id, `output:${product}`, half === "top" ? "max" : "min");
-      setEnd(s.parentId, `input:${product}`, half === "top" ? "min" : "max");
-    }
-  }
-
-  /** 링크가 들 끝 — 자식 쪽·부모 쪽이 서로 반대다. */
-  const linkEndOf = (s: NodeSpec): Link["end"] => {
-    const half = siblingHalf(s);
-    if (!half) return undefined;
-    return half === "top" ? { from: "S", to: "N" } : { from: "N", to: "S" };
-  };
-
-  const linkCache = new Map<string, Link[]>();
-  for (const s of specs) {
-    if (!s.parentId) continue;
-    const product = productOf(s);
-    if (!product) continue;
-    const groups = edgeLinkGroups(s, byId.get(s.parentId)!, product, config);
-    // **끝은 여기서 얹는다** — `id` 와 같은 자리, 같은 규칙(위층이 채우고 module/ 은 안 만든다).
-    const end = linkEndOf(s);
-    if (groups) linkCache.set(s.id, end ? groups.map((g) => ({ ...g, end })) : groups);
-  }
-
-  // ── 레인 공유 짝짓기 ───────────────────────────────────────────────────────
-  //
-  // **줄 둘을 한 물리 벨트의 좌/우 레인에 하나씩** 싣는다
-  // (`docs/factorio/belt-lane-semantics.md` · `tempPlanDocs/벨트-레인/`).
-  //
-  // ## 무엇을 되찾나
-  // 인서터는 먼 레인 하나에만 떨구므로 **줄 하나는 벨트의 절반만 쓴다.** 그래서 45/s 수요는
-  // [determineBeltCount] 가 줄 **둘**로 낸다. 합류시키면 벨트가 하나로 돌아온다 —
-  // **처리량은 안 늘고 물리 벨트 수가 준다.**
-  //
-  // ## 후보 = **같은 간선의 두 줄** (v1 = 같은 품목)
-  // `linkCache` 의 한 항목이 곧 간선 하나(자식→부모, 품목 하나)이고, 그 안에 줄이 여럿이면
-  // 그것이 곧 *"수요가 레인 하나를 넘어 갈린 줄들"* 이다. 그 둘이 짝의 자연스러운 단위다.
-  //
-  // **기하가 공짜로 성립한다** — 관통 줄은 기둥 끝에 포트를 세우는데(`LinkFacePlan.portEnd`),
-  // 그 끝은 면마다 장부(`ctx.ends`)로 관리돼 **먼저 앉은 줄이 N 을 잡으면 다음 줄은 S** 를
-  // 잡는다. 즉 같은 간선의 두 줄은 기둥의 **위·아래 끝**에서 나가고, 채널에서 그 둘의 세로
-  // 주행은 도착 행에 **양옆으로** 닿는다 → 유입이 둘 다 옆이라 **둘 다 접힌다**(각자 한 레인).
-  // 같은 쪽에서 오면 위쪽이 아래쪽의 **뒤 유입**이 되어 아래쪽이 조용히 굶는다(규칙 ⑤⑦).
-  //
-  // **같은 품목이라 필터가 필요 없다** — 집는 팔이 뭘 집든 같은 품목이다(승인 Q1).
-  //
-  // **[AUTO_LAYOUT_LANE_MERGE] 가 꺼져 있으면 아무 줄에도 안 붙는다** — 아래 모든 갈래가
-  // 도달 불가가 되어 **오늘 동작 그대로**다(미완성 기능의 관용구).
-  //
-  // **배정([allocateTree]) 앞이라야 한다** — 배정이 공유를 보고 부모 면에서 한 벨트를
-  // 잡기 때문이다. 배정이 줄을 쪼개면 그 토막은 더 이상 같은 줄이 아니므로
-  // [splitLinkAtRows] 가 표시를 **떼어 낸다**.
-  // **꺼져 있어도 0 을 적는다** — 안 적으면 앞 실행의 수가 그대로 남아 대조군이 거짓이
-  // 된다(2026-09-04: 끈 실행이 켠 실행의 `후보 1` 을 물려받았다). `beginRunStats` 가
-  // 가려 주는 자리라 앱에선 안 보이고 테스트에서만 드러난다.
-  const share = { candidates: 0, pairs: 0, rejected: 0 };
-  if (AUTO_LAYOUT_LANE_MERGE) {
-    const laneCapOf = (n: string | undefined): number | undefined => {
-      const tier = config.belts?.find((b) => b.entityName === n);
-      return tier ? laneCapOfTier(tier) : undefined;
-    };
-    for (const [childId, groups] of linkCache) {
-      // 줄이 하나면 갈린 적이 없다 — 되찾을 절반도 없다.
-      for (let i = 0; i + 1 < groups.length; i += 2) {
-        share.candidates += 1;
-        const made = shareLanes(
-          [groups[i], groups[i + 1]],
-          laneCapOf,
-          () => `${childId}#lane${i / 2}`,
-        );
-        share.pairs += made;
-        share.rejected += made === 0 ? 1 : 0;
-      }
-    }
-  }
-  recordLaneShareStats(share);
-
-  // 출력 fan-out 링크 — 이 노드의 출력을 부모 머신들에게 나눠 주는 [Link] 목록.
-  // 부모가 있고 rate·처리량이 다 있을 때만(없으면 undefined = 옛 트렁크 방출).
-  const outputLinksOf = (s: NodeSpec): Link[] | undefined => linkCache.get(s.id);
-  // 입력 fan-in 그룹 — outputLinks 의 거울. 이 노드가 부모인 간선들(자식마다)의 그룹을 모은다.
-  // 캐시에서 그대로 가져오므로 자식 쪽과 그룹 객체(및 id)가 완전히 일치한다.
-  const inputLinksOf = (s: NodeSpec): Link[] | undefined => {
-    const kids = childIdsByParent.get(s.id) ?? [];
-    const groups: Link[] = [];
-    for (const cid of kids) {
-      const g = linkCache.get(cid);
-      if (g) groups.push(...g);
-    }
-    return groups.length > 0 ? groups : undefined;
-  };
-  /**
-   * **P0b — 간선 단위 배정**.
-   *
-   * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
-   * 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 — 밖에서 `linkCache` 를 고치고
-   * 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
-   *
-   * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
-   */
-  const moduleInputOf = (s: NodeSpec): ModuleInput => ({
-    ...toModuleInput(s, config, childFedItems(s)),
-    // **끝 선호를 처음부터 싣는다** — 예전엔 tidy-tree 뒤에 알아내 2차 생성으로 다시 넣었다.
-    lineEnds: lineEndsById.get(s.id),
-    nsExposure: nsExposureOf(s),
-    outputLinks: outputLinksOf(s),
-    inputLinks: inputLinksOf(s),
-  });
-
-  // ── (가) 다이렉트 — **넘치는 부모의 링크 입력만 `g = 1` 로 다시 붓는다** (플래그 뒤) ──
-  //
-  // 밸브([EdgeBundle])는 진작 뚫려 있었고 **주는 사람이 없었다.** 여기가 주는 자리다.
-  //
-  // **두 번 붓는 것이 낭비가 아니다** — `edgeLinkGroups` 가 `undefined` 를 내는 조건
-  // (유체 줄 · 흐름 0 · 벨트/인서터 못 고름)은 `bundle` 과 **무관**하다. 그러니 1차가
-  // 어떤 간선이 링크가 되는지를 확정해 주고, 그 결과라야 `L_f`(품목 종류 수)를 **방출과
-  // 같은 낟알로** 셀 수 있다. 트리에서 자식 수를 세면 유체 간선까지 세어 과대평가한다.
-  //
-  // **끄면 오늘 동작 그대로다** — 기전: 이 블록 전체가 안 돈다.
-  // **레인 합류와 같이 켜지 않는다** — 짝짓기가 이미 `sharedLineId` 를 얹은 뒤라
-  // 다시 부으면 그 신원이 사라진다. 둘을 함께 쓰려면 짝짓기를 이 뒤로 옮겨야 하고,
-  // 그건 이 계획의 몫이 아니다(`부분-링크` 는 `벨트-레인` 을 안 건드린다).
-  if (AUTO_LAYOUT_LINK_DIRECT && !AUTO_LAYOUT_LANE_MERGE) {
-    /** 부모별 들어오는 링크(1차 결과 기준) — 이것이 그 면의 `L_E` 다. */
-    const inItemsOf = new Map<string, Set<string>>();
-    for (const s of specs) {
-      if (!s.parentId || !linkCache.get(s.id)?.length) continue;
-      const set = inItemsOf.get(s.parentId) ?? inItemsOf.set(s.parentId, new Set()).get(s.parentId)!;
-      for (const g of linkCache.get(s.id)!) set.add(g.item);
-    }
-    for (const p of specs) {
-      const L_E = inItemsOf.get(p.id)?.size ?? 0;
-      if (L_E === 0) continue;
-      const outItem = p.parentId ? productOf(p) : undefined;
-      // **깊이는 장부를 안 읽는다**([clusterBeltDepthsOf] 머리말) — `"open"` 무대면 족하다.
-      const probe = planLinkFaces(moduleInputOf(p), Math.max(1, p.count), "open");
-      const need = linkDepthNeed({
-        linesOf: (f) => (f === "W" ? (outItem ? 1 : 0) : L_E),
-        depthsOf: (f) => clusterBeltDepthsOf(probe.ctx, f).length,
-      });
-      if (need === "free") continue;
-      // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 값이다.
-      for (const s of specs) {
-        if (s.parentId !== p.id || !linkCache.get(s.id)?.length) continue;
-        const re = edgeLinkGroups(s, p, productOf(s)!, config, { side: "to", g: 1 });
-        if (!re?.length) continue; // 다시 부어 빈손이면 **1차 결과를 지키다** — 없애지 않는다
-        const end = linkEndOf(s);
-        linkCache.set(s.id, end ? re.map((g) => ({ ...g, end })) : re);
-      }
-    }
-  }
-
-  /** 배정이 낸 쪼갬 수 — 진단용(옛 `laddered`). */
-  let laddered = 0;
-
-  /**
-   * 트리 전체 배정. **`linkCache` 를 제자리에서 최종본으로 갈아 끼우고**(쪼개졌으면 토막),
-   * 그에 맞춘 무대와 `ModuleInput` 을 돌려준다. **방출은 안 한다.**
-   */
-  const allocateTree = (): { stages: Map<string, LinkFaceStage>; inputs: Map<string, ModuleInput> } => {
-    const stages = new Map<string, LinkFaceStage>();
-    for (const s of specs)
-      stages.set(s.id, planLinkFaces(moduleInputOf(s), Math.max(1, s.count), "open"));
-
-    // 모듈마다 최종 링크 목록·계획을 모은다. `in` 은 자식 순서대로 이어 붙는다
-    // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
-    const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
-    const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
-    for (const s of specs) {
-      outOf.set(s.id, { links: [], plans: [], why: [] });
-      inOf.set(s.id, { links: [], plans: [], why: [] });
-    }
-
-    for (const s of specs) {
-      if (!s.parentId) continue;
-      const groups = linkCache.get(s.id);
-      if (!groups?.length) continue;
-      const child = stages.get(s.id);
-      const parent = stages.get(s.parentId);
-      if (!child || !parent) continue;
-      const r = seatLinkEdge(child, parent, groups, { split: AUTO_LAYOUT_LINK_LADDER });
-      laddered += r.splits;
-      linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
-      const o = outOf.get(s.id)!;
-      o.links.push(...r.groups); o.plans.push(...r.fromPlans); o.why.push(...r.fromWhy);
-      const i = inOf.get(s.parentId)!;
-      i.links.push(...r.groups); i.plans.push(...r.toPlans); i.why.push(...r.toWhy);
-    }
-
-    // **링크가 앉으려면 무엇을 풀어야 했나** — 모듈마다 눈금 하나([linkDepthNeed]).
-    //
-    // 여기서 세는 이유: `L_f`(그 면의 링크 **줄** 수 = 품목 종류 수)와 `R_f`(그 면의 깊이
-    // 수)를 **둘 다 아는 유일한 자리**다. 판정 자체는 앉혀 본 결과를 안 보므로(입력만
-    // 본다) 성공한 배치만 세는 편향이 없다 — `tempPlanDocs/부분-링크/` §4 Step 1.
-    //
-    // 면은 **선호**로 읽는다: 출력은 W, 입력은 E([allocateLinkFaces] 의 기본 면).
-    // 링크는 반대 면으로 못 넘어가므로(`spillPair`) 그 선호가 곧 그 줄이 앉을 면이다.
-    const needTally: Partial<Record<LinkDepthNeed, number>> = {};
-    const needWho: string[] = [];
-    for (const s of specs) {
-      const st = stages.get(s.id)!;
-      const items = (ls: readonly Link[]): number => new Set(ls.map((l) => l.item)).size;
-      const L = (f: "W" | "E"): number =>
-        items(f === "W" ? outOf.get(s.id)!.links : inOf.get(s.id)!.links);
-      const R = (f: "W" | "E"): number => clusterBeltDepthsOf(st.ctx, f).length;
-      const need = linkDepthNeed({ linesOf: L, depthsOf: R });
-      needTally[need] = (needTally[need] ?? 0) + 1;
-      // **넘친 것만 이름을 남긴다** — `L/R` 까지 실어야 *왜* 넘쳤는지가 한 줄에서 읽힌다.
-      if (need !== "free")
-        needWho.push(`${s.id} → ${need} (W ${L("W")}/${R("W")} · E ${L("E")}/${R("E")})`);
-    }
-    recordFaceDepthStats({
-      linkNeed: needTally as Record<LinkDepthNeed, number>,
-      linkNeedWho: needWho,
-    });
-
-    // 무대의 링크 목록·배정을 최종본으로 갈아 끼운다 — `generateModule` 이 보는
-    // `input.outputLinks` 와 **같은 배열**이어야 방출이 index 로 짝을 찾는다.
-    const inputs = new Map<string, ModuleInput>();
-    for (const s of specs) {
-      const st = stages.get(s.id)!;
-      const o = outOf.get(s.id)!;
-      const i = inOf.get(s.id)!;
-      st.outLinks = o.links;
-      st.inLinks = i.links;
-      st.out = { plans: o.plans, deferred: [], shortages: o.why };
-      st.in = { plans: i.plans, deferred: [], shortages: i.why };
-      inputs.set(s.id, {
-        ...moduleInputOf(s),
-        outputLinks: o.links.length ? o.links : undefined,
-        inputLinks: i.links.length ? i.links : undefined,
-      });
-    }
-    // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
-    if (laddered > 0) recordFaceDepthStats({ splits: laddered });
-    return { stages, inputs };
-  };
-
-  const allocated = allocateTree();
-
-  const stagesRef = allocated.stages;
-  const inputsRef = allocated.inputs;
-
-  const gen = (s: NodeSpec): GeneratedModule => {
-    const base = inputsRef.get(s.id)!;
-    // **사본을 준다** — ③′(기계별 포트)가 이 표에 이어서 앉으므로, 원본을 주면
-    // 두 번째 `gen` 이 ①+③′ 이 앉은 표를 보고 시작한다([cloneLinkFaceStage]).
-    const st = stagesRef.get(s.id);
-    return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
-  };
-
-  // 1) **생성 — 한 번뿐이다.** 끝 선호(`lineEnds`)가 `P0` 에서 확정되므로 다시 돌 이유가 없다.
-  //    여기서 잰 높이가 곧 깔릴 높이다(tidy-tree 가 그 값을 쓴다).
-  const pass1 = new Map<string, GeneratedModule>();
-  for (const s of specs) pass1.set(s.id, gen(s));
-
-  // (옛 `1b) 사다리 1단` 은 **배정 안으로 접혔다** — `seatLinkEdge` 가 못을 만나면
-  //  그 자리에서 쪼개고 토막을 이어 앉힌다. `linkCache` 를 밖에서 고치고 1차를 통째로
-  //  다시 만들던 자리가 사라졌다 = **되먹임 B 제거**
-
-  // (옛 `3) 포트 끝(DOF-B)` 은 **P0 으로 옮겼다** — 형제 순번으로 정하므로 tidy-tree 가
-  //  필요 없다. |Δy| 최소(거리)를 버리고 **교차 없음**을 노린다.
-  //  그것이 `gen → 높이 → 끝 → gen` 고리를 여는 유일한 조건이었다 = **되먹임 A 제거**
-
-  // (옛 `4) 2차 생성` 은 **사라졌다** — 끝 선호가 `P0` 에서 확정되므로 1차가 곧 최종이다.
-  //  `generateModule` 은 이제 트리마다 **한 번**만 돈다 = **되먹임 0**.
-  //  그래서 *"1차가 센 형태는 버린다"* 던 계측 초기화도 필요 없다 — 잰 것이 곧 깔린 것이다.
-  const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
-  for (const s of specs)
-    oriented.set(s.id, { module: pass1.get(s.id)!, orientation: IDENTITY });
-  // 내부 링크(자식→부모)의 형태 — 외부 줄은 `planModulePorts` 가 자기 몫을 센다.
-  // 대수가 끝마다 다르다(자식 count ↔ 부모 count)라 그대로 넘긴다.
-  recordBeltFormStats(
-    summarizeBeltForms(
-      [...linkCache].flatMap(([childId, groups]) => {
-        const child = byId.get(childId);
-        const parent = child?.parentId ? byId.get(child.parentId) : undefined;
-        return groups.map((group) => ({
-          group, fromCount: child?.count ?? 0, toCount: parent?.count ?? 0,
-        }));
-      }),
-      // **분모는 레인이다** — 줄 하나가 쓸 수 있는 것은 벨트의 절반뿐이므로
-      // (`docs/factorio/belt-lane-semantics.md` ①), 물리 처리량으로 재면 이용률이 **절반으로
-      // 보이고** 과적재가 안 잡힌다(레인은 넘쳤는데 줄로는 안 넘친 줄이 그렇다).
-      (name) => (name === undefined ? undefined : laneCapOfTier(config.belts?.find((b) => b.entityName === name))),
-    ),
-  );
-
-  // ── 2) 납품 짝짓기 — **좌표 없이** ────────────────────────────────────────
-  //
-  //    예전엔 이 루프가 `topY` 뒤에 있어 절대 행을 그 자리에서 계산했다. 그러면 행 채널 수요가
-  //    좌표보다 뒤가 되고, 행 채널 높이가 배치를 못 민다. 여기서는 **재료만** 담고 절대 행은
-  //    6단계로 미룬다 — 짝짓기 자체는 좌표를 하나도 안 본다(`rowChannelPlanner` 머리말).
-
-  // 납품 경로 씨앗 — 기하 예약(5c)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
-  // (= 둘 사이 채널을 정면으로 가로지르는 계단꼴 모델의 전제). 아니면(스필 등) 폭만 예약.
-  //    짝짓기는 `oriented` 에서 한 번만 하고(결정적), 짝지은 상자 id 를 아래 5b(트랙 예약)
-  //    와 7(납품 경로 생성)이 공유한다 — 세 곳이 따로 판단해 어긋나는 일이 없게.
-  const deliverySeeds: {
-    depth: number;
-    key: string;
-    startY: number;
-    endY: number;
-    /** 절대 행을 나중에 계산할 재료 — 모듈 신원과 **모듈-로컬** 행. */
-    fromId: string;
-    toId: string;
-    fromAnchorY: number;
-    toAnchorY: number;
-    eligible: boolean;
-    /** 유체 이름(파이프 납품 경로). undefined = 아이템. 장부의 인접 규칙·배정 우선순위 입력. */
-    fluid?: string;
-    /** 자식 쪽 끝의 행 채널 접근(있으면). */
-    fromRowChannel?: RowChannelEntry;
-    /** 부모 쪽 끝의 행 채널 접근(있으면). */
-    toRowChannel?: RowChannelEntry;
-  }[] = [];
-  const pairedChestIds = new Set<string>();
-  /** 이미 납품을 낸 물리 벨트 신원(레인 공유) — 같은 벨트에 두 번 납품을 내지 않는다. */
-  const mergeDoneFor = new Set<string>();
-  const usedParentIn = new Map<string, Set<string>>();
-  /** [pairDeliveryPorts] 가 신원 있는 포트끼리 짝을 못 찾았을 때 쌓는 사유 — 정상 경로가 아니다. */
-  const linkMismatches: string[] = [];
-  /** [자식 id] → 짝지은 (출력상자 id, 입력상자 id, linkId) 쌍들. 7)이 absById 로 재구성한다. */
-  /**
-   * **행 채널을 지나야 하는 경로 끝들** — 포트가 기둥 끝(N/S)이라 세로 채널 벽을 직접 못 마주 보는 것.
-   *
-   * (E) 결정에 따라 이 경로는 **자기 깊이 열 안에서만** 가로로 달린다 — 세로 채널을
-   * 가로지르지 않으므로 교차로가 없다.
-   *
-   * 지금은 **세기만** 한다. 이 수가 0이면 행 채널이 이 트리에 필요 없다는 뜻이고,
-   * 0이 아니면 Step 3(트랙 배정 + 두 패스)이 실제로 값을 낸다.
-   */
+  // ⓪ 트리 — 부모·자식 · 깊이마다 위→아래 순서. 좌표가 아니라 DFS 가 답한다
+  const tree = treeIndexOf(specs);
+  // ① 링크 — 간선마다 무엇을 몇 줄로 · 어느 끝으로. 끝이 여기서 서야 생성이 한 번이다
+  const links = edgeLinksOf(tree, specs, config);
+  // ② 좌석 — 링크가 양끝 모듈의 어느 면·깊이에. 쪼개졌으면 토막이 최종본이다
+  const seated = seatTree(specs, tree, links, config);
+  // ③ 모양 — 모듈마다 한 번 생성. 높이와 모듈-로컬 포트가 선다
+  const oriented = generateModules(specs, seated);
+  recordLinkForms(tree, links, config);
+  // ④ 짝 — 누가 누구에게 · 행 채널을 지날 끝. 좌표 없음
+  const pairing = pairDeliveries(specs, tree, oriented, links.productOf);
+  // ⑤ 행 채널 — 깊이마다 신원 · 트랙 · 높이. 좌표 없음
+  const rows = rowChannelsOf(tree.orderByDepth, pairing.rowChannelNeeds);
+  // ── 여기까지 좌표가 없다. 아래부터 평면 ──
+  const { childIdsByParent, orderByDepth, maxDepth } = tree;
+  const { deliverySeeds, pairedChestIds, linkMismatches, rowChannelNeeds, deliveryPairs } = pairing;
+  const { rowChannels } = rows;
+  const rowChannelReach = rows.reach;
   /** 경로 끝 id(`…:out`/`…:in`) → 행 채널 접근. 5a-2 가 채우고 5c 가 지시에 싣는다. */
   const rowChannelEntryById = new Map<string, RowChannelEntry>();
-  const rowChannelNeeds: {
-    id: string;
-    nodeId: string;
-    depth: number;
-    /** **나중에 채운다** — 절대 행은 세로 좌표가 선 뒤에 온다(6단계). 진단용이다. */
-    portY: number;
-    /** 포트의 **모듈-로컬** 행. `portY` 를 나중에 계산하는 재료다. */
-    anchorY: number;
-    face: ModulePort["face"];
-    /**
-     * 이 끝이 행 채널에서 달릴 **가로 구간**(모듈-로컬 x). 상자에서 그 열의 **서쪽 변**까지다 —
-     * 세로 채널이 서쪽에 있으므로((E) 자기 깊이 안에서만 달린다).
-     *
-     * 같은 깊이의 모듈은 전부 `colX[depth]` 에 **왼쪽 정렬**되므로, 로컬 x 로 비교해도
-     * 절대 x 로 비교한 것과 겹침 판정이 같다. `colX` 는 이 단계보다 뒤에 정해진다.
-     */
-    x1: number;
-    x2: number;
-  }[] = [];
-  const deliveryPairs = new Map<string, { item: string; outId: string; inId: string; linkId?: string }[]>();
-  for (const s of specs) {
-    if (!s.parentId) continue;
-    const product = productOf(s);
-    if (!product) continue;
-    const used = usedParentIn.get(s.parentId) ?? usedParentIn.set(s.parentId, new Set()).get(s.parentId)!;
-    const pairs = pairDeliveryPorts(oriented.get(s.id)!.module, oriented.get(s.parentId)!.module, product, used, linkMismatches);
-    deliveryPairs.set(
-      s.id,
-      pairs.map((p) => ({ item: product, outId: p.out.chest.id, inId: p.inp.chest.id, linkId: p.out.linkId })),
-    );
-    pairs.forEach(({ out, inp }, i) => {
-      pairedChestIds.add(out.chest.id);
-      pairedChestIds.add(inp.chest.id);
-      // **행 채널을 지나야 하는 끝** — 포트가 기둥 끝(N/S)이면 상자가 기둥 밖에 있어
-      // 세로 채널 벽을 **직접 못 마주 본다**. 자기 깊이 열 안에서 가로로 달려 벽까지 가야
-      // 하고, 그 가로 구간이 **행 채널의 트랙**이다((E) — 세로 채널을 안 가로지른다).
-      //
-      // 여기서는 **세기만** 한다(Step 3 준비). 실제 배정은 통로가 서고 나서다.
-      for (const [who, port] of [["out", out], ["in", inp]] as const) {
-        if (port.face !== "N" && port.face !== "S") continue;
-        const ownerId = who === "out" ? s.id : s.parentId!;
-        const ownerExt = moduleExtent(oriented.get(ownerId)!.module);
-        rowChannelNeeds.push({
-          id: `${deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId })}:${who}`,
-          nodeId: ownerId,
-          depth: who === "out" ? s.depth : s.depth - 1,
-          portY: 0, // ← 6단계가 채운다
-          anchorY: port.anchor.y,
-          face: port.face,
-          x1: 0, // 열의 서쪽 변
-          x2: port.anchor.x - ownerExt.x, // 상자의 로컬 x
-        });
-      }
-      // **행 채널을 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
-      // 것인지 행 채널 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
-      // **행 채널 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
-      // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromRowChannel`/`toRowChannel` 를 덮어쓴다.
-      const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
-      // **레인 합류 — 납품은 하나뿐이다.**
-      //
-      // 두 줄은 **모듈 출구에서 이미 한 벨트로 합쳐졌고**(`emitOutputLinks` 의 합류 칸),
-      // 부모도 한 벨트로 받는다(`seatOnSharedBelt`). 양끝이 각각 **한 칸**이므로 그 사이를
-      // 잇는 물리 경로도 하나다 — 뒤에 온 줄은 납품을 **안 만든다**.
-      //
-      // 채널이 두 경로를 만나게 하던 옛 안(`mergeTail`)은 이것으로 대체됐다: 합류를 자리가
-      // 규칙적인 **출구**에서 계산하면 채널이 그 사실을 아예 몰라도 된다.
-      if (inp.sharedLineId !== undefined) {
-        if (mergeDoneFor.has(inp.sharedLineId)) return;
-        mergeDoneFor.add(inp.sharedLineId);
-      }
-      deliverySeeds.push({
-        depth: s.depth,
-        key: dkey,
-        // **나중에 채운다** — 6단계가 `fromAnchorY`/`toAnchorY` 에서 계산한다.
-        startY: 0,
-        endY: 0,
-        fromId: s.id,
-        toId: s.parentId!,
-        fromAnchorY: out.anchor.y,
-        toAnchorY: inp.anchor.y,
-        // **적격 = 두 끝이 채널 벽에 닿을 수 있나.**
-        //
-        // 예전엔 *"포트가 벽을 마주 본다"*(`side === W`/`E`)로만 봤다. 그게 계단꼴 모델의
-        // 전제였다(docs/layout-models §2③). 이제 **기둥 끝 포트도 행 채널을 지나 벽에 닿으므로**
-        // 그 경우를 적격에 넣는다 — 조건이 넓어진 게 아니라 **닿는 길이 하나 늘었다.**
-        // (2026-08-17 에 조건만 넓히고 도형을 안 늘렸다가 모듈 관통 경로가 나왔다.)
-        eligible:
-          (out.meta.side === "W" || out.face === "N" || out.face === "S")
-          && (inp.meta.side === "E" || inp.face === "N" || inp.face === "S")
-          && byId.get(s.parentId!)!.depth === s.depth - 1,
-        // 유체 납품 경로는 **항상** 적격이다 — moduleWizard 가 출력 유체를 W, 입력 유체를 E 면에
-        // 오도록 회전을 강제하고(wantFace) 못 맞추면 트리째 reject 하기 때문이다. 즉 위
-        // eligible 조건과 유체의 존재 조건이 같다(docs/…fluid-delivery-reservation.md §1.1).
-        fluid: out.line.kind === "pipe" ? product : undefined,
-      });
-    });
-  }
-
-
-  // ── 3) 세로 순서 · 행 채널 신원 · 트랙 배정 — **전부 좌표가 없다** ─────────────────
-  //
-  //    이 셋이 `topY` 보다 앞에 설 수 있다는 것이 이 구조의 전부다. `rowChannelPlanner`
-  //    머리말이 한때 여기에 순환이 있다고 적었는데, 그 순환의 둘째 화살표
-  //    *「absPortY → 행 채널을 지나는 경로」* 가 거짓이었다 — 배정 입력 넷(면 · 모듈-로컬 x ·
-  //    side · 행 채널 신원)이 어느 것도 y 를 안 본다.
-
-  // 3a) **깊이별 세로 순서 — 좌표가 아니라 트리가 답한다.**
-  //
-  //     `layoutY` 는 자식을 배열 순서대로 위→아래로 놓고, 겹침 스윕은 **아래로만** 민다.
-  //     그러니 같은 깊이의 세로 순서 = **트리 DFS 순서**이고, 좌표 없이 나온다.
-  const orderByDepth = new Map<number, string[]>();
-  {
-    const visit = (id: string): void => {
-      const d = byId.get(id)!.depth;
-      (orderByDepth.get(d) ?? orderByDepth.set(d, []).get(d)!).push(id);
-      for (const k of childIdsByParent.get(id) ?? []) visit(k);
-    };
-    for (const s of specs) if (!s.parentId) visit(s.id);
-  }
-
-  // 3b) **행 채널의 신원** — 깊이 · 순번 · 이웃. 자리(`top`/`bottom`)는 5단계가 채운다.
-  //
-  //     **마진도 행 채널이다** — 이웃이 없을 뿐, 거기로 나가는 경로들이 행을 다투는 것은 같다.
-  const rowChannels: RowChannel[] = [];
-  for (const [depth, ids] of orderByDepth) {
-    const first = ids[0];
-    const last = ids[ids.length - 1];
-    if (first === undefined || last === undefined) continue;
-    rowChannels.push({ depth, index: -1, kind: "marginN", top: 0, bottom: 0, below: first, height: 0 });
-    for (let i = 0; i + 1 < ids.length; i++)
-      rowChannels.push({
-        depth, index: i, kind: "between", top: 0, bottom: 0, above: ids[i], below: ids[i + 1], height: 0,
-      });
-    rowChannels.push({
-      depth, index: ids.length - 1, kind: "marginS", top: 0, bottom: 0, above: last, height: 0,
-    });
-  }
-
-  // 3c) **행 채널 트랙 배정 → 높이.** 폭 역전 — 높이는 고르는 값이 아니라 배정의 결과다.
-  //
-  //     수요 하나 = *"이 모듈의 이 면 바깥 행 채널에서 가로로 달린다"*. 면이 N 이면 그 모듈
-  //     **위** 행 채널, S 면 **아래** 행 채널이다.
-  {
-    const rowChannelOf = (nodeId: string, depth: number, face: ModulePort["face"]) =>
-      rowChannels.find(
-        (b) =>
-          b.depth === depth
-          && (face === "N" ? b.below === nodeId : b.above === nodeId),
-      );
-    const byRowChannel = new Map<RowChannel, RowCrossing[]>();
-    for (const n of rowChannelNeeds) {
-      const rowChannel = rowChannelOf(n.nodeId, n.depth, n.face);
-      if (!rowChannel) continue; // 그 면에 행 채널이 없다 — 있을 수 없다(마진이 늘 있다). 안전망.
-      // **어느 쪽에서 행 채널로 들어오나** — 면이 답한다. `N` 면이면 행 채널은 모듈 **위**에 있으므로
-      // 그 경로는 행 채널의 **아래** 변에서 올라온다. `S` 면은 거울이다. 이 한 값이 교차를
-      // 없애는 순서를 정한다([planRowChannel] 의 전순서).
-      (byRowChannel.get(rowChannel) ?? byRowChannel.set(rowChannel, []).get(rowChannel)!).push({
-        id: n.id, x1: n.x1, x2: n.x2, side: n.face === "N" ? "bottom" : "top",
-      });
-    }
-    // 수요가 없는 행 채널도 하한(`ROW_CHANNEL_MIN`)만큼은 선다 — `planRowChannel([])` 이 그 값이다.
-    for (const rowChannel of rowChannels) rowChannel.height = planRowChannel([]).height;
-    for (const [rowChannel, crossings] of byRowChannel) {
-      const plan = planRowChannel(crossings);
-      rowChannel.height = plan.height;
-      rowChannel.tracks = plan.tracks;
-    }
-  }
 
   // ── 4) 세로 좌표 — **열마다 누적합. 간격은 전부 행 채널 높이다** ────────────────
   //
   //    `colX[d] = colX[d-1] + 열폭 + 채널폭` 의 **세로 판**이다. 열 하나가 순번 0부터
   //    누적합이고, 더하는 것은 **모듈 높이 + 그 아래 행 채널의 높이**뿐 — 상수가 없다.
   //    예전엔 `STACK_GAP = 3` 이 간격이었고 행 채널이 모자라면 경로가 탐색으로 떨어졌다.
-  const heightOf = (id: string): number => moduleExtent(pass1.get(id)!).h;
+  const heightOf = (id: string): number => moduleExtent(oriented.get(id)!.module).h;
   const heightBelow = new Map<string, number>();
   for (const b of rowChannels)
     if (b.kind === "between") heightBelow.set(`${b.depth}:${b.above}`, b.height);
@@ -800,7 +205,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //    구간 [min(자식포트y, 부모포트y), max(...)] 으로 모아 left-edge 트랙 수 = 폭의 근거.
   //    포트 abs-y = 로컬 anchor.y + (topY - ext.y) (colX 무관 → 배치 전 계산 가능). 끝 정렬
   //    (piece 4)으로 구간이 짧아 트랙↓→폭↓. channelPlanner 코드 무수정(좌표-무지).
-  const maxDepth = Math.max(...specs.map((s) => s.depth), 0);
   const colWidth = new Array(maxDepth + 1).fill(0);
   for (const s of specs) colWidth[s.depth] = Math.max(colWidth[s.depth], moduleExtent(oriented.get(s.id)!.module).w);
 
@@ -809,13 +213,6 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //     으로 빼는 출구를 planner 에 맡긴다. colX 전이라 X 없이 abs y+depth 만으로 판정
   //     가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진 반영은 reservePerimeterExits 게이트.
   //     환승 출구가 먹는 트랙은 5c 의 통합 장부가 배정하고, 그 결과에서 폭이 나온다.
-  // **행 채널 관통 판정의 재료** — 가로 트랙이 덮는 최대 로컬 x. 세로 직진이 그 열을
-  // 밟는지 판정하는 데 쓴다(`layoutRegions` 의 ③ 관통). 수요 기준이라 보수적이다.
-  const rowChannelReach = new Map<string, number>();
-  for (const n of rowChannelNeeds) {
-    const k = rowChannelKey(n.depth, n.face === "N" ? "below" : "above", n.nodeId);
-    rowChannelReach.set(k, Math.max(rowChannelReach.get(k) ?? -1, n.x2));
-  }
   const exitPlan = planExits(
     specs, oriented, topY, pairedChestIds, maxDepth, absPortY, orderByDepth, rowChannelReach,
   );
@@ -1065,25 +462,172 @@ function unionExtent(placements: ModulePlacement[]): { x: number; y: number; w: 
   if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
+/**
+ * **P0b — 간선 단위 배정**.
+ *
+ * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
+ * 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 — 밖에서 `linkCache` 를 고치고
+ * 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
+ *
+ * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
+ *
+ * 트리 전체 배정. **`linkCache` 를 제자리에서 최종본으로 갈아 끼우고**(쪼개졌으면 토막),
+ * 그에 맞춘 무대와 `ModuleInput` 을 돌려준다. **방출은 안 한다.**
+ */
+function seatTree(
+  specs: readonly NodeSpec[],
+  tree: TreeIndex,
+  links: EdgeLinks,
+  config: PackConfig,
+): { stages: Map<string, LinkFaceStage>; inputs: Map<string, ModuleInput> } {
+  const { linkCache } = links;
+  /** 배정이 낸 쪼갬 수 — 진단용(옛 `laddered`). */
+  let laddered = 0;
+  const stages = new Map<string, LinkFaceStage>();
+  for (const s of specs)
+    stages.set(s.id, planLinkFaces(moduleInputOf(tree, config, links, s), Math.max(1, s.count), "open"));
 
-function toModuleInput(s: NodeSpec, config: PackConfig, fed: Set<string>): ModuleInput {
-  return {
-    machine: s.machine,
-    count: s.count,
-    // external = 트리 안 생산자 없는 입력(무한상자로 살아남음) — planner 의 노출
-    // N/S 완화 대상. 내부 간선(납품 경로 대체 예정)·출력은 W/E 유지.
-    lines: s.lines.map((l) => ({ ...l, external: l.role === "input" && !fed.has(l.name) })),
-    inserterEntityName: config.inserterEntityName,
-    beltEntityName: config.beltEntityName,
-    belts: config.belts,
-    undergroundBelts: config.undergroundBelts,
-    inserters: config.inserters,
-    idPrefix: s.id,
-    // 트렁크 파이프 계획 — 게임데이터(fluid_boxes)를 보는 호출자(`run/policy` · `run/gamedata`)가 이미
-    // 풀어서 spec 에 실어 보낸다. module/ 는 store 를 안 본다(순수).
-    fluidTrunk: s.fluidTrunk,
-    // [Parallel Inserting] 용량 — 마찬가지로 게임데이터를 보는 `run/gamedata` 가 계산해 실었다.
-    supplyCapacity: s.supplyCapacity,
-  };
+  // 모듈마다 최종 링크 목록·계획을 모은다. `in` 은 자식 순서대로 이어 붙는다
+  // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
+  const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
+  const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
+  for (const s of specs) {
+    outOf.set(s.id, { links: [], plans: [], why: [] });
+    inOf.set(s.id, { links: [], plans: [], why: [] });
+  }
+
+  for (const s of specs) {
+    if (!s.parentId) continue;
+    const groups = linkCache.get(s.id);
+    if (!groups?.length) continue;
+    const child = stages.get(s.id);
+    const parent = stages.get(s.parentId);
+    if (!child || !parent) continue;
+    const r = seatLinkEdge(child, parent, groups, { split: AUTO_LAYOUT_LINK_LADDER });
+    laddered += r.splits;
+    linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
+    const o = outOf.get(s.id)!;
+    o.links.push(...r.groups); o.plans.push(...r.fromPlans); o.why.push(...r.fromWhy);
+    const i = inOf.get(s.parentId)!;
+    i.links.push(...r.groups); i.plans.push(...r.toPlans); i.why.push(...r.toWhy);
+  }
+
+  recordLinkNeed(specs, stages, outOf, inOf);
+
+  // 무대의 링크 목록·배정을 최종본으로 갈아 끼운다 — `generateModule` 이 보는
+  // `input.outputLinks` 와 **같은 배열**이어야 방출이 index 로 짝을 찾는다.
+  const inputs = new Map<string, ModuleInput>();
+  for (const s of specs) {
+    const st = stages.get(s.id)!;
+    const o = outOf.get(s.id)!;
+    const i = inOf.get(s.id)!;
+    st.outLinks = o.links;
+    st.inLinks = i.links;
+    st.out = { plans: o.plans, deferred: [], shortages: o.why };
+    st.in = { plans: i.plans, deferred: [], shortages: i.why };
+    inputs.set(s.id, {
+      ...moduleInputOf(tree, config, links, s),
+      outputLinks: o.links.length ? o.links : undefined,
+      inputLinks: i.links.length ? i.links : undefined,
+    });
+  }
+  // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
+  if (laddered > 0) recordFaceDepthStats({ splits: laddered });
+  return { stages, inputs };
 }
 
+/**
+ * **링크가 앉으려면 무엇을 풀어야 했나** — 모듈마다 눈금 하나([linkDepthNeed]). **관측만 한다.**
+ *
+ * 여기서 세는 이유: `L_f`(그 면의 링크 **줄** 수 = 품목 종류 수)와 `R_f`(그 면의 깊이
+ * 수)를 **둘 다 아는 유일한 자리**다. 판정 자체는 앉혀 본 결과를 안 보므로(입력만
+ * 본다) 성공한 배치만 세는 편향이 없다 — `tempPlanDocs/부분-링크/` §4 Step 1.
+ *
+ * 면은 **선호**로 읽는다: 출력은 W, 입력은 E([allocateLinkFaces] 의 기본 면).
+ * 링크는 반대 면으로 못 넘어가므로(`spillPair`) 그 선호가 곧 그 줄이 앉을 면이다.
+ */
+function recordLinkNeed(
+  specs: readonly NodeSpec[],
+  stages: ReadonlyMap<string, LinkFaceStage>,
+  outOf: ReadonlyMap<string, { links: Link[] }>,
+  inOf: ReadonlyMap<string, { links: Link[] }>,
+): void {
+  const needTally: Partial<Record<LinkDepthNeed, number>> = {};
+  const needWho: string[] = [];
+  for (const s of specs) {
+    const st = stages.get(s.id)!;
+    const items = (ls: readonly Link[]): number => new Set(ls.map((l) => l.item)).size;
+    const L = (f: "W" | "E"): number =>
+      items(f === "W" ? outOf.get(s.id)!.links : inOf.get(s.id)!.links);
+    const R = (f: "W" | "E"): number => clusterBeltDepthsOf(st.ctx, f).length;
+    const need = linkDepthNeed({ linesOf: L, depthsOf: R });
+    needTally[need] = (needTally[need] ?? 0) + 1;
+    // **넘친 것만 이름을 남긴다** — `L/R` 까지 실어야 *왜* 넘쳤는지가 한 줄에서 읽힌다.
+    if (need !== "free")
+      needWho.push(`${s.id} → ${need} (W ${L("W")}/${R("W")} · E ${L("E")}/${R("E")})`);
+  }
+  recordFaceDepthStats({
+    linkNeed: needTally as Record<LinkDepthNeed, number>,
+    linkNeedWho: needWho,
+  });
+}
+
+/** 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위. */
+const IDENTITY: Orientation = { rotation: 0, reflect: false };
+
+/**
+ * **③ 모양 — 모듈마다 한 번 생성.** 여기서 잰 높이가 곧 깔릴 높이다(세로 자리가 그 값을 쓴다).
+ *
+ * 끝 선호(`lineEnds`)가 ① 에서 확정되므로 다시 돌 이유가 없다.
+ *
+ * (옛 `1b) 사다리 1단` 은 **배정 안으로 접혔다** — `seatLinkEdge` 가 못을 만나면
+ *  그 자리에서 쪼개고 토막을 이어 앉힌다. `linkCache` 를 밖에서 고치고 1차를 통째로
+ *  다시 만들던 자리가 사라졌다 = **되먹임 B 제거**
+ *
+ * (옛 `3) 포트 끝(DOF-B)` 은 **P0 으로 옮겼다** — 형제 순번으로 정하므로 tidy-tree 가
+ *  필요 없다. |Δy| 최소(거리)를 버리고 **교차 없음**을 노린다.
+ *  그것이 `gen → 높이 → 끝 → gen` 고리를 여는 유일한 조건이었다 = **되먹임 A 제거**
+ *
+ * (옛 `4) 2차 생성` 은 **사라졌다** — 끝 선호가 `P0` 에서 확정되므로 1차가 곧 최종이다.
+ *  `generateModule` 은 이제 트리마다 **한 번**만 돈다 = **되먹임 0**.
+ *  그래서 *"1차가 센 형태는 버린다"* 던 계측 초기화도 필요 없다 — 잰 것이 곧 깔린 것이다.
+ */
+function generateModules(
+  specs: readonly NodeSpec[],
+  seated: { stages: ReadonlyMap<string, LinkFaceStage>; inputs: ReadonlyMap<string, ModuleInput> },
+): Map<string, { module: GeneratedModule; orientation: Orientation }> {
+  const stagesRef = seated.stages;
+  const inputsRef = seated.inputs;
+  const gen = (s: NodeSpec): GeneratedModule => {
+    const base = inputsRef.get(s.id)!;
+    // **사본을 준다** — ③′(기계별 포트)가 이 표에 이어서 앉으므로, 원본을 주면
+    // 두 번째 `gen` 이 ①+③′ 이 앉은 표를 보고 시작한다([cloneLinkFaceStage]).
+    const st = stagesRef.get(s.id);
+    return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
+  };
+  const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
+  for (const s of specs) oriented.set(s.id, { module: gen(s), orientation: IDENTITY });
+  return oriented;
+}
+
+/** 내부 링크(자식→부모)의 형태 — 외부 줄은 `planModulePorts` 가 자기 몫을 센다. **관측만 한다.** */
+function recordLinkForms(tree: TreeIndex, links: EdgeLinks, config: PackConfig): void {
+  const { byId } = tree;
+  const { linkCache } = links;
+  // 대수가 끝마다 다르다(자식 count ↔ 부모 count)라 그대로 넘긴다.
+  recordBeltFormStats(
+    summarizeBeltForms(
+      [...linkCache].flatMap(([childId, groups]) => {
+        const child = byId.get(childId);
+        const parent = child?.parentId ? byId.get(child.parentId) : undefined;
+        return groups.map((group) => ({
+          group, fromCount: child?.count ?? 0, toCount: parent?.count ?? 0,
+        }));
+      }),
+      // **분모는 레인이다** — 줄 하나가 쓸 수 있는 것은 벨트의 절반뿐이므로
+      // (`docs/factorio/belt-lane-semantics.md` ①), 물리 처리량으로 재면 이용률이 **절반으로
+      // 보이고** 과적재가 안 잡힌다(레인은 넘쳤는데 줄로는 안 넘친 줄이 그렇다).
+      (name) => (name === undefined ? undefined : laneCapOfTier(config.belts?.find((b) => b.entityName === name))),
+    ),
+  );
+}

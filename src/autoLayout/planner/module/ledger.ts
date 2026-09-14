@@ -409,7 +409,7 @@ export const emptyAllocation = (n: number): FaceAllocation => ({
 /**
  * **무대의 사본** — `gen` 이 여러 번 돌 때 **꼭 필요하다.**
  *
- * 배정(①)은 `P0b` 에서 한 번 끝나지만, `planModulePorts` 의 ③′(기계별 포트)가 **같은
+ * 배정(①)은 `modulePacking.seatTree` 에서 한 번 끝나지만, `planModulePorts` 의 ③′(기계별 포트)가 **같은
  * 좌석표에 이어서 앉는다.** 그래서 무대를 그대로 재사용하면 두 번째 `gen` 이
  * **①이 아니라 ①+③′ 이 앉은 표**를 보고 시작해 자리가 조용히 줄어든다.
  *

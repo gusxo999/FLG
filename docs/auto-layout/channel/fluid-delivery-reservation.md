@@ -34,13 +34,13 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 
 납품 경로 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
 
-- `productOf(s)` = 출력 라인 이름 ([modulePacking.ts:338](../../../src/autoLayout/planner/modulePacking.ts#L338)).
+- `productOf(s)` = 출력 라인 이름 ([link/policy.ts](../../../src/autoLayout/planner/link/policy.ts) `productsOf`).
   라인의 `kind`(belt/pipe)를 안 본다 → 유체 출력 노드도 그대로 통과.
 - `pairDeliveryPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
-  ([modulePacking.ts:205](../../../src/autoLayout/planner/modulePacking.ts#L205)).
+  ([link/edgeLinks.ts](../../../src/autoLayout/planner/link/edgeLinks.ts) `pairDeliveryPorts`).
   유체 포트는 `linkId` 가 없어 ②번 위치-zip 으로 짝이 된다(v1 모듈당 유체 1포트 → 자명).
 - 그 짝이 그대로 납품 경로 입력에 쌓인다
-  ([modulePacking.ts:521](../../../src/autoLayout/planner/modulePacking.ts#L521)).
+  ([link/arith.ts](../../../src/autoLayout/planner/link/arith.ts) `pairDeliveries`).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
   ([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitTrunkPipe` 의 포트 `meta`).

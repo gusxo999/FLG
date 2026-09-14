@@ -50,7 +50,7 @@ export function planExits(
   maxDepth: number,
   absPortY: (id: string, anchorY: number) => number,
   /**
-   * 깊이 → 그 열의 모듈 id, **위에서 아래** 순서(3a 트리 DFS). 광선이 훑을 격자다.
+   * 깊이 → 그 열의 모듈 id, **위에서 아래** 순서([treeIndexOf] 의 트리 DFS). 광선이 훑을 격자다.
    * **여기서 다시 계산하지 않고 받는다** — 같은 사실을 두 주체가 두 번 세면 언젠가 어긋난다.
    */
   orderByDepth: ReadonlyMap<number, readonly string[]>,

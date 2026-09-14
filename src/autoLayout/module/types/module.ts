@@ -47,7 +47,7 @@ export interface ModuleInput {
    */
   lineEnds?: Map<string, "min" | "max">;
   /**
-   * **밖에서 이미 끝난 링크 면 배정**(`P0b`). 없으면 [planModulePorts] 가 직접 돌린다.
+   * **밖에서 이미 끝난 링크 면 배정**(`modulePacking.seatTree`). 없으면 [planModulePorts] 가 직접 돌린다.
    *
    * 배정이 `generateModule` **안에 갇혀 있으면** 그 결과를 보려고 방출까지 해야 하고,
    * 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다 — 그게 되먹임 둘의 뿌리였다
