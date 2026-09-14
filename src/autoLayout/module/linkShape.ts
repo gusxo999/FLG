@@ -27,8 +27,11 @@
  * ## gap(N/S) 면은 여기 없다
  *
  * gap 은 **계획이 아무것도 청구하지 않는다**(겹침을 행이 아니라 반출 깊이로 푼다 —
- * `commitLinkFace` 의 `span` 이 `undefined`). 청구가 없으니 갈릴 도형도 없다. 그 기하는
- * 방출기가 그대로 든다.
+ * `commitLinkFace` 의 `span` 이 `undefined`). 그래서 계획과 방출이 나눠 부를 도형이 없고, 그 길은
+ * 머신 좌표에 묶인 채 [module/shape] 의 `outputRouteOf` · `inputRouteOf` 가 짓는다.
+ *
+ * **청구가 없다는 것은 갈릴 도형이 없다는 뜻이지 다툼이 없다는 뜻이 아니다** — gap 그룹의 포트 두 칸이
+ * 어느 장부에도 없어서, 남의 벨트와의 다툼을 방출 안전망이 처음 본다(work-kinds §7 D8).
  */
 
 import { flowEnd } from "./arith";

@@ -154,7 +154,8 @@ autoLayout/
 │   ├ arith.ts                     셈 — trunkEndKey · flowEnd (방출과 계획이 함께 부른다)
 │   ├ clusterModule.ts             모듈 생성 오케스트레이터
 │   ├ link.ts          벨트 한 줄 = 팔 묶음 (조립·판독)
-│   ├ linkShape.ts                 도형 — 배정 → 먹는 칸 · 셀 (청구와 방출의 단일 출처)
+│   ├ linkShape.ts                 도형 — 배정 → 먹는 칸 · 셀 (청구와 방출의 단일 출처 · 순번 축)
+│   ├ shape.ts                     도형 — 머신 좌표 위: 기둥 틀 · 링크 틀 · 길(칸 순서와 방향) · 포트 끝점. 방출이 부른다
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                유체 면 선택
 │   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위

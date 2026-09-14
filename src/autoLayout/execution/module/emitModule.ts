@@ -1,16 +1,17 @@
 /**
  * 모듈 안쪽 방출 — **배치 실행**. 계획대로 셀을 놓는다.
  *
- * `clusterModule.generateModule`(계획·오케스트레이션)에서 **셀을 만드는 부분만** 떼어냈다.
- * 여기 있는 네 함수는 자리를 *고르지 않는다* — 이미 정해진 배정(면·깊이·좌석)을 받아
- * belt·인서터·상자·파이프를 격자에 **놓기만** 한다.
+ * `clusterModule.generateModule`(조율)이 부른다. 여기 있는 함수는 자리를 *고르지 않는다* — 이미 정해진
+ * 배정(면·깊이·좌석)을 받아 belt·인서터·상자·파이프를 격자에 **놓기만** 한다.
  *
  * | 함수 | 무엇을 놓나 |
  * |---|---|
- * | `emitOutputLinks` | 출력 fan-out — 탭 인서터 + 수집 belt + 포트 상자 |
- * | `emitInputLinks`  | 입력 fan-in — 공급 belt + 탭 인서터 |
- * | `emitTapInserting`| 트렁크 belt 한 줄 + 머신마다 탭 인서터 |
+ * | `emitOutputLinks` | 싣는 쪽 — 좌석 팔 + 수집 belt + 포트(인서터 · 상자). 링크 줄 · 나머지 줄 공통 |
+ * | `emitInputLinks`  | 집는 쪽 — 공급 belt + 좌석 팔 + 포트 |
  * | `emitTrunkPipe`   | 유체 트렁크 파이프 + 지하 점프 |
+ *
+ * **틀과 길은 여기 없다** — 배정에 머신 좌표를 입혀 칸 순서를 내는 일은 도형이라 [module/shape] 에 있다.
+ * 여기 남은 일은 셋이다: 칸이 비었나 묻고(안전망), 셀을 만들고, 누적기에 적는다.
  *
  * **공통 규약:** 인자 객체로 받은 누적기(`occupancy`·`cells`·`chests`·`inputPorts`·
  * `outputPorts`·`unroutedLines`)를 **in-place 로 채운다.** 모듈 스코프 상태는 없다.
@@ -20,7 +21,7 @@
  * 런타임 간선은 `clusterModule → emitModule` 한 방향뿐이다.
  */
 
-import { flowEnd, trunkEndKey } from "../../module/arith";
+import { trunkEndKey } from "../../module/arith";
 import type { IoLine, Link, PlannedLine, PortSide } from "../../module/types/line";
 import type {
   BeltTerminus, ModuleInput, ModulePort, TrunkContext,
@@ -44,8 +45,10 @@ import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
 // (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
 import { recordFaceDepthStats, recordLaneMerge } from "../../../debug/runStats";
-// **도형의 단일 출처** — 배정이 청구할 때 부른 그 함수를 방출도 부른다(work-kinds §7 D1).
-import { linkShape, type ShapeCell } from "../../module/linkShape";
+// **틀과 길** — 배정이 청구할 때 부른 도형(`linkShape`)을 모듈 좌표에 얹는 곳이다(work-kinds §7 D1).
+import {
+  inputRouteOf, linkFrameOf, machineExtent, outputRouteOf, seatCellsOf, seatsOf, tapAnchorOf, type LinkFrame,
+} from "../../module/shape";
 
 
 /**
@@ -80,14 +83,6 @@ function makeLinkPortChest(o: {
 }
 
 /**
- * **링크 포트의 끝을 놓는다** — belt 를 깐 뒤 `[포트 인서터][상자]` 를 세우고 [ModulePort]
- * 를 push 한다. [emitOutputLinks]·[emitInputLinks] 공통. belt 셀은 caller 가 이미 만들어
- * 넘긴다(`beltCells`). 좌석 탭 인서터도 caller 가 이 함수 **전에** 놓는다(cells 순서 보존).
- *
- * role 로 갈리는 것: 포트 인서터의 **집는 쪽**(출력은 belt→상자 = −pfv, 입력은 상자→belt =
- * pfv), 포트가 서는 **변**(meta.side: 출력 W · 입력 E), `endPreference` 조회 키.
- */
-/**
  * **좌석 팔은 깊이와 짝이다** — 좌석은 언제나 d1 이므로 벨트가 d`clusterBeltDepth` 면 팔이
  * `clusterBeltDepth-1` 칸을 던져야 한다. 상수를 쓰면 깊은 줄에 앉은 줄이 벨트에 못 닿아 **그 자리가
  * 조용히 굶는다**(2026-08-16 — 깊이 장부가 d3 를 쓰기 시작하면서 실제 위험이 됐다).
@@ -99,6 +94,14 @@ function seatInserterName(input: ModuleInput, reach: number): string {
   return inserterForReach(input.inserters, reach)?.entityName ?? input.inserterEntityName;
 }
 
+/**
+ * **링크 포트의 끝을 놓는다** — belt 를 깐 뒤 `[포트 인서터][상자]` 를 세우고 [ModulePort]
+ * 를 push 한다. [emitOutputLinks]·[emitInputLinks] 공통. belt 셀은 caller 가 이미 만들어
+ * 넘긴다(`beltCells`). 좌석 탭 인서터도 caller 가 이 함수 **전에** 놓는다(cells 순서 보존).
+ *
+ * role 로 갈리는 것: 포트 인서터의 **집는 쪽**(출력은 belt→상자 = −pfv, 입력은 상자→belt =
+ * pfv), 포트가 서는 **변**(meta.side: 출력 W · 입력 E), `endPreference` 조회 키.
+ */
 function pushLinkPortEnd(o: {
   role: "input" | "output";
   seatCell: { x: number; y: number };
@@ -188,13 +191,100 @@ function pushLinkPortEnd(o: {
   });
 }
 
+/**
+ * **출구 합류** — 먼저 나온 줄(`sharedLineId` → 그 줄의 합류 칸·포트).
+ *
+ * 싣는 쪽은 벨트가 **둘**이라야 두 레인이 다 찬다(팔이 각자 먼 레인에 떨군다). 그 둘을
+ * **기둥 끝 바깥 한 행**에서 마주 보게 해 합친다 — 자리가 규칙적이라 좌표로 계산된다
+ * (`docs/factorio/belt-lane-semantics.md` ③ · `tempPlanDocs/벨트-레인/` ㉡-3):
+ *
+ * **갈린 두 줄은 같은 깊이에 위/아래로 쌓인다** — 구간이 안 겹쳐 한 깊이를 나눠 쓰기
+ * 때문이다. 그래서 도형이 이렇게 된다(포트가 위쪽 끝, `d` = 둘의 공통 깊이):
+ *
+ * ```
+ *  행 tL-1                [ 포트 ]                      ← 인서터·상자는 d+1 열에서 나간다
+ *  행 tL      L(d) →깊게→ [ M(d+1) ] ←얕게← (d+2)       M = 합류 칸, 포트 쪽으로 나간다
+ *  …          L 수집(d)                     (d+2) ↑     F 가 d+2 를 따라 올라온다
+ *  행 tF      F(d) →깊게→ (d+1) →깊게→      (d+2) ↑
+ *  …          F 수집(d)
+ * ```
+ *
+ * **왜 꺾어야 하나** — 합류 칸은 **뒤 유입이 없어야** 한다(⑤: 뒤에서 온 쪽이 두 레인을
+ * 선점하고 옆 쪽을 굶긴다). 옆 포트는 벨트 끝 칸이 곧 포트라 꺾을 자리가 없어서, 배정이
+ * 합류 쌍에는 **기둥 끝 포트를 강제한다**(`tryLinkFace` 의 `forceEnd`). 그러면 벨트가
+ * 깊은 쪽으로 한 번 꺾고 **그 꺾인 칸(M)** 이 합류 칸이 된다 — `M` 의 뒤(`d+1`, 행 tL+1)는
+ * 비어 있다.
+ *
+ * **`d+2` 는 팔이 안 닿는 열이라 아무도 안 쓴다**(깊이 = 1 + reach). 배정이 그 구간을
+ * 미리 청구한다(`commitLinkFace` 의 `merged`).
+ *
+ * **왜 모듈 안인가** — 두 줄 구간이 한 줄로 합쳐지는 순간이 **빠를수록** 공간을 아낀다
+ * (2026-09-04 사장님). 채널은 통로일 뿐이고, 합류는 여기서 끝나야 포트·트랙·납품이 전부
+ * 하나가 된다.
+ */
+export interface SharedExit {
+  trunkStart: { x: number; y: number };
+  portPair: PortPair; seatCell: { x: number; y: number };
+  chestAt: { x: number; y: number }; chest: Container;
+  /** 이끄는 줄의 **포트 쪽 끝 행** — 따르는 줄이 여기까지 비켜 올라온다. */
+  topT: number;
+}
 
 /**
- * 링크 그룹 하나가 앉을 **면** — 좌표가 생기기 **전에** 팔 수만으로 정한다.
+ * **레인 공유** — 이미 깔린 물리 벨트(`sharedLineId` → 첫 줄이 놓은 것).
  *
- * 순서가 이렇게 뒤집힌 이유: N/S 면(=gap)에 앉는 그룹은 gap 안에 가로 벨트 한 줄을 놓고,
- * **gap 폭 = 그 gap 을 지나는 가로 벨트 수**다. 폭이 머신 좌표를 정하므로, 좌표를 알기 전에
- * 면부터 정해야 한다(폭은 우리가 고르는 값이 아니라 배정의 부산물).
+ * 집는 쪽은 벨트가 **하나**다(합류한 벨트가 벽의 한 칸으로 들어온다). 둘째 줄은 자기
+ * **좌석 팔만** 놓고 벨트·포트 인서터·상자는 첫 줄의 것을 그대로 쓴다.
+ * 배정이 이미 같은 면·같은 깊이를 줬으므로([seatOnSharedBelt]) 여기서 기하를 다시 안 고른다.
+ */
+export interface SharedBelt {
+  beltCells: PlacedCell[];
+  portPair: PortPair;
+  beltTop: { x: number; y: number };
+}
+
+/**
+ * **좌석 팔** — 좌석(d1) 행마다 인서터 하나. 출력 · 입력 공통.
+ *
+ * 역할이 뒤집는 것은 둘뿐이다 — **집는 쪽**(싣는 쪽은 머신에서 집어 벨트로 = 안쪽, 집는 쪽은 벨트에서 집어
+ * 머신으로 = 바깥)과 짝의 생산자/소비자. 팔 종류는 [seatInserterName] 이 깊이에서 정한다.
+ */
+function placeSeatArms(
+  role: "output" | "input",
+  frame: LinkFrame,
+  chestId: string,
+  arm: string,
+  cells: PlacedCell[],
+  occupancy: Set<string>,
+): void {
+  const { face, ext } = frame;
+  const pickup = role === "output" ? frame.inward : frame.fv;
+  for (const s of frame.seats) {
+    for (const t of s.rows) {
+      const seat = faceCell(ext, face, 1, t);
+      const machineSide = { containerId: s.m.id, cell: { ...seat }, face, kind: "item" as const };
+      const chestSide = { containerId: chestId, cell: { ...seat }, face, kind: "item" as const };
+      const pair: PortPair = role === "output"
+        ? { producer: machineSide, consumer: chestSide }
+        : { producer: chestSide, consumer: machineSide };
+      cells.push(makeInserterCell(seat, pickup, arm, pair));
+      occupancy.add(cellKey(seat.x, seat.y));
+    }
+  }
+}
+
+/**
+ * **싣는 쪽 방출** — 그룹마다 좌석 팔 · 수집 벨트 · 포트(인서터 + 상자)를 놓는다. 자리는 배정이 이미 정했다
+ * ([LinkSeats] — 면 · 깊이 · 좌석 · 끝 · 합류 역할). 그룹 하나가 놓이는 순서:
+ *
+ * ```
+ * ⓐ 판정 받기  배정이 없으면 못 앉은 줄(계획의 답)     ⓔ 포트   상자 · 짝(따르면 첫 줄의 물리 자리)
+ * ⓑ 틀         면 · 좌석 · 포트 면 · 흐름 끝          ⓕ 검사   길 · 포트 칸이 비었나(안전망)
+ * ⓒ 짝         이끄나 · 따르나                        ⓖ 찍기   벨트 → 좌석 팔 → 포트 끝
+ * ⓓ 길         칸 순서와 방향([outputRouteOf])         ⓗ 장부   합류 칸 등록
+ * ```
+ *
+ * **포트(ⓔ)가 검사(ⓕ)보다 앞이다** — 집는 쪽과 반대다. 상자 id 에 순번이 들어가 막힌 그룹도 번호를 먹는다.
  */
 export function emitOutputLinks(args: {
   groups: Link[];
@@ -212,53 +302,13 @@ export function emitOutputLinks(args: {
   beltItems: Map<string, string>;
 }): void {
   const { groups, machines, input, prefix, occupancy, cells, chests, outputPorts, unroutedLines, beltItems } = args;
-  /**
-   * **출구 합류** — 먼저 나온 줄(`sharedLineId` → 그 줄의 합류 칸·포트).
-   *
-   * 싣는 쪽은 벨트가 **둘**이라야 두 레인이 다 찬다(팔이 각자 먼 레인에 떨군다). 그 둘을
-   * **기둥 끝 바깥 한 행**에서 마주 보게 해 합친다 — 자리가 규칙적이라 좌표로 계산된다
-   * (`docs/factorio/belt-lane-semantics.md` ③ · `tempPlanDocs/벨트-레인/` ㉡-3):
-   *
-   * **갈린 두 줄은 같은 깊이에 위/아래로 쌓인다** — 구간이 안 겹쳐 한 깊이를 나눠 쓰기
-   * 때문이다. 그래서 도형이 이렇게 된다(포트가 위쪽 끝, `d` = 둘의 공통 깊이):
-   *
-   * ```
-   *  행 tL-1                [ 포트 ]                      ← 인서터·상자는 d+1 열에서 나간다
-   *  행 tL      L(d) →깊게→ [ M(d+1) ] ←얕게← (d+2)       M = 합류 칸, 포트 쪽으로 나간다
-   *  …          L 수집(d)                     (d+2) ↑     F 가 d+2 를 따라 올라온다
-   *  행 tF      F(d) →깊게→ (d+1) →깊게→      (d+2) ↑
-   *  …          F 수집(d)
-   * ```
-   *
-   * **왜 꺾어야 하나** — 합류 칸은 **뒤 유입이 없어야** 한다(⑤: 뒤에서 온 쪽이 두 레인을
-   * 선점하고 옆 쪽을 굶긴다). 옆 포트는 벨트 끝 칸이 곧 포트라 꺾을 자리가 없어서, 배정이
-   * 합류 쌍에는 **기둥 끝 포트를 강제한다**(`tryLinkFace` 의 `forceEnd`). 그러면 벨트가
-   * 깊은 쪽으로 한 번 꺾고 **그 꺾인 칸(M)** 이 합류 칸이 된다 — `M` 의 뒤(`d+1`, 행 tL+1)는
-   * 비어 있다.
-   *
-   * **`d+2` 는 팔이 안 닿는 열이라 아무도 안 쓴다**(깊이 = 1 + reach). 배정이 그 구간을
-   * 미리 청구한다(`commitLinkFace` 의 `merged`).
-   *
-   * **왜 모듈 안인가** — 두 줄 구간이 한 줄로 합쳐지는 순간이 **빠를수록** 공간을 아낀다
-   * (2026-09-04 사장님). 채널은 통로일 뿐이고, 합류는 여기서 끝나야 포트·트랙·납품이 전부
-   * 하나가 된다.
-   */
-  const sharedExit = new Map<string, {
-    trunkStart: { x: number; y: number };
-    portPair: PortPair; seatCell: { x: number; y: number };
-    chestAt: { x: number; y: number }; chest: Container;
-    /** 이끄는 줄의 **포트 쪽 끝 행** — 따르는 줄이 여기까지 비켜 올라온다. */
-    topT: number;
-  }>();
-  const ext = {
-    x0: Math.min(...machines.map((m) => m.origin.x)),
-    y0: Math.min(...machines.map((m) => m.origin.y)),
-    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
-    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
-  };
+  /** 합류 칸 — 먼저 나온 줄이 적고 따르는 줄이 읽는다([SharedExit]). */
+  const sharedExit = new Map<string, SharedExit>();
+  const ext = machineExtent(machines);
   let seq = 0;
 
   groups.forEach((group, gi) => {
+    // ⓐ 판정 받기 — 배정이 없으면 두 면이 다 찬 줄이다(계획의 답을 적는다)
     const line = args.lineOf.get(group.item);
     if (!line) return;
     const plan = args.seats[gi];
@@ -266,49 +316,12 @@ export function emitOutputLinks(args: {
       unroutedLines.push(line); // 두 면 다 찼다(거대 출력) → 정직 폴백(N/S gap 은 후속)
       return;
     }
-    const face = plan.face;
-    const isGap = face === "N" || face === "S";
-    const fv = faceVector(face);
-    // **좌석은 머신 여럿에 걸칠 수 있다**(입력과 같은 구조). v1 링크 그룹은 자식 머신 하나뿐
-    // 이라 항상 길이 1이지만, 외부 줄(모든 머신이 내는 최종 산출)은 전 머신에 걸친다 —
-    // [emitTapInserting] 을 [[ParallelBelt]] 로 대체하려면 이 형태여야 한다(규칙 2).
-    const seats = [...plan.slots]
-      .sort((a, b) => a[0] - b[0])
-      .map(([mi, rows]) => ({ m: machines[mi], rows }))
-      .filter((s) => s.m);
+    // ⓑ 틀 — 면 · 좌석 · 포트 면 · 깊이 · 흐름 끝. 배정과 머신 좌표만 읽는다
+    const seats = seatsOf(plan, machines);
     if (seats.length === 0) return;
-    const m0 = seats[0].m;
-    const allRows = seats.flatMap((s) => s.rows).sort((a, b) => a - b);
-    // depth 는 gap 이면 **그 머신의 면**에서 잰다 — 가운데 머신의 N/S 는 클러스터 끝면이
-    // 아니다. W/E 면은 기둥이라 모든 머신의 x 가 같아 전체 ext 와 결과가 같다.
-    const mExt = isGap
-      ? { x0: m0.origin.x, y0: m0.origin.y, x1: m0.origin.x + m0.size.w - 1, y1: m0.origin.y + m0.size.h - 1 }
-      : ext;
-
-    // 출구는 **벨트가 앉은 면을 따른다.** W/E 면 좌석이면 세로 벨트가 그 면 바깥을 보고,
-    // N/S(gap) 좌석이면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90° 꺾인다 — **그 꺾이는
-    // 칸이 곧 평범한 W 포트**다(모서리 포트). 그래서 채널 장부가 새 모양을 배울 필요가 없다.
-    //
-    // 예전엔 **언제나 W** 였다. 링크 출력은 선호 면이 W 고 넘치면 gap 으로만 가서 그게 늘
-    // 맞았기 때문이다. 원료·완제품 줄까지 이 배분기를 타면 출력이 E 에 앉을 수 있고, 그때
-    // W 를 고집하면 포트 인서터가 **머신 쪽으로** 자라 좌석 줄과 부딪힌다.
-    // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd]) — 상자가 기둥 밖이라 그 면의 깊은
-    // 깊이가 상자를 가두지 못한다. 구간이면 오늘처럼 옆이다.
-    const portFace: PortFace = plan.portEnd ?? (isGap ? "W" : face);
-    const pfv = faceVector(portFace);
-    // 벨트 깊이는 **계획이 정해 들고 온 값**이다 — gap 폭을 유도한 바로 그 값이라
-    // 여기서 다른 수를 쓰면 벨트가 gap 밖으로 넘친다([gapRowsFromPlans]).
-    const clusterBeltDepth = plan.clusterBeltDepth;
-    const exitDepth = plan.exitDepth ?? clusterBeltDepth;
-    // 흐름은 **포트 쪽 끝**을 향한다 — N 이면 위(t 작은 쪽), S 면 아래.
-    // **구간 줄도 이 값을 갖는다**([flowEnd] · 2026-09-05). 예전엔 `plan.portEnd === "S"`
-    // 라서 구간 줄이 언제나 위였다 — 부모가 아래에 있어도.
-    const toSouth = flowEnd(plan) === "S";
-    const topT = toSouth ? allRows[allRows.length - 1] : allRows[0];
-    // 트렁크 끝(= 납품 경로 계약의 trunkStart) — W 면이면 belt 줄의 맨 위, N/S 면이면 **반출 줄의**
-    // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
-    // ── 출구 합류 ─────────────────────────────────────────────────────────────
-    // 짝의 **둘째** 줄이면 첫 줄이 만든 합류 칸·포트를 그대로 쓴다. 첫 줄이면 합류 칸을
+    const frame = linkFrameOf("output", plan, seats, ext);
+    const { m0, portFace, pfv, clusterBeltDepth, topT } = frame;
+    // ⓒ 짝 — 출구 합류. 짝의 **둘째** 줄이면 첫 줄이 만든 합류 칸·포트를 그대로 쓴다. 첫 줄이면 합류 칸을
     // 새로 만든다. 기하가 안 서면(gap · 끝 없음 · 반출 줄로 내려감) 합류하지 않는다 —
     // 그런 짝은 배정이 이미 풀었으므로 정상 경로에선 여기 오지 않는다.
     // **역할은 배정이 정한다**(2026-09-12 F2). 예전엔 여기서 신원(`sharedLineId`)과 기하
@@ -322,27 +335,10 @@ export function emitOutputLinks(args: {
     const followed = plan.mergeRole === "follow" && group.sharedLineId !== undefined
       ? sharedExit.get(group.sharedLineId)
       : undefined;
-    /**
-     * **이 배정의 도형** — 계획이 청구할 때 부른 그 함수다([linkShape] · work-kinds §7 D1).
-     * gap 은 없다: 계획이 장부를 안 들어 갈릴 도형이 없고, 그 기하는 아래 else 가 그대로 든다.
-     */
-    const shape = isGap ? undefined : linkShape({
-      role: "output",
-      clusterBeltDepth,
-      portEnd: plan.portEnd,
-      flowToSouth: toSouth,
-      mergeRole: plan.mergeRole,
-      rows: allRows,
-      outRow: plan.portEnd === "S" ? mExt.y1 + 1 : mExt.y0 - 1,
-    });
-    const cellAt = (c: { depth: number; t: number }) => faceCell(mExt, face, c.depth, c.t);
-    // **포트가 붙는 칸은 도형의 끝이다** — 싣는 쪽은 흐름이 포트로 모이므로 마지막 칸이다
-    // (합류 이끄는 줄이면 그게 곧 합류 칸이다). gap 은 서쪽 변에서 꺾이는 칸.
-    const trunkStart = followed
-      ? followed.trunkStart
-      : shape
-        ? cellAt(shape.path[shape.path.length - 1])
-        : { x: m0.origin.x, y: faceCell(mExt, face, exitDepth, topT).y };
+    // ⓓ 길 — 칸 순서와 방향. W/E 는 계획이 청구한 그 도형을 좌표에 얹고, gap 은 수집 → 내려가기 → 반출
+    const route = outputRouteOf(frame, plan);
+    // ⓔ 포트
+    const trunkStart = followed ? followed.trunkStart : route.trunkStart;
     const chestId = `${prefix}-output-${line.name}-${seq++}`;
     const made = makeLinkPortChest({
       role: "output", trunkEnd: trunkStart, portFace, pfv, line, machineId: m0.id, chestId,
@@ -351,96 +347,33 @@ export function emitOutputLinks(args: {
     // (`usedIn` 이 상자 id 로 짝짓기를 세므로 — [pushLinkPortEnd] 의 `reuse` 주석).
     const { portPair, seatCell, chestAt } = followed ?? made;
     const chest = made.chest;
-
-    // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W/E 면은 위로, N/S 면은 서쪽으로.
-    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? 1 : -1 };
-    // **끝 칸은 면을 따라 계속 흐르지 않고 포트 쪽으로 꺾는다.** 안 꺾으면 이 그룹의 물건이
-    // 면을 따라 더 흘러 **이웃 그룹의 벨트로 넘어간다**(머신 사이 gap 이 0 이면 두 벨트가 실제로
-    // 맞닿는다). 품목이 같아 오염은 안 나지만 장부가 통째로 거짓이 된다 — 이쪽 부모는 굶고
-    // 저쪽 부모는 넘친다. 셀 겹침(occupancy)만 봐서는 못 잡는 종류다(2026-07-22 수정).
-    // 꺾은 칸의 다음 칸은 이 그룹의 포트 인서터라 언제나 비어 있다(다른 그룹의 행과 안 겹친다).
-    const beltCells: PlacedCell[] = [];
-    let blocked = false;
-    const push = (at: { x: number; y: number }, v: { x: number; y: number }): void => {
-      if (occupancy.has(cellKey(at.x, at.y))) { blocked = true; return; }
-      // **티어는 그룹이 든다**(2026-08-23) — 실으려는 양을 정한 곳([determineBeltCount])과
-      // 깔 벨트를 고르는 곳이 갈리면 용량이 거짓이 된다. 모르면 기본 벨트로 떨어진다.
-      beltCells.push(makeBeltCell(at, vectorToDirection(v.x, v.y), group.beltEntityName ?? input.beltEntityName, portPair));
-    };
-    if (shape) {
-      // **도형은 [linkShape] 가 든다** — 수집 · 합류(이끔/따름) · 포트가 거기서 나온다.
-      // 여기 남은 일은 셋뿐이다: 면 좌표로 얹고, **방향을 다음 칸에서 읽고**, 칸을 채운다.
-      //
-      // 방향을 도형이 안 들고 다니는 이유: 벡터는 면이 W냐 E냐로 부호가 뒤집혀 **좌표계의
-      // 일**이다. 순서만 있으면 방향은 유도된다 — 그래서 도형이 좌표를 몰라도 된다.
-      shape.path.forEach((c: ShapeCell, idx: number) => {
-        if (blocked) return;
-        const at = cellAt(c);
-        const to = cellAt(shape.path[idx + 1] ?? shape.after);
-        push(at, { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) });
-      });
-    } else {
-      // ── gap(N/S) — 계획이 장부를 안 드는 자원 모양이라 도형이 여기 남는다 ──────────
-      // ① **수집** — 자기 좌석 **구간**(첫 좌석 행 ~ 마지막 좌석 행)을 빠짐없이 덮는다.
-      // **목록이 아니라 범위다** — 좌석이 머신 여럿에 걸치면 사이 행이 빠져 벨트가 끊긴다
-      // (2026-08-17 실측: concrete 출력이 네 칸으로 흩어져 머신 셋의 산출이 갇혔다).
-      for (let t = Math.min(...allRows); t <= Math.max(...allRows); t++) {
-        if (blocked) break;
-        // 끝 칸: 자기 줄로 내려가야 하면 **더 깊은 줄 쪽**(fv)으로, 아니면 포트 쪽(pfv)으로.
-        const turn = exitDepth > clusterBeltDepth ? fv : pfv;
-        push(faceCell(mExt, face, clusterBeltDepth, t), t === topT ? turn : beltDirV);
-      }
-      // ② **자기 줄로 내려가기** — 막힌 면이라 벨트가 깊이로 갈린다([[ParallelBelt]]). 내려가는
-      // 건 **벨트가 벨트를 먹이는** 것이라 팔 길이와 무관하다(팔은 수집 줄까지만 닿으면 된다).
-      for (let d = clusterBeltDepth + 1; d <= exitDepth && !blocked; d++) {
-        push(faceCell(mExt, face, d, topT), d === exitDepth ? pfv : fv); // 반출 줄에 닿으면 서쪽으로
-      }
-      // ③ **반출** — 반출 줄을 따라 서쪽 변까지. 먼저 앉은 그룹들의 줄보다 **깊고**, 그들의
-      // 열보다 **동쪽에서** 출발하므로 남의 줄을 밟지 않는다.
-      if (exitDepth > clusterBeltDepth)
-        for (let t = topT - 1; t >= m0.origin.x && !blocked; t--) push(faceCell(mExt, face, exitDepth, t), pfv);
-    }
+    // ⓕ 검사 — 길 · 포트 칸이 비었나. 발동하면 그 "구성상"이 틀린 것이다(오늘 gap 포트에서 발동한다 — work-kinds §7 D8)
+    const blocked = route.path.some((c) => occupancy.has(cellKey(c.at.x, c.at.y)));
     if (blocked || (!followed && (occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
       unroutedLines.push(line); // 안전망(구성상 발생 안 함)
       return;
     }
 
+    // ⓖ 찍기
+    // **티어는 그룹이 든다**(2026-08-23) — 실으려는 양을 정한 곳([determineBeltCount])과
+    // 깔 벨트를 고르는 곳이 갈리면 용량이 거짓이 된다. 모르면 기본 벨트로 떨어진다.
+    const beltCells: PlacedCell[] = route.path.map((c) =>
+      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
+    );
     // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로). 팔 종류는 [seatInserterName].
-    const seatArm = seatInserterName(input, plan.reach);
-    const inward = { x: -fv.x, y: -fv.y };
-    for (const s of seats) {
-      for (const t of s.rows) {
-        const seat = faceCell(mExt, face, 1, t);
-        const pair: PortPair = {
-          producer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
-          consumer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
-        };
-        cells.push(makeInserterCell(seat, inward, seatArm, pair));
-        occupancy.add(cellKey(seat.x, seat.y));
-      }
-    }
-    // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로).
-    // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(E 면이면 동쪽 끝).
-    // **tapAnchor = 트렁크 끝** — 납품/반출 라우팅의 machine-side 끝점이고, 포트 계약이
-    // `anchor − 2·faceVector` 를 요구한다([modulePacking] ⑥B).
-    //
-    // gap(N/S) 그룹은 벨트가 가로로 달려 **변에서 꺾이므로** 그 꺾이는 칸(= 머신 가장자리)이
-    // 끝점이다. W/E 그룹은 벨트가 세로라 끝점이 **벨트 칸 자체**(d`clusterBeltDepth`)다 — 예전엔 둘 다
-    // 머신 가장자리를 썼는데, 그러면 W/E 포트의 끝점이 머신 발자국 **안**으로 들어가 반출
-    // 재배치가 통째로 실패한다(2026-08-17 실측 — skip 3). 옛 탭 경로가 이 줄들을 맡던 동안엔
-    // 안 드러났다.
+    placeSeatArms("output", frame, chestId, seatInserterName(input, plan.reach), cells, occupancy);
+    // 포트 끝은 공통 방출기가 놓는다(belt 에서 집어 chest 로). 끝점은 도형이 든다([tapAnchorOf]).
     pushLinkPortEnd({
       role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
       line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
-      tapAnchor: isGap
-        ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: trunkStart.y }
-        : { ...trunkStart },
+      tapAnchor: tapAnchorOf("output", frame, trunkStart),
       clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts, beltItems,
       // 벨트는 **자기 것**이라 늘 놓는다(싣는 쪽은 벨트가 둘이다). 포트만 나눠 쓴다.
       reusePort: followed !== undefined, sharedLineId: group.sharedLineId,
     });
+    // ⓗ 장부
     if (canMerge && !followed && group.sharedLineId !== undefined) {
       sharedExit.set(group.sharedLineId, { trunkStart, portPair, seatCell, chestAt, chest, topT });
     }
@@ -457,6 +390,8 @@ export function emitOutputLinks(args: {
  *
  * 기하(E면, 머신 origin (mx,my), base, k): 탭=faceCell d1 (mx+w, ...) 벨트에서 집어 머신에
  * 넣음; belt=d2 세로(아래로 흐름 — 포트에서 받아 탭에 분배); 포트 인서터=d3, chest=d4(동).
+ *
+ * 그룹 하나가 놓이는 순서는 [emitOutputLinks] 와 같고 둘이 다르다 — **좌석 막힘**을 먼저 보고, **검사가 포트보다 앞**이다.
  */
 export function emitInputLinks(args: {
   groups: Link[];
@@ -476,132 +411,34 @@ export function emitInputLinks(args: {
   termini: BeltTerminus[];
 }): void {
   const { groups, machines, input, prefix, occupancy, cells, chests, inputPorts, unroutedLines, beltItems, termini } = args;
-  /**
-   * **레인 공유** — 이미 깔린 물리 벨트(`sharedLineId` → 첫 줄이 놓은 것).
-   *
-   * 집는 쪽은 벨트가 **하나**다(합류한 벨트가 벽의 한 칸으로 들어온다). 둘째 줄은 자기
-   * **좌석 팔만** 놓고 벨트·포트 인서터·상자는 첫 줄의 것을 그대로 쓴다.
-   * 배정이 이미 같은 면·같은 깊이를 줬으므로([seatOnSharedBelt]) 여기서 기하를 다시 안 고른다.
-   */
-  const sharedBelts = new Map<string, { beltCells: PlacedCell[]; portPair: PortPair; beltTop: { x: number; y: number } }>();
-  const ext = {
-    x0: Math.min(...machines.map((m) => m.origin.x)),
-    y0: Math.min(...machines.map((m) => m.origin.y)),
-    x1: Math.max(...machines.map((m) => m.origin.x + m.size.w - 1)),
-    y1: Math.max(...machines.map((m) => m.origin.y + m.size.h - 1)),
-  };
+  /** 레인 공유 — 첫 줄이 놓은 물리 벨트([SharedBelt]). */
+  const sharedBelts = new Map<string, SharedBelt>();
+  const ext = machineExtent(machines);
   let seq = 0;
 
   groups.forEach((group, gi) => {
+    // ⓐ 판정 받기
     const line = args.lineOf.get(group.item);
     if (!line) return;
     const plan = args.seats[gi];
     if (!plan) { unroutedLines.push(line); return; } // 두 면 다 찼다 → 정직 폴백
-    const face = plan.face;
-    const isGap = face === "N" || face === "S";
-
-    // 좌석은 [allocateLinkFaces]+[placeLinkSeats] 가 이미 정했다 — 여기선 깔기만 한다.
-    const seats = [...plan.slots]
-      .sort((a, b) => a[0] - b[0])
-      .map(([mi, rows]) => ({ m: machines[mi], rows }));
-    const m0 = seats[0].m;
-    // gap 좌석이면 depth 를 **그 머신의 면**에서 잰다(가운데 머신의 N/S 는 클러스터 끝면이 아니다).
-    const geomExt = isGap
-      ? { x0: m0.origin.x, y0: m0.origin.y, x1: m0.origin.x + m0.size.w - 1, y1: m0.origin.y + m0.size.h - 1 }
-      : ext;
-    const allRows = seats.flatMap((s) => s.rows);
-    // **관통이면 포트가 기둥 끝**([LinkFacePlan.portEnd] — 출력과 같은 규칙). S 끝이면
-    // 포트가 아래에 서고 공급이 위로 흐른다.
-    const toSouth = flowEnd(plan) === "S";
-    const topT = toSouth ? Math.max(...allRows) : Math.min(...allRows);
-    // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 자기 줄로 내려가는 그룹은
-    // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
-    const exitDepth = plan.exitDepth ?? plan.clusterBeltDepth;
-    const ownEast = Math.max(...allRows);
-    const botT = isGap
-      ? (exitDepth > plan.clusterBeltDepth ? ownEast : m0.origin.x + m0.size.w - 1)
-      : toSouth ? Math.min(...allRows) : ownEast;
-
-    // 입구는 **벨트가 앉은 면을 따른다**([emitOutputLinks] 와 같은 규약). gap 좌석이면 가로
-    // 벨트가 동쪽 변에서 90° 꺾여 들어온다 — 그 꺾이는 칸이 곧 평범한 E 포트(모서리 포트)다.
-    // 링크 입력은 선호 면이 E 라 예전의 하드코딩과 값이 같고, W 로 밀려나는 것은 원료 줄뿐이다.
-    const portFace: PortFace = plan.portEnd ?? (isGap ? "E" : face);
-    const pfv = faceVector(portFace);
-
-    // 좌석(d1)이 막히면 폴백한다 — **깊이는 고를 것이 없다**(배정이 들고 온 값이다).
-    const seatCells = allRows.map((t) => faceCell(geomExt, face, 1, t));
-    if (seatCells.some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); return; }
-    /**
-     * 트렁크 끝(포트가 붙는 칸) — E 면이면 belt 줄의 맨 위, gap 이면 **반출 줄의** 맨 동쪽
-     * (자기 줄로 내려가든 아니든 포트는 언제나 클러스터 동쪽 변에 선다).
-     */
-    const trunkEndOf = (d: number): { x: number; y: number } => {
-      const b = faceCell(geomExt, face, d, topT);
-      return isGap ? { x: m0.origin.x + m0.size.w - 1, y: faceCell(geomExt, face, exitDepth, topT).y } : b;
-    };
-    // 깊이(depth)은 배정이 정해 들고 온 값이다 — 여기선 탐색하지 않는다. v1 은 링크 하나가
-    // 곧 벨트 하나라 관통 벨트가 없고, 벨트가 자기 구간만 덮으므로 다툴 depth 자체가 없다.
-    const belt = { d: plan.clusterBeltDepth, inserter: seatInserterName(input, plan.reach) };
-    const fv = faceVector(face);
-    // 흐름은 포트(트렁크 끝)에서 **멀어지는** 쪽 — E 면은 아래로, gap 이면 서쪽으로.
-    const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? -1 : 1 };
-    const inward = { x: -fv.x, y: -fv.y };
-
-    // **얹힐지는 배정이 정한다**([LinkFacePlan.sharesBelt] · 2026-09-12 F2). 예전엔 신원만
+    // ⓑ 틀
+    const frame = linkFrameOf("input", plan, seatsOf(plan, machines), ext);
+    const { m0, portFace, pfv, clusterBeltDepth } = frame;
+    // ⓒ 좌석 — 좌석(d1)이 막히면 폴백한다 — **깊이는 고를 것이 없다**(배정이 들고 온 값이다).
+    if (seatCellsOf(frame).some((c) => occupancy.has(cellKey(c.x, c.y)))) { unroutedLines.push(line); return; }
+    // ⓓ 짝 — **얹힐지는 배정이 정한다**([LinkFacePlan.sharesBelt] · 2026-09-12 F2). 예전엔 신원만
     // 보고 먼저 나온 벨트에 무조건 얹었는데, 배정이 짝을 풀어 **자기 벨트를 청구한 줄**까지
     // 얹혀 버렸다 — 청구한 칸은 유령 예약이 되고 그 줄의 팔은 벨트 없는 칸에 섰다.
     const reuse = plan.sharesBelt && group.sharedLineId !== undefined
       ? sharedBelts.get(group.sharedLineId)
       : undefined;
-
-    // 벨트 경로를 **먼저 전부 계산하고**, 다 놓을 수 있을 때만 놓는다. 반만 놓인 벨트는
-    // 포트에서 물건이 사라지는 것과 같아서, 한 칸이라도 막히면 통째로 물러난다.
-    const path: { at: { x: number; y: number }; v: { x: number; y: number } }[] = [];
-    /**
-     * **이 배정의 도형** — 싣는 쪽과 **같은 함수**다([linkShape]). 집는 쪽은 흐름만 반대라
-     * 포트에서 받아 좌석 구간에 나눠 주고, 먼 끝에서 머신 쪽으로 꺾어 멈춘다.
-     * gap 은 없다(계획이 장부를 안 든다) — 그 기하는 아래 else 가 그대로 든다.
-     */
-    const shape = isGap ? undefined : linkShape({
-      role: "input",
-      clusterBeltDepth: belt.d,
-      portEnd: plan.portEnd,
-      flowToSouth: toSouth,
-      rows: allRows,
-      outRow: 0, // 집는 쪽엔 합류 도형이 없다 — 안 쓰인다
-    });
-    const cellAt = (c: { depth: number; t: number }) => faceCell(geomExt, face, c.depth, c.t);
-    /** 흐름의 **끝 칸** index — [resolveBeltTermini] 가 방향을 마무리할 자리. */
-    let farIdx = -1;
-    if (shape) {
-      shape.path.forEach((c: ShapeCell, idx: number) => {
-        const at = cellAt(c);
-        const to = cellAt(shape.path[idx + 1] ?? shape.after);
-        path.push({ at, v: { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) } });
-      });
-      farIdx = path.length - 1; // 흐름 순서라 끝 칸이 곧 마지막이다
-    } else {
-      // ── gap(N/S) — 계획이 장부를 안 드는 자원 모양이라 도형이 여기 남는다 ──────────
-      // ① **반출** — 포트(동쪽 변)에서 자기 열까지 반출 줄로 달려온다([emitOutputLinks] 의
-      // 거울, 흐름만 반대다). 내려갈 필요 없는 첫 그룹은 이 구간이 없다.
-      if (exitDepth > belt.d)
-        for (let t = m0.origin.x + m0.size.w - 1; t > ownEast; t--)
-          path.push({ at: faceCell(geomExt, face, exitDepth, t), v: beltDirV });
-      // ② **자기 줄에서 올라오기** — 벨트가 벨트를 먹이는 것이라 팔 길이와 무관하다.
-      for (let d = exitDepth; d > belt.d; d--)
-        path.push({ at: faceCell(geomExt, face, d, ownEast), v: inward });
-      // ③ **수집** — 자기 좌석 구간을 덮으며 탭에 나눠 준다. 먼 쪽 끝 칸은 면을 따라 더
-      // 흐르면 **이웃 그룹의 벨트로 넘어가므로** 머신 쪽으로 꺾어 멈춘다(기본값일 뿐이다 —
-      // 최종 방향은 [resolveBeltTermini] 가 정한다).
-      for (let t = Math.min(topT, botT); t <= Math.max(topT, botT); t++) {
-        if (t === topT) farIdx = path.length;
-        path.push({ at: faceCell(geomExt, face, belt.d, t), v: t === topT ? inward : beltDirV });
-      }
-    }
-
-    const te = trunkEndOf(belt.d);
+    // ⓔ 길 — 포트에서 받아 좌석 구간에 나눠 준다. 먼 끝 칸의 최종 방향은 늦은 결정이 정한다
+    const route = inputRouteOf(frame, plan);
+    // ⓕ 검사
+    const te = route.trunkEnd;
     const span = [
-      ...path.map((c) => c.at),
+      ...route.path.map((c) => c.at),
       { x: te.x + pfv.x, y: te.y + pfv.y },
       { x: te.x + 2 * pfv.x, y: te.y + 2 * pfv.y }, // 포트 인서터·상자
     ];
@@ -613,55 +450,42 @@ export function emitInputLinks(args: {
       return;
     }
 
-    // ── 배치 확정 ──
-    // **포트 자리도 첫 줄의 것이다** — 둘째 줄은 자기 좌석 행이 달라 `topT` 가 다르게 나오는데,
+    // ⓖ 포트 — **포트 자리도 첫 줄의 것이다** — 둘째 줄은 자기 좌석 행이 달라 `topT` 가 다르게 나오는데,
     // 물리 벨트가 하나이므로 그 끝도 하나여야 한다. 여기서 다시 재면 논리 포트 둘이 **서로 다른
     // 칸**에 서서, 합류한 벨트가 그중 하나만 먹인다.
     // **포트가 붙는 칸은 도형의 시작이다** — 집는 쪽은 포트에서 받아 흘려보낸다.
-    const beltTop = reuse?.beltTop ?? (shape ? cellAt(shape.path[0]) : trunkEndOf(belt.d));
+    const beltTop = reuse?.beltTop ?? route.beltTop;
     const chestId = `${prefix}-input-${line.name}-${seq++}`;
     const { chest, portPair, seatCell, chestAt } = makeLinkPortChest({
       role: "input", trunkEnd: beltTop, portFace, pfv, line, machineId: m0.id, chestId,
     });
 
+    // ⓗ 찍기
     // 공유면 벨트 셀도 첫 줄의 것이다 — 다시 만들면 같은 칸에 두 번 놓인다.
     const beltCells: PlacedCell[] = reuse
       ? reuse.beltCells
-      : path.map((c) =>
+      : route.path.map((c) =>
           // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
           makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
         );
     // **끝 칸은 물리 벨트당 하나다** — 짝의 둘째 줄(`reuse`)은 첫 줄이 이미 등록했다.
     // 두 번 등록하면 같은 칸을 두 번 판정하고, 종착이면 **지하 입구를 두 번 세운다.**
-    if (!reuse && farIdx >= 0)
+    if (!reuse && route.farIdx >= 0)
       termini.push({
-        cell: beltCells[farIdx], item: line.name, flow: beltDirV, inward, pair: portPair,
+        cell: beltCells[route.farIdx], item: line.name, flow: route.flow, inward: frame.inward, pair: portPair,
       });
-
-    for (const s of seats) {
-      for (const t of s.rows) {
-        const seat = faceCell(geomExt, face, 1, t);
-        const pair: PortPair = {
-          producer: { containerId: chestId, cell: { ...seat }, face, kind: "item" },
-          consumer: { containerId: s.m.id, cell: { ...seat }, face, kind: "item" },
-        };
-        cells.push(makeInserterCell(seat, fv, belt.inserter, pair)); // 픽업 = 바깥(트렁크) → 머신에 놓음
-        occupancy.add(cellKey(seat.x, seat.y));
-      }
-    }
+    placeSeatArms("input", frame, chestId, seatInserterName(input, plan.reach), cells, occupancy);
     // 포트 끝은 공통 방출기가 놓는다(상자에서 집어 belt 로).
-    // tapAnchor = machine-side 끝점이므로 **포트가 선 변 쪽 머신 가장자리**다(W 면이면 서쪽 끝).
     pushLinkPortEnd({
       role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
       line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
-      tapAnchor: isGap
-        ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: beltTop.y }
-        : { ...beltTop },
-      clusterBeltDepth: belt.d, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
+      tapAnchor: tapAnchorOf("input", frame, beltTop),
+      clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts, beltItems,
       reuseBelt: reuse !== undefined, reusePort: reuse !== undefined,
       sharedLineId: group.sharedLineId,
     });
+    // ⓘ 장부
     if (group.sharedLineId !== undefined && !reuse) {
       sharedBelts.set(group.sharedLineId, { beltCells, portPair, beltTop });
     }

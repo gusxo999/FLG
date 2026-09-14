@@ -186,7 +186,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 | # | 어긋남 | 실물 |
 |---|---|---|
 | **D2** | **방출이 고른다** — `emitModule` 머리말은 *"자리를 고르지 않는다"* 고 적지만, 두 면이 다 차면 그 줄을 포기하고(`unroutedLines`), 좌석이 막히면 폴백한다 | `emitModule.ts` 의 `unroutedLines.push` **여섯 곳** · `netTrips` 계측 |
-| **D8** | **링크 신원 불일치가 난다** — `PackResult.linkMismatches` 주석은 *"정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"* 이라 적지만, 합성 트리에서 재현된다. **원인은 안 봤다** | 자식 셋이 한 부모를 먹이는 트리(`gadget` ← `widget`·`gear`·`wire`)에서 `n4-wire→n0-gadget:wire#0: no matching parent input port (child emitted, parent didn't)` — 계획 구조-2축 · 2 §4.2 의 대조 픽스처가 찾았다(2026-09-14) |
+| **D8** | **링크 신원 불일치가 난다** — `PackResult.linkMismatches` 주석은 *"정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"* 이라 적지만, 합성 트리에서 재현된다. **원인 자리: gap 포트 칸이 어느 장부에도 없다** — 방출기의 *"구성상 발생 안 함"* 안전망이 발동해 부모의 입력 줄이 사라지고, 그래서 부모 포트가 안 난다. 어느 벨트가 그 칸을 지나는지는 아직 안 팠다 | 자식 셋이 한 부모를 먹이는 트리(`gadget` ← `widget`·`gear`·`wire`)에서 `n4-wire→n0-gadget:wire#0: no matching parent input port (child emitted, parent didn't)` — 계획 구조-2축 · 2 §4.2 의 대조 픽스처가 찾았다(2026-09-14). 같은 날 Step 4 착수 전 계측: `emitInputLinks` 의 구간 안전망(`netTrips`)이 대조 기본 32 픽스처 중 5에서 99회 발동(시험 전체는 0), 발동이 **전부 gap(N/S) 그룹의 포트 칸이 남의 품목 벨트에 막힌 것**이다. `LINK_OPPOSITE_FACE` 에서는 `emitOutputLinks` 의 포트 안전망도 같은 모양으로 발동한다. W/E 포트로는 한 번 겪고 고친 모양이다(module-planning §4.5) |
 
 > **2026-09-14 에 D7 이 닫혔다.** **D7**(조율자가 조율만 하지 않는다 — `runModulePipeline` 714줄이 게임데이터를
 > 읽고 · 트리를 거절하고 · 유체 관망을 쌓고 · 셀을 놓았다)은 게임데이터를 입구에서 한 번 읽어 넘기고, 함수를

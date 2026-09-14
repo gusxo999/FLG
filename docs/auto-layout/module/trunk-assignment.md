@@ -130,7 +130,7 @@ a_j(m)                          머신 m 에서 이 줄이 쓰는 팔 수
 **②(TR2)의 근거 — 처리 가능성뿐이다:**
 
 ```
-깊이가 팔 종류를 정하고(emitModule:48), 팔 종류가 처리량을 정한다.
+깊이가 팔 종류를 정하고(`emitModule.seatInserterName`), 팔 종류가 처리량을 정한다.
         d2 = reach 1 = 가장 빠른 팔        d3 = reach 2 = 그보다 느린 팔
         실측 모드팩에서 fast 10/s vs long-handed 1.2/s — **8배**(moduleWizard:278)
 
@@ -467,15 +467,15 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 ㉡ N 개의 줄이 한 면에서 동시에 서나  ← 아무도 안 답한다.  **여기가 문제다**
 ```
 
-㉠ 은 `emitOutputLinks`(`emitModule.ts:156`)가 **다섯 수**에서 덧셈으로 만든다:
+㉠ 은 싣는 쪽 틀과 길(`module/shape` 의 `linkFrameOf` · `outputRouteOf`)이 **다섯 수**에서 덧셈으로 만든다:
 
 | 수 | 누가 정하나 | 자리 |
 |---|---|---|
 | 면 | 밖(부모/자식 방향) — TR5 | `plan.face` |
-| **깊이** | **배정** | `plan.clusterBeltDepth` (`:218`) |
-| 구간 `[loT..hiT]` | 좌석 행에서 유도 | `:260` |
+| **깊이** | **배정** | `plan.clusterBeltDepth` |
+| 구간 `[loT..hiT]` | 좌석 행에서 유도 | `LinkFrame.rows` |
 | 진출 깊이 | 배정 | `plan.exitDepth` |
-| **포트 끝** | **배정** | `plan.portEnd` (`:214`) |
+| **포트 끝** | **배정** | `plan.portEnd` |
 
 그래서 [[trunk-concepts]] A6 이 "경로"라 부른 것은 **기둥에서 구간 하나로 퇴화한다.** 채널 문서(§3)의 표를
 그대로 옮기면:
@@ -525,7 +525,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 > 그대로 못 쓴다 — 구간이 색에 의존하는 채색이다. **이것이 ㉢ 이 3단인 이유다.**
 
 **㉡ 충돌 술어** — 셀 서로소 + 흐름 인접. **행이 인접하는 것은 허용**된다:
-끝 칸이 포트 쪽으로 꺾여 이웃 벨트로 안 흐른다(`emitOutputLinks` ①, `emitModule.ts:236` 주석).
+끝 칸이 포트 쪽으로 꺾여 이웃 벨트로 안 흐른다(`module/shape.outputRouteOf` 의 끝 칸 주석).
 그래서 술어가 strict 하고, `assignTracksLeftEdge` 의 `end < iv.lo`(`channelPlanner.ts:43·57`)와
 **정확히 같다.** 오늘 `tryLinkFace:335` 의 겹침 판정도 이미 그것이다 — **자를 새로 만들 필요가 없다.**
 

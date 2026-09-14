@@ -129,7 +129,7 @@ export interface RowChannelCounters {
  * netTrips                      **경보** — 포트 칸 다툼이 방출까지 갔다(결함 B)
  * ```
  *
- * `netTrips` 는 `emitModule` 의 두 안전망(`:278`·`:430`)이다. 그 줄들은 스스로
+ * `netTrips` 는 `emitModule` 의 두 안전망(`emitOutputLinks` · `emitInputLinks` 의 ⓕ 검사)이다. 그 줄들은 스스로
  * *"구성상 발생 안 함"* 이라 적고 있고, **발동은 곧 그 구성 논증이 틀렸다는 증거**다
  * (`module-planning.md` §5: *"착수 시점은 안전망이 실제로 발동할 때다"*).
  *
