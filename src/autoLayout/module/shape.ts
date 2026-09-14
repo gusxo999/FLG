@@ -8,6 +8,7 @@
  * tapAnchorOf              포트의 machine-side 끝점 — 납품 · 반출 라우팅이 출발하는 칸
  * outputRouteOf            싣는 쪽 길 — 칸 순서와 방향 · 트렁크 끝
  * inputRouteOf             집는 쪽 길 — 칸 순서와 방향 · 흐름의 끝 칸 · 포트가 붙는 칸
+ * pipeFrameOf              유체 틀 — 방출 깊이 · 나가는 끝 · 엇갈림 · 기둥 범위 · 포트 두 칸
  * ```
  *
  * ## `linkShape` 와 가르는 선 — 좌표계를 아나
@@ -25,8 +26,10 @@
  * > 세 벌이었다(계획 구조-2축 · 2 Step 4).
  */
 
-import { flowEnd } from "./arith";
+import { flowEnd, trunkEndKey } from "./arith";
 import { linkShape, type ShapeCell } from "./linkShape";
+import type { PlannedLine } from "./types/line";
+import type { ModuleInput, TrunkContext } from "./types/module";
 import type { LinkSeats } from "./types/seat";
 import type { Container, PortFace } from "../containerModel";
 import { faceCell, faceVector } from "../util/helper";
@@ -318,4 +321,55 @@ export function inputRouteOf(
   }
   const trunkEnd = trunkEndOf(clusterBeltDepth);
   return { path, farIdx, flow: beltDirV, trunkEnd, beltTop: shape ? cellAt(shape.path[0]) : trunkEnd };
+}
+
+/** **유체 틀** — 유체 줄 하나의 기둥이 서는 좌표. */
+export interface PipeFrame {
+  face: PortFace;
+  /** 면 바깥 방향 — 점프 지하파이프의 방향 계산에만 쓰인다. */
+  fv: Cell;
+  /** 방출 깊이 — 파이프 1 또는 ClusterPipe 깊이([TrunkContext.emitDepthOf]). */
+  d: number;
+  vertical: boolean;
+  /** 기둥 틀([TrunkContext.ext]). */
+  ext: Extent;
+  /** 포트가 나가는 끝. */
+  exitFace: PortFace;
+  /** 기둥이 끝나는 칸 — 포트가 붙는다. */
+  beltEnd: Cell;
+  seat: Cell;
+  chestAt: Cell;
+  /** 기둥이 덮는 `t` 범위(엇갈림 포함). */
+  lo: number;
+  hi: number;
+}
+
+/**
+ * **유체 틀** — [TrunkContext] 가 정한 방출 깊이와 엇갈림 기준(같은 끝의 가장 깊은 줄)을 좌표로 옮긴다.
+ * 포트 두 칸은 기둥 끝에서 나가는 끝 쪽으로 일직선이다.
+ */
+export function pipeFrameOf(planned: PlannedLine, ctx: TrunkContext, lineEnds: ModuleInput["lineEnds"]): PipeFrame {
+  const ext = ctx.ext;
+  const line = planned.line;
+  const face = planned.side as PortFace;
+  const fv = faceVector(face); // 바깥 방향 — 점프 지하파이프의 방향 계산에만 쓰인다.
+  const d = ctx.emitDepthOf(planned); // 파이프=1 또는 ClusterPipe 깊이.
+
+  const vertical = face === "W" || face === "E";
+  const t0 = vertical ? ext.y0 : ext.x0;
+  const t1 = vertical ? ext.y1 : ext.x1;
+  const atMin = (lineEnds?.get(`${line.role}:${line.name}`) ?? "min") === "min";
+  const exitFace: PortFace = vertical ? (atMin ? "N" : "S") : atMin ? "W" : "E";
+  const ev = faceVector(exitFace);
+
+  // stagger — 같은 면·같은 끝으로 나가는 줄 중 가장 깊은 줄에 끝을 맞춘다([TrunkContext.maxDepthAtEnd]).
+  const stagger = (ctx.maxDepthAtEnd.get(trunkEndKey(planned, lineEnds)) ?? d) - d;
+  const tBeltEnd = atMin ? t0 - stagger : t1 + stagger;
+
+  const beltEnd = faceCell(ext, face, d, tBeltEnd);
+  const seat = { x: beltEnd.x + ev.x, y: beltEnd.y + ev.y };
+  const chestAt = { x: beltEnd.x + 2 * ev.x, y: beltEnd.y + 2 * ev.y };
+  const lo = Math.min(t0, tBeltEnd);
+  const hi = Math.max(t1, tBeltEnd);
+  return { face, fv, d, vertical, ext, exitFace, beltEnd, seat, chestAt, lo, hi };
 }
