@@ -82,7 +82,7 @@ export interface ExitPlanCounters {
 }
 
 /**
- * **채널 통합 장부** — [modulePacking.PackChannelGeometry] 가 **계획 단계**에서 포기한 납품 경로.
+ * **채널 통합 장부** — [tree/types.PackChannelGeometry] 가 **계획 단계**에서 포기한 납품 경로.
  *
  * 방출의 `dijkstraFallback` 보다 **한 단계 앞**이다: 저건 *"계획을 못 썼다"* 이고 이건
  * *"계획이 아예 없었다"* 라, 같은 경로가 두 곳에 잡힐 수도 한 곳에만 잡힐 수도 있다.

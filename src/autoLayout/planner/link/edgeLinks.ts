@@ -13,9 +13,10 @@
  * 신원이 있으면 [pairDeliveryPorts] 가 배열 위치가 아니라 **조회**로 짝을 찾는다.
  *
  * ## `modulePacking` 과의 관계
- * 타입(`NodeSpec`·`PackConfig`·`GeneratedModule`)은 `import type` 으로만 가져온다 —
- * 런타임 간선이 아니라 순환이 아니다(`clusterModule ⇄ emitModule` 과 같은 패턴).
  * 조율자는 `modulePacking` 이고, 여기는 그 조율자가 부르는 **link 관심사의 계산**이다.
+ * 트리 타입(`NodeSpec`·`PackConfig`)은 `planner/tree/types` 에서 온다 — **조율자를 올려다보지 않는다**
+ * (2026-09-14. 그 전엔 조율자 파일에서 타입을 가져오며 *"런타임 간선이 아니라 순환이 아니다"* 라고 적었는데,
+ * 선례로 든 `clusterModule ⇄ emitModule` 이 실제로는 런타임 순환이었다 — work-kinds §7 D4).
  */
 
 import type { Link, LinkCarry } from "../../module/types/line";
@@ -24,7 +25,7 @@ import { createLinks } from "../../module/link";
 import { allocateFlows, type Flow } from "./allocateFlows";
 import { faceSeatArms, inserterForReach } from "../../buildSpec";
 import { determineBeltCount } from "../../beltThroughput";
-import type { NodeSpec, PackConfig } from "../modulePacking";
+import type { NodeSpec, PackConfig } from "../tree/types";
 
 /**
  * **신원 없는(옛 탭/다이렉트, 교환 가능) 납품 경로만을 위한** 위치 기반 키. **직접 부르지 않는다** —

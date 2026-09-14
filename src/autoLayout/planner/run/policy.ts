@@ -12,7 +12,7 @@
  * > 2026-09-14 종류대로 갈랐다(계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
-import type { NodeSpec, PackResult } from "../modulePacking";
+import type { NodeSpec, PackResult } from "../tree/types";
 import type { DeliveryResult } from "../deliveryRoute";
 import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
 import type { BuildSpec } from "../../buildSpec";

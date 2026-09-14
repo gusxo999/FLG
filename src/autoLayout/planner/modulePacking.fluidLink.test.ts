@@ -17,9 +17,8 @@ import {
   edgeLinkGroups,
   edgeFlows,
   packModuleTree,
-  type NodeSpec,
-  type PackConfig,
 } from "./modulePacking";
+import type { NodeSpec, PackConfig } from "./tree/types";
 import type { IoLine } from "../module/types/line";
 
 const belt = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });

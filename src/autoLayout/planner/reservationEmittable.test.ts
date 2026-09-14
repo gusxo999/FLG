@@ -16,7 +16,8 @@
  * 같은 트리·같은 count 로 이미(그리고 더 세게 — 포트 총량까지) 못 박고 있다.
  */
 import { describe, it, expect } from "vitest";
-import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, moduleExtent } from "./modulePacking";
+import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import { routePortToPerimeter } from "./perimeterRouter";
 import { cellKey } from "../util/helper";

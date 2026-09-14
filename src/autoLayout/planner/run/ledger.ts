@@ -16,7 +16,7 @@ import { EntityType } from "../../../types/layout";
 import type { UndergroundCorridor } from "../../containerModel";
 import type { RecipeTreeNode } from "../../types";
 import { collectPipeFlow, type PipeFlow, type PipeFlowMachine, type PipeFlowPipe } from "../../util/pipeFlow";
-import type { PackResult } from "../modulePacking";
+import type { PackResult } from "../tree/types";
 import { directionToVector } from "../containerRouting";
 import { corridorBetween } from "../../execution/emitPath";
 

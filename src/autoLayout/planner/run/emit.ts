@@ -19,7 +19,8 @@ import type { LayoutIssue, LayoutSnapshot } from "../../layoutIssue";
 import { makeEmptyArea } from "../../wizardUtils";
 import { commitContainer } from "../../execution/machinePlacer";
 import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
-import { deliveryKey, type PackResult } from "../modulePacking";
+import { deliveryKey } from "../modulePacking";
+import type { PackResult } from "../tree/types";
 import type { DeliveryResult } from "../deliveryRoute";
 
 /** [candidateOf] 가 받는 것 — 앞 단계들이 낸 사실 전부. */

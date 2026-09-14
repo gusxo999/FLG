@@ -115,6 +115,8 @@ autoLayout/
 │   ├ link/                      모듈과 모듈을 잇는 일
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
+│   ├ tree/                      모듈 트리 전체 — 조율자(modulePacking)가 받고 내는 것
+│   │   └ types.ts                 타입 — NodeSpec · PackConfig · PackResult 와 그 필드들
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
 │   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)

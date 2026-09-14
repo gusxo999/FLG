@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { edgeLinkGroups, edgeFlows, type NodeSpec, type PackConfig } from "./modulePacking";
+import { edgeLinkGroups, edgeFlows } from "./modulePacking";
+import type { NodeSpec, PackConfig } from "./tree/types";
 import type { IoLine } from "../module/types/line";
 import { groupRate } from "../module/link";
 

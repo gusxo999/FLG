@@ -18,6 +18,7 @@
 |---|---|---|---|
 | `module/` | **형제 모듈을 모른다** | `planModulePorts`(단일 진입점) · 정책 `linkPlanner` · 장부 `ledger`(+ 표의 모양 `faceTable`) · 셈 `arith`·`depthBudget`·`allocateArms` — 옛 이름과 규칙 2 이름이 나란하다(계획 3 이 접는다) | `docs/auto-layout/module/` |
 | `link/` | 두 모듈의 **식별자**를 안다 | `allocateFlows` · `edgeLinks` | `docs/auto-layout/link/` |
+| `tree/` | **모듈 트리 전체**를 안다 — 조율자(`modulePacking`)가 받고 내는 것 | `types`(NodeSpec · PackConfig · PackResult) | `docs/auto-layout/common/layout-models.md` |
 | `perimeter/` | **전역 외곽**을 안다 | `wayOuts` · `lanes` | `docs/auto-layout/perimeter/` |
 | `run/` | **한 번의 실행 전체**(입력 → 후보) | `gamedata`(어댑터) · `policy`(LayoutIssue 를 짓는 곳) · `ledger`(유체 관망·종착 구간) · `emit`(CandidateLeaf) — 뼈대는 `moduleWizard` | `docs/auto-layout/common/work-kinds.md` |
 | (평면) | 조율·통로·탐색 | `moduleWizard`(진입점) · `modulePacking` · `channel*` · `perimeter*Planner` · `deliveryRoute` · `containerRouting` | `docs/auto-layout/channel/` |

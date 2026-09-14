@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { packModuleTree, edgeLinkGroups, type NodeSpec, type PackConfig } from "./modulePacking";
+import { packModuleTree, edgeLinkGroups } from "./modulePacking";
+import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "../module/types/line";
 import { groupRate } from "../module/link";

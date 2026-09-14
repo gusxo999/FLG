@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { packModuleTree, moduleExtent, type NodeSpec, type PackConfig } from "../planner/modulePacking";
+import { packModuleTree, moduleExtent } from "../planner/modulePacking";
+import type { NodeSpec, PackConfig } from "../planner/tree/types";
 import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../util/helper";

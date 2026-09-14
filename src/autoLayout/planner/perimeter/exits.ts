@@ -25,7 +25,7 @@ import {
   type ExitEdge,
 } from "../perimeterExitPlanner";
 import { PERIMETER_MARGIN } from "../../util/helper";
-import type { NodeSpec } from "../modulePacking";
+import type { NodeSpec } from "../tree/types";
 
 /** marginNeeds 만큼 bbox 프레임을 넓힌다(상자 seat 자리 예약, ②가 소비). */
 export function expandBbox(
