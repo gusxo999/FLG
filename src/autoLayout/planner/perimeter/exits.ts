@@ -8,8 +8,8 @@
  * 판정이다. 좌표를 만들 뿐 셀은 만들지 않으므로 축 1 로는 `planner` 다.
  *
  * ## 여기 없는 것
- * `materializeChannelGeometry`(반출 경로의 **예약 셀**을 찍는 곳)는 `modulePacking` 에
- * 남아 있다. 그 함수는 납품(channel)과 반출(perimeter)을 **한 번에** 훑는데, 둘이 같은
+ * `materializeChannelGeometry`(반출 경로의 **예약 셀**을 찍는 곳)는 `channel/shape` 에
+ * 있다(2026-09-14 `modulePacking` 에서 통째로 옮겼다). 그 함수는 납품(channel)과 반출(perimeter)을 **한 번에** 훑는데, 둘이 같은
  * 트랙 풀을 다투기 때문이다([channelGeometryPlanner.planChannelGeometry] 가 `deliveries`
  * 와 `exports` 를 함께 받는 것과 같은 이유). 관심사로 가르려면 그 다툼을 먼저 풀어야 한다.
  */

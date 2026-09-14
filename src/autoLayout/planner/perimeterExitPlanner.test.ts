@@ -78,7 +78,7 @@ describe("planPerimeterExits", () => {
 
   it("자기 열 위 형제에 막힌 N 변 = 인접 채널로 환승", () => {
     // **순번이 막힘을 말한다** — 광선이 위로 훑다 남의 모듈을 만나면 그 방향은 끝.
-    // 좌표(top/bottom)를 안 쓴다: 열 안의 순서가 곧 위아래 순서다(4a 누적합 + 4c 하한 복원).
+    // 좌표(top/bottom)를 안 쓴다: 열 안의 순서가 곧 위아래 순서다(stackColumns 의 누적합 + 하한 복원).
     const ctx: ExitContext = {
       globalY: { min: 0, max: 12 },
       maxDepth: 1,

@@ -251,7 +251,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 통합 장부 | `channelGeometryPlanner.ts` (신규) | 납품·반출을 한 장부에서 배정. 같은 쪽 판정 → 해소 사다리(①진출 변 뒤집기 ②지하 횡단 — 세로/가로 두 변형 ③fallback 마킹). 지상 배정은 반복 심화 백트래킹(폭 최소 우선, 결정적), 실패 시 탐욕+열 갈아타기. fallback 경로도 폭은 phantom 트랙으로 예약 |
-| 장부 호출·폭 역전 | `modulePacking.ts` | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로)은 폭만 예약(`reserveIntervals`) |
+| 장부 호출·폭 역전 | `channel/ledger.ts`(planChannels) · `channel/shape.ts`(materializeChannelGeometry) · 적격성은 `link/arith.ts`(pairDeliveries) | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로)은 폭만 예약(`reserveIntervals`) |
 | 납품 경로 좌표 방출 | `deliveryRoute.ts` | 계획 납품 경로는 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 납품 경로) 침범 금지** |
 | 반출 경로 재생 | `perimeterExitPlanner.ts` / `perimeterRouter.ts` / `modulePerimeterPass.ts` | `ExitAssignment.entry`(진입 벽)·`trackX`(확정 트랙 x) 추가. ⑥C 는 `trackX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). **직진** 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
 

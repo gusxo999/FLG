@@ -1,17 +1,18 @@
 # 계획 2 · 종류로 가르기 — 상태
 
-> 상태: **Step 1 완료**(2026-09-13 — module 관심사의 타입 → `module/types/`, D4 닫힘). Step 3·4 는 방향이다.
+> 상태: **Step 1 완료**(2026-09-13 — module 관심사의 타입 → `module/types/`, D4 닫힘). Step 4 는 방향이다.
 > **Step 2 완료**(2026-09-14, 계획서 §4.2) — 2a 게임데이터를 입구에서 한 번 · 2b `runModulePipeline` 714 → 82줄 뼈대 +
 > `planner/run/` 넷. **D7 닫힘.** 전 파이프라인 대조 32 픽스처 바이트 동일.
 >
 > **사용자 결정(2026-09-14)** — 레시피 단계 트리의 머신 대수 계산(`AutoLayoutModal`)도 게임데이터를 **넘긴다**.
 > 넘기는 일은 `gameDataLookupOf` — 필요한 셋만 떼어 내는 단계. 스토어 읽기는 autoLayout 에서 입구 한 곳.
 >
-> **Step 3 확정 — 승인 대기**(2026-09-14, 계획서 §4.3). `tryLinkFace` · `planModulePorts` · `packModuleTree` 를 커밋 다섯
-> (3a · 3b · 3c-1 · 3c-2 · 3c-3)으로. 200줄+ 함수 7 → 4 · 500줄+ 파일 10 → 7. 유체 점프 예산을 한 곳으로(3b).
-> 착수 전 분기 대조표와 HEAD 대조(픽스처 32 × 플래그 다섯)는 **이미 채웠다**.
+> **Step 3 완료**(2026-09-14, 계획서 §4.3 결과 블록). `tryLinkFace` · `planModulePorts` · `packModuleTree` 를 커밋 다섯
+> (3a · 3b · 3c-1 · 3c-2 · 3c-3)으로. 200줄+ 함수 7 → 4 · 500줄+ 파일 10 → **8**(계획 7 — `planner/module/policy` 529).
+> 유체 점프 예산 한 곳(3b). 새 폴더 `planner/tree/` · `planner/channel/`. 커밋마다 픽스처 32 × 플래그 다섯 바이트 동일.
+> **다음은 Step 4 계획서**(§4.4 는 아직 방향이다 — 확정은 착수 전에 쓴다).
 
-**Step 3 을 실행할 때:** 대조 시험은 [대조시험.test.ts](대조시험.test.ts) 다 — `src/autoLayout/zzStepDump.test.ts` 로
+**대조 시험**(Step 3 에서 썼고 Step 4 도 쓴다)은 [대조시험.test.ts](대조시험.test.ts) 다 — `src/autoLayout/zzStepDump.test.ts` 로
 복사해 돌리고 **지운다**(src 에 커밋하지 않는다). 계획 폴더를 지울 때 함께 지운다.
 
 **Step 2 에서 사용자가 확인한 것**(2026-09-14): 게임데이터 타입의 주소 `src/types/gameData.ts` · `planner/run/` 과 목표 트리 `run.ts → run/`.

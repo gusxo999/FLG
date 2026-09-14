@@ -119,9 +119,11 @@ autoLayout/
 │   │   └ arith.ts                 셈 — 생성된 두 모듈의 포트 짝짓기 (pairDeliveries)
 │   ├ tree/                      모듈 트리 전체 — 조율자(modulePacking)가 받고 내는 것
 │   │   ├ types.ts                 타입 — NodeSpec · PackConfig · PackResult 와 그 필드들
-│   │   └ arith.ts                 셈 — 부모·자식 · 깊이마다 순서(DFS 한 번) · 모듈 하나의 계획 입력
+│   │   ├ arith.ts                 셈 — 부모·자식 · 깊이마다 순서(DFS 한 번) · 모듈 하나의 계획 입력
+│   │   └ shape.ts                 도형 — 세로 자리(topY) · 가로 자리(colX) · 절대 배치 · 납품 조립
 │   ├ channel/                   통로 — 여러 연결이 나눠 쓰는 자원
-│   │   └ ledger.ts                장부 — 행 채널 신원 · 트랙 · 높이 (rowChannelsOf)
+│   │   ├ ledger.ts                장부 — 행 채널 신원·트랙·높이 (rowChannelsOf) · 세로 채널 트랙 (planChannels)
+│   │   └ shape.ts                 도형 — 행 채널 칸 범위 · 납품 끝의 절대 행 · materializeChannelGeometry
 │   ├ perimeter/                 전역 외곽
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
 │   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
@@ -131,7 +133,7 @@ autoLayout/
 │   │   ├ ledger.ts                장부 — 유체 관망 · 종착 구간
 │   │   └ emit.ts                  찍기 — CandidateLeaf(Area · Routing) · 실패 그림
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점 — run/ 을 여덟 단계로 부르는 뼈대
-│   ├ modulePacking.ts             조율자 — 모듈 배열 + 위 관심사들을 순서대로 엮는다
+│   ├ modulePacking.ts             조율자 — 사슬 열(트리 → 링크 → 좌석 → 모양 → 짝 → 행 채널 → 세로 → 통로 → 가로 → 결과)을 순서대로 엮는 뼈대
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
 │   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
 │   ├ perimeterExitPlanner.ts      반출 출구 배정
@@ -227,7 +229,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts' -g '!**/manualEdit/**'
 | `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/deliveryRoute` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
 | 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
-**아직 안 가른 것 하나:** `modulePacking.materializeChannelGeometry` 는 납품(channel)과
+**아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과
 반출(perimeter)을 **한 번에** 훑는다. 둘이 같은 트랙 풀을 다투기 때문이다
 (`planChannelGeometry(deliveries, exports, …)` 가 둘을 함께 받는 것과 같은 이유).
 관심사로 가르려면 **그 다툼을 먼저 풀어야** 한다 — 지금 가르면 배정이 갈라져 예약이 깨진다.

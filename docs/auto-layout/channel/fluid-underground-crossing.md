@@ -39,7 +39,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 
 장부 좌표계는 (열, 행)이고, 주석대로 "행 = abs y". 추상인 건 **열뿐**이다.
 열↔절대 x 변환은 호출자가 갖고 있다
-([modulePacking.ts:683](../../../src/autoLayout/planner/modulePacking.ts#L683)):
+([channel/shape.ts](../../../src/autoLayout/planner/channel/shape.ts) `materializeChannelGeometry`):
 
 ```ts
 const tx = (t: number) => channelStartX(seed.depth) + 1 + t;

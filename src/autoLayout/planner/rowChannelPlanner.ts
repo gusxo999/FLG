@@ -15,7 +15,7 @@
  *
  * ## 이 파일은 **순수 함수**만 낸다 — 구간 → 트랙 → 높이
  *
- * 그 높이를 실제 배치에 먹이는 것은 `modulePacking` 이다(4b 겹침 스윕의 간격).
+ * 그 높이를 실제 배치에 먹이는 것은 `tree/shape.stackColumns` 다(누적합의 간격).
  *
  * (2026-08-18 ~ 2026-09-06 사이 이 자리에 *"순환이라 두 패스가 필요하다"* 는 절이 있었다.
  *  `topY → absPortY → 행 채널을 지나는 경로 → 행 채널 폭 → topY` 라고 적었는데 **둘째 화살표가
@@ -127,4 +127,4 @@ export function planRowChannel(crossings: ReadonlyArray<RowCrossing>): RowChanne
 /* (옛 `fitRowChannel` 은 **근거를 잃어 지웠다** — 2026-09-06. 트랙이 높이를 넘으면 마진만
    바깥으로 넓히던 미봉책이었고, `between` 은 *"모듈을 밀어야 하는데 그건 `topY` 를 다시
    잡는 일"* 이라 손을 못 댔다. 이제 **높이가 배정의 결과**라 넘칠 수가 없다 — 그 높이가
-   곧 모듈 사이 간격이다(`modulePacking` 4b). */
+   곧 모듈 사이 간격이다(`tree/shape.stackColumns`). */

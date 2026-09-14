@@ -45,7 +45,7 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
   유체 포트도 `meta.side` 를 똑같이 갖는다
   ([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitTrunkPipe` 의 포트 `meta`).
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
-  ([modulePacking.ts:558-561](../../../src/autoLayout/planner/modulePacking.ts#L558-L561)).
+  ([channel/ledger.ts](../../../src/autoLayout/planner/channel/ledger.ts) `planChannels`).
 
 **즉 유체 상자가 W/E 변에 오면 그 납품 경로는 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 

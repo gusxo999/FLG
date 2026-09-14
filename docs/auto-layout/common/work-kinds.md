@@ -142,6 +142,14 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 >
 > 표의 분류 칸수(22·11·12·2)는 다시 매기지 않았다 — 파일마다 종류를 판정해야 하는 일이라
 > 줄 수처럼 기계적으로 옮겨 적을 수 없다.
+>
+> **2026-09-14 계획 구조-2축 · 2 Step 3 뒤**(큰 함수 셋을 종류로 가르고 단계로 세웠다):
+>
+> ```
+> 200줄 넘는 함수 = 4   packModuleTree 868 → 53 · planModulePorts 317 → 37 · tryLinkFace 208 → 54 가 빠졌다
+>                       남은 넷: planChannelGeometry · searchWithJumps(탐색) · emitOutputLinks · emitInputLinks(D2)
+> 500줄 이상 = 8 파일  linkPlanner · planModulePorts · modulePacking 이 빠지고 planner/module/policy 529 가 섰다(종류 하나)
+> ```
 
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —
 200줄 넘는 함수가 여덟이고 최대가 `packModuleTree` **868줄** · `runModulePipeline`
@@ -153,7 +161,8 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 > **그래서 "파일이 크다"는 증상이고 원인은 "종류가 섞였다"이다.** 줄 수 상한을 규칙으로 두는
 > 대신 종류를 묻는다 — 500줄이 넘는데 종류가 하나면 그건 정상이다(오늘 실측에서
-> 그런 파일은 `containerModel` 하나뿐이다).
+> 그런 파일은 `containerModel` 하나뿐이다 — 2026-09-14 부터 `planner/module/policy` 가 둘째다. 그 파일은
+> 규칙 3(한 종류 300줄 초과 → 폴더)의 과녁이다).
 >
 > **다만 함수는 다르다.** 종류가 하나라도 한 함수가 700줄이면 읽히지 않는다. 파일에는
 > 줄 수 상한을 두지 않고, 함수는 **시점**으로 가른다 — *"단계마다 아는 것이 달라지게"*.

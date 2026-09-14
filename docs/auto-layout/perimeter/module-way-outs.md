@@ -162,7 +162,7 @@ advanced-circuit 동형 트리, count 1~8 실측:
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
-| 전달 | [`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) | `shiftModule` 이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
+| 전달 | [`tree/shape.ts`](../../../src/autoLayout/planner/tree/shape.ts) · [`perimeter/exits.ts`](../../../src/autoLayout/planner/perimeter/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
 | 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) | `ExitOption` + `enumerateOptions` — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 

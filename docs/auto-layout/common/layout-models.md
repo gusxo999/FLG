@@ -106,7 +106,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 **그릴 수 없는 것**
 
 ```
-· DAG — 자식이 부모를 여럿 가질 수 없다.  중앙 정렬(`modulePacking` 4b)이 트리를 전제한다
+· DAG — 자식이 부모를 여럿 가질 수 없다.  중앙 정렬(`tree/shape.stackColumns`)이 트리를 전제한다
 ```
 
 ### ③ 채널 모델 — 모듈 사이 세로 통로
@@ -125,7 +125,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 
 ```
 전제   포트가 **채널 벽을 마주 본다**  (자식 출력 W변 · 부모 입력 E변 · 깊이 인접)
-표현   modulePacking.ts  `eligible = out.meta.side === "W" && inp.meta.side === "E" && …`
+표현   link/arith.ts pairDeliveries  `eligible = out.meta.side === "W" && inp.meta.side === "E" && …`
 
 그래야 "출발 행 · 도착 행" 이 뜻을 갖는다 — 벨트가 벽에서 **가로로** 나와 채널로 든다.
 포트가 기둥 끝(N/S)이면 벨트가 **세로로** 나오므로 "출발 행" 이 아니라 "출발 열" 이고,
@@ -160,7 +160,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 | **도형** | 가로 직선. 포트에서 그 행까지 내려오는 **세로 진입**은 아직 배정 밖이다 |
 
 **높이는 고르는 값이 아니라 배정의 결과다** — `channelWidthFromTracks(trackCount, 3)`,
-세로 채널과 **같은 식**이다. 그리고 그 높이가 **모듈 사이 간격을 민다**(`modulePacking` 4a·4c)
+세로 채널과 **같은 식**이다. 그리고 그 높이가 **모듈 사이 간격을 민다**(`tree/shape.stackColumns` 의 누적합 · 하한 복원)
 — 그래서 행 채널이 트랙보다 좁을 수 없다.
 
 > **⑤가 서면 "주체 둘" 문제가 따라온다**(2026-08-18). 세로 채널 장부와 행 채널 장부가
@@ -327,7 +327,7 @@ B 는 협상 상대를 만난 적이 없다.
 |---|---|---|---|---|
 | 1 | 머신 footprint ↔ 전부 | **머신** | `buildOccupancy` · `occ` | ○ |
 | 2 | A ↔ A (같은 모듈) | **배정이 판정한다** | `FaceTable`(계획) → `clusterModule.occupancy`(확인) | △ **기둥 밖은 예외**(아래) |
-| 3 | A ↔ A (다른 모듈) | 누적합이 **벌려 놓는다** | `modulePacking` 4a·4c, **모듈 bbox 단위** | ○ 행 채널 높이가 완충 |
+| 3 | A ↔ A (다른 모듈) | 누적합이 **벌려 놓는다** | `tree/shape.stackColumns`(누적합 · 하한 복원), **모듈 bbox 단위** | ○ 행 채널 높이가 완충 |
 | 4 | A ↔ B | **A** | `deliveryRoute.base` | ○ |
 | 5 | A ↔ C | **A** | `perimeterPass.occ` | ○ |
 | 6 | B ↔ B (아이템) | 먼저 깐 쪽 + 예약 상호검사 | `deliveryBelts` · `reservedDelivery` | ○ |
