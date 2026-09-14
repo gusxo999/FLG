@@ -318,7 +318,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 인서터·상자 위로 지나가고, 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다**(§5.1).
 그 규약이 `clusterPipeDepth = base + 2 + 2·rank` 이고 `base = max(그 면 벨트 최대 깊이, 1)`
 인데, 여기서 "벨트 최대 깊이"는 벨트가 아니라 **포트 끝**까지 센다(인서터 +1 · 상자 +2 —
-[`linkFaceDepths`](../../../src/autoLayout/planner/module/linkPlanner.ts)).
+[`linkFaceDepths`](../../../src/autoLayout/planner/module/arith.ts)).
 
 ```
 아이템 0줄        base = 1   →  ClusterPipe d3 · 탭 d2         그 면 폭 **3**

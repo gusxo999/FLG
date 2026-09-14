@@ -16,7 +16,7 @@
  *    **여기 온다**(팔이 없어 머신에 닿아야 한다).
  *  - 2..(1+최대 reach)칸 = [ClusterBelt] 자리. reach `r` 인서터가 좌석(1칸)에 앉아 `1+r`칸의
  *    벨트를 집는다. 그래서 한 면의 깊이 수 = **고른 인서터들의 서로 다른 reach 값 개수**
- *    (하드코딩 아님 — 그 수를 세는 곳은 `linkPlanner.clusterBeltDepthsOf` 다).
+ *    (하드코딩 아님 — 그 수를 세는 곳은 `planner/module/arith.clusterBeltDepthsOf` 다).
  */
 
 /** 컬럼의 좌/우 면. */

@@ -51,10 +51,9 @@ import { inserterForReach } from "../../buildSpec";
 import { determineBeltCount, laneCapOfTier } from "../../beltThroughput";
 import { planBundles } from "./depthBudget";
 import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../debugFlags";
-import {
-  allocateLinkFaces, commitLinkFace, tryLinkFace, seatOnSharedBelt, clusterBeltDepthsOf,
-  spillLinkFacesToGap, gapRowsFromPlans, gapExitSidesFromPlans, linkFaceDepths,
-} from "./linkPlanner";
+import { allocateLinkFaces, tryLinkFace, spillLinkFacesToGap } from "./linkPlanner";
+import { commitLinkFace, seatOnSharedBelt } from "./ledger";
+import { clusterBeltDepthsOf, gapRowsFromPlans, gapExitSidesFromPlans, linkFaceDepths } from "./arith";
 import { copyFaceTable, type FaceTable } from "./faceTable";
 import type { PortFace } from "../../containerModel";
 

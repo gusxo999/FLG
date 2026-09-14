@@ -93,7 +93,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 동작을 안 바꾼다고 **코드가 스스로 선언한** 자리가 여섯이다.
 
 - [planModulePorts.ts](../../../src/autoLayout/planner/module/planModulePorts.ts) *"계측 — 관측만 한다(계산도 분기도 반환값도 안 바꾼다)"*
-- [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) `endsDisagree`·`endsCoarse` *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
+- [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) `recordEndsAudit`(`endsDisagree`·`endsCoarse`) *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
 - `perimeterExitPlanner` 의 `ExitDemotion`·`ExitBlocked` *"읽기 전용 계측이라 동작을 안 바꾼다"*
 - `emitModule` 의 `netTrips` 안전망 · `clusterModule` 의 *"아직 아무 배치도 바꾸지 않는다"*
 

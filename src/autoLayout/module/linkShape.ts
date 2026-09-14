@@ -31,6 +31,9 @@
  * 방출기가 그대로 든다.
  */
 
+import { flowEnd } from "./arith";
+import type { LinkFacePlan } from "./types/seat";
+
 /** 이 칸에 무엇이 서나. 좌석(d1)은 여기 없다 — 배정의 `slotIndex` 가 이미 단일 출처다. */
 export type ShapeKind = "belt" | "merge" | "portInserter" | "portChest";
 
@@ -126,6 +129,30 @@ export function linkShape(i: LinkShapeInput): LinkShape {
   const port = portOf(d, topT, out, i.portEnd !== undefined);
   // 흐름의 끝은 **머신 쪽 이웃 칸**을 향한다 — 벨트를 놓지 않는 가상의 칸이다.
   return { path, after: { kind: "belt", depth: d - 1, t: farT }, port };
+}
+
+/**
+ * 이 후보의 **포트가 먹는 칸 둘** — `(행, 깊이)`. **검사 전용**이고, 확정 청구와 방출이
+ * 부르는 [linkShape] 와 **같은 함수에서 답을 받는다**(2026-09-12 D1).
+ *
+ * 예전엔 계획 파일이 그 도형을 직접 계산했고, 주석이 근거로 `emitModule` 의 **줄 번호**를
+ * 인용하고 있었다. 그래서 방출이 도형을 바꾸면 여기가 조용히 낡았다.
+ * (2026-09-14 `planner/module/linkPlanner.ts` 에서 여기로 — 도형은 도형 파일에.)
+ */
+export function portCells(
+  cand: Pick<LinkFacePlan, "clusterBeltDepth" | "portEnd" | "exitEnd">,
+  span: readonly [number, number],
+): Array<readonly [number, number]> {
+  const port = linkShape({
+    role: "output", // 포트 두 칸은 역할과 무관하다 — 흐름만 반대이고 자리는 같다
+    clusterBeltDepth: cand.clusterBeltDepth,
+    portEnd: cand.portEnd,
+    flowToSouth: flowEnd(cand) === "S",
+    rows: span,
+    outRow: 0, // 합류 도형을 안 물으므로 안 쓰인다
+  }).port;
+  // **거르지 않는다**(2026-09-06) — 기둥 밖 행은 `ctx.outside` 가 센다([splitByTable]).
+  return port ? [[port.inserter.t, port.inserter.depth], [port.chest.t, port.chest.depth]] : [];
 }
 
 /**

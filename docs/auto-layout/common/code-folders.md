@@ -107,7 +107,10 @@ autoLayout/
 │   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점
 │   │   ├ allocateArms.ts          팔 산술(requiredInserterCount·allocateArms)
 │   │   ├ depthBudget.ts            깊이 예산 — 줄마다 `g` 를 정한다
-│   │   └ linkPlanner.ts           링크 면·순번 배정 (좌표 없음)
+│   │   ├ linkPlanner.ts           정책 — 링크 면 · 끝 · 깊이 순서를 고른다 (좌표 없음)
+│   │   ├ ledger.ts                장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
+│   │   ├ faceTable.ts             장부의 모양 — 표 한 장 (행 번호 · 주인)
+│   │   └ arith.ts                 셈 — 깊이 목록 · gap 폭 · 빠져나가는 옆면 · 옆면 최대 깊이
 │   ├ link/                      모듈과 모듈을 잇는 일
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   └ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기

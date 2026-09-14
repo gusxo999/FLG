@@ -580,7 +580,9 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | 단계 | 파일 | 심볼 |
 |---|---|---|
 | 진입점 | `planner/module/planModulePorts.ts` | `planModulePorts` · `ModulePortPlan` |
-| ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` · `commitLinkFace` · `portCells` · `gapRowsFromPlans` · `gapExitSidesFromPlans` |
+| ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` — 고른다(면 · 끝 · 깊이 순서) |
+| ①의 묻기·적기 | `planner/module/ledger.ts` | `fitOnGap` · `fitOnFace` · `commitLinkFace` · `seatOnSharedBelt` |
+| ①의 셈 · 도형 | `planner/module/arith.ts` · `module/linkShape.ts` | `clusterBeltDepthsOf` · `gapRowsFromPlans` · `gapExitSidesFromPlans` · `linkFaceDepths` · `portCells` |
 | ①의 자리 장부 | `planner/module/faceTable.ts` | `FaceTable` — 면마다 한 장(§4.5) |
 | ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
 | ③ 줄마다 `g` | `planner/module/depthBudget.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |

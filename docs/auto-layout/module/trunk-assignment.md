@@ -169,7 +169,7 @@ a(j, d) = ⌈ per_j / tp(d) ⌉        그 깊이의 팔로 머신 하나를 먹
 
 위 약분은 *한 구간이 `g×h` 행을 먹는다* 를 전제로 했다. 그게 틀렸다 —
 벨트가 덮는 행은 **그 줄의 팔이 앉은 행**이지 머신 면 전체가 아니다
-(`linkPlanner.beltRowSpan`: 머신마다 `freeSeatRows(mi).slice(0, k)` 의 처음·끝).
+(`planner/module/ledger.beltRowSpan`: 머신마다 `freeSeatRows(mi).slice(0, k)` 의 처음·끝).
 
 ```
 g = 1   구간 하나 = 머신 한 대의 `a_j(m)` 행       → 여러 품목이 한 깊이를 **나눠 쓴다**
@@ -518,7 +518,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 
 > **구간은 입력이 아니라 후보의 결과다.** 깊이가 인서터를 정하고(§12), 인서터가 팔 수를
 > 정하고(`a = ⌈per / tp⌉`), 팔 수가 좌석 행을 먹고, 그 행들이 구간이 된다.
-> `beltRowSpan`(`linkPlanner.ts:189`)이 **이미 그렇게 센다**(`used` 를 읽어 시작 행을 안다).
+> `beltRowSpan`(`planner/module/ledger.ts`)이 **이미 그렇게 센다**(`used` 를 읽어 시작 행을 안다).
 >
 > **여기가 채널과 다른 유일한 점이다.** 채널은 출발·도착 행이 포트에 고정돼 구간이
 > 상수인데, 트렁크는 **색(깊이)을 고르면 구간이 바뀐다.** 그래서 순수 left-edge 를
@@ -669,7 +669,7 @@ for (const m of mod.machines) mk(...);
 for (const c of mod.cells)    mk(c.x, c.y);   // ← 벨트 한 칸만 밖으로 나가도 반영된다
 ```
 
-`linkPlanner` 주석이 이미 그렇게 적고 있다 — *"자리는 그냥 **바깥으로 자란다**: 모듈이
+`planner/module/ledger.fitOnGap` 주석이 이미 그렇게 적고 있다 — *"자리는 그냥 **바깥으로 자란다**: 모듈이
 차지하는 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다."*
 
 **소비처 넷은 전부 `moduleExtent` 하나만 본다** — 모듈 내부를 아무도 안 들여다본다:
