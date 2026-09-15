@@ -118,7 +118,7 @@ export function regionsAlong(
   }
 
   // **가로 광선** — 첫 통로(또는 바깥 마진)에서 멈춘다(위 §한계).
-  // W 는 자기 깊이의 채널, E 는 다음 깊이의 채널이다(`channelOpts` 와 같은 규약).
+  // W 는 자기 깊이의 채널, E 는 다음 깊이의 채널이다(`perimeter/shape.channelEntryOf` 와 같은 규약).
   if (dir === "W") {
     out.push(d >= 1 ? { kind: "columnChannel", depth: d } : { kind: "outerMargin", edge: "W" });
   } else {

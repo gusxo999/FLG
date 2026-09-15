@@ -163,7 +163,7 @@ advanced-circuit 동형 트리, count 1~8 실측:
 |---|---|---|
 | 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
 | 전달 | [`tree/shape.ts`](../../../src/autoLayout/planner/tree/shape.ts) · [`perimeter/exits.ts`](../../../src/autoLayout/planner/perimeter/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
-| 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) | `enumerateOptions`(후보 `perimeter/types.ExitOption`) — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
+| 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) · [`perimeter/shape.ts`](../../../src/autoLayout/planner/perimeter/shape.ts) | 자격은 `perimeter/shape`(`directOptionOf` · `channelEntryOf` — `wayOuts` 를 여기서 본다), 선호 순 후보는 `enumerateOptions`(`perimeter/types.ExitOption`) — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
 ## 7. 함정 (다음 사람에게)
