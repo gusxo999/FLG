@@ -1,16 +1,32 @@
 /**
- * **통로 관심사의 도형** — 행 채널의 칸 범위 · 납품 끝의 절대 행 · 통로 배정의 절대좌표 지시.
+ * **통로 관심사의 도형** — 행 채널의 칸 범위 · 납품 끝의 절대 행 · 통로 배정의 절대좌표 지시, 그리고 그 배정이
+ * 딛는 **추상 셀 모델**(경로 모양 · 충돌 · 셀 순서열).
  *
  * 장부(`channel/ledger`)가 트랙 **번호**를 정하면 여기가 그 번호를 **행 · 열**로 옮긴다. 자리가 선 뒤에만 된다.
+ *
+ * ## 추상 셀 모델 — 번호를 정하기 **전의** 도형
+ *
+ * 채널 기하 장부(`channelGeometryPlanner`)가 누가 어느 트랙인지 고를 때 묻는 도형이다. 좌표계는 추상 (열, 행) —
+ * 열 = 트랙 index(벽 마진은 `-1` / `capCol`), 행 = abs y. 답이 하나이고 자원을 모른다 — 트랙을 **잡는** 일
+ * (배정 · 지하 청구 · 폭 예약)은 장부에, 반출의 진출 변을 **고르는** 일은 `channel/policy` 에 있다.
+ * 같은 쪽 판정([sameSideOfCut])도 여기다 — 행 · 벽 비교라 답이 하나이고, 그 답을 받아 고르는 것은 사다리 쪽이다.
  *
  * > **내력.** `modulePacking.packModuleTree` 의 `5)`·`6)`·`6b)` 블록과 `materializeChannelGeometry` 였다
  * > (2026-09-14 계획 구조-2축 · 2 Step 3c-3). `materializeChannelGeometry` 는 **통째로** 옮겼다 — 납품과 반출이
  * > 같은 트랙 풀을 다투므로 관심사로 가르려면 그 다툼을 먼저 풀어야 한다(code-folders).
+ * > 추상 셀 모델은 `channelGeometryPlanner.ts` 에서 왔다(2026-09-15 Step 5b).
  */
 
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import { moduleExtent, type Orientation } from "../../module/moduleTransform";
-import type { ChannelGeometryPlan } from "./types";
+import type {
+  ChannelGeometryPlan,
+  ChannelWall,
+  DeliveryInput,
+  ExportInput,
+  GeometryContext,
+  NsEdge,
+} from "./types";
 import type { PerimeterExitPlan } from "../perimeter/types";
 import { segment, PERIMETER_MARGIN } from "../../util/helper";
 import { AUTO_LAYOUT_COORD_DUMP } from "../../debugFlags";
@@ -198,4 +214,278 @@ export function materializeChannelGeometry(args: {
   }
 
   return { deliveries, reservedExportCells, skips };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 같은 쪽 판정 — 문서 §4.2
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 납품 경로의 두 끝이 반출 경로가 긋는 절단선의 같은 쪽인가.
+ * 안쪽 ① = "진입 벽과 같은 벽" ∧ "진입 행에서 진출 변 방향"(경계 행 포함 = 보수적:
+ * 같은 행이면 가로 진입끼리 겹쳐 어차피 지상 공유 불가).
+ */
+export function sameSideOfCut(d: DeliveryInput, x: ExportInput, exit: NsEdge): boolean {
+  const inside = (wall: ChannelWall, y: number): boolean =>
+    wall === x.entryWall && (exit === "N" ? y <= x.entryY : y >= x.entryY);
+  // 납품의 출발 끝은 E벽, 도착 끝은 W벽에 붙어 있다.
+  return inside("E", d.startY) === inside("W", d.endY);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 추상 셀 모델 — 경로 = 가로/세로 직선 몇 개
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HSeg {
+  row: number;
+  c1: number; // ≤ c2 (열 — 트랙 index, 벽 마진은 -1 / capCol)
+  c2: number;
+}
+interface VSeg {
+  col: number; // 트랙 index (벽 마진에는 세로 주행 없음)
+  r1: number; // ≤ r2
+  r2: number;
+}
+export interface Shape {
+  h: HSeg[];
+  v: VSeg[];
+}
+
+function hseg(row: number, a: number, b: number): HSeg {
+  return { row, c1: Math.min(a, b), c2: Math.max(a, b) };
+}
+export function vseg(col: number, a: number, b: number): VSeg {
+  return { col, r1: Math.min(a, b), r2: Math.max(a, b) };
+}
+
+/** 두 도형이 셀을 공유하나 — 문서 §9 불변식 (a)의 계획 시점 버전. */
+function shapesConflict(a: Shape, b: Shape): boolean {
+  for (const ha of a.h)
+    for (const hb of b.h)
+      if (ha.row === hb.row && ha.c1 <= hb.c2 && hb.c1 <= ha.c2) return true;
+  for (const va of a.v)
+    for (const vb of b.v)
+      if (va.col === vb.col && va.r1 <= vb.r2 && vb.r1 <= va.r2) return true;
+  const hv = (h: HSeg, v: VSeg): boolean =>
+    h.c1 <= v.col && v.col <= h.c2 && v.r1 <= h.row && h.row <= v.r2;
+  for (const ha of a.h) for (const vb of b.v) if (hv(ha, vb)) return true;
+  for (const va of a.v) for (const hb of b.h) if (hv(hb, va)) return true;
+  return false;
+}
+
+/**
+ * 배정 후보 하나 — 도형 + **무엇이 흐르는가**.
+ *
+ * 품목을 들고 다니는 이유는 충돌 규칙이 품목에 따라 다르기 때문이다([conflicts]).
+ * 벨트끼리는 겹치지만 않으면 되지만, 파이프는 **닿기만 하면 이어진다**.
+ */
+export interface Placed {
+  shape: Shape;
+  /** 유체 이름. undefined = 아이템(벨트) 또는 폭 예약용 phantom. */
+  fluid?: string;
+  /** 인접 판정용 halo(칸 + 4-이웃). 유체일 때만 채운다 — 아이템엔 쓸 일이 없다. */
+  halo?: Set<string>;
+}
+
+/** 도형의 칸들. */
+export function cellsOf(s: Shape): string[] {
+  const out: string[] = [];
+  for (const h of s.h) for (let c = h.c1; c <= h.c2; c++) out.push(`${c},${h.row}`);
+  for (const v of s.v) for (let r = v.r1; r <= v.r2; r++) out.push(`${v.col},${r}`);
+  return out;
+}
+
+/** 도형의 칸 + 4-이웃. 다른 유체가 여기 들어오면 두 유체가 한 통이 된다. */
+function haloOf(s: Shape): Set<string> {
+  const halo = new Set<string>();
+  for (const h of s.h)
+    for (let c = h.c1; c <= h.c2; c++) {
+      halo.add(`${c},${h.row}`);
+      halo.add(`${c - 1},${h.row}`); halo.add(`${c + 1},${h.row}`);
+      halo.add(`${c},${h.row - 1}`); halo.add(`${c},${h.row + 1}`);
+    }
+  for (const v of s.v)
+    for (let r = v.r1; r <= v.r2; r++) {
+      halo.add(`${v.col},${r}`);
+      halo.add(`${v.col - 1},${r}`); halo.add(`${v.col + 1},${r}`);
+      halo.add(`${v.col},${r - 1}`); halo.add(`${v.col},${r + 1}`);
+    }
+  return halo;
+}
+
+/** 유체면 halo 를 붙여서 후보를 만든다(한 번만 계산해 재사용). */
+export function placedOf(shape: Shape, fluid?: string): Placed {
+  return fluid === undefined ? { shape } : { shape, fluid, halo: haloOf(shape) };
+}
+
+/**
+ * 두 후보가 같이 있을 수 없나 — **품목이 규칙을 바꾼다**.
+ *
+ * | 두 경로 | 충돌 조건 |
+ * |---|---|
+ * | 아이템 ↔ 아이템 | 겹침 |
+ * | 아이템 ↔ 유체 | 겹침 (파이프 옆 벨트는 무해) |
+ * | 유체 A ↔ 유체 A | 겹침 (같은 유체는 닿아도 합법 — 자연 병합) |
+ * | 유체 A ↔ 유체 B | 겹침 **또는 인접** ← 닿으면 두 유체가 한 통이 된다 |
+ *
+ * 인접 검사는 서로 다른 유체 쌍에서만 돈다. v1 은 모듈당 유체 1줄이라 그런 쌍이 드물어
+ * 백트래킹 안에서 불려도 비용이 실질적으로 안 는다(halo 는 후보당 1회 계산).
+ */
+export function conflicts(a: Placed, b: Placed): boolean {
+  if (shapesConflict(a.shape, b.shape)) return true;
+  const differentFluids =
+    a.fluid !== undefined && b.fluid !== undefined && a.fluid !== b.fluid;
+  if (!differentFluids) return false;
+  for (const k of cellsOf(b.shape)) if (a.halo!.has(k)) return true;
+  return false;
+}
+
+export function conflictsAny(s: Placed, placed: ReadonlyArray<Placed>): boolean {
+  return placed.some((p) => conflicts(s, p));
+}
+
+/**
+ * **채널을 지나는 경로의 끝점** — 납품과 반출이 여기서 하나가 된다.
+ *
+ * ```
+ * wall   채널 벽의 **한 점**(상자가 마주 본 행). 행이 고정이고, 그 행에 **가로 조각**이 붙는다
+ * edge   바깥 **N/S 변**. 행이 자유롭고(변의 행), 세로 주행이 **그대로 나가므로** 가로 조각이 없다
+ * ```
+ *
+ * **이 둘의 차이가 곧 납품과 반출의 차이 전부다.** 납품은 양 끝이 `wall`(상자 둘),
+ * 반출은 한쪽이 `edge`(면이지 점이 아니다). 그리고 `edge` 쪽의 **행이 자유롭다**는 것이
+ * 해소 사다리 ①(진출 변 뒤집기)이 반출에만 있는 이유다 — 납품엔 뒤집을 자유가 없다.
+ */
+export type ChannelEndpoint =
+  | { kind: "wall"; row: number; wall: ChannelWall }
+  | { kind: "edge"; edge: NsEdge };
+
+/** 그 끝점이 붙는 **가상 벽 열** — W벽은 `-1`, E벽은 `capCol`. */
+const wallColOf = (wall: ChannelWall, capCol: number): number => (wall === "E" ? capCol : -1);
+
+/** 그 끝점의 **행** — `edge` 는 그 변 바깥 한 칸(seat 행). */
+const rowOf = (e: ChannelEndpoint, ctx: GeometryContext): number =>
+  e.kind === "wall" ? e.row : e.edge === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
+
+/**
+ * **경로 하나의 도형** — 가로 진입 + 세로 주행 + 가로 진출.
+ *
+ * 옛 `staircaseShape`(납품)와 `elbowShape`(반출)를 합친 것이다. **elbow 는 계단꼴에서
+ * 마지막 가로 조각을 뗀 것**이었고, 그 차이는 *"도착 끝점이 벽이냐 변이냐"* 하나에서 나온다.
+ * `edge` 끝점은 세로 주행이 채널을 그대로 빠져나가므로 붙일 가로 조각이 없다.
+ *
+ * **양 끝이 벽이고 행이 같으면** 세로 주행이 길이 0이라 **트랙을 안 먹는다** —
+ * 가로 조각 하나로 접는다(옛 `straightShape`). 세로 조각을 남기면 `trackCount` 가 그
+ * 열을 세어 **안 쓰는 폭이 는다.**
+ */
+export function routeShape(
+  from: ChannelEndpoint,
+  to: ChannelEndpoint,
+  track: number,
+  ctx: GeometryContext,
+  capCol: number,
+): Shape {
+  const r1 = rowOf(from, ctx);
+  const r2 = rowOf(to, ctx);
+  if (from.kind === "wall" && to.kind === "wall" && r1 === r2) {
+    return { h: [hseg(r1, wallColOf(from.wall, capCol), wallColOf(to.wall, capCol))], v: [] };
+  }
+  const h: HSeg[] = [];
+  if (from.kind === "wall") h.push(hseg(r1, track, wallColOf(from.wall, capCol)));
+  if (to.kind === "wall") h.push(hseg(r2, track, wallColOf(to.wall, capCol)));
+  return { h, v: [vseg(track, r1, r2)] };
+}
+
+/** 납품의 두 끝점 — 자식 출력은 **E벽**, 부모 입력은 **W벽**을 마주 본다. */
+const deliveryEnds = (d: DeliveryInput): [ChannelEndpoint, ChannelEndpoint] => [
+  { kind: "wall", row: d.startY, wall: "E" },
+  { kind: "wall", row: d.endY, wall: "W" },
+];
+
+/** 반출의 두 끝점 — 상자가 마주 본 벽에서 들어와 **바깥 변**으로 나간다. */
+const exportEnds = (x: ExportInput, exit: NsEdge): [ChannelEndpoint, ChannelEndpoint] => [
+  { kind: "wall", row: x.entryY, wall: x.entryWall },
+  { kind: "edge", edge: exit },
+];
+
+/** 납품 계단꼴(일자 수평선 포함) — [routeShape] 의 납품판. */
+export function staircaseShape(d: DeliveryInput, track: number, ctx: GeometryContext, capCol: number): Shape {
+  return routeShape(...deliveryEnds(d), track, ctx, capCol);
+}
+
+/** 납품 열 갈아타기: 계단꼴 + 중간 한 번 트랙 변경(문서 §5-2). */
+export function columnSwitchShape(
+  d: DeliveryInput,
+  t1: number,
+  switchY: number,
+  t2: number,
+  capCol: number,
+): Shape {
+  return {
+    h: [hseg(d.startY, t1, capCol), hseg(switchY, t1, t2), hseg(d.endY, -1, t2)],
+    v: [vseg(t1, d.startY, switchY), vseg(t2, switchY, d.endY)],
+  };
+}
+
+/** 반출 한꺾임꼴 — [routeShape] 의 반출판. 도착이 `edge` 라 가로 진출 조각이 없다. */
+export function elbowShape(x: ExportInput, track: number, exit: NsEdge, ctx: GeometryContext, capCol: number): Shape {
+  return routeShape(...exportEnds(x, exit), track, ctx, capCol);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 지하 횡단 — 막힌 셀 밑을 건너 계단꼴을 성립시킨다 (문서 §4.4 사다리 ②)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface Cell {
+  col: number;
+  row: number;
+}
+
+/** 계단꼴을 **셀 순서열**로 편다: E벽 → 트랙(가로) → 세로 주행 → W벽(가로). 코너 중복 없음. */
+export function staircaseCells(d: DeliveryInput, track: number, capCol: number): Cell[] {
+  const cells: Cell[] = [];
+  const push = (col: number, row: number) => {
+    const last = cells[cells.length - 1];
+    if (last && last.col === col && last.row === row) return;
+    cells.push({ col, row });
+  };
+  for (let c = capCol; c >= track; c--) push(c, d.startY); // 가로 진입(동→서)
+  const step = d.endY >= d.startY ? 1 : -1;
+  for (let r = d.startY; r !== d.endY + step; r += step) push(track, r); // 세로 주행
+  for (let c = track; c >= -1; c--) push(c, d.endY); // 가로 진출(→W벽)
+  return cells;
+}
+
+/** 지상에 남는 셀들(점프 구간 제외)을 축정렬 조각으로 되접어 Shape 으로. */
+export function shapeFromCells(cells: ReadonlyArray<Cell>, underground: ReadonlyArray<boolean>): Shape {
+  const s: Shape = { h: [], v: [] };
+  let run: Cell[] = [];
+  const flush = () => {
+    let i = 0;
+    while (i < run.length) {
+      let j = i;
+      while (j + 1 < run.length && run[j + 1].row === run[i].row) j++;
+      if (j > i) {
+        s.h.push(hseg(run[i].row, run[i].col, run[j].col));
+        i = j;
+        continue;
+      }
+      let k = i;
+      while (k + 1 < run.length && run[k + 1].col === run[i].col) k++;
+      if (k > i) {
+        s.v.push(vseg(run[i].col, run[i].row, run[k].row));
+        i = k;
+        continue;
+      }
+      s.h.push(hseg(run[i].row, run[i].col, run[i].col)); // 외톨이 셀
+      i++;
+    }
+    run = [];
+  };
+  for (let i = 0; i < cells.length; i++) {
+    if (underground[i]) flush();
+    else run.push(cells[i]);
+  }
+  flush();
+  return s;
 }

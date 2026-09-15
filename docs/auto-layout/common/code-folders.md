@@ -125,7 +125,8 @@ autoLayout/
 │   ├ channel/                   통로 — 여러 연결이 나눠 쓰는 자원
 │   │   ├ types.ts                 타입 — 채널 기하 장부의 입력과 결과 (DeliveryInput · ExportInput · GeometryContext · ChannelGeometryPlan)
 │   │   ├ ledger.ts                장부 — 행 채널 신원·트랙·높이 (rowChannelsOf) · 세로 채널 트랙 (planChannels)
-│   │   └ shape.ts                 도형 — 행 채널 칸 범위 · 납품 끝의 절대 행 · materializeChannelGeometry
+│   │   ├ policy.ts                정책 — 반출의 진출 변(해소 사다리 1단) · 지상 배정 순서(실패 비용 순) · 유체 폴백 사유
+│   │   └ shape.ts                 도형 — 행 채널 칸 범위 · 납품 끝의 절대 행 · materializeChannelGeometry · 추상 셀 모델(경로 모양 · 충돌 · 셀 순서열 · 같은 쪽 판정)
 │   ├ perimeter/                 전역 외곽
 │   │   ├ types.ts                 타입 — 반출 출구 배정의 입력과 결과 (ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan)
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
@@ -138,7 +139,7 @@ autoLayout/
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점 — run/ 을 여덟 단계로 부르는 뼈대
 │   ├ modulePacking.ts             조율자 — 사슬 열(트리 → 링크 → 좌석 → 모양 → 짝 → 행 채널 → 세로 → 통로 → 가로 → 결과)을 순서대로 엮는 뼈대
 │   ├ channelPlanner.ts            모듈 사이 통로 폭
-│   ├ channelGeometryPlanner.ts    그 통로 안에서 누가 어느 세로줄
+│   ├ channelGeometryPlanner.ts    장부 — 그 통로 안에서 누가 어느 세로줄(배정 · 지하 청구 · 폭 예약) + 사다리 순서만 쥐는 뼈대
 │   ├ perimeterExitPlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
 │   ├ deliveryRoute.ts                 자식 출력 → 부모 입력 잇기

@@ -537,7 +537,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 3  탐욕 폴백 + 사다리       실패 비용 순으로 자리를 먼저 준다(⑤)
 ```
 
-**채널 장부가 이미 이 모양이다**(`channelGeometryPlanner.ts:529–575`, `SEARCH_BUDGET`:`184`).
+**채널 장부가 이미 이 모양이다**(`channelGeometryPlanner.assignSurface` · `SEARCH_BUDGET`).
 새 알고리즘이 아니라 **있는 뼈대를 축만 바꿔 두 번째로 쓰는 것**이고, 그 선례가
 `rowChannelPlanner` 다 — 같은 `assignTracksLeftEdge` 를 가로축으로 읽었을 뿐이다.
 

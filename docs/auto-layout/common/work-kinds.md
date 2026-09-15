@@ -157,9 +157,18 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > **2026-09-14 Step 4 뒤**(모듈 하나를 만드는 사슬 — 방출기 셋과 조율자를 단계로):
 >
 > ```
-> 200줄 넘는 함수 = 2   emitOutputLinks 253 → 96 · emitInputLinks 209 → 98 이 빠졌다. 남은 둘은 탐색이다(planChannelGeometry · searchWithJumps)
+> 200줄 넘는 함수 = 2   emitOutputLinks 253 → 96 · emitInputLinks 209 → 98 이 빠졌다. 남은 둘 — planChannelGeometry · searchWithJumps(탐색)
+>                       (이 줄은 처음에 둘 다 탐색이라 적었다. planChannelGeometry 는 사다리였다 — Step 5 재측정)
 > 100줄 넘는 함수 = 11  emitTrunkPipe 174 → 86 · generateModule 176 → 33 이 더 빠졌다
 > 500줄 이상 = 8 파일  emitModule 898 → 720 (찍기 하나 — 틀과 길은 module/shape 450 으로)
+> ```
+>
+> **2026-09-15 Step 5 뒤**(남은 관심사 파일을 종류로 — 채널 사다리 · 납품 사다리 · 출구 자격):
+>
+> ```
+> 200줄 넘는 함수 = 1   planChannelGeometry 230 → 20 이 빠졌다 — 탐색이 아니었다(탐색은 안의 search 16줄). 남은 하나가 searchWithJumps(탐색)
+> 100줄 넘는 함수 = 10
+> 500줄 이상 = 6 파일  perimeterExitPlanner 592 → 384(타입 → perimeter/types) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy)
 > ```
 
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —
@@ -189,6 +198,10 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 종류로 세우지 않는 이유는 이 저장소가 탐색을 **줄여 가는 중**이기 때문이다 — 예약 철학이
 *"자리를 먼저 잡고 뒤 단계는 탐색 없이 놓기만"* 이고, 런타임 소비처가 `deliveryRoute` 하나다.
 그래서 *"세 종류가 아직 안 갈라진 자리"* 로 표시해 둔다.
+
+**탐색은 한 곳 더 있다** — 채널 기하 장부의 배정 단계(`channelGeometryPlanner.assignSurface`) 안 백트래킹 클로저
+`search`(16줄)다. 한때 둘러싼 함수 `planChannelGeometry` 전체를 탐색으로 적었는데 틀렸다 — 바깥은 칸마다 새로 아는 것이
+있는 사다리였고, 2026-09-15 에 그 칸들로 갈랐다. 클로저는 같은 질문을 되풀이하므로 자기 단계 안에 그대로 산다.
 
 ## 7. 오늘 코드가 개념에 미달한 곳
 

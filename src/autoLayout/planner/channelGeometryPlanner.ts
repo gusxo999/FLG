@@ -30,304 +30,67 @@
  *
  * 좌표계: 추상 (열, 행). 열 = 트랙 0..T-1(서→동) + 가상 벽 마진(W쪽 -1, E쪽 trackCap).
  * 절대 x 변환(트랙 → 채널 내부 x)은 호출자 책임. 순수·결정적.
+ *
+ * ## 사슬 — 한 칸 갈 때마다 모르던 것이 하나 정해진다
+ *
+ * ```
+ * ⓪ 판       트랙 상한 · 벽 열 · id 순 · 유체와 아이템                   openChannelSheet
+ * ① 진출 변   반출마다 N/S · 갇힌 납품 · 물러난 반출(사다리 1단)          channel/policy.settleExitSides
+ * ② 지상     후보(실패 비용 순) → 누가 어느 트랙 → 계획 객체              channel/policy.surfaceItemsOf · assignSurface · writeSurfacePlans
+ * ③ 지하     막힌 셀 밑으로(사다리 2단) → 유체 폴백의 사유                crossUnderground · channel/policy.nameFluidFallbacks
+ * ④ 폭       폴백 경로 · 잔여 구간의 유령 세로선 → trackCount(폭 역전)     reserveWidth · trackCountOf
+ * ```
+ *
+ * 앞 칸은 뒤 칸의 산출을 안 읽는다 — ① 은 점유를, ② 는 지하 계획을 모른다. 경로의 모양 · 충돌 · 셀 순서열은
+ * `channel/shape`(도형), 진출 변과 순서를 고르는 일은 `channel/policy`(정책)에 있다. **이 파일에 남는 것은 트랙을 잡는
+ * 장부**(배정 · 지하 청구 · 폭 예약)와 순서를 쥐는 뼈대다. 장부 단계를 통로 장부 파일(`channel/ledger`)로 안 옮긴 이유는
+ * 그 파일의 `planChannels` 가 이 함수를 부르기 때문이다 — 옮기면 두 파일이 서로를 런타임으로 부른다.
  */
 
 import type {
   ChannelGeometryPlan,
-  ChannelWall,
   DeliveryInput,
   DeliveryPlan,
   ExportInput,
   ExportPlan,
   GeometryContext,
   Jump,
-  NsEdge,
 } from "./channel/types";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 같은 쪽 판정 — 문서 §4.2
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 납품 경로의 두 끝이 반출 경로가 긋는 절단선의 같은 쪽인가.
- * 안쪽 ① = "진입 벽과 같은 벽" ∧ "진입 행에서 진출 변 방향"(경계 행 포함 = 보수적:
- * 같은 행이면 가로 진입끼리 겹쳐 어차피 지상 공유 불가).
- */
-export function sameSideOfCut(d: DeliveryInput, x: ExportInput, exit: NsEdge): boolean {
-  const inside = (wall: ChannelWall, y: number): boolean =>
-    wall === x.entryWall && (exit === "N" ? y <= x.entryY : y >= x.entryY);
-  // 납품의 출발 끝은 E벽, 도착 끝은 W벽에 붙어 있다.
-  return inside("E", d.startY) === inside("W", d.endY);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 추상 셀 모델 — 경로 = 가로/세로 직선 몇 개
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface HSeg {
-  row: number;
-  c1: number; // ≤ c2 (열 — 트랙 index, 벽 마진은 -1 / capCol)
-  c2: number;
-}
-interface VSeg {
-  col: number; // 트랙 index (벽 마진에는 세로 주행 없음)
-  r1: number; // ≤ r2
-  r2: number;
-}
-interface Shape {
-  h: HSeg[];
-  v: VSeg[];
-}
+import {
+  cellsOf,
+  columnSwitchShape,
+  conflicts,
+  conflictsAny,
+  placedOf,
+  shapeFromCells,
+  staircaseCells,
+  vseg,
+  type Cell,
+  type Placed,
+  type Shape,
+} from "./channel/shape";
+import {
+  nameFluidFallbacks,
+  settleExitSides,
+  surfaceItemsOf,
+  type ExitSides,
+  type SurfaceItem,
+} from "./channel/policy";
 
 /** trackCap 미지정 시의 하한 — 경로가 적어도 이만큼의 트랙은 골라 쓸 수 있게. */
 const MIN_TRACK_CAP = 8;
 /** 백트래킹 탐색 노드 예산 — 소진 시 탐욕 단계로 넘어간다(결정적). */
 const SEARCH_BUDGET = 200000;
 
-function hseg(row: number, a: number, b: number): HSeg {
-  return { row, c1: Math.min(a, b), c2: Math.max(a, b) };
-}
-function vseg(col: number, a: number, b: number): VSeg {
-  return { col, r1: Math.min(a, b), r2: Math.max(a, b) };
-}
-
-/** 두 도형이 셀을 공유하나 — 문서 §9 불변식 (a)의 계획 시점 버전. */
-function shapesConflict(a: Shape, b: Shape): boolean {
-  for (const ha of a.h)
-    for (const hb of b.h)
-      if (ha.row === hb.row && ha.c1 <= hb.c2 && hb.c1 <= ha.c2) return true;
-  for (const va of a.v)
-    for (const vb of b.v)
-      if (va.col === vb.col && va.r1 <= vb.r2 && vb.r1 <= va.r2) return true;
-  const hv = (h: HSeg, v: VSeg): boolean =>
-    h.c1 <= v.col && v.col <= h.c2 && v.r1 <= h.row && h.row <= v.r2;
-  for (const ha of a.h) for (const vb of b.v) if (hv(ha, vb)) return true;
-  for (const va of a.v) for (const hb of b.h) if (hv(hb, va)) return true;
-  return false;
-}
-
-/**
- * 배정 후보 하나 — 도형 + **무엇이 흐르는가**.
- *
- * 품목을 들고 다니는 이유는 충돌 규칙이 품목에 따라 다르기 때문이다([conflicts]).
- * 벨트끼리는 겹치지만 않으면 되지만, 파이프는 **닿기만 하면 이어진다**.
- */
-interface Placed {
-  shape: Shape;
-  /** 유체 이름. undefined = 아이템(벨트) 또는 폭 예약용 phantom. */
-  fluid?: string;
-  /** 인접 판정용 halo(칸 + 4-이웃). 유체일 때만 채운다 — 아이템엔 쓸 일이 없다. */
-  halo?: Set<string>;
-}
-
-/** 도형의 칸들. */
-function cellsOf(s: Shape): string[] {
-  const out: string[] = [];
-  for (const h of s.h) for (let c = h.c1; c <= h.c2; c++) out.push(`${c},${h.row}`);
-  for (const v of s.v) for (let r = v.r1; r <= v.r2; r++) out.push(`${v.col},${r}`);
-  return out;
-}
-
-/** 도형의 칸 + 4-이웃. 다른 유체가 여기 들어오면 두 유체가 한 통이 된다. */
-function haloOf(s: Shape): Set<string> {
-  const halo = new Set<string>();
-  for (const h of s.h)
-    for (let c = h.c1; c <= h.c2; c++) {
-      halo.add(`${c},${h.row}`);
-      halo.add(`${c - 1},${h.row}`); halo.add(`${c + 1},${h.row}`);
-      halo.add(`${c},${h.row - 1}`); halo.add(`${c},${h.row + 1}`);
-    }
-  for (const v of s.v)
-    for (let r = v.r1; r <= v.r2; r++) {
-      halo.add(`${v.col},${r}`);
-      halo.add(`${v.col - 1},${r}`); halo.add(`${v.col + 1},${r}`);
-      halo.add(`${v.col},${r - 1}`); halo.add(`${v.col},${r + 1}`);
-    }
-  return halo;
-}
-
-/** 유체면 halo 를 붙여서 후보를 만든다(한 번만 계산해 재사용). */
-function placedOf(shape: Shape, fluid?: string): Placed {
-  return fluid === undefined ? { shape } : { shape, fluid, halo: haloOf(shape) };
-}
-
-/**
- * 두 후보가 같이 있을 수 없나 — **품목이 규칙을 바꾼다**.
- *
- * | 두 경로 | 충돌 조건 |
- * |---|---|
- * | 아이템 ↔ 아이템 | 겹침 |
- * | 아이템 ↔ 유체 | 겹침 (파이프 옆 벨트는 무해) |
- * | 유체 A ↔ 유체 A | 겹침 (같은 유체는 닿아도 합법 — 자연 병합) |
- * | 유체 A ↔ 유체 B | 겹침 **또는 인접** ← 닿으면 두 유체가 한 통이 된다 |
- *
- * 인접 검사는 서로 다른 유체 쌍에서만 돈다. v1 은 모듈당 유체 1줄이라 그런 쌍이 드물어
- * 백트래킹 안에서 불려도 비용이 실질적으로 안 는다(halo 는 후보당 1회 계산).
- */
-function conflicts(a: Placed, b: Placed): boolean {
-  if (shapesConflict(a.shape, b.shape)) return true;
-  const differentFluids =
-    a.fluid !== undefined && b.fluid !== undefined && a.fluid !== b.fluid;
-  if (!differentFluids) return false;
-  for (const k of cellsOf(b.shape)) if (a.halo!.has(k)) return true;
-  return false;
-}
-
-function conflictsAny(s: Placed, placed: ReadonlyArray<Placed>): boolean {
-  return placed.some((p) => conflicts(s, p));
-}
-
-/**
- * **채널을 지나는 경로의 끝점** — 납품과 반출이 여기서 하나가 된다.
- *
- * ```
- * wall   채널 벽의 **한 점**(상자가 마주 본 행). 행이 고정이고, 그 행에 **가로 조각**이 붙는다
- * edge   바깥 **N/S 변**. 행이 자유롭고(변의 행), 세로 주행이 **그대로 나가므로** 가로 조각이 없다
- * ```
- *
- * **이 둘의 차이가 곧 납품과 반출의 차이 전부다.** 납품은 양 끝이 `wall`(상자 둘),
- * 반출은 한쪽이 `edge`(면이지 점이 아니다). 그리고 `edge` 쪽의 **행이 자유롭다**는 것이
- * 해소 사다리 ①(진출 변 뒤집기)이 반출에만 있는 이유다 — 납품엔 뒤집을 자유가 없다.
- */
-export type ChannelEndpoint =
-  | { kind: "wall"; row: number; wall: ChannelWall }
-  | { kind: "edge"; edge: NsEdge };
-
-/** 그 끝점이 붙는 **가상 벽 열** — W벽은 `-1`, E벽은 `capCol`. */
-const wallColOf = (wall: ChannelWall, capCol: number): number => (wall === "E" ? capCol : -1);
-
-/** 그 끝점의 **행** — `edge` 는 그 변 바깥 한 칸(seat 행). */
-const rowOf = (e: ChannelEndpoint, ctx: GeometryContext): number =>
-  e.kind === "wall" ? e.row : e.edge === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
-
-/**
- * **경로 하나의 도형** — 가로 진입 + 세로 주행 + 가로 진출.
- *
- * 옛 `staircaseShape`(납품)와 `elbowShape`(반출)를 합친 것이다. **elbow 는 계단꼴에서
- * 마지막 가로 조각을 뗀 것**이었고, 그 차이는 *"도착 끝점이 벽이냐 변이냐"* 하나에서 나온다.
- * `edge` 끝점은 세로 주행이 채널을 그대로 빠져나가므로 붙일 가로 조각이 없다.
- *
- * **양 끝이 벽이고 행이 같으면** 세로 주행이 길이 0이라 **트랙을 안 먹는다** —
- * 가로 조각 하나로 접는다(옛 `straightShape`). 세로 조각을 남기면 `trackCount` 가 그
- * 열을 세어 **안 쓰는 폭이 는다.**
- */
-export function routeShape(
-  from: ChannelEndpoint,
-  to: ChannelEndpoint,
-  track: number,
-  ctx: GeometryContext,
-  capCol: number,
-): Shape {
-  const r1 = rowOf(from, ctx);
-  const r2 = rowOf(to, ctx);
-  if (from.kind === "wall" && to.kind === "wall" && r1 === r2) {
-    return { h: [hseg(r1, wallColOf(from.wall, capCol), wallColOf(to.wall, capCol))], v: [] };
-  }
-  const h: HSeg[] = [];
-  if (from.kind === "wall") h.push(hseg(r1, track, wallColOf(from.wall, capCol)));
-  if (to.kind === "wall") h.push(hseg(r2, track, wallColOf(to.wall, capCol)));
-  return { h, v: [vseg(track, r1, r2)] };
-}
-
-/** 납품의 두 끝점 — 자식 출력은 **E벽**, 부모 입력은 **W벽**을 마주 본다. */
-const deliveryEnds = (d: DeliveryInput): [ChannelEndpoint, ChannelEndpoint] => [
-  { kind: "wall", row: d.startY, wall: "E" },
-  { kind: "wall", row: d.endY, wall: "W" },
-];
-
-/** 반출의 두 끝점 — 상자가 마주 본 벽에서 들어와 **바깥 변**으로 나간다. */
-const exportEnds = (x: ExportInput, exit: NsEdge): [ChannelEndpoint, ChannelEndpoint] => [
-  { kind: "wall", row: x.entryY, wall: x.entryWall },
-  { kind: "edge", edge: exit },
-];
-
-/** 납품 계단꼴(일자 수평선 포함) — [routeShape] 의 납품판. */
-function staircaseShape(d: DeliveryInput, track: number, ctx: GeometryContext, capCol: number): Shape {
-  return routeShape(...deliveryEnds(d), track, ctx, capCol);
-}
-
-/** 납품 열 갈아타기: 계단꼴 + 중간 한 번 트랙 변경(문서 §5-2). */
-function columnSwitchShape(
-  d: DeliveryInput,
-  t1: number,
-  switchY: number,
-  t2: number,
-  capCol: number,
-): Shape {
-  return {
-    h: [hseg(d.startY, t1, capCol), hseg(switchY, t1, t2), hseg(d.endY, -1, t2)],
-    v: [vseg(t1, d.startY, switchY), vseg(t2, switchY, d.endY)],
-  };
-}
-
-/** 반출 한꺾임꼴 — [routeShape] 의 반출판. 도착이 `edge` 라 가로 진출 조각이 없다. */
-function elbowShape(x: ExportInput, track: number, exit: NsEdge, ctx: GeometryContext, capCol: number): Shape {
-  return routeShape(...exportEnds(x, exit), track, ctx, capCol);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 지하 횡단 — 막힌 셀 밑을 건너 계단꼴을 성립시킨다 (문서 §4.4 사다리 ②)
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface Cell {
-  col: number;
-  row: number;
-}
-
-/** 계단꼴을 **셀 순서열**로 편다: E벽 → 트랙(가로) → 세로 주행 → W벽(가로). 코너 중복 없음. */
-function staircaseCells(d: DeliveryInput, track: number, capCol: number): Cell[] {
-  const cells: Cell[] = [];
-  const push = (col: number, row: number) => {
-    const last = cells[cells.length - 1];
-    if (last && last.col === col && last.row === row) return;
-    cells.push({ col, row });
-  };
-  for (let c = capCol; c >= track; c--) push(c, d.startY); // 가로 진입(동→서)
-  const step = d.endY >= d.startY ? 1 : -1;
-  for (let r = d.startY; r !== d.endY + step; r += step) push(track, r); // 세로 주행
-  for (let c = track; c >= -1; c--) push(c, d.endY); // 가로 진출(→W벽)
-  return cells;
-}
 
 /** placedShapes 를 셀 집합으로 편다 — 점프 계산은 셀 단위라야 거리(k)가 정확하다. */
 function occupiedCells(placed: ReadonlyArray<Placed>): Set<string> {
   const occ = new Set<string>();
   for (const p of placed) for (const k of cellsOf(p.shape)) occ.add(k);
   return occ;
-}
-
-/** 지상에 남는 셀들(점프 구간 제외)을 축정렬 조각으로 되접어 Shape 으로. */
-function shapeFromCells(cells: ReadonlyArray<Cell>, underground: ReadonlyArray<boolean>): Shape {
-  const s: Shape = { h: [], v: [] };
-  let run: Cell[] = [];
-  const flush = () => {
-    let i = 0;
-    while (i < run.length) {
-      let j = i;
-      while (j + 1 < run.length && run[j + 1].row === run[i].row) j++;
-      if (j > i) {
-        s.h.push(hseg(run[i].row, run[i].col, run[j].col));
-        i = j;
-        continue;
-      }
-      let k = i;
-      while (k + 1 < run.length && run[k + 1].col === run[i].col) k++;
-      if (k > i) {
-        s.v.push(vseg(run[i].col, run[i].row, run[k].row));
-        i = k;
-        continue;
-      }
-      s.h.push(hseg(run[i].row, run[i].col, run[i].col)); // 외톨이 셀
-      i++;
-    }
-    run = [];
-  };
-  for (let i = 0; i < cells.length; i++) {
-    if (underground[i]) flush();
-    else run.push(cells[i]);
-  }
-  flush();
-  return s;
 }
 
 /**
@@ -421,6 +184,54 @@ export function planChannelGeometry(
   exportsIn: ReadonlyArray<ExportInput>,
   ctx: GeometryContext,
 ): ChannelGeometryPlan {
+  // ⓪ 판 — 트랙 상한 · 벽 열 · id 순 · 유체와 아이템 · 빈 계획. 아직 어느 경로도 트랙이 없다
+  const sheet = openChannelSheet(deliveriesIn, exportsIn, ctx);
+  // ① 진출 변 — 반출마다 N/S · 갇힌 아이템 납품 · 유체에 물러난 반출. 행 비교만(사다리 1단)
+  const sides = settleExitSides(sheet.deliveries, sheet.exports_, sheet.fluidDels, sheet.itemDels, sheet.exportPlans);
+  // ② 지상 — 누가 어느 트랙. 실패 비용 순 → 폭 최소 백트래킹 → 막히면 탐욕 + 열 갈아타기
+  const items = surfaceItemsOf(sides, sheet.exports_, ctx, sheet.cap, sheet.capCol);
+  const assigned = assignSurface(sheet, sides, items);
+  writeSurfacePlans(sheet, sides, assigned);
+  // ③ 지하 — 지상에 자리가 없는 아이템 납품은 막힌 셀 밑으로(사다리 2단). 유체에게는 남은 수가 없다
+  crossUnderground(sheet, sides, ctx.maxJump ?? 0);
+  nameFluidFallbacks(sheet.fluidDels, sheet.deliveryPlans);
+  // ④ 폭 — 폴백 경로 · 잔여 구간도 세로 구간만큼 트랙을 잡는다. 폭은 이 결과다(폭 역전)
+  reserveWidth(sheet, ctx);
+  return { deliveries: sheet.deliveryPlans, exports: sheet.exportPlans, trackCount: trackCountOf(sheet.placedShapes) };
+}
+
+/**
+ * **⓪ 판** — 한 번의 배정이 처음부터 끝까지 함께 쓰는 것. 단계가 새로 아는 것(진출 변 · 누가 어느 트랙)은 여기
+ * 안 싣고 단계의 반환으로 넘긴다 — 그래야 뼈대에서 *"누가 무엇을 알고 들어오나"* 가 보인다.
+ *
+ * 계획 둘과 `placedShapes` 는 단계마다 **쌓인다.** 넣는 순서(계획)와 쌓는 순서(도형)가 뒤 단계의 답을 바꾸는
+ * 입력이라, 단계 순서가 곧 결과다.
+ */
+interface ChannelSheet {
+  /** 트랙 수 상한. */
+  cap: number;
+  /** E벽 마진의 추상 열(`cap + 1`). */
+  capCol: number;
+  /** id 순. */
+  deliveries: DeliveryInput[];
+  /** id 순. */
+  exports_: ExportInput[];
+  fluidDels: DeliveryInput[];
+  itemDels: DeliveryInput[];
+  deliveryPlans: Map<string, DeliveryPlan>;
+  exportPlans: Map<string, ExportPlan>;
+  placedShapes: Placed[];
+}
+
+/** 경로 하나의 지상 배정 — 확정 도형(유체면 halo 포함)과 트랙. */
+type Assignment = { placed: Placed; track: number | null };
+
+/** **⓪ 판 차리기** — 트랙 상한 · 벽 열 · id 순 · 유체와 아이템 · 빈 계획 둘 · 빈 점유. */
+function openChannelSheet(
+  deliveriesIn: ReadonlyArray<DeliveryInput>,
+  exportsIn: ReadonlyArray<ExportInput>,
+  ctx: GeometryContext,
+): ChannelSheet {
   // 경로마다 자기 트랙을 줘도 충분하다는 것이 상한의 근거(세로선은 트랙이 다르면 절대
    // 안 겹친다). 폭은 여기서 안 정해진다 — 배정 결과(trackCount)에서 나온다(폭 역전).
   const cap = ctx.trackCap ?? Math.max(MIN_TRACK_CAP, deliveriesIn.length + exportsIn.length);
@@ -442,63 +253,22 @@ export function planChannelGeometry(
   const fluidDels = deliveries.filter((d) => d.fluid !== undefined);
   const itemDels = deliveries.filter((d) => d.fluid === undefined);
 
-  // ── ① 같은 쪽 판정 + 반출 재배정(사다리 1단) ──
-  // 각 반출의 진출 변을 선호값으로 시작해, 어떤 납품을 가두면 뒤집어 본다.
-  // 뒤집기는 "모든 납품이 새 변에서 같은 쪽"일 때만 — 다른 납품을 새로 가두지 않는다.
-  const exitOf = new Map<string, NsEdge>(exports_.map((x) => [x.id, x.preferredExit]));
-  /** 지상 불가로 판명난 아이템 납품 → 그 납품을 가둔 반출 id (지하 횡단 후보). */
-  const cutOff = new Map<string, string>();
-  /** 유체를 가둔 죄로 지상 배정을 포기한 반출 — 상자는 로컬 ring 에 남는다. */
-  const yieldedExports = new Set<string>();
-
-  const tryFlip = (d: DeliveryInput, x: ExportInput): boolean => {
-    const flipped: NsEdge = exitOf.get(x.id) === "N" ? "S" : "N";
-    const ok =
-      sameSideOfCut(d, x, flipped) &&
-      deliveries.every((d2) => cutOff.has(d2.id) || sameSideOfCut(d2, x, flipped));
-    if (ok) exitOf.set(x.id, flipped);
-    return ok;
-  };
-
-  // 1라운드 — 유체. 뒤집어서 안 풀리면 **반출이 물러난다**(유체가 갇히면 트리째 죽으므로).
-  for (const d of fluidDels) {
-    for (const x of exports_) {
-      if (yieldedExports.has(x.id)) continue;
-      if (sameSideOfCut(d, x, exitOf.get(x.id)!)) continue;
-      if (!tryFlip(d, x)) yieldedExports.add(x.id);
-    }
-  }
-  // 2라운드 — 아이템. 기존 그대로: 안 풀리면 그 납품이 지하 횡단 후보가 된다.
-  for (const d of itemDels) {
-    for (const x of exports_) {
-      if (yieldedExports.has(x.id)) continue;
-      if (sameSideOfCut(d, x, exitOf.get(x.id)!)) continue;
-      if (!tryFlip(d, x)) cutOff.set(d.id, x.id);
-    }
-  }
-  for (const id of yieldedExports) exportPlans.set(id, { kind: "fallback", reason: "yielded-to-fluid" });
-
-  // ── ② 지상 배정 — iterative-deepening 백트래킹(폭 최소 우선, 결정적) ──
-  // 경로 순서: 반출(id 순) → 지상 가능한 납품(id 순). 트랙 후보는 0..T-1 오름차순.
-  type Item = { id: string; candidates: (t: number) => Shape | null; max: number; fluid?: string };
-  const delItem = (d: DeliveryInput): Item =>
-    d.startY === d.endY
-      ? // 일자 수평선 — 트랙 무관, 후보 1개(t=0 로만 호출되게 max=1).
-        { id: d.id, candidates: () => staircaseShape(d, 0, ctx, capCol), max: 1, fluid: d.fluid }
-      : { id: d.id, candidates: (t) => staircaseShape(d, t, ctx, capCol), max: cap, fluid: d.fluid };
-
-  const surfaceDels = deliveries.filter((d) => !cutOff.has(d.id));
-  // 순서 = 실패 비용 순(위 주석). 탐욕 폴백에서 앞선 것이 자리를 먼저 가진다.
-  const items: Item[] = [];
-  for (const d of surfaceDels) if (d.fluid !== undefined) items.push(delItem(d));
-  for (const x of exports_) {
-    if (yieldedExports.has(x.id)) continue;
-    const exit = exitOf.get(x.id)!;
-    items.push({ id: x.id, candidates: (t) => elbowShape(x, t, exit, ctx, capCol), max: cap });
-  }
-  for (const d of surfaceDels) if (d.fluid === undefined) items.push(delItem(d));
-
   const placedShapes: Placed[] = []; // 확정된 모든 도형(불변식: 서로소 + 유체 인접 없음)
+  return { cap, capCol, deliveries, exports_, fluidDels, itemDels, deliveryPlans, exportPlans, placedShapes };
+}
+
+/**
+ * **② 배정** — 누가 어느 트랙. 폭 최소 백트래킹이 풀면 그 해를, 못 풀면(예산 소진 포함) 탐욕 + 열 갈아타기.
+ * 탐욕이 못 앉힌 경로와 열 갈아타기는 계획을 여기서 **먼저** 적는다 — [writeSurfacePlans] 가 그 계획을 건너뛴다.
+ */
+function assignSurface(
+  sheet: ChannelSheet,
+  sides: ExitSides,
+  items: ReadonlyArray<SurfaceItem>,
+): Map<string, Assignment> {
+  const { cap, capCol, deliveryPlans, exportPlans, placedShapes } = sheet;
+  const { surfaceDels } = sides;
+  // ── ② 지상 배정 — iterative-deepening 백트래킹(폭 최소 우선, 결정적) ──
   const assigned = new Map<string, { placed: Placed; track: number | null }>();
   const budget = { left: SEARCH_BUDGET };
   type Acc = { id: string; placed: Placed; track: number };
@@ -560,7 +330,13 @@ export function planChannelGeometry(
       else exportPlans.set(item.id, { kind: "fallback", reason: "no-surface-assignment" });
     }
   }
+  return assigned;
+}
 
+/** **②′ 계획** — 배정을 계획 객체로 적는다. 배정을 **읽기만** 한다. */
+function writeSurfacePlans(sheet: ChannelSheet, sides: ExitSides, assigned: ReadonlyMap<string, Assignment>): void {
+  const { exports_, deliveryPlans, exportPlans } = sheet;
+  const { exitOf, surfaceDels } = sides;
   // 배정 결과 → 계획 객체.
   for (const x of exports_) {
     if (exportPlans.has(x.id)) continue;
@@ -579,7 +355,12 @@ export function planChannelGeometry(
       deliveryPlans.set(d.id, { kind: "staircase", track: a.track! });
     }
   }
+}
 
+/** **③ 지하** — 막힌 셀 밑으로 건넌 도형을 쌓고(청구), 못 건넌 납품에는 폴백의 사유를 적는다. */
+function crossUnderground(sheet: ChannelSheet, sides: ExitSides, maxJump: number): void {
+  const { cap, capCol, itemDels, deliveryPlans, placedShapes } = sheet;
+  const { cutOff } = sides;
   // ── ③ 지하 횡단(사다리 2단) — 지상에 자리가 없는 납품은 막힌 셀 **밑으로** 건넌다 ──
   //
   // 지상 배정(②)이 못 앉힌 납품은 두 부류다: 반출의 절단선에 갇힌 것(①이 cutOff 로
@@ -591,7 +372,6 @@ export function planChannelGeometry(
   // **유체 납품도 안 온다**(결정 D2) — 지하파이프는 프로토타입과 무관하게 같은 직선 위에서
   // 서로 페어링이 끊긴다. 겹침·인접과 성질이 다른 세 번째 제약이라 v1 장부가 모델링하지
   // 않는다. 그 대신 유체는 ①②에서 **지상 우선권**을 받았다(§4.3) — 밑으로 갈 일이 없다.
-  const maxJump = ctx.maxJump ?? 0;
   for (const d of itemDels) {
     const cur = deliveryPlans.get(d.id);
     if (cur && cur.kind !== "fallback") continue;
@@ -606,14 +386,11 @@ export function planChannelGeometry(
       });
     }
   }
+}
 
-  // 유체가 지상에 못 앉았다면 남은 수는 없다 — 지하도(D2) 탐색 폴백도(D3) 안 준다.
-  // 사유를 갈라 둔다: 소비자(moduleWizard)가 거절 메시지에 그대로 싣는다.
-  for (const d of fluidDels) {
-    if (deliveryPlans.get(d.id)?.kind !== "fallback") continue;
-    deliveryPlans.set(d.id, { kind: "fallback", reason: "fluid-no-surface-assignment" });
-  }
-
+/** **④ 폭** — 폴백 경로 · 잔여 구간의 유령 세로선을 쌓는다(청구만 — 계획은 안 바꾼다). */
+function reserveWidth(sheet: ChannelSheet, ctx: GeometryContext): void {
+  const { cap, deliveries, exports_, deliveryPlans, exportPlans, placedShapes } = sheet;
   // ── ④ 폭 예약(phantom) — fallback 경로·잔여 구간도 세로 구간만큼 트랙을 확보해,
   //      dijkstra/스캔이 들어갈 자리가 폭에서 사라지지 않게 한다(모듈 폴백 방지).
   //      폭은 세로 용량 문제라 세로선끼리만 비교한다 — 가로선과의 교차는 dijkstra 가
@@ -639,12 +416,14 @@ export function planChannelGeometry(
     }
   }
   for (const iv of ctx.reserveIntervals ?? []) phantom(iv.lo, iv.hi);
+}
 
+/** **⑤ 폭 역전** — 쌓인 도형이 쓴 최고 트랙 번호 + 1. */
+function trackCountOf(placedShapes: ReadonlyArray<Placed>): number {
   // 폭 역전 — 폭의 근거는 배정 결과(사용한 최고 트랙 번호).
   let trackCount = 0;
   for (const p of placedShapes) for (const v of p.shape.v) trackCount = Math.max(trackCount, v.col + 1);
-
-  return { deliveries: deliveryPlans, exports: exportPlans, trackCount };
+  return trackCount;
 }
 
 /** 열 갈아타기 소탐색 — 트랙 쌍 × 갈아타는 행(구간 내부) 오름차순 첫 성공. */

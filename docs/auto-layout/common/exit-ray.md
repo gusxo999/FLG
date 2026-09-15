@@ -136,7 +136,7 @@ columnChannel 로 끝난다   →  **거기서 환승해야** 나간다
 
 ## 7. 함께 선 것 — 납품과 반출은 **같은 도형**이다
 
-`channelGeometryPlanner.routeShape` 가 옛 `staircaseShape`(납품)와 `elbowShape`(반출)를
+`channel/shape.routeShape` 가 옛 `staircaseShape`(납품)와 `elbowShape`(반출)를
 합쳤다. 차이는 **끝점의 종류** 하나다:
 
 ```ts

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeShape, type ChannelEndpoint } from "./channelGeometryPlanner";
+import { routeShape, type ChannelEndpoint } from "./channel/shape";
 
 // 채널 세로 범위 [0,9] · 가상 E벽 열 = capCol
 const ctx = { yMin: 0, yMax: 9 };

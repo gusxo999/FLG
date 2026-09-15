@@ -103,7 +103,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 ## 2. 유체가 아이템과 다른 점 — 장부가 새로 알아야 할 것 하나
 
 장부의 충돌 판정은 **겹침(overlap)** 하나뿐이다
-([channelGeometryPlanner.ts:180](../../../src/autoLayout/planner/channelGeometryPlanner.ts#L180)):
+([channel/shape.shapesConflict](../../../src/autoLayout/planner/channel/shape.ts)):
 두 도형이 같은 칸을 쓰면 충돌.
 
 벨트는 이걸로 충분하다. **파이프는 아니다** — 파이프는 **닿기만 하면 이어진다**(방향 없음,
@@ -186,7 +186,7 @@ v1 은 모듈당 유체 1줄이라 유체 경로 수가 적다 — 비용이 실
 | 3 | 아이템 납품 | ③ 지하 횡단이 회수 — 사실상 손해 없음 |
 
 그래서 `items` 배열 순서를 **유체 납품 → 반출 → 아이템 납품**으로 바꾼다
-([channelGeometryPlanner.ts:429-442](../../../src/autoLayout/planner/channelGeometryPlanner.ts#L429-L442)).
+([channel/policy.surfaceItemsOf](../../../src/autoLayout/planner/channel/policy.ts)).
 
 이 한 줄이 §4.4 를 성립시킨다. 유체와 아이템이 교차할 때(끝점이 엇갈리면 교차는 **기하학적으로
 불가피**하다 — `DeliveryPlan.undergroundCrossing` 주석의 Jordan 논증), 지상을 유체가 가지고
