@@ -137,7 +137,7 @@ autoLayout/
 │   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
 │   ├ run/                       한 번의 실행 전체 — 종류마다 한 파일
 │   │   ├ gamedata.ts              어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
-│   │   ├ policy.ts                정책 — 받을지 물릴지 · 처방 (LayoutIssue 를 짓는 유일한 곳)
+│   │   ├ policy.ts                정책 — 받을지 물릴지 · 처방 (planner 안에서 LayoutIssue 를 짓는 곳 — 입구 layeredWizard 도 넷을 짓는다)
 │   │   ├ ledger.ts                장부 — 유체 관망 · 종착 구간
 │   │   └ emit.ts                  찍기 — CandidateLeaf(Area · Routing) · 실패 그림
 │   ├ moduleWizard.ts            ★ 배치 전체 진입점 — run/ 을 여덟 단계로 부르는 뼈대
@@ -159,14 +159,14 @@ autoLayout/
 │   │   ├ line.ts                    무엇을 나르나 — IoLine · PlannedLine · SupplyCapacity · Link
 │   │   ├ seat.ts                    어디에 앉나  — LinkFacePlan · LinkSeats · DepthShortage · LinkFaceStage
 │   │   └ module.ts                  무엇을 받고 내나 — ModuleInput · GeneratedModule · ModulePort · BeltTerminus
-│   ├ arith.ts                     셈 — trunkEndKey · flowEnd (방출과 계획이 함께 부른다)
+│   ├ arith.ts                     셈 — trunkEndKey · flowEnd (방출과 계획이 함께 부른다) · 유체 점프 예산 · 막힘 · 벨트 깊이 상한 · 유체 줄 조회
 │   ├ clusterModule.ts             조율 — generateModule 뼈대(계획 → 몸통 → 장부 → 링크 줄 → 나머지 줄 → 유체 줄 → 마무리)
 │   ├ policy.ts                    정책 — 트렁크 틀(유체 기둥이 점프하나 · ClusterPipe 깊이)
 │   ├ link.ts          벨트 한 줄 = 팔 묶음 (조립·판독)
 │   ├ linkShape.ts                 도형 — 배정 → 먹는 칸 · 셀 (청구와 방출의 단일 출처 · 순번 축)
 │   ├ shape.ts                     도형 — 머신 좌표 위: 몸통 · 좌석 좌표 · 기둥 틀 · 링크 틀 · 길 · 포트 끝점 · 유체 틀 · 포트의 경계 기하(납품 · 반출이 부른다)
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
-│   ├ fluidPorts.ts                유체 면 선택
+│   ├ fluidPorts.ts                어댑터 · 정책 — 유체 상자 칸 · 연결 해석 · 회전과 면 고르기(chooseFluidTrunkPlan). factorio 가 이 주소를 부른다
 │   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
 ├ manualEdit/                  ★ 비활성 격리 — 호출자 0, 타입검사·테스트 제외
 ├ util/                        양쪽 계층이 쓰는 도구. 아무것도 고르지 않는다

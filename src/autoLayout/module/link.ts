@@ -590,8 +590,8 @@ export function mergeBeltFormCounters(a: BeltFormCounters, b: BeltFormCounters):
 }
 
 /**
- * **밖과 주고받는 그룹의 방향을 읽는다** — [makeLink] 의 역([isInternalLink] 로 안↔안이 아님을
- * 이미 안 그룹에만 쓴다). 빈 쪽이 밖이므로, 머신이 든 쪽이 곧 역할이다:
+ * **밖과 주고받는 그룹의 방향을 읽는다** — 옛 `makeLink` 의 역이다. 안↔안이 아님을 이미 아는 그룹에만
+ * 쓴다(그 판정이던 `isInternalLink` 도 삭제됐다). 빈 쪽이 밖이므로, 머신이 든 쪽이 곧 역할이다:
  *  - `to` 에 머신 → **input**(밖에서 받는다 = 원료).
  *  - `from` 에 머신 → **output**(밖으로 낸다 = 완제품).
  *
@@ -600,6 +600,38 @@ export function mergeBeltFormCounters(a: BeltFormCounters, b: BeltFormCounters):
  */
 export function readLinkRole(group: Link): "input" | "output" {
   return group.to.size > 0 ? "input" : "output";
+}
+
+/**
+ * **묶음 크기의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
+ *
+ * ```
+ * g_max = min(N, ⌊벨트 처리량 ÷ 머신 하나의 몫⌋)
+ * ```
+ *
+ * **이건 상한일 뿐 실제 `g` 가 아니다.** 자리(깊이 예산)가 여기서 더 깎는다 —
+ * 관통 줄은 깊이를 통째로 먹으므로 면마다 몇 줄까지 관통할 수 있는지가 따로 있다
+ * (`docs/auto-layout/module/trunk-assignment.md` §4.2, 계산은 [planBundles]).
+ *
+ * 수량을 모르면 `N` 이다 — **지어내지 않는다.** 그 값이 곧 옛 탭 동작이고,
+ * 깊이 예산이 그걸 다시 깎는 것이 지금의 모양이다.
+ *
+ * 붓기와 계획이 **같은 함수를 본다**(R3). 예전엔 이 식이 [externalLineGroups] 안에만
+ * 있어서 바깥에서 `g_max` 를 알려면 베껴 쓰는 수밖에 없었다.
+ */
+export function bundleCap(
+  machineCount: number,
+  per: number | undefined,
+  /** 그 벨트의 **물리** 처리량(두 레인 합). 안에서 레인 하나로 접는다. */
+  beltThroughput: number | undefined,
+): number {
+  const n = Math.max(1, machineCount);
+  // **레인 하나로 센다** — 인서터가 먼 레인에만 싣기 때문이다(`belt-lane-semantics` ①).
+  // 줄 전체로 세면 한 줄이 맡는 머신이 두 배가 되고, 그 줄은 게임에서 절반만 흐른다.
+  const cap = laneCapOfTier(beltThroughput !== undefined ? { throughput: beltThroughput } : undefined);
+  return per !== undefined && per > 0 && cap > 0
+    ? Math.min(n, Math.max(1, Math.floor(cap / per)))
+    : n;
 }
 
 /**
@@ -636,40 +668,8 @@ export function readLinkRole(group: Link): "input" | "output" {
  * 있는데, 쪼갠 그룹은 애초에 한 대짜리라 그 제약에 걸릴 것이 없기 때문이다.
  *
  * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
- * @param opts.bundle 묶음 크기 `g` — 안 주면 줄마다 `min(⌊벌트÷per⌋, N)` 으로 유도한다.
+ * @param opts.bundle 묶음 크기 `g` — 안 주면 줄마다 `min(⌊벨트÷per⌋, N)` 으로 유도한다.
  */
-/**
- * **묶음 크기의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
- *
- * ```
- * g_max = min(N, ⌊벨트 처리량 ÷ 머신 하나의 몫⌋)
- * ```
- *
- * **이건 상한일 뿐 실제 `g` 가 아니다.** 자리(깊이 예산)가 여기서 더 깎는다 —
- * 관통 줄은 깊이를 통째로 먹으므로 면마다 몇 줄까지 관통할 수 있는지가 따로 있다
- * (`docs/auto-layout/module/trunk-assignment.md` §4.2, 계산은 [planBundles]).
- *
- * 수량을 모르면 `N` 이다 — **지어내지 않는다.** 그 값이 곧 옛 탭 동작이고,
- * 깊이 예산이 그걸 다시 깎는 것이 지금의 모양이다.
- *
- * 붓기와 계획이 **같은 함수를 본다**(R3). 예전엔 이 식이 [externalLineGroups] 안에만
- * 있어서 바깥에서 `g_max` 를 알려면 베껴 쓰는 수밖에 없었다.
- */
-export function bundleCap(
-  machineCount: number,
-  per: number | undefined,
-  /** 그 벨트의 **물리** 처리량(두 레인 합). 안에서 레인 하나로 접는다. */
-  beltThroughput: number | undefined,
-): number {
-  const n = Math.max(1, machineCount);
-  // **레인 하나로 센다** — 인서터가 먼 레인에만 싣기 때문이다(`belt-lane-semantics` ①).
-  // 줄 전체로 세면 한 줄이 맡는 머신이 두 배가 되고, 그 줄은 게임에서 절반만 흐른다.
-  const cap = laneCapOfTier(beltThroughput !== undefined ? { throughput: beltThroughput } : undefined);
-  return per !== undefined && per > 0 && cap > 0
-    ? Math.min(n, Math.max(1, Math.floor(cap / per)))
-    : n;
-}
-
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
   machineCount: number,
@@ -740,20 +740,20 @@ export function externalLineGroups(
       );
     };
 
-    // **낱알은 `g`(묶음 크기) 가 정한다** — 한 벌트 줄이 몇 대를 맡나.
+    // **낱알은 `g`(묶음 크기) 가 정한다** — 한 벨트 줄이 몇 대를 맡나.
     //
     // ```
-    // g = 1     머신마다 자기 벌트            = 다이렉트
-    // g = N     벌트 하나가 기둥 전체        = 관통(트렁크)
+    // g = 1     머신마다 자기 벨트            = 다이렉트
+    // g = N     벨트 하나가 기둥 전체        = 관통(트렁크)
     // 1<g<N     **부분 트렁크** — 예전엔 없었다
     // ```
     //
-    // 상한은 처리량이 준다: `k = ⌊벌트 처리량 ÷ 머신 하나의 몴⌋`.
-    // 넘기면 그 벌트가 굶는다. 그래서 `g = min(k, N)` 이 **공식 하나**이고,
-    // 예전의 이분법(탭/다이렉트)이 그 **두 끕**이 된다.
+    // 상한은 처리량이 준다: `k = ⌊벨트 처리량 ÷ 머신 하나의 몫⌋`.
+    // 넘기면 그 벨트가 굶는다. 그래서 `g = min(k, N)` 이 **공식 하나**이고,
+    // 예전의 이분법(탭/다이렉트)이 그 **두 끝**이 된다.
     //
     // **쪼개는 일 자체는 여전히 [createLinks] 가 한다** — 여기서 정하는 것은
-    // *한꺼번에 몇 명씩 부을까* 뿐이고, 부은 묶음 안에서는 벌트·좌석 상한까지 채운다.
+    // *한꺼번에 몇 명씩 부을까* 뿐이고, 부은 묶음 안에서는 벨트·좌석 상한까지 채운다.
     const g = opts?.bundle ?? bundleCap(n, per, opts?.belts?.[0]?.throughput);
     const batches: number[][] = [];
     for (let i = 0; i < n; i += Math.max(1, g))
@@ -775,7 +775,7 @@ export function externalLineGroups(
 
     // ── 못 부었다 — **가짜 줄을 만들지 않는다**(2026-08-24) ─────────────────────
     //
-    // 예전엔 여기서 팔 1개짜리 줄을 조립해 내보냈다([makeLink], 삭제됨). *"모른다"* 를
+    // 예전엔 여기서 팔 1개짜리 줄을 조립해 내보냈다(옛 `makeLink` — 삭제됨). *"모른다"* 를
     // 표시하려던 것인데 실제로는 **아는 척하는 줄**이었다 — 포트가 나고 벨트가 깔리고
     // 계수기에 잡히는데 실을 양이 없다. 배치는 "성공"이라 보고하고 게임에 넣어야 안다.
     //

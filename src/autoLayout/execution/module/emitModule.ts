@@ -38,7 +38,7 @@ import {
   makeUndergroundPipeCell,
 } from "../../util/cellBuilder";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
-import { fluidLineOf } from "../../module/fluidPorts";
+import { fluidLineOf } from "../../module/arith";
 import type { PipeFlowPipe } from "../../util/pipeFlow";
 import { inserterForReach } from "../../buildSpec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다

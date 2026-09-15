@@ -8,10 +8,9 @@
  * > **내력.** 2026-09-14 까지 조율자(`clusterModule`) 안에 있었다(계획 구조-2축 · 2 Step 4c).
  */
 
-import { trunkEndKey } from "./arith";
+import { fluidLineOf, fluidLinesOnSide, trunkEndKey } from "./arith";
 import type { PlannedLine, PortSide } from "./types/line";
 import type { ModuleInput, TrunkContext } from "./types/module";
-import { fluidLineOf, fluidLinesOnSide } from "./fluidPorts";
 import { machineExtent } from "./shape";
 import type { Container, PortFace } from "../containerModel";
 

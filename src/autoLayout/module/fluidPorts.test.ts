@@ -9,11 +9,10 @@
 import { describe, it, expect } from "vitest";
 import {
   chooseFluidTrunkPlan,
-  fluidJumpBlocker,
   fluidPortSlots,
-  clusterBeltDepthCap,
   type FluidLineSpec,
 } from "./fluidPorts";
+import { clusterBeltDepthCap, fluidJumpBlocker } from "./arith";
 import type { Entity } from "../../UI/store/gameDataStore";
 
 /**

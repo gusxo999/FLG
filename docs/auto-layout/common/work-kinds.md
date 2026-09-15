@@ -45,7 +45,9 @@ tags: [auto-layout]
 | **정책** | 순서 · 선호 · 동률 · 실패 처방 | **대안 중에서 고른다** | 배정 순서(스도쿠 정렬) · 선호 면 · 넘김 순서 · 출구 배정 |
 
 **셈과 정책의 경계**가 가장 자주 흐려진다. 판정은 *"대안이 있었나"* 다 — `armsFor` 는 답이 하나라
-셈이고, `edgeLinkGroups` 는 배선 형태 셋 중에서 고르므로 정책이 섞여 있다.
+셈이고, `link/policy.productsOf` 는 다산출 레시피에서 부모가 먹는 것으로 고르므로 정책이다. (이 자리의 옛 예 —
+*"`edgeLinkGroups` 는 배선 형태 셋 중에서 고르므로 정책이 섞여 있다"* — 는 2026-08-22 재설계로 낡았다. 그 머리말이
+*"형태를 고르는 `if` 가 없다"* 고 적는다. 같은 오판이 `module/link` 를 *"셈 · 정책"* 으로 세게 했다 — 종류 하나다.)
 
 ## 3. 결정하지 않는 일 넷
 
@@ -168,7 +170,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > ```
 > 200줄 넘는 함수 = 1   planChannelGeometry 230 → 20 이 빠졌다 — 탐색이 아니었다(탐색은 안의 search 16줄). 남은 하나가 searchWithJumps(탐색)
 > 100줄 넘는 함수 = 7   routeDeliveryRoutes 159 → 18 · buildPlannedChain 106 → 97(연속성 검사 두 벌 → 한 벌) · enumerateOptions 130 → 58(자격 → perimeter/shape)이 더 빠졌다
-> 500줄 이상 = 7 파일  perimeterExitPlanner 592 → 384(타입 → perimeter/types) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy) ·
+> 500줄 이상 = 7 파일  perimeterExitPlanner 592 → 310(타입 → perimeter/types · 자격 → perimeter/shape) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy) ·
 >                      deliveryRoute 717 → 59(link/ 넷으로)가 빠지고 module/shape 506 · link/policy 504 가 섰다 — 둘 다 종류 하나, 규칙 3 의 과녁
 > ```
 

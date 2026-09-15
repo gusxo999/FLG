@@ -16,7 +16,7 @@ import type { ModuleInput } from "../../module/types/module";
 import type { DepthShortage, LinkFaceContext, LinkFacePlan, LinkFaceStage } from "../../module/types/seat";
 import {
   clusterBeltDepthCap, fluidJumpBlocker, fluidJumpBudgetOf, fluidLineOf, fluidLinesOnSide,
-} from "../../module/fluidPorts";
+} from "../../module/arith";
 
 /**
  * 링크 벨트의 기본 깊이 — 좌석(d1) 바로 바깥. v1 은 그룹마다 이 한 줄뿐이다

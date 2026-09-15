@@ -157,7 +157,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 깊이 상한 = 지하파이프 사거리 − 2(n−1)          n = 그 면의 유체 줄 수
 ```
 
-→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/fluidPorts.ts). 상한이 얕으면 그 면은
+→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/arith.ts). 상한이 얕으면 그 면은
 **깊은 줄을 안 준다**(예: 상한 2 → 긴팔 깊이 d3 는 안 열리고 d2 만). 그건 거절이 아니라
 사다리를 한 칸 내려가는 것이고, **거절은 상한이 1 미만일 때뿐**이다 — 아이템을 하나도 안
 놓아도 못 넘는 경우다.
@@ -197,7 +197,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 - 그 면의 유체 줄들이 **바깥으로 못 넘는 경우**. 유체가 한 줄이면 못 넘어도 옛 스파인으로
   물러나면 되지만, **두 줄이면 물러설 곳이 없다** — 스파인은 좌석 줄(d1)을 기둥 전체로 먹어
   둘째 줄의 유체 상자 칸을 막는다. 판정은
-  [`fluidJumpBlocker`](../../../src/autoLayout/module/fluidPorts.ts) 하나가 갖고, 사유는 셋이다:
+  [`fluidJumpBlocker`](../../../src/autoLayout/module/arith.ts) 하나가 갖고, 사유는 셋이다:
   `no-underground`(지하파이프를 안 골랐다) · `underground-too-short`(사거리가 모자란다 →
   `fluid-underground-too-short`) · `seats-exhausted`(유체 행을 빼면 벨트가 안 들어간다 →
   `fluid-face-seats-exhausted`).

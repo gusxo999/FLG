@@ -13,7 +13,7 @@
 types/line.ts     무엇을 나르나      IoLine · PlannedLine · SupplyCapacity · Link
 types/seat.ts     어디에 앉나        LinkFacePlan · LinkSeats · DepthShortage · LinkFaceStage
 types/module.ts   무엇을 받고 내나   ModuleInput · GeneratedModule · ModulePort · TrunkContext · BeltTerminus
-arith.ts          셈                 trunkEndKey · flowEnd
+arith.ts          셈                 trunkEndKey · flowEnd · 유체 점프 예산 · 막힘 · 벨트 깊이 상한 · 유체 줄 조회
 ```
 
 **함수의 서명에만 쓰이는 타입은 옮기지 않는다**(`ModulePortPlan`·`EdgeSeatResult`·`LadderRung` 은
@@ -22,7 +22,8 @@ arith.ts          셈                 trunkEndKey · flowEnd
 (2026-09-13 전까지 `emitModule → clusterModule` 이 `trunkEndKey` 하나 때문에 런타임 간선이었다).
 
 **남은 상향 간선은 알고 둔 것이다:** `types/seat.ts → planner/module/faceTable`(타입 — 좌석표는
-장부째 옮긴다) · `clusterModule → planner/module/planModulePorts`(계획을 부른다) · `clusterModule → execution/module`
+장부째 옮긴다) · `types/module.ts → fluidPorts`(타입 `FluidTrunkInput` — `ModuleInput.fluidTrunk` 의 필드 타입. factorio 가
+같은 파일의 `FluidLinePlan` · `FluidLineSpec` 을 import 해 그 파일째로는 못 옮긴다 — 상향은 아니지만 `types/` 가 타입 파일 밖을 보는 유일한 자리) · `clusterModule → planner/module/planModulePorts`(계획을 부른다) · `clusterModule → execution/module`
 (방출을 부른다 — 둘 다 조율자가 이 폴더에 있어서다) · `clusterModule` · `moduleTransform → planner/perimeter/wayOuts`
 (모듈이 자기 몸통에 대해 답하는 함수가 반출 쪽에 있다 — work-kinds §1).
 조율자를 `planner/module/` 로 옮기지 않은 이유(2026-09-14): 옮겨서 얻는 것이 경로 문자열뿐이고, 폴더 이관이
