@@ -78,7 +78,7 @@ occupancy 를 본다 — 즉 **모두가 이 검사를 통과한 상태로 합�
 | 의도된 합류 | 어디 | 왜 |
 |---|---|---|
 | **출구 합류(레인 공유)** | `emitOutputLinks` 의 `sharedExit` | 갈린 두 줄을 기둥 밖 한 행에서 **사이드로드로 합친다** — 물리 벨트를 하나 아낀다 |
-| **belt→belt 납품** | `deliveryRoute.finishChain` | 납품 벨트가 모듈 트렁크로 **곧장 흘러들어야** 한다(경계 인서터를 떼고 그 자리를 벨트로 메운다) |
+| **belt→belt 납품** | `link/shape.chainWithSeats` | 납품 벨트가 모듈 트렁크로 **곧장 흘러들어야** 한다(경계 인서터를 떼고 그 자리를 벨트로 메운다) |
 | **끝 칸이 같은 품목 벨트를 볼 때** | `resolveBeltTermini` | 오염이 아니다 — 규칙이 명시적으로 허용한다 |
 
 그래서 전역 가드는 *"합류하면 안 된다"* 가 아니라 **"이 합류가 계획에 있는 합류냐"** 를
@@ -103,7 +103,7 @@ occupancy 를 본다 — 즉 **모두가 이 검사를 통과한 상태로 합�
 ### 4.2 계획 체인은 **가드를 하나도 안 거친다**
 
 납품이 계획대로 깔릴 때(`plannedChains`) 지나는 검사는
-[`plannedChainClear`](../../../src/autoLayout/planner/deliveryRoute.ts) 하나이고, 그것이 보는 것은
+[`plannedChainClear`](../../../src/autoLayout/planner/link/ledger.ts) 하나이고, 그것이 보는 것은
 **칸 집합 넷 + 유체 지도**뿐이다:
 
 ```

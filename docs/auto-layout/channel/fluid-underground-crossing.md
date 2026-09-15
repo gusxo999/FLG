@@ -59,7 +59,7 @@ const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
 만들지 않는다.
 
 `routeDeliveryRoutes` 의 corridor 목록은 **빈 배열에서 시작해 납품 경로 경로 것만 쌓인다**
-([deliveryRoute.ts:208](../../../src/autoLayout/planner/deliveryRoute.ts#L208)).
+([link/ledger.openDeliveryLedger](../../../src/autoLayout/planner/link/ledger.ts) — 그때는 씨앗이 없었다).
 모듈 셀은 `base`(점유)에는 들어가지만 corridor 로는 안 들어간다.
 
 **즉 지금도 납품 경로의 파이프 점프가 모듈 내부 지하파이프의 짝을 끊을 수 있다.** 이 결함은 이

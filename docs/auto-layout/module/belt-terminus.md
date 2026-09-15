@@ -153,7 +153,7 @@ tags: [auto-layout, placement, module]
 | 호출 시점 | [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) | `finishBeltTermini` |
 | 티어 목록 | [buildSpec.ts](../../../src/autoLayout/buildSpec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
 | 사거리 장부 | [moduleWizard.ts](../../../src/autoLayout/planner/moduleWizard.ts) | `terminusCorridors` |
-| 장부 소비 | [deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts) | `seedCorridors` · `ledger` |
+| 장부 소비 | [link/ledger.ts](../../../src/autoLayout/planner/link/ledger.ts) | `seedCorridors` · `ledger`(openDeliveryLedger) |
 | 화면 경고 | [moduleWizard.ts](../../../src/autoLayout/planner/moduleWizard.ts) | `belt-terminus-merge`(1c) |
 | 경고 운반 | [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts](../../../src/autoLayout/module/moduleTransform.ts) | `GeneratedModule.beltMerges` |
 | 계측 | [runStats.ts](../../../src/debug/runStats.ts) | `BeltTerminusCounters` · `recordBeltTerminus` |

@@ -68,7 +68,7 @@ if (!chosen) return reject({ kind: 'no-rotation', ... });  // ← 트리 자체�
 ### 1.2 그런데 라우터가 그 계획을 버린다
 
 `routeDeliveryRoutes` 의 루프 첫 줄이 유체를 먼저 걷어낸다
-([deliveryRoute.ts:253](../../../src/autoLayout/planner/deliveryRoute.ts#L253)):
+([deliveryRoute.routeDeliveryRoutes](../../../src/autoLayout/planner/deliveryRoute.ts) — 그때의 루프):
 
 ```ts
 if (delivery.from.chest.kind === "infinity-pipe") {
@@ -83,7 +83,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 ### 1.3 그 dijkstra 는 남의 예약도 안 본다
 
 `routeOneFluidDelivery` 의 금지 집합은 `base + deliveryBelts + fluidBlocked` 뿐이다
-([deliveryRoute.ts:411-415](../../../src/autoLayout/planner/deliveryRoute.ts#L411-L415)).
+(옛 `deliveryRoute.routeOneFluidDelivery` — 지금은 없다).
 아이템 쪽이 쓰는 `reservedExport`(반출 트랙)·`reservedDelivery`(다른 납품 경로의 계획 칸)이 빠져 있다.
 
 ### 1.4 결론 — 손해가 두 번 난다
@@ -93,7 +93,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 | 장부 | 유체 납품 경로 몫으로 트랙을 **잡는다** |
 | 라우터 | 그 트랙을 **안 쓴다**(탐색으로 딴 길) |
 | 그 탐색 | 아이템의 예약 칸을 **밟을 수 있다** |
-| 밟힌 아이템 납품 경로 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([deliveryRoute.ts:286](../../../src/autoLayout/planner/deliveryRoute.ts#L286) 주석의 그 연쇄) |
+| 밟힌 아이템 납품 경로 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([link/policy.chooseRoute](../../../src/autoLayout/planner/link/policy.ts) 주석의 그 연쇄) |
 
 채널은 유체 몫만큼 넓어졌는데 그 자리는 비어 있고, 유체는 아이템 자리를 밟는다.
 **"계획할 수 없어서" 가 아니라 "계획해 놓고 안 써서" 생긴 손해다.**
@@ -130,7 +130,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 조사에서 가장 반가운 사실:
 
 **`buildPlannedChain` 은 이미 품목-무관하다**
-([deliveryRoute.ts:514](../../../src/autoLayout/planner/deliveryRoute.ts#L514)).
+([link/shape.buildPlannedChain](../../../src/autoLayout/planner/link/shape.ts)).
 포트 끝 컨테이너 좌표 두 개와 기하 지시(straight/staircase/columnSwitch/undergroundCrossing)를 받아
 칸 순서열로 펴는 순수 함수다. 벨트라서 되는 게 하나도 없다.
 
@@ -145,7 +145,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 
 그래서 새로 만들 것은 **`finishFluidChain`(계획 체인 → 파이프 방출)** 하나다.
 좌석 이음이 없어 `finishChain` 보다 짧다 — 파이프 포트는 인서터가 없고, 좌석 자리의 파이프는
-떼지 않고 그대로 이음에 쓴다([deliveryRoute.ts:263](../../../src/autoLayout/planner/deliveryRoute.ts#L263)).
+떼지 않고 그대로 이음에 쓴다([link/shape.stripKeys](../../../src/autoLayout/planner/link/shape.ts)).
 
 ---
 

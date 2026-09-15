@@ -42,7 +42,7 @@ tags: [auto-layout, placement, routing]
 | P6  | **경로 탐색 cost** (Dijkstra)   | 지상 edge=1, 지하 점프=2 → 지하 우선(O2)                      | **C** | [placement-search §4.1](placement-search.md)                                                                                                    |
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channel/policy.surfaceItemsOf](../../../src/autoLayout/planner/channel/policy.ts), [.fluid-delivery-reservation §4.3](../channel/fluid-delivery-reservation.md) |
-| P11 | **납품 경로 방출 순서**                | 유체 납품 경로 먼저, 그다음 아이템 납품 경로                                | **C** | [deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts), [.fluid-delivery-reservation §8.2](../channel/fluid-delivery-reservation.md) |
+| P11 | **납품 경로 방출 순서**                | 유체 납품 경로 먼저, 그다음 아이템 납품 경로                                | **C** | [link/policy.fluidFirst](../../../src/autoLayout/planner/link/policy.ts), [.fluid-delivery-reservation §8.2](../channel/fluid-delivery-reservation.md) |
 | P12 | **반출 출구 확정 순서**              | `options.length` 오름차순 → 동률은 `id` (**자유도 적은 상자 먼저**)      | **C** | [perimeterExitPlanner.ts](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`, [.perimeter-export §3②](../perimeter/perimeter-export.md) |
 
 ### P12 — 순회 순서가 **누가 skip 되나**를 정한다 (2026-09-10)

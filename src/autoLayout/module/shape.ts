@@ -11,13 +11,19 @@
  * outputRouteOf            싣는 쪽 길 — 칸 순서와 방향 · 트렁크 끝
  * inputRouteOf             집는 쪽 길 — 칸 순서와 방향 · 흐름의 끝 칸 · 포트가 붙는 칸
  * pipeFrameOf              유체 틀 — 방출 깊이 · 나가는 끝 · 엇갈림 · 기둥 범위 · 포트 두 칸
+ * portGeometry             포트의 경계 기하 — chest · seat · trunkStart (방출기 규약의 역)
+ * seatIsBeltFeeder         그 좌석이 벨트↔상자 피더인가 — 포트가 깐 셀에서 유도
  * ```
  *
  * ## `linkShape` 와 가르는 선 — 좌표계를 아나
  *
  * [linkShape] 는 순번 축이라 계획(청구 · 검사)과 방출이 **같은 함수**를 부른다. 여기는 **머신 원점을 안다** —
- * 그래서 방출만 부른다. W/E 면의 길은 `linkShape` 의 답을 면 좌표로 얹을 뿐이고, gap(N/S) 면의 길은 계획이
+ * 그래서 모듈 안에서는 방출만 부른다. W/E 면의 길은 `linkShape` 의 답을 면 좌표로 얹을 뿐이고, gap(N/S) 면의 길은 계획이
  * 청구하지 않는 모양이라 여기서 짓는다(그 포트 칸이 어느 장부에도 없다 — work-kinds §7 D8).
+ *
+ * **예외는 포트의 경계 기하 둘**(`portGeometry` · `seatIsBeltFeeder`)이다 — 놓인 포트를 받아 모듈 **밖**의 납품
+ * (`planner/link`)과 반출(`execution/modulePerimeterPass`)이 부른다. 그래도 답하는 것은 모듈이 자기 포트에 대해서다
+ * (방출기 규약의 역 — 부르는 곳이 관심사 둘이라 한쪽에 둘 수 없다).
  *
  * ## 이 파일이 안 하는 것
  *
@@ -26,16 +32,18 @@
  *
  * > **내력.** 2026-09-14 까지 틀과 길은 방출기(`emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`) 안에, 몸통과
  * > 좌석 좌표는 조율자(`clusterModule`) 안에 있었고, 기둥 틀 식이 세 벌이었다(계획 구조-2축 · 2 Step 4).
+ * > 포트의 경계 기하 둘은 `planner/deliveryRoute.ts` 에서 왔다(2026-09-15 Step 5c).
  */
 
 import { flowEnd, trunkEndKey } from "./arith";
 import { layoutCluster } from "./clusterLayout";
 import { linkShape, type ShapeCell } from "./linkShape";
 import type { PlannedLine } from "./types/line";
-import type { ModuleInput, TrunkContext } from "./types/module";
+import type { ModuleInput, ModulePort, TrunkContext } from "./types/module";
 import type { LinkFacePlan, LinkSeats } from "./types/seat";
 import type { Container, PortFace } from "../containerModel";
 import { enumeratePerimeterCells, faceCell, faceVector } from "../util/helper";
+import { EntityType } from "../../types/layout";
 
 type Cell = { x: number; y: number };
 
@@ -447,4 +455,52 @@ export function placeLinkSeats(
     }
     return { ...plan, slots };
   });
+}
+
+/**
+ * **포트의 경계 기하** — 계약 추가 없이 anchor + face 에서 유도한다.
+ *
+ * 방출기 공통 규약상 한 포트는 `chest -- seat(인서터) -- trunkStart(belt)` 가 일직선(2칸)이고
+ * `face` 는 바깥 방향(클러스터→ring)이다. 따라서:
+ *   - chest    = `anchor`
+ *   - seat     = `anchor − faceVec(face)`   (인서터 — belt→belt 피더일 때만 제거 대상)
+ *   - trunkStart = `anchor − 2·faceVec(face)` (기존 trunk belt — 유지)
+ */
+export function portGeometry(port: ModulePort): {
+  chest: { x: number; y: number };
+  seat: { x: number; y: number };
+  trunkStart: { x: number; y: number };
+} {
+  const fv = faceVector(port.face);
+  const chest = { x: port.anchor.x, y: port.anchor.y };
+  const seat = { x: chest.x - fv.x, y: chest.y - fv.y };
+  const trunkStart = { x: chest.x - 2 * fv.x, y: chest.y - 2 * fv.y };
+  return { chest, seat, trunkStart };
+}
+
+/**
+ * 이 포트의 seat(인서터)이 **벨트↔상자 피더**인가 — 즉 납품 경로가 상자를 벨트로 바꾸면
+ * **쓸모가 없어지는가**.
+ *
+ * 포트에는 모양이 둘 있고, 좌석의 운명이 갈린다:
+ *
+ *  - **1:1 다이렉트 인서팅** — `[상자][인서터][머신]`. 그 인서터가 머신에 재료를 넣는
+ *    **유일한 물건**이라 떼면 머신이 굶는다. 상자 자리에 belt 를 깔아도 픽업 셀은 그대로라
+ *    인서터는 **남겨야** 한다. 모듈 안에 벨트가 없으므로 `port.cells` 가 비어 있다.
+ *  - **링크/트렁크 벨트** — `[상자][인서터][벨트]`([emitOutputLinks]·[emitInputLinks]
+ *    공통 규약). 상자가 납품 경로 belt 로 바뀌면 이 인서터는 **belt→belt**
+ *    가 되어, 하는 일은 없이 처리량만 인서터 속도로 깎는다. 떼고 그 자리도 belt 로 메워
+ *    납품 경로 벨트가 트렁크로 **곧장 흐르게** 해야 한다.
+ *
+ * 판정은 기하에서 **유도**한다 — 포트가 깐 벨트 셀에 `trunkStart`(= anchor − 2·faceVec)
+ * 가 있으면 좌석 건너편이 벨트다. 새 플래그를 심으면 방출기와 여기가 따로 놀 수 있다.
+ */
+export function seatIsBeltFeeder(port: ModulePort): boolean {
+  const { trunkStart } = portGeometry(port);
+  return port.cells.some(
+    (c) =>
+      c.x === trunkStart.x &&
+      c.y === trunkStart.y &&
+      (c.cell.entityType === EntityType.Belt || c.cell.entityType === EntityType.UndergroundBelt),
+  );
 }

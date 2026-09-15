@@ -37,7 +37,7 @@ tags: [auto-layout, placement, routing]
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/deliveryRoute` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
+| `planner/link/emit` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
 | `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 ## 축 2 — 관심사: 무엇에 대한 일인가
@@ -116,7 +116,10 @@ autoLayout/
 │   │   ├ types.ts                 타입 — 납품의 설정과 결과 (DeliveryConfig · DeliveryResult · DeliveryRoute)
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   ├ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
-│   │   ├ policy.ts                정책 — 간선마다 산출물 · 끝 · 줄 · 레인 짝 · 다시 붓기 (edgeLinksOf)
+│   │   ├ policy.ts                정책 — 간선마다 산출물 · 끝 · 줄 · 레인 짝 · 다시 붓기 (edgeLinksOf) · 납품 사다리(fluidFirst · chooseRoute · routeOneDelivery)
+│   │   ├ ledger.ts                장부 — 전 모듈 점유 · 계획 체인의 예약 · 깐 칸과 corridor · 뗄 것 · 계수 (plannedChainClear · recordRoute)
+│   │   ├ shape.ts                 도형 — 탐색 경계 · 뗄 칸 · 좌석 이음 · 계획 체인 · 연속성 (buildPlannedChain)
+│   │   ├ emit.ts                  찍기 — 납품 체인 → 벨트 · 파이프 셀 (finishChain · finishFluidChain)
 │   │   └ arith.ts                 셈 — 생성된 두 모듈의 포트 짝짓기 (pairDeliveries)
 │   ├ tree/                      모듈 트리 전체 — 조율자(modulePacking)가 받고 내는 것
 │   │   ├ types.ts                 타입 — NodeSpec · PackConfig · PackResult 와 그 필드들
@@ -142,7 +145,7 @@ autoLayout/
 │   ├ channelGeometryPlanner.ts    장부 — 그 통로 안에서 누가 어느 세로줄(배정 · 지하 청구 · 폭 예약) + 사다리 순서만 쥐는 뼈대
 │   ├ perimeterExitPlanner.ts      반출 출구 배정
 │   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
-│   ├ deliveryRoute.ts                 자식 출력 → 부모 입력 잇기
+│   ├ deliveryRoute.ts             조율 — 자식 출력 → 부모 입력 잇기. 납품 사다리를 한 납품씩 부르고 신원을 찍는 뼈대
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
 ├ execution/                   실행 — 계획대로 셀을 놓는다
 │   ├ module/emitModule.ts         링크 줄(싣는 쪽 · 집는 쪽) · 유체 기둥의 셀을 놓는다 — 틀과 길은 module/shape 에서 받는다
@@ -160,7 +163,7 @@ autoLayout/
 │   ├ policy.ts                    정책 — 트렁크 틀(유체 기둥이 점프하나 · ClusterPipe 깊이)
 │   ├ link.ts          벨트 한 줄 = 팔 묶음 (조립·판독)
 │   ├ linkShape.ts                 도형 — 배정 → 먹는 칸 · 셀 (청구와 방출의 단일 출처 · 순번 축)
-│   ├ shape.ts                     도형 — 머신 좌표 위: 몸통 · 좌석 좌표 · 기둥 틀 · 링크 틀 · 길 · 포트 끝점 · 유체 틀
+│   ├ shape.ts                     도형 — 머신 좌표 위: 몸통 · 좌석 좌표 · 기둥 틀 · 링크 틀 · 길 · 포트 끝점 · 유체 틀 · 포트의 경계 기하(납품 · 반출이 부른다)
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                유체 면 선택
 │   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
@@ -232,7 +235,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts' -g '!**/manualEdit/**'
 | `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
 | `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
 | `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
-| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/deliveryRoute` 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
+| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/link/policy`(납품의 탐색 칸) 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
 | 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
 **아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과

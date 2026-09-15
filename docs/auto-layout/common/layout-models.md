@@ -228,8 +228,8 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 ① clusterModule.occupancy        모듈 하나 안.  머신 + 자기 셀
 ② modulePacking.reservedExport   C 가 ring 까지 갈 직선 (셀 단위 예약)
 ③ channelGeometryPlanner.occ     세로 채널 안의 추상 셀 (열, 행)
-④ deliveryRoute.buildOccupancy   **전 모듈**의 셀 (A 가 다 놓인 뒤)
-⑤ deliveryRoute.deliveryBelts    이미 깐 B
+④ link/ledger.buildOccupancy     **전 모듈**의 셀 (A 가 다 놓인 뒤)
+⑤ link/ledger.deliveryBelts      이미 깐 B
 ⑥ modulePerimeterPass.occ        ④ + B 전부
 ```
 
@@ -328,7 +328,7 @@ B 는 협상 상대를 만난 적이 없다.
 | 1 | 머신 footprint ↔ 전부 | **머신** | `buildOccupancy` · `occ` | ○ |
 | 2 | A ↔ A (같은 모듈) | **배정이 판정한다** | `FaceTable`(계획) → `clusterModule.occupancy`(확인) | △ **기둥 밖은 예외**(아래) |
 | 3 | A ↔ A (다른 모듈) | 누적합이 **벌려 놓는다** | `tree/shape.stackColumns`(누적합 · 하한 복원), **모듈 bbox 단위** | ○ 행 채널 높이가 완충 |
-| 4 | A ↔ B | **A** | `deliveryRoute.base` | ○ |
+| 4 | A ↔ B | **A** | `link/ledger.buildOccupancy` | ○ |
 | 5 | A ↔ C | **A** | `perimeterPass.occ` | ○ |
 | 6 | B ↔ B (아이템) | 먼저 깐 쪽 + 예약 상호검사 | `deliveryBelts` · `reservedDelivery` | ○ |
 | 7 | **B유체 ↔ B유체(다른 유체)** | 먼저 깐 쪽 — **겹침만** | `blocked ⊇ deliveryBelts` | **✗ 인접 미검사** |
@@ -407,7 +407,7 @@ C 는 자기 예약이 아직 유효한지 다시 안 본다. `reservation not e
 | `> 1`, 안 막는 대안 있음 | **양보가 있었으면 풀렸다** — 협상의 부재 |
 
 **계측의 전제:** 지금 사유는 `반출 예약 (8,15)` 로 **칸만** 말하고 주인을 안 말한다
-(`deliveryRoute.plannedChainClear`). 주인을 모르면 위 표를 물을 수 없다 —
+(`link/ledger.plannedChainClear`). 주인을 모르면 위 표를 물을 수 없다 —
 `reservedExportCells` 를 `Set<셀>` → `Map<셀, 배정id>` 로 바꾸는 것이 계측기다.
 → `tempPlanDocs/채널-양보-명세/judgements.md` J-양보
 

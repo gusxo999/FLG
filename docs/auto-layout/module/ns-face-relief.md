@@ -82,7 +82,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   입/출구로 materialize 되고 corridor 가 납품 경로 간 누적·Area 에 기록된다. 정책: `'length'`
   비용(지상 우선, 점프=충돌 회피 전용) + 양 끝 셀 점프 방향 강제(`requiredStartJump`=
   트렁크 유입 +fv / `requiredEndJump`=유출 −fv — 누수·half-lane 방지). 탐색 자체는
-  entrance/exit-straight 를 원래 보장. [deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts).
+  entrance/exit-straight 를 원래 보장. [link/policy.routeOneDelivery](../../../src/autoLayout/planner/link/policy.ts).
   **브라우저 실측(2026-07-08, advanced-circuit):** min(3대) — kr-glass N perimeter self 직진
   유지, skip 1(copper-cable channel), 회귀 없음. 처리량 20/초(64대) — 후보 성공(penalty=82,
   실패 0), 상자 7 중 5 재배치 / skip 2 는 전부 `N/S-side channel divert unsupported`

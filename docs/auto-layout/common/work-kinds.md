@@ -167,8 +167,9 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 >
 > ```
 > 200줄 넘는 함수 = 1   planChannelGeometry 230 → 20 이 빠졌다 — 탐색이 아니었다(탐색은 안의 search 16줄). 남은 하나가 searchWithJumps(탐색)
-> 100줄 넘는 함수 = 10
-> 500줄 이상 = 6 파일  perimeterExitPlanner 592 → 384(타입 → perimeter/types) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy)
+> 100줄 넘는 함수 = 8   routeDeliveryRoutes 159 → 18 · buildPlannedChain 106 → 97(연속성 검사 두 벌 → 한 벌)이 더 빠졌다
+> 500줄 이상 = 7 파일  perimeterExitPlanner 592 → 384(타입 → perimeter/types) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy) ·
+>                      deliveryRoute 717 → 59(link/ 넷으로)가 빠지고 module/shape 506 · link/policy 504 가 섰다 — 둘 다 종류 하나, 규칙 3 의 과녁
 > ```
 
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —
@@ -196,7 +197,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 고른다.** 셋이 한 함수에 붙어야만 성립하므로 위 여덟로 안 나뉜다.
 
 종류로 세우지 않는 이유는 이 저장소가 탐색을 **줄여 가는 중**이기 때문이다 — 예약 철학이
-*"자리를 먼저 잡고 뒤 단계는 탐색 없이 놓기만"* 이고, 런타임 소비처가 `deliveryRoute` 하나다.
+*"자리를 먼저 잡고 뒤 단계는 탐색 없이 놓기만"* 이고, 런타임 소비처가 납품 사다리의 탐색 칸(`link/policy.routeOneDelivery`) 하나다.
 그래서 *"세 종류가 아직 안 갈라진 자리"* 로 표시해 둔다.
 
 **탐색은 한 곳 더 있다** — 채널 기하 장부의 배정 단계(`channelGeometryPlanner.assignSurface`) 안 백트래킹 클로저

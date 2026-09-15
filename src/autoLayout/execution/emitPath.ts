@@ -5,9 +5,8 @@
  * 여기 있는 함수는 경로를 *찾지* 않는다 — 이미 찾은 경로를 *놓는다*.
  *
  * 소비자:
- *  - `planner/deliveryRoute` — 납품(납품 경로) 벨트·파이프 방출
- *  - `containerRouting` 의 파사드(`routeItem`·`routeFluid`) — 자기 결과를 셀로
- *  - `areaUnification`·`planner/moduleWizard` — `commitRouting`
+ *  - `planner/link/emit` — 납품(납품 경로) 벨트·파이프 방출
+ *  - `manualEdit/`(비활성 격리) — 파사드 `facadeRouting` 이 `emitItemPath`·`emitFluidPath` 를, 드래그 `dragArea` 가 `commitRouting` 을
  */
 
 import { EntityType, createEmptyCell } from '../../types/layout';
@@ -53,7 +52,7 @@ export function commitRouting(routing: Routing, area: Area): void {
  * *벨트 흐름 방향* (= jump 진행 방향). input/output 모두 동일 direction.
  * 일반 벨트는 *다음 셀로의 진행 방향*. 마지막 셀이 일반 벨트면 consumer 쪽으로.
  *
- * export — deliveryRoute(모듈 간 belt-to-belt 납품 경로)이 같은 규칙으로 재사용한다(단일 출처).
+ * export — `planner/link/emit`(모듈 간 belt-to-belt 납품 경로)이 같은 규칙으로 재사용한다(단일 출처).
  */
 export function emitItemPath(
   result: DijkstraResult,

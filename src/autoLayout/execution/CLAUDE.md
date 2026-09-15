@@ -12,7 +12,7 @@
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/deliveryRoute` | 벨트를 놓는다 | 방출을 `emitPath` 에 **위임** → 계획 |
+| `planner/link/emit` | 벨트를 놓는다 | 방출을 `emitPath` 에 **위임** → 계획 |
 | `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 **경계선의 적용 대상은 *파이프라인 단계*다.** 아래 셋은 대상이 아니다 —
@@ -57,11 +57,13 @@
 
 ```
 execution/ → planner/ · module/ · util/     (계획을 입력으로 받는다 — 정상)
-planner/moduleWizard → execution/           (오케스트레이터 예외)
+planner/ → execution/  값 간선 넷             오케스트레이터 하나 — moduleWizard → modulePerimeterPass
+                                            찍기 셋 — link/emit → emitPath · run/emit → machinePlacer · run/ledger → emitPath.corridorBetween
 ```
 
-역방향(계획이 실행을 참조)은 **오케스트레이터뿐**이다. 그 외에 계획 계층이 여기를
-import 하려 한다면 계층이 뒤집힌 것이다.
+역방향 값 간선은 **넷이다**(2026-09-15 실측). 이 문서는 한동안 *"오케스트레이터뿐"* 이라 적었는데 사실이 아니었다 —
+뒤 셋은 **찍기가 `planner/` 폴더에 있는** 자리다(셀을 짓는 쪽이 계획 파일을 갈라 나온 조각이라). 계획 3(폴더 이관)이
+관심사 폴더로 옮기면 계층 축과 함께 사라진다. 그 밖에 계획 계층이 여기를 import 하려 한다면 계층이 뒤집힌 것이다.
 
 `module/clusterModule → execution/module/emitModule` 은 **한 방향**이다 — `emitModule` 은
 `clusterModule` 을 import 하지 않는다. 둘이 함께 읽는 타입은 `module/types/`, 함께 부르는

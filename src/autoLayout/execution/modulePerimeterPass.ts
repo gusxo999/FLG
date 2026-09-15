@@ -27,8 +27,8 @@
  * 트랙이 (예상외로) 막혔거나 배정이 미지원 케이스(N/S 변이 형제에 막혀 채널로 우회하는
  * 드문 경우)면 **그 상자만 건너뛴다** — 로컬 ring 에 원래 트렁크째 남아 물류는 정상(외곽
  * 대신 내부에 남을 뿐). 트리 전체를 폴백시키지 않아 모듈 경로가 유지된다(회귀 0). 절대
- * 가짜 물류(끊긴 belt·겹친 상자)를 만들지 않는다. 더 복잡한 결정적 경로가 실패했을 때의
- * 최후·직관 fallback 은 옛 경로의 `routeWithFallback` 로 남겨둔다(디버깅 용이).
+ * 가짜 물류(끊긴 belt·겹친 상자)를 만들지 않는다. 옛 경로의 최후 fallback(`routeWithFallback`)은
+ * 이제 없다 — 실패한 상자는 위 skip 으로 남는다.
  *
  * 순수 — Area·store 의존 0. pack 의 module 그래프를 제자리(in-place) 변형한다(갓 생성된
  * 데이터라 공유/영속 객체 아님). 단위 테스트로 검증.
@@ -38,9 +38,9 @@ import type { ModulePort } from "../module/types/module";
 import type { Container, PlacedCell, PortPair } from "../containerModel";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
-import { moduleExtent } from "../planner/modulePacking";
+import { moduleExtent } from "../module/moduleTransform";
 import type { PackResult } from "../planner/tree/types";
-import { seatIsBeltFeeder } from "../planner/deliveryRoute";
+import { seatIsBeltFeeder } from "../module/shape";
 import type { ExitAssignment } from "../planner/perimeter/types";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
