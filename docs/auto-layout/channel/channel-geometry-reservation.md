@@ -269,8 +269,8 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 
 | 문서 용어 | 현 코드 | 개명 목표 |
 |---|---|---|
-| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan` | `deliveryRoute` |
-| 반출 경로 | lane (`perimeterExitPlanner.ts`) / 신규 `ExportInput`·`ExportPlan` | `exportRoute` |
+| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan`(`planner/channel/types.ts`) | `deliveryRoute` |
+| 반출 경로 | lane (`perimeterExitPlanner.ts`) / 신규 `ExportInput`·`ExportPlan`(`planner/channel/types.ts`) | `exportRoute` |
 | 절단선 | (개념 — sameSideOfCut 내부) | `cut` / `cutLine` |
 | 같은 쪽 판정 | `sameSideOfCut` ✓ | `sameSideOfCut` |
 | 열 갈아타기 | `columnSwitch` ✓ (`tryColumnSwitch`) | `columnSwitch` |

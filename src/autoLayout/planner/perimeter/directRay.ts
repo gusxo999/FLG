@@ -68,7 +68,7 @@
  * **순수·결정적.** `PlacedCell` 을 안 만들고 전역 외곽(반출)을 아니 `planner/perimeter/`.
  */
 
-import type { ExitEdge } from "../perimeterExitPlanner";
+import type { ExitEdge } from "./types";
 
 /**
  * 직진 하나가 긋는 **반직선**. 끝점을 몰라도 표현된다(도면 끝까지 간다).

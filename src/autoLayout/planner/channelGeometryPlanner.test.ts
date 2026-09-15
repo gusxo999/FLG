@@ -3,12 +3,8 @@
  * 케이스 번호는 docs/auto-layout-wizard.channel-geometry-reservation.md 를 따른다.
  */
 import { describe, it, expect } from "vitest";
-import {
-  planChannelGeometry,
-  sameSideOfCut,
-  type DeliveryInput,
-  type ExportInput,
-} from "./channelGeometryPlanner";
+import { planChannelGeometry, sameSideOfCut } from "./channelGeometryPlanner";
+import type { DeliveryInput, ExportInput } from "./channel/types";
 import { packModuleTree, deliveryKey } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";

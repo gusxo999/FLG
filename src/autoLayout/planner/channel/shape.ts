@@ -10,8 +10,8 @@
 
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import { moduleExtent, type Orientation } from "../../module/moduleTransform";
-import type { ChannelGeometryPlan } from "../channelGeometryPlanner";
-import type { PerimeterExitPlan } from "../perimeterExitPlanner";
+import type { ChannelGeometryPlan } from "./types";
+import type { PerimeterExitPlan } from "../perimeter/types";
 import { segment, PERIMETER_MARGIN } from "../../util/helper";
 import { AUTO_LAYOUT_COORD_DUMP } from "../../debugFlags";
 import type {

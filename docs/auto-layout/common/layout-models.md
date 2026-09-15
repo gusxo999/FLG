@@ -288,7 +288,7 @@ B 는 협상 상대를 만난 적이 없다.
 
 ### 진짜 축은 순서가 아니라 **양보**다
 
-`perimeterExitPlanner.ExitAssignment.options: ExitOption[]` — **자유도가 이미 자료형으로 있다.**
+`perimeter/types.ExitAssignment.options: ExitOption[]` — **자유도가 이미 자료형으로 있다.**
 그 주석이 의도까지 적어 뒀다:
 
 > 출구 선택은 자유도다. 더 까다로운 제약을 가진 장부가 **양보를 요구**할 수 있으므로,

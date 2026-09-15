@@ -303,7 +303,7 @@ tags: [auto-layout, placement, routing]
 |---|---|---|
 | ① 계약 | `module/clusterModule.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
 | ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
-| ② 배정 | `planner/perimeterExitPlanner.ts` | `planPerimeterExits` · `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
+| ② 배정 | `planner/perimeterExitPlanner.ts` · `planner/perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
 | ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
 | ② 폭 반영 | `planner/modulePacking.ts` · `planner/channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
 | ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |

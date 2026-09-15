@@ -31,7 +31,7 @@
  */
 import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/link';
 import type { LinkDepthNeed } from '../autoLayout/planner/module/depthBudget';
-import type { ExitBlocked } from '../autoLayout/planner/perimeterExitPlanner';
+import type { ExitBlocked } from '../autoLayout/planner/perimeter/types';
 export type { BeltFormCounters };
 
 /** 납품 경로 — [deliveryRoute.routeDeliveryRoutes] 의 카운터 그대로. */
@@ -49,7 +49,7 @@ export interface DeliveryCounters {
 }
 
 /**
- * **반출 배정** — 나갈 길을 못 준 자리([perimeterExitPlanner.PerimeterExitPlan]).
+ * **반출 배정** — 나갈 길을 못 준 자리([perimeter/types.PerimeterExitPlan]).
  *
  * 왜 방출 카운터(`PerimeterCounters`)와 갈라 두나: 방출의 `skipped` 는 **결과**라
  * 사유가 뭉쳐 있다(`no exit assignment` 가 후보 0·짝지어짐·고아 포트를 합쳐 찍는다).

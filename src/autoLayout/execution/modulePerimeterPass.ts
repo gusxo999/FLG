@@ -41,7 +41,7 @@ import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from 
 import { moduleExtent } from "../planner/modulePacking";
 import type { PackResult } from "../planner/tree/types";
 import { seatIsBeltFeeder } from "../planner/deliveryRoute";
-import type { ExitAssignment } from "../planner/perimeterExitPlanner";
+import type { ExitAssignment } from "../planner/perimeter/types";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";

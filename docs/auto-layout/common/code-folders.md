@@ -113,6 +113,7 @@ autoLayout/
 │   │   ├ faceTable.ts             장부의 모양 — 표 한 장 (행 번호 · 주인)
 │   │   └ arith.ts                 셈 — 깊이 목록 · gap 폭 · 빠져나가는 옆면 · 옆면 최대 깊이
 │   ├ link/                      모듈과 모듈을 잇는 일
+│   │   ├ types.ts                 타입 — 납품의 설정과 결과 (DeliveryConfig · DeliveryResult · DeliveryRoute)
 │   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
 │   │   ├ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
 │   │   ├ policy.ts                정책 — 간선마다 산출물 · 끝 · 줄 · 레인 짝 · 다시 붓기 (edgeLinksOf)
@@ -122,9 +123,11 @@ autoLayout/
 │   │   ├ arith.ts                 셈 — 부모·자식 · 깊이마다 순서(DFS 한 번) · 모듈 하나의 계획 입력
 │   │   └ shape.ts                 도형 — 세로 자리(topY) · 가로 자리(colX) · 절대 배치 · 납품 조립
 │   ├ channel/                   통로 — 여러 연결이 나눠 쓰는 자원
+│   │   ├ types.ts                 타입 — 채널 기하 장부의 입력과 결과 (DeliveryInput · ExportInput · GeometryContext · ChannelGeometryPlan)
 │   │   ├ ledger.ts                장부 — 행 채널 신원·트랙·높이 (rowChannelsOf) · 세로 채널 트랙 (planChannels)
 │   │   └ shape.ts                 도형 — 행 채널 칸 범위 · 납품 끝의 절대 행 · materializeChannelGeometry
 │   ├ perimeter/                 전역 외곽
+│   │   ├ types.ts                 타입 — 반출 출구 배정의 입력과 결과 (ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan)
 │   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
 │   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
 │   ├ run/                       한 번의 실행 전체 — 종류마다 한 파일

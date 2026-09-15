@@ -11,13 +11,9 @@
 import type { ModulePort } from "../../module/types/module";
 import { planRowChannel, type RowCrossing } from "../rowChannelPlanner";
 import { channelWidthFromTracks, type Interval } from "../channelPlanner";
-import {
-  planChannelGeometry,
-  type ChannelGeometryPlan,
-  type DeliveryInput,
-  type ExportInput,
-} from "../channelGeometryPlanner";
-import type { PerimeterExitPlan } from "../perimeterExitPlanner";
+import { planChannelGeometry } from "../channelGeometryPlanner";
+import type { ChannelGeometryPlan, DeliveryInput, ExportInput } from "./types";
+import type { PerimeterExitPlan } from "../perimeter/types";
 import { rowChannelKey } from "../layoutRegions";
 import type { PackConfig, RowChannel } from "../tree/types";
 import type { DeliverySeed, RowChannelNeed } from "../link/arith";

@@ -26,7 +26,8 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, deliveryKey } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
-import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
+import { routeDeliveryRoutes } from "./deliveryRoute";
+import type { DeliveryConfig } from "./link/types";
 import type { IoLine } from "../module/types/line";
 import { scaledPack, scaledSpecs } from "../module/testScale";
 

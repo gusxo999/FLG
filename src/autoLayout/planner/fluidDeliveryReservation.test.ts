@@ -1,12 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree, deliveryKey } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
-import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
-import {
-  planChannelGeometry,
-  type DeliveryInput,
-  type ExportInput,
-} from "./channelGeometryPlanner";
+import { routeDeliveryRoutes } from "./deliveryRoute";
+import type { DeliveryConfig } from "./link/types";
+import { planChannelGeometry } from "./channelGeometryPlanner";
+import type { DeliveryInput, ExportInput } from "./channel/types";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 

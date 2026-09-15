@@ -51,14 +51,14 @@ tags: [auto-layout]
 
 | 종류 | 무엇인가 | 판정 | 예 |
 |---|---|---|---|
-| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 → `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.1 | `containerModel`(524줄 전부 타입) · `module/types/`(`IoLine`·`Link`·`LinkFacePlan`·`ModuleInput` …) · `LayoutIssue` |
+| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 → `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.1 | `containerModel`(524줄 전부 타입) · `module/types/`(`IoLine`·`Link`·`LinkFacePlan`·`ModuleInput` …) · `planner/{tree,channel,perimeter,link}/types` · `LayoutIssue` |
 | **어댑터** | 게임데이터를 우리 타입으로 번역. **prototype 을 보는 유일한 층** | 지우면 게임데이터 접근이 하나 사라진다 — prototype 필드를 직접 읽는 줄이 있다 | `buildSpec.makeBuildSpec` · `fluidPorts.resolveFluidConnection` · `wizardUtils` |
 | **찍기** | 도형 → 셀. 결정은 0, 대신 방향 인코딩 같은 **규약**을 안다 | 입력 도형이 같으면 출력 셀도 같다 — 고를 대안이 없다 | `cellBuilder` · `emitPath` · `machinePlacer` |
 | **조율** | 순서대로 부르고 결과를 엮는다. 고르지 않고 좌표도 안 낸다 | 본문에 계산·비교·상태가 없다 — 호출과 결과 조립뿐이다 | `packModuleTree` 뼈대 · `generateModule` 본문 · `runModulePipeline` 뼈대 |
 
 > **이 종류는 2026-09-13 까지 「낱말」이라 불렸다 — 그 이름을 버렸다.**
 > 한 단어가 뜻 셋을 지고 있었다: ①`type` 선언(여기 이 종류) ②용어 위생(*"「양보」라고 쓰지
-> 않는다"* — `perimeterExitPlanner.ts:126`) ③범주 라벨(`tap`/`direct`). **한 이름에 두 뜻이
+> 않는다"* — `perimeter/types.ExitOption`) ③범주 라벨(`tap`/`direct`). **한 이름에 두 뜻이
 > 붙으면 안 된다는 것은 이 저장소가 다른 자리에서 스스로 집행하는 규칙인데**(`track` 을
 > 걷어낸 이유가 정확히 그것이다) 정작 종류의 이름이 그걸 어겼다.
 >
@@ -94,7 +94,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 - [planModulePorts.ts](../../../src/autoLayout/planner/module/planModulePorts.ts) `recordPortPlanStats` *"계측 — 관측만 한다(계산도 분기도 반환값도 안 바꾼다)"*
 - [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) `recordEndsAudit`(`endsDisagree`·`endsCoarse`) *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
-- `perimeterExitPlanner` 의 `ExitDemotion`·`ExitBlocked` *"읽기 전용 계측이라 동작을 안 바꾼다"*
+- `perimeter/types` 의 `ExitDemotion`·`ExitBlocked` *"읽기 전용 계측이라 동작을 안 바꾼다"*
 - `emitModule` 의 `netTrips` 안전망
 
 > 2026-09-14 까지 이 목록에 `clusterModule` 의 *"아직 아무 배치도 바꾸지 않는다"*(트렁크 틀의 링크 깊이 항)가 있었다.

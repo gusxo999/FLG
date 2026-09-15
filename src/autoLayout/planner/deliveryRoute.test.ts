@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree } from "./modulePacking";
 import type { NodeSpec, PackConfig, PackResult } from "./tree/types";
-import { routeDeliveryRoutes, type DeliveryConfig } from "./deliveryRoute";
+import { routeDeliveryRoutes } from "./deliveryRoute";
+import type { DeliveryConfig } from "./link/types";
 import { faceVector } from "../util/helper";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";

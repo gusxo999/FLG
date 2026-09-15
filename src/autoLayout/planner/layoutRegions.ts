@@ -56,7 +56,7 @@
  * **순수·결정적.** 좌표도 `PlacedCell` 도 안 만든다 → `planner/`(코드 폴더 축 1).
  */
 
-import type { ExitEdge } from "./perimeterExitPlanner";
+import type { ExitEdge, LayoutGrid } from "./perimeter/types";
 
 /**
  * 광선이 지나는 영역 하나. **넷 중 하나**이고, 넷이 곧 자격 규칙의 네 경우다.
@@ -79,18 +79,6 @@ export type RayRegion =
   | { kind: "columnChannel"; depth: number }
   /** ④ 바깥 마진 — 여백. 아무도 안 사고 살 필요도 없다. 여기 닿으면 seat 에 앉는다. */
   | { kind: "outerMargin"; edge: ExitEdge };
-
-/**
- * 광선이 훑을 격자. **좌표가 하나도 없다** — 순번과 깊이뿐이다.
- *
- * 둘 다 좌표 이전 단계(`tree/arith.treeIndexOf` · `channel/ledger.rowChannelsOf`)에서 나오고 `topY` 보다 **앞**이다.
- */
-export interface LayoutGrid {
-  /** 깊이 → 그 열의 모듈 id 들, **위에서 아래** 순서(트리 DFS 순서 = 세로 순서). */
-  orderByDepth: ReadonlyMap<number, readonly string[]>;
-  /** 가장 깊은 깊이. 가로 목록의 길이를 정한다. */
-  maxDepth: number;
-}
 
 /**
  * `from` 모듈에서 `dir` 로 나갈 때 **지나는 영역들**을, 자기 몸통부터 순서대로.

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { regionsAlong, reachesOutside, type LayoutGrid } from "./layoutRegions";
+import { regionsAlong, reachesOutside } from "./layoutRegions";
+import type { LayoutGrid } from "./perimeter/types";
 
 /** 깊이 0 에 모듈 하나, 깊이 1 에 셋, 깊이 2 에 하나. maxDepth 2. */
 const grid: LayoutGrid = {

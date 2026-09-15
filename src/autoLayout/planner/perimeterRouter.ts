@@ -22,7 +22,7 @@
 
 import type { PortFace } from "../containerModel";
 import { cellKey, faceVector, segment } from "../util/helper";
-import type { ExitEdge, ExitMode } from "./perimeterExitPlanner";
+import type { ExitEdge, ExitMode } from "./perimeter/types";
 
 export interface Rect {
   minX: number;

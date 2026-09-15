@@ -14,7 +14,7 @@ import type { SpecInserter } from "../../buildSpec";
 import type { IoLine } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/moduleTransform";
-import type { PerimeterExitPlan } from "../perimeterExitPlanner";
+import type { PerimeterExitPlan } from "../perimeter/types";
 
 /**
  * **행 채널 하나** — 같은 깊이에서 세로로 이웃한 두 모듈 사이의 빈 가로 통로.
@@ -117,8 +117,8 @@ export interface PackConfig {
   reservePerimeterExits?: boolean;
   /**
    * 지하벨트 점프 거리 상한 — 장부가 **납품끼리의 교차**를 지하로 계획할 때 쓴다
-   * ([channelGeometryPlanner.GeometryContext.maxJump]). 0/미지정 = 지하 불가 → 교차하는
-   * 납품은 fallback(dijkstra). [deliveryRoute.DeliveryConfig] 에 넘기는 값과 **같아야** 한다 —
+   * ([channel/types.GeometryContext.maxJump]). 0/미지정 = 지하 불가 → 교차하는
+   * 납품은 fallback(dijkstra). [link/types.DeliveryConfig] 에 넘기는 값과 **같아야** 한다 —
    * 어긋나면 장부가 계획한 점프를 방출기가 거부하고 조용히 dijkstra 로 샌다.
    */
   beltMaxUndergroundDistance?: number;
@@ -168,7 +168,7 @@ export interface DeliverySpec {
  * `row` 가 곧 세로 채널에 넘기는 **진입 행**이다. (E) 결정에 따라 그 구간은 **자기 깊이 열 안에서만**
  * 달린다 — 세로 채널을 안 가로지르므로 교차로가 없다.
  *
- * 세로 채널 쪽 거울은 `perimeterExitPlanner.ExitOption.entry`(채널 진입점)다.
+ * 세로 채널 쪽 거울은 `perimeter/types.ExitOption.entry`(채널 진입점)다.
  */
 export interface RowChannelEntry {
   /** 배정된 트랙의 **절대 행**. 세로 채널의 `startY`/`endY` 가 이 값이 된다. */

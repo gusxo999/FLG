@@ -13,7 +13,7 @@
  */
 
 import type { NodeSpec, PackResult } from "../tree/types";
-import type { DeliveryResult } from "../deliveryRoute";
+import type { DeliveryResult } from "../link/types";
 import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
 import type { BuildSpec } from "../../buildSpec";
 import type { RecipeTreeNode } from "../../types";
