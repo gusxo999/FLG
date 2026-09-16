@@ -157,6 +157,7 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 | [icon-mapping](deferred/icon-mapping.md) | 엔티티 아이콘 매핑 — 런타임 API 의도적 차단 (보류) |
 | [surface-restriction-limits](deferred/surface-restriction-limits.md) | 표면 제약 자동 판단 포기 → 사용자가 직접 머신 선택 |
 | [parametrized-blueprints-deferred](deferred/parametrized-blueprints-deferred.md) | parameter-0~9 placeholder 처리 보류 |
+| [manual-edit](deferred/manual-edit.md) | **수동 편집(드래그·라우팅 편집)** — 코드는 삭제(2026-09-16). 의도 8가지 · 재구현 시 반드시 넣을 가드 · 먼저 풀 질문 셋 |
 
 ---
 

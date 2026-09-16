@@ -6,7 +6,6 @@
  *
  * 소비자:
  *  - `planner/link/emit` — 납품(납품 경로) 벨트·파이프 방출
- *  - `manualEdit/`(비활성 격리) — 파사드 `facadeRouting` 이 `emitItemPath`·`emitFluidPath` 를, 드래그 `dragArea` 가 `commitRouting` 을
  */
 
 import { EntityType, createEmptyCell } from '../../types/layout';

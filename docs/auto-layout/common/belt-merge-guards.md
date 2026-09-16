@@ -45,20 +45,18 @@ occupancy 를 본다 — 즉 **모두가 이 검사를 통과한 상태로 합�
 지하벨트를 놓는 자리는 셋이다 — `emitItemPath` 의 점프 입·출구 둘과
 [beltTerminus.ts](../../../src/autoLayout/execution/module/beltTerminus.ts) 의 **종착 입구** 하나.
 
-> `manualEdit/facadeRouting.ts` 도 벨트를 깔지만 **호출자가 0**이라 세지 않는다
-> (타입검사·테스트에서도 빠져 있다).
-
 ### 2.2 합류를 판정하는 코드 — 셋
 
 | # | 판정 | 무엇을 보나 | 실제 호출자 |
 |---|---|---|---|
 | G1 | `beltItems` + `resolveBeltTermini` | **품목까지** 본다(같은 품목은 허용) | E2 의 끝 칸 — 모듈 안쪽 **한 곳** |
-| G2 | `collectBeltFlow` + `beltFlowConflictCell` | 품목을 **안 본다**(모든 벨트를 남으로 본다) | **0** — `manualEdit/` 뿐 |
+| G2 | `collectBeltFlow` + `beltFlowConflictCell` | 품목을 **안 본다**(모든 벨트를 남으로 본다) | **0** — 부르는 곳이 없다 |
 | G3 | `UndergroundCorridor` + `isJumpAllowed` | 같은 티어 지하 페어링 | `dijkstraWithJumps` **한 곳** |
 
-`dijkstraWithJumps` 호출은 5곳인데 **3곳이 `manualEdit/`**(죽은 코드)이고, 살아 있는 둘은
-`deliveryRoute` 의 아이템·유체 탐색이다. 그 둘은 **`beltFlow` 를 안 넘긴다** — 그래서 G2 는
-저장소 전체에서 **한 번도 실행되지 않는다.**
+`dijkstraWithJumps` 를 부르는 곳은 **한 곳**이다 — 납품 사다리의 탐색 칸(`link/policy.routeOneDelivery`).
+거기는 **`beltFlow` 를 안 넘긴다** — 그래서 G2 는 저장소 전체에서 **한 번도 실행되지 않는다.**
+(2026-09-16 이전에는 죽은 `manualEdit/` 의 세 곳이 더 있었다 — 그 폴더는 삭제됐고 의도 기록만
+[manual-edit](../../deferred/manual-edit.md) 로 남았다.)
 
 ### 2.3 유체는 왜 다 걸려 있나 — 비대칭의 이유
 

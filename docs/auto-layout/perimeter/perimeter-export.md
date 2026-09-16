@@ -272,7 +272,8 @@ tags: [auto-layout, placement, routing]
 
 > **주의:** `areaUnification.ts` 는 지금도 살아 있다. 남은 것은 반출과 무관한
 > `unifyLeaf` — **레이아웃 좌표 → 그리드 좌표 경계를 넘는 문**이다(→ [[용어사전#좌표 프레임 (coordinate frame)]]).
-> 드래그 재라우팅(`dragExternalContainer`/`dragAssemblerGroup`)은 `manualEdit/` 으로 갔다.
+> 드래그 재라우팅(`dragExternalContainer`/`dragAssemblerGroup`)은 `manualEdit/` 으로 갔다가 2026-09-16 에 삭제됐다(→ [[manual-edit]]).
+> 그래서 `areaUnification.ts` 에 남은 것은 좌표 프레임의 문 둘뿐이다.
 >
 > **반출은 이 문에 영향을 준다.** 반출된 상자는 `internal.placed` 바깥
 > [PERIMETER_MARGIN]=2 칸에 앉으므로, `unifyLeaf` 는 정규화 기준을 `internal` 이 아니라

@@ -54,7 +54,7 @@ tags: [auto-layout, placement, routing]
 | item port | footprint 둘레 셀 (`2(w + h)` 개) | ✓ | ✓ | — |
 | fluid port (특정 fluid) | `fluid_boxes[].connections[].positions` (회전 0 기준 고정) | ✓ (해당 머신만) | — | ✓ |
 
-`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현: [portInference.ts](../../../src/autoLayout/manualEdit/portInference.ts) `enumerateContainerPorts`.
+`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현이었던 `portInference.enumerateContainerPorts` 는 2026-09-16 에 삭제됐다(→ [manual-edit](../../deferred/manual-edit.md)). 유체 포트 칸을 prototype 에서 읽는 일은 [module/fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) 가 이어받았다.
 
 ---
 

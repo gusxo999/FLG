@@ -195,12 +195,12 @@ tags: [auto-layout, placement, routing]
 [.fluid-delivery-reservation §8.3](../channel/fluid-delivery-reservation.md)).
 
 > **2026-08-02 — 현재 노출 0, 그러나 결함은 보존돼 있다.** 드래그 재라우팅 코드는
-> `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이다. 그래서 지금 이 결함을 밟을
+> `autoLayout/manualEdit/` 으로 격리됐고 **호출자가 0**이었다. 그래서 지금 이 결함을 밟을
 > 방법이 없다. (2026-08-05: 그 격리를 지탱하던 `RoutingEditSession` 자료구조 자체가
-> 삭제됐다 — 재구현은 세션을 새로 설계한다.)
+> 삭제됐다 — 재구현은 세션을 새로 설계한다. **2026-09-16: 코드도 삭제했다** — 의도 기록만 남았다.)
 >
 > **항목을 지우지 않는 이유:** 수동 편집은 재구현 예정이고, 재구현이 이 가드를 안 넣으면
-> 결함이 그대로 돌아온다. `manualEdit/README.md` 가 *"재구현 시 반드시 넣어야 하는 것"*
+> 결함이 그대로 돌아온다. [manual-edit](../../deferred/manual-edit.md) 가 *"재구현 시 반드시 넣어야 하는 것"*
 > 목록에 이 항목을 링크로 걸어 두었다 — **결함이 요구사항으로 바뀐 셈**이다.
 
 
@@ -274,7 +274,7 @@ tags: [auto-layout, placement, routing]
 
 - **납품·반출 벨트는 모듈 벨트와 흐름-인접해도 아무도 안 막는다.** 가드는 있는데
   (`collectBeltFlow`) 모듈 파이프라인이 **한 번도 안 부른다** — 옛 파사드(`routeItem`)와
-  격리된 `manualEdit/` 만 쓰던 함수라 그대로 남았다.
+  격리된 `manualEdit/` 만 쓰던 함수라 그대로 남았다(그 폴더는 2026-09-16 삭제).
 - **모듈이 세운 [[belt-terminus|지하 종착]]의 사거리는 dijkstra 폴백만 본다.** 채널 장부가
   **계획한** 점프(`plannedChains`)는 corridor 검사를 아예 안 거치므로, 그 경로가 종착의
   사거리 안에 같은 티어 출구를 세우면 터널이 뚫린다.

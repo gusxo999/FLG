@@ -30,7 +30,6 @@ tags: [auto-layout, placement, routing]
 
 - **생성자 라이브러리**(`util/cellBuilder`) — 만들 뿐 배치하지 않는다
 - **파사드 API** — 여러 단계를 엮는 것이 책임이다
-- **수동 편집 경로**(`manualEdit/`) — 배치 파이프라인 소속이 아니다
 
 이름에 속으면 안 되는 예:
 
@@ -168,7 +167,6 @@ autoLayout/
 │   ├ clusterLayout.ts             N대를 어떤 모양으로
 │   ├ fluidPorts.ts                어댑터 · 정책 — 유체 상자 칸 · 연결 해석 · 회전과 면 고르기(chooseFluidTrunkPlan). factorio 가 이 주소를 부른다
 │   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
-├ manualEdit/                  ★ 비활성 격리 — 호출자 0, 타입검사·테스트 제외
 ├ util/                        양쪽 계층이 쓰는 도구. 아무것도 고르지 않는다
 │   ├ cellBuilder.ts               정해진 칸을 물건으로 채운다
 │   ├ helper.ts                    격자 위에서 셈만 한다
@@ -180,13 +178,9 @@ autoLayout/
                                moduleInspect(진단) · areaUnification(배치 결과 표시)
 ```
 
-> **`manualEdit/` 를 읽지 말 것.** 드래그·수동 편집 코드를 격리해 둔 곳이고 **호출자가 0**
-> 이다. 타입검사·테스트에서도 빠져 있다. 무엇을 하려던 기능이었는지는
-> `manualEdit/README.md` 에 있다.
-
 > **`areaUnification.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
 > **레이아웃 좌표 → 그리드 좌표 경계를 넘는 문**(`unifyLeaf`)이다. 드래그 부분은
-> `manualEdit/dragArea.ts` 로 갔다. 좌표 프레임이 셋이라는 것과 그 경계를 넘는 규칙은
+> 2026-09-16 에 삭제된 `manualEdit/dragArea.ts` 로 갔었다(→ [[manual-edit]]). 좌표 프레임이 셋이라는 것과 그 경계를 넘는 규칙은
 > [[용어사전#좌표 프레임 (coordinate frame)]] 이 단일 출처다.
 
 ## 두 축이 실제로 지켜지는가 — 기계적으로 확인할 수 있다
@@ -206,7 +200,7 @@ rg "^import" src/autoLayout/planner/link/allocateFlows.ts
 rg 'from ".*(clusterModule|planner/module)' src/autoLayout/execution/module --glob '!*.test.ts'
 
 # 게임데이터 형식은 src/types/gameData.ts — autoLayout 이 UI 스토어를 보는 곳은 입구뿐이다(2026-09-14).
-rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts' -g '!**/manualEdit/**'   # → layeredWizard 하나
+rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 하나
 ```
 
 2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:
@@ -264,7 +258,7 @@ npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0�
 npx vitest run
 ```
 
-기준선: **타입 에러 0 · 62파일 784테스트**(기존 실패 2건 — trunkPipe 유체 면). (`manualEdit/` 는 양쪽에서 제외돼 있다.)
+기준선: **타입 에러 0 · 62파일 784테스트**(기존 실패 2건 — trunkPipe 유체 면).
 
 > **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
 > 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가

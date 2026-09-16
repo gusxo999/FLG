@@ -165,7 +165,7 @@ function handlePointerMove(e: PointerEvent) {
   }
 
   // 연결선 hover — **모드 무관**. 예전엔 `routingEditMode` 안에서만 봤는데 그 모드는
-  // 세션이 없어 켜지지 않는다(manualEdit 격리). 실패 진단 선도 같은 캐시를 쓰므로
+  // 세션이 없어 켜지지 않는다(수동 편집 경로 삭제 — `docs/deferred/manual-edit.md`). 실패 진단 선도 같은 캐시를 쓰므로
   // 여기서 함께 잡힌다.
   if (!inputState.isDragging) {
     const hitRoutingId = hitTestRoutingLine(cx, cy);

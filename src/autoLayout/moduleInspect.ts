@@ -11,7 +11,7 @@
  * ## 운반체는 인자로 받는다 — store 를 안 본다 (2026-08-04)
  *
  * 예전엔 `useLayoutStore.getState().routingEditSession` 을 직접 읽었다. 그런데 그 세션을
- * **만드는 코드가 사라져**(manualEdit 격리, Phase 5) `setRoutingEditSession` 의 호출자가
+ * **만드는 코드가 사라져**(수동 편집 격리 2026-08-02 · 2026-09-16 삭제) `setRoutingEditSession` 의 호출자가
  * 0 이 됐고, 세션이 영구히 `null` 이라 이 파일의 모든 산출물이 **빈 배열**이었다. 그 결과
  * 모듈 테두리·이름표·포트 강조·연결선이 프로덕션에서 **한 번도 그려지지 않았고**,
  * 이름표 클릭이 유일한 입구인 `ModuleInfoPanel` 은 **열릴 방법이 없었다.**
@@ -36,7 +36,7 @@ import type { LayoutIssue, LayoutSnapshot } from "./layoutIssue";
  * 오버레이가 그릴 대상 — **표시에 필요한 것만**.
  *
  * 옛 `RoutingEditSession` 은 여기에 더해 드래그용(`machineChildren`·`routeOptions`·
- * mutate 되는 `liveArea`)을 날랐다. 그쪽은 manualEdit 격리 구역이라 되살리지 않는다.
+ * mutate 되는 `liveArea`)을 날랐다. 그 코드는 삭제됐고 되살리지 않는다(`docs/deferred/manual-edit.md`).
  */
 export interface ModuleSource {
   /** 머신 + 외부 상자/파이프. **이미 그리드 좌표**다(`unifyLeaf` 가 넘겨 놓는다). */
