@@ -53,7 +53,7 @@ tags: [auto-layout]
 
 | 종류 | 무엇인가 | 판정 | 예 |
 |---|---|---|---|
-| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 → `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.1 | `containerModel`(524줄 전부 타입) · `module/types/`(`IoLine`·`Link`·`LinkFacePlan`·`ModuleInput` …) · `planner/{tree,channel,perimeter,link}/types` · `LayoutIssue` |
+| **타입** | `type`·`interface` 선언. 컴파일에 지워져 런타임에 존재하지 않는다 | **실행되지 않는다** — 계산·상태·좌표·선택이 없다. 몇 종류가 읽는지는 이 판정을 안 바꾼다(한 종류만 읽어도 타입이다) — 그건 **파일로 모아 낼 가치가 있나** 라는 별개 질문이다 — 규칙 3(한 종류가 300줄을 넘으면 폴더로 승격)이 답한다 | `containerModel`(524줄 전부 타입) · `module/types/`(`IoLine`·`Link`·`LinkFacePlan`·`ModuleInput` …) · `planner/{tree,channel,perimeter,link}/types` · `LayoutIssue` |
 | **어댑터** | 게임데이터를 우리 타입으로 번역. **prototype 을 보는 유일한 층** | 지우면 게임데이터 접근이 하나 사라진다 — prototype 필드를 직접 읽는 줄이 있다 | `buildSpec.makeBuildSpec` · `fluidPorts.resolveFluidConnection` · `wizardUtils` |
 | **찍기** | 도형 → 셀. 결정은 0, 대신 방향 인코딩 같은 **규약**을 안다 | 입력 도형이 같으면 출력 셀도 같다 — 고를 대안이 없다 | `cellBuilder` · `emitPath` · `machinePlacer` |
 | **조율** | 순서대로 부르고 결과를 엮는다. 고르지 않고 좌표도 안 낸다 | 본문에 계산·비교·상태가 없다 — 호출과 결과 조립뿐이다 | `packModuleTree` 뼈대 · `generateModule` 본문 · `runModulePipeline` 뼈대 |
@@ -180,7 +180,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 많이 품은 것이 아니라 **본문이 그냥 길다.** 가르는 판정은 **①종류가 바뀌는 곳**(조각이
 다른 파일로 간다), 그러고도 한 종류가 크면 **②단계마다 아는 것이 달라지게**(같은 파일
 안의 단계로). 붙은 두 블록이 같은 것을 알면 경계가 아니고, ②가 답을 안 주면 안 가른다.
-→ `tempPlanDocs/구조-2축/2-종류로-가르기/` §3.2
+→ 목표 구조의 규칙 넷째(`tempPlanDocs/구조-2축/` §2)
 
 > **그래서 "파일이 크다"는 증상이고 원인은 "종류가 섞였다"이다.** 줄 수 상한을 규칙으로 두는
 > 대신 종류를 묻는다 — 500줄이 넘는데 종류가 하나면 그건 정상이다(오늘 실측에서
@@ -212,21 +212,27 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 | # | 어긋남 | 실물 |
 |---|---|---|
-| **D8** | **링크 신원 불일치가 난다** — `PackResult.linkMismatches` 주석은 *"정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"* 이라 적지만, 합성 트리에서 재현된다. **원인 자리: gap 포트 칸이 어느 장부에도 없다** — 방출기의 *"구성상 발생 안 함"* 안전망이 발동해 부모의 입력 줄이 사라지고, 그래서 부모 포트가 안 난다. 어느 벨트가 그 칸을 지나는지는 아직 안 팠다 | 자식 셋이 한 부모를 먹이는 트리(`gadget` ← `widget`·`gear`·`wire`)에서 `n4-wire→n0-gadget:wire#0: no matching parent input port (child emitted, parent didn't)` — 계획 구조-2축 · 2 §4.2 의 대조 픽스처가 찾았다(2026-09-14). 같은 날 Step 4 착수 전 계측: `emitInputLinks` 의 구간 안전망(`netTrips`)이 대조 기본 32 픽스처 중 5에서 99회 발동(시험 전체는 0), 발동이 **전부 gap(N/S) 그룹의 포트 칸이 남의 품목 벨트에 막힌 것**이다. `LINK_OPPOSITE_FACE` 에서는 `emitOutputLinks` 의 포트 안전망도 같은 모양으로 발동한다. W/E 포트로는 한 번 겪고 고친 모양이다(module-planning §4.5) |
+| **D8** | **링크 신원 불일치가 난다** — `PackResult.linkMismatches` 주석은 *"정상적으로 있을 수 있는 일이 아니다 … 예약 불변식이 깨진 것"* 이라 적지만, 합성 트리에서 재현된다. **원인 자리: gap 포트 칸이 어느 장부에도 없다** — 방출기의 *"구성상 발생 안 함"* 안전망이 발동해 부모의 입력 줄이 사라지고, 그래서 부모 포트가 안 난다. 어느 벨트가 그 칸을 지나는지는 아직 안 팠다 | 자식 셋이 한 부모를 먹이는 트리(`gadget` ← `widget`·`gear`·`wire`)에서 `n4-wire→n0-gadget:wire#0: no matching parent input port (child emitted, parent didn't)` — 구조-2축 계획 2 의 대조 픽스처가 찾았다(2026-09-14). 같은 날 Step 4 착수 전 계측: `emitInputLinks` 의 구간 안전망(`netTrips`)이 대조 기본 32 픽스처 중 5에서 99회 발동(시험 전체는 0), 발동이 **전부 gap(N/S) 그룹의 포트 칸이 남의 품목 벨트에 막힌 것**이다. `LINK_OPPOSITE_FACE` 에서는 `emitOutputLinks` 의 포트 안전망도 같은 모양으로 발동한다. W/E 포트로는 한 번 겪고 고친 모양이다(module-planning §4.5) |
+
+> **D8 을 고칠 사람에게 — 가장 먼저 볼 곳은 `emitInputLinks` 의 구간 안전망이다.** 대조 기본 32 픽스처에서 99회
+> 발동하고(시험 전체는 0) 발동이 전부 gap 포트 칸이다. 구조를 옮기는 일(구조-2축)은 그 수를 **바꾸지 않아야 한다** —
+> 덤프의 `netTrips` 가 그 계수기다. 옮긴 뒤 수가 달라졌으면 옮기다가 무언가를 깬 것이다.
+>
+> **방출 칸을 세는 계측기를 새로 만든다면:** *놓으려 한 칸*과 *실제로 놓은 칸*은 다르다. 입력 방출기는 재사용일 때도
+> `path` 를 만든 뒤 **버린다**(`beltCells = reuse ? reuse.beltCells : path.map(…)`). 그 버린 경로를 "쓴 칸" 으로 세면
+> 계측기 자신이 틀린다 — 2026-09-12 도형 대조에서 불일치 13칸 중 4칸이 그 착시였다.
 
 > **2026-09-14 에 D2 를 지웠다 — 결함이 아니었다.** **D2**(방출이 고른다 — *"두 면이 다 차면 그 줄을 포기하고, 좌석이
 > 막히면 폴백한다"*)는 방출기를 단계로 가른 뒤 §2 의 판정(*"대안이 있었나"*)으로 `unroutedLines.push` 여섯 자리를 다시 봤다.
 > **고르는 자리는 0 이다** — 둘은 배정이 없는 그룹을 못 앉은 줄로 **받아 적고**(계획이 좌석을 못 줬고 사유도 계획에 있다),
 > 넷은 대안 없이 줄을 내는 **안전망**이다(출력 벨트·포트 칸 · 입력 좌석 · 입력 구간 · 유체 기둥 끊김). 그중 실제로 발동하는
 > 둘(입력 구간 · 출력 포트)은 결함이 맞지만 *"고른다"* 가 아니라 **D8 의 원인 자리**다 — 거기로 옮겨 적었다.
-> → `tempPlanDocs/구조-2축/2-종류로-가르기/` §4.4 D2 판정
 
 > **2026-09-14 에 D7 이 닫혔다.** **D7**(조율자가 조율만 하지 않는다 — `runModulePipeline` 714줄이 게임데이터를
 > 읽고 · 트리를 거절하고 · 유체 관망을 쌓고 · 셀을 놓았다)은 게임데이터를 입구에서 한 번 읽어 넘기고, 함수를
 > **아는 것이 자라는 여덟 단계**로 가른 뒤 종류를 [planner/run/](../../../src/autoLayout/planner/run/) 넷(`gamedata` ·
 > `policy` · `ledger` · `emit`)으로 보내 닫혔다. 뼈대는 82줄이고 게임데이터·issue·셀을 직접 안 만진다. 전 파이프라인
 > 대조 픽스처 32개의 결과(issue 순서 · Area · Routing · 실패 그림 · 진단 로그)가 **바이트 단위로 같다.**
-> → `tempPlanDocs/구조-2축/2-종류로-가르기/` §4.2
 
 > **2026-09-13 에 D4 가 닫혔다.** **D4**(런타임 순환 — `execution/CLAUDE.md` 가 `clusterModule ⇄
 > emitModule` 역방향을 *"import type 이라 순환이 아니다"* 라 적었지만 `emitModule` 이 `trunkEndKey`
@@ -234,7 +240,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > 조율자 파일에 얹혀 있었다. 타입을 [module/types/](../../../src/autoLayout/module/types/) 로,
 > `trunkEndKey`·`flowEnd` 를 [module/arith](../../../src/autoLayout/module/arith.ts) 로 옮기자
 > `autoLayout` 의 런타임 순환이 **1 → 0**, `execution/module → planner/module` 간선이 **2 → 0** 이 됐다.
-> 좌표는 픽스처 다섯에서 **바이트 단위로 같다.** → `tempPlanDocs/구조-2축/2-종류로-가르기/` §4.1
+> 좌표는 픽스처 다섯에서 **바이트 단위로 같다.**
 
 > **2026-09-12 에 넷이 닫혔다.** **D1**(도형이 두 벌)은 [linkShape](../../../src/autoLayout/module/linkShape.ts)
 > 로 합쳤고 — 계획의 청구·검사와 방출이 같은 함수에서 답을 받는다(축은 호출자의 것) — 그때
@@ -242,7 +248,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > 도형 대조 계측이 **D5**(합류 여부를 계획과 방출이 다른
 > 근거로 판정 → 유령 예약 + 조용한 굶주림)와 **D6**(합류 리드의 기둥 밖 세 칸이 어느 장부에도
 > 없음)를 찾아냈고 같은 날 고쳤다. 판정 주체를 배정 하나로 모은 결과가 `LinkFacePlan.mergeRole`
-> · `sharesBelt` 다. → `tempPlanDocs/구조-2축/1-도형-단일출처/` §2단계
+> · `sharesBelt` 다.
 
 **방출 안전망에는 계수기가 없는 것이 셋 있다** — 입력 좌석 막힘 · 유체 기둥 끊김 · 점프 칸 막힘(`pipeJumpCells` 의
 `continue` 는 그 머신의 점프만 **말없이** 건너뛴다). `netTrips` 를 세는 것은 출력 · 입력의 검사 둘뿐이라, 나머지 셋의
