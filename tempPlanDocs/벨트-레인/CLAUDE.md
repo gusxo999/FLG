@@ -68,7 +68,7 @@
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
 - `src/autoLayout/module/policy/trunk/trunk/link.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
 - `src/autoLayout/module/emit.ts` — `emitInputLinks`(공급 줄을 까는 곳)
-- `src/autoLayout/planner/deliveryRoute.ts` — `seatIsBeltFeeder`/`stripKeys`.
+- `src/autoLayout/link/build.ts` — `seatIsBeltFeeder`/`stripKeys`.
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다
 - `src/autoLayout/shared/route.ts` — `collectBeltFlow`·`beltFlowConflictCell`.
   **오늘 「오염」이라 부르는 그 기하가 곧 레인 합류다**

@@ -29,8 +29,8 @@ import type { RecipeTreeNode } from "../../tree/types/recipe";
 import type { PipeFlow } from "../../shared/pipeFlow";
 import { packModuleTree } from "../../tree/build";
 import type { PackConfig, PackResult } from "../../tree/types/pack";
-import { routeDeliveryRoutes } from "../../planner/deliveryRoute";
-import type { DeliveryConfig, DeliveryResult } from "../../planner/link/types";
+import { routeDeliveryRoutes } from "../../link/build";
+import type { DeliveryConfig, DeliveryResult } from "../../link/types";
 import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";
 import { rePathToPerimeter } from "../../execution/modulePerimeterPass";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라

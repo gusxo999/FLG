@@ -13,7 +13,7 @@
  */
 
 import type { NodeSpec, PackResult } from "../tree/types/pack";
-import type { DeliveryResult } from "../planner/link/types";
+import type { DeliveryResult } from "../link/types";
 import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
 import type { BuildSpec } from "../shared/gamedata/spec";
 import type { RecipeTreeNode } from "../tree/types/recipe";

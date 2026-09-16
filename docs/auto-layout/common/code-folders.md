@@ -36,7 +36,7 @@ tags: [auto-layout, placement, routing]
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** → 계획 |
+| `link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** → 계획 |
 | `tree/build` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 ## 축 2 — 관심사: 무엇에 대한 일인가
@@ -194,7 +194,7 @@ rg -c "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" `
 rg "planner/link" src/autoLayout/module
 
 # link 는 순수 배정기다 — import 가 하나도 없어야 한다.
-rg "^import" src/autoLayout/planner/link/allocateFlows.ts
+rg "^import" src/autoLayout/link/arith/flows.ts
 
 # 방출기는 조율자도 계획 계층도 import 하지 않는다 — 둘 다 0 (2026-09-13 D4 해소 뒤).
 rg 'from ".*(clusterModule|planner/module)' src/autoLayout/execution/module --glob '!*.test.ts'
@@ -219,7 +219,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 `Link`·`makeLink`·`readLinkRole`·`externalLineGroups`(로컬 머신 index + 팔 수뿐
 = module)가 한 파일에 있었다. 그래서 `module/` 이 그 파일을 부르고, 그 파일이 다시 `module/`
 의 `requiredInserterCount` 를 불렀다. 갈라 놓으니 **두 간선이 동시에 사라졌다** —
-`planner/link/allocateFlows` 는 이제 아무것도 import 하지 않는 순수 산술이다.
+`link/arith/flows` 는 이제 아무것도 import 하지 않는 순수 산술이다.
 
 ## 자리를 정한 근거 — 판단이 갈렸던 것들
 
@@ -230,7 +230,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 | `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
 | `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
 | `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
-| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/link/policy`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다(런타임 간선 아님) |
+| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `link/policy/delivery`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다(런타임 간선 아님) |
 | 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
 **아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과

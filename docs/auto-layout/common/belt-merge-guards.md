@@ -101,7 +101,7 @@ occupancy 를 본다 — 즉 **모두가 이 검사를 통과한 상태로 합�
 ### 4.2 계획 체인은 **가드를 하나도 안 거친다**
 
 납품이 계획대로 깔릴 때(`plannedChains`) 지나는 검사는
-[`plannedChainClear`](../../../src/autoLayout/planner/link/ledger.ts) 하나이고, 그것이 보는 것은
+[`plannedChainClear`](../../../src/autoLayout/link/ledger.ts) 하나이고, 그것이 보는 것은
 **칸 집합 넷 + 유체 지도**뿐이다:
 
 ```

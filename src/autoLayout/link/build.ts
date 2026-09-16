@@ -30,10 +30,10 @@
 
 import { deliveryKey } from "../tree/build";
 import type { PackResult } from "../tree/types/pack";
-import type { DeliveryConfig, DeliveryResult } from "./link/types";
-import { buildOccupancy, deliveryResultOf, openDeliveryLedger, plannedChainsOf, recordRoute } from "./link/ledger";
-import { searchBoundsOf } from "./link/shape";
-import { chooseRoute, fluidFirst, undergroundGateOf } from "./link/policy";
+import type { DeliveryConfig, DeliveryResult } from "./types";
+import { buildOccupancy, deliveryResultOf, openDeliveryLedger, plannedChainsOf, recordRoute } from "./ledger";
+import { searchBoundsOf } from "./shape";
+import { chooseRoute, fluidFirst, undergroundGateOf } from "./policy/delivery";
 
 /**
  * 모든 납품 경로를 라우팅. 결정적 순서(packResult.deliveries 순서)로 누적 occupancy 를 공유해

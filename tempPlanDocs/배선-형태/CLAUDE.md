@@ -39,8 +39,8 @@ Step 5  모듈 전체 tap/direct 후퇴 제거                          ⏸ **�
 |---|---|
 | [docs/용어사전.md](../../docs/용어사전.md) §D | **확정된 개념 원문.** 흐름·벨트 줄·형태 셋 |
 | [docs/auto-layout/link/machine-link.md](../../docs/auto-layout/link/machine-link.md) §0 | 이 문서가 폐기하는 문장 넷 |
-| `planner/link/allocateFlows.ts` | Step 2 의 자리 |
-| `planner/link/edgeLinks.ts` `edgeLinkGroups` | Step 3 의 자리 — 지금은 `links.map` 한 줄 |
+| `link/arith/flows.ts` | Step 2 의 자리 |
+| `link/policy/edge.ts` `edgeLinkGroups` | Step 3 의 자리 — 지금은 `links.map` 한 줄 |
 | `module/arith/trunk/link.ts` `createLinks` | **Step 3·4 가 합쳐진 자리.** 줄을 만드는 유일한 곳 |
 | `module/arith/trunk/link.ts` `externalLineGroups` | 바깥 흐름을 만들어 `createLinks` 에 넘긴다 |
 | `module/testScale.ts` | 테스트 픽스처의 저울(벨트 티어·팔 처리량·줄 rate) 단일 출처 |

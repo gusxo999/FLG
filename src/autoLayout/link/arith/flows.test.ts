@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allocateFlows, type Flow } from "./allocateFlows";
+import { allocateFlows, type Flow } from "./flows";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // **2026-08-22 재작성.** 예전 이 파일은 사장님 예시를 `[3,3,3,2]` 같은 **팔 개수 스냅샷**으로

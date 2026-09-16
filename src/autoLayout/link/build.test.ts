@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree } from "../tree/build";
 import type { NodeSpec, PackConfig, PackResult } from "../tree/types/pack";
-import { routeDeliveryRoutes } from "./deliveryRoute";
-import type { DeliveryConfig } from "./link/types";
+import { routeDeliveryRoutes } from "./build";
+import type { DeliveryConfig } from "./types";
 import { faceVector } from "../shared/grid";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";

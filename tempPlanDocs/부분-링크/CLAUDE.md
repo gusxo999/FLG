@@ -50,7 +50,7 @@ c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자
 
 **코드**
 
-- `planner/link/edgeLinks.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle` ·
+- `link/policy/edge.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle` ·
   `batchCarries`(**토막 내기 자체** — `g` 대씩 자른다)
 - `tree/build.ts` 의 간선 루프 — **거기서만** 자식·부모의 좌석표를 둘 다 본다
 - `module/arith/trunk/depth.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다

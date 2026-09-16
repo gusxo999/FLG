@@ -6,11 +6,11 @@
  * > 였다(2026-09-15 계획 구조-2축 · 2 Step 5c).
  */
 
-import type { PlacedCell, UndergroundCorridor } from "../../shared/types";
-import type { DijkstraResult } from "../../shared/route";
-import { cellKey } from "../../shared/grid";
-import type { DeliverySpec, PackResult } from "../../tree/types/pack";
-import { deliveryKey } from "./edgeLinks";
+import type { PlacedCell, UndergroundCorridor } from "../shared/types";
+import type { DijkstraResult } from "../shared/route";
+import { cellKey } from "../shared/grid";
+import type { DeliverySpec, PackResult } from "../tree/types/pack";
+import { deliveryKey } from "./policy/edge";
 import { buildPlannedChain, stripKeys } from "./shape";
 import type { DeliveryConfig, DeliveryResult, DeliveryRoute } from "./types";
 

@@ -9,7 +9,7 @@
  * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `deliveryRoute.ts` 에서 옮겼다).
  */
 
-import type { PlacedCell, UndergroundCorridor } from "../../shared/types";
+import type { PlacedCell, UndergroundCorridor } from "../shared/types";
 
 export interface DeliveryConfig {
   beltEntityName: string;

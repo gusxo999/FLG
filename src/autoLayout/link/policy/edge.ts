@@ -22,7 +22,7 @@
 import type { Link, LinkCarry } from "../../module/types/line";
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import { createLinks } from "../../module/arith/link";
-import { allocateFlows, type Flow } from "./allocateFlows";
+import { allocateFlows, type Flow } from "../arith/flows";
 import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
 import { determineBeltCount } from "../../shared/arith/belt";
 import type { NodeSpec, PackConfig } from "../../tree/types/pack";

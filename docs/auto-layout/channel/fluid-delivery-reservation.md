@@ -34,13 +34,13 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 
 납품 경로 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
 
-- `productOf(s)` = 출력 라인 이름 ([link/policy.ts](../../../src/autoLayout/planner/link/policy.ts) `productsOf`).
+- `productOf(s)` = 출력 라인 이름 ([link/policy.ts](../../../src/autoLayout/link/policy/delivery.ts) `productsOf`).
   라인의 `kind`(belt/pipe)를 안 본다 → 유체 출력 노드도 그대로 통과.
 - `pairDeliveryPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
-  ([link/edgeLinks.ts](../../../src/autoLayout/planner/link/edgeLinks.ts) `pairDeliveryPorts`).
+  ([link/edgeLinks.ts](../../../src/autoLayout/link/policy/edge.ts) `pairDeliveryPorts`).
   유체 포트는 `linkId` 가 없어 ②번 위치-zip 으로 짝이 된다(v1 모듈당 유체 1포트 → 자명).
 - 그 짝이 그대로 납품 경로 입력에 쌓인다
-  ([link/arith.ts](../../../src/autoLayout/planner/link/arith.ts) `pairDeliveries`).
+  ([link/arith.ts](../../../src/autoLayout/link/arith/pair.ts) `pairDeliveries`).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
   ([emitModule.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 포트 `meta`).
@@ -68,7 +68,7 @@ if (!chosen) return reject({ kind: 'no-rotation', ... });  // ← 트리 자체�
 ### 1.2 그런데 라우터가 그 계획을 버린다
 
 `routeDeliveryRoutes` 의 루프 첫 줄이 유체를 먼저 걷어낸다
-([deliveryRoute.routeDeliveryRoutes](../../../src/autoLayout/planner/deliveryRoute.ts) — 그때의 루프):
+([deliveryRoute.routeDeliveryRoutes](../../../src/autoLayout/link/build.ts) — 그때의 루프):
 
 ```ts
 if (delivery.from.chest.kind === "infinity-pipe") {
@@ -93,7 +93,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 | 장부 | 유체 납품 경로 몫으로 트랙을 **잡는다** |
 | 라우터 | 그 트랙을 **안 쓴다**(탐색으로 딴 길) |
 | 그 탐색 | 아이템의 예약 칸을 **밟을 수 있다** |
-| 밟힌 아이템 납품 경로 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([link/policy.chooseRoute](../../../src/autoLayout/planner/link/policy.ts) 주석의 그 연쇄) |
+| 밟힌 아이템 납품 경로 | `plannedChainClear` 실패 → dijkstra 폴백 → **연쇄**([link/policy.chooseRoute](../../../src/autoLayout/link/policy/delivery.ts) 주석의 그 연쇄) |
 
 채널은 유체 몫만큼 넓어졌는데 그 자리는 비어 있고, 유체는 아이템 자리를 밟는다.
 **"계획할 수 없어서" 가 아니라 "계획해 놓고 안 써서" 생긴 손해다.**
@@ -130,7 +130,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 조사에서 가장 반가운 사실:
 
 **`buildPlannedChain` 은 이미 품목-무관하다**
-([link/shape.buildPlannedChain](../../../src/autoLayout/planner/link/shape.ts)).
+([link/shape.buildPlannedChain](../../../src/autoLayout/link/shape.ts)).
 포트 끝 컨테이너 좌표 두 개와 기하 지시(straight/staircase/columnSwitch/undergroundCrossing)를 받아
 칸 순서열로 펴는 순수 함수다. 벨트라서 되는 게 하나도 없다.
 
@@ -145,7 +145,7 @@ if (delivery.from.chest.kind === "infinity-pipe") {
 
 그래서 새로 만들 것은 **`finishFluidChain`(계획 체인 → 파이프 방출)** 하나다.
 좌석 이음이 없어 `finishChain` 보다 짧다 — 파이프 포트는 인서터가 없고, 좌석 자리의 파이프는
-떼지 않고 그대로 이음에 쓴다([link/shape.stripKeys](../../../src/autoLayout/planner/link/shape.ts)).
+떼지 않고 그대로 이음에 쓴다([link/shape.stripKeys](../../../src/autoLayout/link/shape.ts)).
 
 ---
 
@@ -321,7 +321,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 §4.3 은 *배정* 순서만 다뤘다. 그런데 방출 루프에도 같은 문제가 있었다:
 
 아이템 납품 경로가 막히면 "예약 무시 재시도"로 **남의 계획 칸을 밟는다**
-([deliveryRoute.ts](../../../src/autoLayout/planner/deliveryRoute.ts) 의 그 거래). 밟힌 게
+([deliveryRoute.ts](../../../src/autoLayout/link/build.ts) 의 그 거래). 밟힌 게
 유체의 자리였으면 유체는 물러설 데가 없어 트리가 통째로 죽는다.
 
 → `routeDeliveryRoutes` 가 **유체 납품 경로를 먼저 깐다**. 유체가 실제로 칸을 차지한 뒤(`deliveryBelts`)라야

@@ -33,7 +33,7 @@ import { AUTO_LAYOUT_COORD_DUMP } from "../../shared/flags";
 import type {
   DeliveryDirective, ModulePlacement, PackChannelGeometry, RowChannel, RowChannelEntry,
 } from "../../tree/types/pack";
-import type { DeliveryPairing } from "../link/arith";
+import type { DeliveryPairing } from "../../link/arith/pair";
 
 /**
  * **⑥ 행 채널 자리** — 이제야 좌표가 붙는다. `top`/`bottom` 은 행 채널의 **빈 칸 범위**다.

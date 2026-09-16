@@ -13,7 +13,7 @@ import { moduleExtent, shiftModule, type Orientation } from "../module/shape/tra
 import { ROW_CHANNEL_MIN } from "../planner/rowChannelPlanner";
 import type { DeliverySpec, ModulePlacement, NodeSpec, RowChannel } from "./types/pack";
 import type { TreeIndex } from "./arith/pack";
-import type { DeliveryPairing } from "../planner/link/arith";
+import type { DeliveryPairing } from "../link/arith/pair";
 
 type Oriented = ReadonlyMap<string, { module: GeneratedModule; orientation: Orientation }>;
 

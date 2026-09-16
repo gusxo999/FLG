@@ -16,7 +16,7 @@ import type { ChannelGeometryPlan, DeliveryInput, ExportInput } from "./types";
 import type { PerimeterExitPlan } from "../perimeter/types";
 import { rowChannelKey } from "../layoutRegions";
 import type { PackConfig, RowChannel } from "../../tree/types/pack";
-import type { DeliverySeed, RowChannelNeed } from "../link/arith";
+import type { DeliverySeed, RowChannelNeed } from "../../link/arith/pair";
 
 /**
  * **⑤ 행 채널** — 깊이마다 신원 · 트랙 · 높이, 그리고 가로 트랙이 닿는 x. **좌표 없음.**

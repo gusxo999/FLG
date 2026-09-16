@@ -320,7 +320,7 @@ spillLinkFacesToGap         ── for (i of deferred)  ← **빈손인 줄만 �
 
 ```
 A  gen ─→ moduleExtent ─→ tidy-tree topY ─→ lineEnds ─→ gen   (2026-07-11~)
-   닫힘: 끝 선호를 P0 의 **형제 순번**으로 확정 → `gen` 보다 앞이다 (`planner/link/policy.lineEndsOf`)
+   닫힘: 끝 선호를 P0 의 **형제 순번**으로 확정 → `gen` 보다 앞이다 (`link/policy/delivery.lineEndsOf`)
 
 B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ gen         (2026-08-26~)
    닫힘: 못을 만나면 **배정 안에서** 그 자리에 쪼개고 토막을 이어 앉힌다([seatLinkEdge]) —

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateModule } from "./build";
 import type { Link } from "./types/line";
 import type { GeneratedModule, ModuleInput } from "./types/module";
-import type { Flow } from "../planner/link/allocateFlows";
+import type { Flow } from "../link/arith/flows";
 import { directionToVector } from "../shared/route";
 import { EntityType } from "../../types/layout";
 

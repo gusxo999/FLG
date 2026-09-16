@@ -55,8 +55,8 @@ import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats"
 import { moduleInputOf, treeIndexOf, type TreeIndex } from "./arith/pack";
 import { absPortYOf, assembleDeliveries, placeColumns, spanYOf, stackColumns, unionExtent } from "./shape";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(간선마다 줄 · 끝 · 레인 짝 · 포트 짝짓기).
-import { edgeLinksOf, type EdgeLinks } from "../planner/link/policy";
-import { pairDeliveries } from "../planner/link/arith";
+import { edgeLinksOf, type EdgeLinks } from "../link/policy/delivery";
+import { pairDeliveries } from "../link/arith/pair";
 // channel 관심사 — 행 채널 · 세로 채널 장부와 그 절대화.
 import { planChannels, rowChannelsOf } from "../planner/channel/ledger";
 import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "../planner/channel/shape";
@@ -66,7 +66,7 @@ import { planExits, expandBbox } from "../planner/perimeter/exits";
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
 // 자연스럽다. 정의의 소유자는 각각 `link/edgeLinks` 와 `module/moduleTransform` 이다.
-export { deliveryKey, edgeFlows, edgeLinkGroups } from "../planner/link/edgeLinks";
+export { deliveryKey, edgeFlows, edgeLinkGroups } from "../link/policy/edge";
 export { moduleExtent } from "../module/shape/transform";
 
 // ─────────────────────────────────────────────────────────────────────────────

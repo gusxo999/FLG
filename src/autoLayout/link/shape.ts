@@ -13,10 +13,10 @@
  * > [buildPlannedChain] 꼬리에 글자까지 같은 식으로 두 벌이던 것을 한 벌로 줄였다.
  */
 
-import type { DijkstraResult } from "../../shared/route";
-import { portGeometry, seatIsBeltFeeder } from "../../module/shape/body";
-import { cellKey, segment } from "../../shared/grid";
-import type { DeliveryDirective, DeliverySpec, PackResult } from "../../tree/types/pack";
+import type { DijkstraResult } from "../shared/route";
+import { portGeometry, seatIsBeltFeeder } from "../module/shape/body";
+import { cellKey, segment } from "../shared/grid";
+import type { DeliveryDirective, DeliverySpec, PackResult } from "../tree/types/pack";
 
 /** 탐색 경계 — 칸 범위(양 끝 포함). */
 export type Bounds = { x0: number; y0: number; x1: number; y1: number };

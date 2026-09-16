@@ -166,7 +166,7 @@ tags: [auto-layout, placement, routing]
 - **fan-out** — 자식 머신 **하나**의 산출이 **여러 부모**로 갈라진다.
 - **fan-in** — **여러 자식**의 산출이 **한 부모**로 모인다.
 
-둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateFlows.test.ts](../../../src/autoLayout/planner/link/allocateFlows.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
+둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateFlows.test.ts](../../../src/autoLayout/link/arith/flows.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
 
 ```
 자식0 ──[3][3][3][2]──> 부모0      ← 자식0 이 부모0·부모1 둘을 먹인다 = fan-out
@@ -180,7 +180,7 @@ tags: [auto-layout, placement, routing]
 
 ### 왜 "논리는 하나" 인가
 
-fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](../../../src/autoLayout/planner/link/allocateFlows.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
+fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](../../../src/autoLayout/link/arith/flows.ts) 의 물 붓기 루프 하나가 둘을 동시에 낳는다:
 
 > 자식 손가락과 부모 손가락이 각자 위에서 아래로 훑는다. 자식이 **인서터 한도**를 다 쓰면 자식 손가락이 내려가고, 부모가 **필요량**을 다 채우면 부모 손가락이 내려간다.
 
@@ -194,7 +194,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](
 
 | 조각 | 누가 | 하는 일 |
 |---|---|---|
-| 논리 (fan-out + fan-in) | [`allocateFlows`](../../../src/autoLayout/planner/link/allocateFlows.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
+| 논리 (fan-out + fan-in) | [`allocateFlows`](../../../src/autoLayout/link/arith/flows.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
 | 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/build.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
 | 기하 — 부모 쪽 (입력) | `emitInputLinks` (같은 파일, **거울**) | 그룹의 부모 머신**들**을 관통하는 벨트 한 줄 + 머신마다 탭 |
 
@@ -546,7 +546,7 @@ if (arms.size !== 1) return undefined;   // 그룹 하나 = 머신 하나여야 
 같이 지켜야 하는 것 셋:
 
 1. **신원(`linkId`)을 안 단다.** 원료·완제품은 상대가 모듈 밖이라 짝지을 대상이 없다.
-   달면 [pairDeliveryPorts](../../../src/autoLayout/planner/link/edgeLinks.ts) 가 조회로 짝을
+   달면 [pairDeliveryPorts](../../../src/autoLayout/link/policy/edge.ts) 가 조회로 짝을
    찾다 못 찾고 **예약 불변식 위반**으로 보고한다(자식 `ext:output:X` ↔ 부모 `ext:input:X` 는
    애초에 문자열이 다르고, 모듈은 형제를 몰라 맞출 수도 없다).
 2. **면 순서 = 선호 → 반대 면 → gap.** gap 은 모듈을 세로로 벌리므로 반대 면에 빈 행이
@@ -566,6 +566,6 @@ if (arms.size !== 1) return undefined;   // 그룹 하나 = 머신 하나여야 
 
 - `routeDeliveryRoutes(...).failures` 는 **숫자**다(배열 아님).
 - `IoLine` 에 `beltEntityName` 없음 — 그건 `PlannedLine` 필드.
-- 새 emit 의 포트는 [deliveryRoute](../../../src/autoLayout/planner/deliveryRoute.ts) 계약
+- 새 emit 의 포트는 [deliveryRoute](../../../src/autoLayout/link/build.ts) 계약
   (`chest=anchor, seat=anchor−fv, trunkStart=anchor−2fv`)과 **검증 완료**(W면: x0−4/−3/−2, E면 거울).
 - 옛 탭 emit 은 죽은 코드가 아니라 **rate 없을 때의 폴백** — 지우려면 골든 정렬(1번)이 먼저.

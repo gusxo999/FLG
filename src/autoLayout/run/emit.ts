@@ -21,7 +21,7 @@ import { commitContainer } from "../shared/cells/place";
 import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
 import { deliveryKey } from "../tree/build";
 import type { PackResult } from "../tree/types/pack";
-import type { DeliveryResult } from "../planner/link/types";
+import type { DeliveryResult } from "../link/types";
 
 /** [candidateOf] 가 받는 것 — 앞 단계들이 낸 사실 전부. */
 export interface CandidateFacts {

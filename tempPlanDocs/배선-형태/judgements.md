@@ -67,6 +67,6 @@ H2  점프 모드에서 링크 좌석 행 == fluidboxOffset 이면 그 머신의
 **코드 역참조** — 트리거를 만나는 사람은 코드를 보고 있다.
 
 ```ts
-// planner/link/edgeLinks.ts · module/arith/trunk/link.ts 의 faceSeatArms 호출부
+// link/policy/edge.ts · module/arith/trunk/link.ts 의 faceSeatArms 호출부
 // fluidRows=0 은 **상속된 낙관**이다. 좁힐지는 tempPlanDocs/배선-형태/judgements.md J2
 ```

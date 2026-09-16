@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { packModuleTree } from "./build";
 import type { NodeSpec, PackConfig } from "./types/pack";
-import { routeDeliveryRoutes } from "../planner/deliveryRoute";
+import { routeDeliveryRoutes } from "../link/build";
 import type { IoLine } from "../module/types/line";
 import { readRunStats } from "../../debug/runStats";
 
