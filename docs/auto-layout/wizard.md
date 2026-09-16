@@ -136,7 +136,7 @@ tags: [auto-layout, placement, routing]
 
 - [src/autoLayout/types.ts](../../src/autoLayout/types.ts) — 위저드 입출력 타입
 - [src/autoLayout/recipeTree.ts](../../src/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
-- [src/autoLayout/inserterThroughput.ts](../../src/autoLayout/inserterThroughput.ts) — 투입기/벨트 처리량 모델 (사용자 override)
+- [src/autoLayout/shared/arith/inserter.ts](../../src/autoLayout/shared/arith/inserter.ts) — 투입기/벨트 처리량 모델 (사용자 override)
 - [src/autoLayout/layeredWizard.ts](../../src/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
 - [src/UI/components/AutoLayoutModal.tsx](../../src/UI/components/AutoLayoutModal.tsx) — 위저드 UI
 

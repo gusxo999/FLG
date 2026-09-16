@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { Entity } from '../store/gameDataStore';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import EntityDetails from './EntityDetails';
 
 interface Props {

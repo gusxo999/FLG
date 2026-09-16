@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { externalLineGroups } from "./link";
 import type { IoLine, SupplyCapacity } from "./types/line";
-import type { SpecInserter } from "../buildSpec";
+import type { SpecInserter } from "../shared/gamedata/spec";
 
 /**
  * **외부 줄도 [Link] 이다** (2026-07-23 사장님 결정).

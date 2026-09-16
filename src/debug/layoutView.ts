@@ -16,13 +16,13 @@
  * `unifyLeaf` 로 여기서 넘긴다 — 읽는 쪽은 프레임을 신경 쓰지 않는다.
  */
 
-import { unifyLeaf } from '../autoLayout/areaUnification';
+import { unifyLeaf } from '../autoLayout/shared/frames';
 import type {
   CandidateLeaf,
   Container,
   PlacedCell,
   Routing,
-} from '../autoLayout/containerModel';
+} from '../autoLayout/shared/types';
 import { collectModules, type ModuleInfo } from '../autoLayout/moduleInspect';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { EntityType } from '../types/layout';

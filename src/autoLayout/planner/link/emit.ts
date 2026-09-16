@@ -7,10 +7,10 @@
  * > **내력.** `planner/deliveryRoute.ts` 에서 왔다(2026-09-15 계획 구조-2축 · 2 Step 5c).
  */
 
-import type { ContainerPort, PortFace, PortPair } from "../../containerModel";
-import type { DijkstraResult } from "../containerRouting";
-import { emitItemPath, emitFluidPath } from "../../execution/emitPath";
-import { faceVector } from "../../util/helper";
+import type { ContainerPort, PortFace, PortPair } from "../../shared/types";
+import type { DijkstraResult } from "../../shared/route";
+import { emitItemPath, emitFluidPath } from "../../shared/cells/path";
+import { faceVector } from "../../shared/grid";
 import type { DeliverySpec } from "../tree/types";
 import { chainWithSeats, isContinuous } from "./shape";
 import type { DeliveryConfig, DeliveryRoute } from "./types";

@@ -11,7 +11,7 @@
  * > (2026-09-15 계획 구조-2축 · 2 Step 5d).
  */
 
-import type { PortFace } from "../../containerModel";
+import type { PortFace } from "../../shared/types";
 import { regionsAlong, reachesOutside, rowChannelKey } from "../layoutRegions";
 import type { ExitContext, ExitEdge, ExitOption, ExitPortInput } from "./types";
 

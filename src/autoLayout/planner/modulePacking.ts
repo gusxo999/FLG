@@ -47,8 +47,8 @@ import { cloneLinkFaceStage } from "./module/ledger";
 import { clusterBeltDepthsOf } from "./module/arith";
 import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
 import { summarizeBeltForms } from "../module/link";
-import { laneCapOfTier } from "../beltThroughput";
-import { AUTO_LAYOUT_LINK_LADDER } from "../debugFlags";
+import { laneCapOfTier } from "../shared/arith/belt";
+import { AUTO_LAYOUT_LINK_LADDER } from "../shared/flags";
 import type { Orientation } from "../module/moduleTransform";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 // 트리 관심사 — 좌표 없이 트리가 답하는 것 · 그 순서를 좌표로 옮기는 것.

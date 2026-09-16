@@ -8,19 +8,19 @@
  *  - `planner/link/emit` — 납품(납품 경로) 벨트·파이프 방출
  */
 
-import { EntityType, createEmptyCell } from '../../types/layout';
-import type { Direction, GridCell } from '../../types/layout';
+import { EntityType, createEmptyCell } from '../../../types/layout';
+import type { Direction, GridCell } from '../../../types/layout';
 import type {
   Area,
   PlacedCell,
   PortPair,
   Routing,
   UndergroundCorridor,
-} from '../containerModel';
-import { vectorToDirection, PIPE_BLOCK_GROUP } from '../util/helper';
-import { makeBeltCell, makeUndergroundBeltCell } from '../util/cellBuilder';
+} from '../types';
+import { vectorToDirection, PIPE_BLOCK_GROUP } from '../grid';
+import { makeBeltCell, makeUndergroundBeltCell } from './builder';
 // 타입 전용 — 런타임 간선이 아니므로 containerRouting 과 순환이 되지 않는다.
-import type { DijkstraResult, JumpEdge } from '../planner/containerRouting';
+import type { DijkstraResult, JumpEdge } from '../route';
 
 /**
  * 한 라우팅을 area 에 *적용* — 라우팅의 placed cells 를 area.placed 에 push.

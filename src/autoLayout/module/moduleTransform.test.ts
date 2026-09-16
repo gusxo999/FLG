@@ -3,9 +3,9 @@ import { generateModule } from "./clusterModule";
 import type { IoLine } from "./types/line";
 import type { GeneratedModule, ModuleInput } from "./types/module";
 import { transformModule, shiftModule, rotationToFace, type Orientation, type Rotation } from "./moduleTransform";
-import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
+import { collectPipeFlow, pipeFlowConflict } from "../shared/pipeFlow";
 import { EntityType } from "../../types/layout";
-import type { PlacedCell } from "../containerModel";
+import type { PlacedCell } from "../shared/types";
 import { scaled } from "./testScale";
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });

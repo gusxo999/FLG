@@ -8,8 +8,8 @@
  * > `allocateArms.test.ts` 라는 이름으로 있었다.
  */
 
-import type { SpecInserter } from "../../buildSpec";
-import { armsFor } from "../../buildSpec";
+import type { SpecInserter } from "../../shared/gamedata/spec";
+import { armsFor } from "../../shared/gamedata/spec";
 import type { IoLine, SupplyCapacity } from "../../module/types/line";
 
 /**

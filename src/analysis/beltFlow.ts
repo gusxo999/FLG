@@ -29,8 +29,8 @@ import {
 } from '../types/layout';
 import { productYield, type Entity, type Module, type Recipe } from '../UI/store/gameDataStore';
 import type { InfinitySettings } from '../types/blueprint';
-import { beltThroughput } from '../autoLayout/beltThroughput';
-import { inserterThroughput, inserterReach } from '../autoLayout/inserterThroughput';
+import { beltThroughput } from '../autoLayout/shared/arith/belt';
+import { inserterThroughput, inserterReach } from '../autoLayout/shared/arith/inserter';
 import { sumModuleEffects, applyEffectsToMachine } from '../factorio/moduleEffects';
 
 // ─────────────────────────────────────────────────────────────────────────────

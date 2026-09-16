@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { planPerimeterExits } from "./perimeterExitPlanner";
 import type { ExitContext, ExitPortInput } from "./perimeter/types";
-import type { PortFace } from "../containerModel";
+import type { PortFace } from "../shared/types";
 
 /** 기본 픽스처: 모듈 몸통이 사방으로 뚫려 있다고 본다(옛 규칙 그대로 재현되는 조건). */
 const ALL: PortFace[] = ["N", "S", "W", "E"];

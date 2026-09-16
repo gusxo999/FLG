@@ -29,7 +29,7 @@ import type {
   MachineNode,
   ProgressReporter,
   RunContainerWizard,
-} from "./containerModel";
+} from "./shared/types";
 import type { RecipeTreeNode } from "./types";
 import {
   assignMinimumCounts,
@@ -38,8 +38,8 @@ import {
 } from "./recipeTree";
 import { makeMachinePicker, makeMachineParamsLookup } from "./wizardUtils";
 import { tryRunModulePipeline } from "./planner/moduleWizard";
-import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "./layoutIssue";
-import { makeBuildSpec } from "./buildSpec";
+import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "./shared/issue";
+import { makeBuildSpec } from "./shared/gamedata/spec";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // id 카운터 — 모듈 스코프

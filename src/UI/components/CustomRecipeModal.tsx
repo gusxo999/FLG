@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import { useGameDataStore } from '../store/gameDataStore';
 import {
   findCustomRecipe,

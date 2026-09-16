@@ -50,9 +50,9 @@ import type { ModuleInput } from "../../module/types/module";
 import type { DepthShortage, LinkFaceStage, LinkFacePlan, LinkFaceContext, FaceAllocation } from "../../module/types/seat";
 import { summarizeBeltForms } from "../../module/link";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../../debug/runStats";
-import { inserterForReach } from "../../buildSpec";
-import { laneCapOfTier } from "../../beltThroughput";
-import type { PortFace } from "../../containerModel";
+import { inserterForReach } from "../../shared/gamedata/spec";
+import { laneCapOfTier } from "../../shared/arith/belt";
+import type { PortFace } from "../../shared/types";
 import {
   clusterBeltDepthsOf, depthShortagesOf, fluidFacesOf, gapExitSidesFromPlans, gapRowsFromPlans,
   linkedKeysOf, linkFaceDepths, pipeLinesOf, restLinesOf,

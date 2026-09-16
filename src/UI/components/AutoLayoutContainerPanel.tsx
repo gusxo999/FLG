@@ -29,16 +29,16 @@ import { useToastStore } from '../store/toastStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useWizardStore } from '../store/wizardStore';
 import { useAutoLayoutRunStore, signatureOf } from '../store/autoLayoutRunStore';
-import { unifyLeaf } from '../../autoLayout/areaUnification';
-import { AUTO_LAYOUT_COORD_DUMP } from '../../autoLayout/debugFlags';
+import { unifyLeaf } from '../../autoLayout/shared/frames';
+import { AUTO_LAYOUT_COORD_DUMP } from '../../autoLayout/shared/flags';
 import { registerAutoLayoutDebug } from '../../debug/debugApi';
 import type {
   CandidateLeaf,
   ContainerWizardInput,
   ContainerWizardResult,
-} from '../../autoLayout/containerModel';
+} from '../../autoLayout/shared/types';
 import type { RunProgress } from '../store/autoLayoutRunStore';
-import type { IssueScope, LayoutIssue } from '../../autoLayout/layoutIssue';
+import type { IssueScope, LayoutIssue } from '../../autoLayout/shared/issue';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 
 interface AutoLayoutContainerPanelProps {

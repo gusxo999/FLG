@@ -3,7 +3,7 @@ import { packModuleTree, moduleExtent } from "../planner/modulePacking";
 import type { NodeSpec, PackConfig } from "../planner/tree/types";
 import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "./modulePerimeterPass";
-import { PERIMETER_MARGIN, faceVector } from "../util/helper";
+import { PERIMETER_MARGIN, faceVector } from "../shared/grid";
 import { seatIsBeltFeeder } from "../module/shape";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";

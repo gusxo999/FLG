@@ -20,7 +20,7 @@ import { packModuleTree, moduleExtent } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import { routePortToPerimeter } from "./perimeterRouter";
-import { cellKey } from "../util/helper";
+import { cellKey } from "../shared/grid";
 import type { IoLine } from "../module/types/line";
 
 const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });

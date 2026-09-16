@@ -1,5 +1,5 @@
-import type { Entity } from '../types/gameData';
-import type { SpecBelt } from './buildSpec';
+import type { Entity } from '../../../types/gameData';
+import type { SpecBelt } from '../gamedata/spec';
 
 /**
  * 벨트 처리량 모델 — items/sec.

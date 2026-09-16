@@ -10,7 +10,7 @@
  * > 에서 왔다(Step 3b).
  */
 
-import type { PortFace } from "../../containerModel";
+import type { PortFace } from "../../shared/types";
 import type { IoLine, PlannedLine, PortSide } from "../../module/types/line";
 import type { ModuleInput } from "../../module/types/module";
 import type { DepthShortage, LinkFaceContext, LinkFacePlan, LinkFaceStage } from "../../module/types/seat";

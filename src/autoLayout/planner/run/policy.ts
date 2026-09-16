@@ -15,13 +15,13 @@
 import type { NodeSpec, PackResult } from "../tree/types";
 import type { DeliveryResult } from "../link/types";
 import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
-import type { BuildSpec } from "../../buildSpec";
+import type { BuildSpec } from "../../shared/gamedata/spec";
 import type { RecipeTreeNode } from "../../types";
 import { summarizeRungs } from "../module/linkPlanner";
 import { chooseFluidTrunkPlan } from "../../module/fluidPorts";
 import { fluidJumpBlocker, fluidJumpBudgetOf } from "../../module/arith";
-import { pipeFlowConflict, type PipeFlow } from "../../util/pipeFlow";
-import type { IssueScope, LayoutIssue } from "../../layoutIssue";
+import { pipeFlowConflict, type PipeFlow } from "../../shared/pipeFlow";
+import type { IssueScope, LayoutIssue } from "../../shared/issue";
 import type { ResolvedNode } from "./gamedata";
 
 /**

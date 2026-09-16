@@ -32,8 +32,8 @@ import type {
   Routing,
   UndergroundCorridor,
   UnifyResult,
-} from './containerModel';
-import { expandBbox } from './util/helper';
+} from './types';
+import { expandBbox } from './grid';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 좌표 프레임을 넘기는 총 변환 — 좌표를 가진 필드를 **전부 명시**한다

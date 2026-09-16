@@ -10,7 +10,7 @@
  * D4(런타임 순환)의 모양이다(계획 구조-2축 · 2 Step 3c-1, 2026-09-14 `modulePacking.ts` 에서 옮겼다).
  */
 
-import type { SpecInserter } from "../../buildSpec";
+import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { IoLine } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/moduleTransform";

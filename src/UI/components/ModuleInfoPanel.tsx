@@ -13,7 +13,7 @@ import { useAutoLayoutRunStore, overlayView } from '../store/autoLayoutRunStore'
 import { useGameDataStore } from '../store/gameDataStore';
 import { type ModulePortCell } from '../../autoLayout/moduleInspect';
 import { useWizardStore } from '../store/wizardStore';
-import type { LayoutIssue } from '../../autoLayout/layoutIssue';
+import type { LayoutIssue } from '../../autoLayout/shared/issue';
 
 export default function ModuleInfoPanel() {
   const moduleKey = useModuleInspectStore((s) => s.moduleKey);

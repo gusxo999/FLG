@@ -16,8 +16,8 @@
  * 깊이 목록과 gap 폭은 셈([arith])이, 포트 칸은 도형([portCells])이 답한다(2026-09-14 계획 구조-2축 · 2 Step 3a).
  */
 
-import { inserterForReach } from "../../buildSpec";
-import type { PortFace } from "../../containerModel";
+import { inserterForReach } from "../../shared/gamedata/spec";
+import type { PortFace } from "../../shared/types";
 import { armsAt, resolveSpanBlock, spansAllMachines } from "../../module/link";
 import type { Link } from "../../module/types/line";
 import type { DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan } from "../../module/types/seat";

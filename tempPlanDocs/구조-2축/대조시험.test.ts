@@ -9,8 +9,8 @@ import fs from 'fs';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
 import { runLayeredWizard } from './layeredWizard';
 import { readRunStats } from '../debug/runStats';
-import type { ContainerWizardInput } from './containerModel';
-import { setAutoLayoutLinkLadder, setAutoLayoutLinkOppositeFace, setAutoLayoutLinkDirect, setAutoLayoutLaneMerge } from './debugFlags';
+import type { ContainerWizardInput } from './shared/types';
+import { setAutoLayoutLinkLadder, setAutoLayoutLinkOppositeFace, setAutoLayoutLinkDirect, setAutoLayoutLaneMerge } from './shared/flags';
 
 const item = (name: string, amount = 1) => ({ name, amount, type: 'item' as const });
 const fluid = (name: string, amount = 10, fluidbox_index?: number) =>

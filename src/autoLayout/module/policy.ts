@@ -12,7 +12,7 @@ import { fluidLineOf, fluidLinesOnSide, trunkEndKey } from "./arith";
 import type { PlannedLine, PortSide } from "./types/line";
 import type { ModuleInput, TrunkContext } from "./types/module";
 import { machineExtent } from "./shape";
-import type { Container, PortFace } from "../containerModel";
+import type { Container, PortFace } from "../shared/types";
 
 /**
  * [TrunkContext] 를 만든다 — `plan.lines`(유체 줄) 전체를 한 번 훑어야 나오는 값들이라, [emitTrunkPipe] 가

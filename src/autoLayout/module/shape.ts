@@ -41,8 +41,8 @@ import { linkShape, type ShapeCell } from "./linkShape";
 import type { PlannedLine } from "./types/line";
 import type { ModuleInput, ModulePort, TrunkContext } from "./types/module";
 import type { LinkFacePlan, LinkSeats } from "./types/seat";
-import type { Container, PortFace } from "../containerModel";
-import { enumeratePerimeterCells, faceCell, faceVector } from "../util/helper";
+import type { Container, PortFace } from "../shared/types";
+import { enumeratePerimeterCells, faceCell, faceVector } from "../shared/grid";
 import { EntityType } from "../../types/layout";
 
 type Cell = { x: number; y: number };

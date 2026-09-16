@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { shareLanes, physicalLines } from "./link";
 import type { Link } from "./types/line";
-import { determineBeltCount } from "../beltThroughput";
+import { determineBeltCount } from "../shared/arith/belt";
 
 /**
  * **레인 공유 짝짓기** — 줄 **둘**을 한 물리 벨트의 좌/우 레인에 하나씩.

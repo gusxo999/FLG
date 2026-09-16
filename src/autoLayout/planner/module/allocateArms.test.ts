@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { allocateArms } from "./allocateArms";
 import type { IoLine } from "../../module/types/line";
-import type { SpecInserter } from "../../buildSpec";
+import type { SpecInserter } from "../../shared/gamedata/spec";
 
 const inL = (n: string): IoLine => ({ name: n, kind: "belt", role: "input" });
 const outL = (n: string): IoLine => ({ name: n, kind: "belt", role: "output" });

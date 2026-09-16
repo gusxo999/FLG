@@ -29,8 +29,8 @@ import type {
   ModulePortMeta,
   PortKind,
   Routing,
-} from "./containerModel";
-import type { LayoutIssue, LayoutSnapshot } from "./layoutIssue";
+} from "./shared/types";
+import type { LayoutIssue, LayoutSnapshot } from "./shared/issue";
 
 /**
  * 오버레이가 그릴 대상 — **표시에 필요한 것만**.

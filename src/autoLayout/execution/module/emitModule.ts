@@ -27,8 +27,8 @@ import type {
 } from "../../module/types/module";
 import type { LinkSeats } from "../../module/types/seat";
 import { groupRate } from "../../module/link";
-import type { Container, PlacedCell, PortFace, PortPair } from "../../containerModel";
-import { cellKey, faceCell, vectorToDirection } from "../../util/helper";
+import type { Container, PlacedCell, PortFace, PortPair } from "../../shared/types";
+import { cellKey, faceCell, vectorToDirection } from "../../shared/grid";
 import { EntityType } from "../../../types/layout";
 import {
   makeBeltCell,
@@ -36,11 +36,11 @@ import {
   makeInserterCell,
   makePipeCell,
   makeUndergroundPipeCell,
-} from "../../util/cellBuilder";
+} from "../../shared/cells/builder";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
 import { fluidLineOf } from "../../module/arith";
-import type { PipeFlowPipe } from "../../util/pipeFlow";
-import { inserterForReach } from "../../buildSpec";
+import type { PipeFlowPipe } from "../../shared/pipeFlow";
+import { inserterForReach } from "../../shared/gamedata/spec";
 // 아래 두 안전망이 *"구성상 발생 안 함"* 이라 적고 있다 — 발동을 세는 것이 그 주장의 검증이다
 // (`docs/auto-layout/module/module-planning.md §4.5` — 포트 칸). 관측만 한다: 계산·분기·반환값은 안 바뀐다.
 import { recordFaceDepthStats, recordLaneMerge } from "../../../debug/runStats";

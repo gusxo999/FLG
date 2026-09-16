@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { t } from '../i18n';
+import { t } from '../i18n/index';
 
 import type { Entity, GameData, Machine, Module, Recipe, Technology } from '../../types/gameData';
 // 게임데이터 **형식**은 `src/types/gameData.ts` 에 산다 — 여기서는 재수출만 한다(읽는 쪽 무수정).

@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/shallow';
 import { useGameDataStore } from '../store/gameDataStore';
 import type { Entity, Recipe } from '../store/gameDataStore';
 import { useCustomEditorStore } from '../store/customEditorStore';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import {
   expandRecipeTree,
   flattenTree,
@@ -19,7 +19,7 @@ import AutoLayoutDebugTab from './AutoLayoutDebugTab';
 import {
   inserterThroughput,
   defaultInserterThroughput,
-} from '../../autoLayout/inserterThroughput';
+} from '../../autoLayout/shared/arith/inserter';
 import {
   useWizardStore,
   WIZARD_STEPS,

@@ -3,7 +3,7 @@ import { generateModule } from "../../module/clusterModule";
 import type { Link } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../../module/types/module";
 import type { Flow } from "../../planner/link/allocateFlows";
-import { directionToVector } from "../../planner/containerRouting";
+import { directionToVector } from "../../shared/route";
 import { EntityType } from "../../../types/layout";
 
 /**

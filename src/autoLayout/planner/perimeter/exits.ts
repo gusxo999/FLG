@@ -19,7 +19,7 @@ import type { Orientation } from "../../module/moduleTransform";
 import { moduleExtent } from "../../module/moduleTransform";
 import { planPerimeterExits } from "../perimeterExitPlanner";
 import type { ExitContext, PerimeterExitPlan, ExitPortInput, ExitEdge } from "./types";
-import { PERIMETER_MARGIN } from "../../util/helper";
+import { PERIMETER_MARGIN } from "../../shared/grid";
 import type { NodeSpec } from "../tree/types";
 
 /** marginNeeds 만큼 bbox 프레임을 넓힌다(상자 seat 자리 예약, ②가 소비). */

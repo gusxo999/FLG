@@ -13,9 +13,9 @@
  * > [buildPlannedChain] 꼬리에 글자까지 같은 식으로 두 벌이던 것을 한 벌로 줄였다.
  */
 
-import type { DijkstraResult } from "../containerRouting";
+import type { DijkstraResult } from "../../shared/route";
 import { portGeometry, seatIsBeltFeeder } from "../../module/shape";
-import { cellKey, segment } from "../../util/helper";
+import { cellKey, segment } from "../../shared/grid";
 import type { DeliveryDirective, DeliverySpec, PackResult } from "../tree/types";
 
 /** 탐색 경계 — 칸 범위(양 끝 포함). */

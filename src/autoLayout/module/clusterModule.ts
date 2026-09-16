@@ -46,9 +46,9 @@ import { planModulePorts } from "../planner/module/planModulePorts";
 import type { ModulePortPlan } from "../planner/module/planModulePorts";
 // 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
 import { fillModuleWayOuts } from "../planner/perimeter/wayOuts";
-import type { Container, PlacedCell } from "../containerModel";
-import { cellKey } from "../util/helper";
-import type { PipeFlowPipe } from "../util/pipeFlow";
+import type { Container, PlacedCell } from "../shared/types";
+import { cellKey } from "../shared/grid";
+import type { PipeFlowPipe } from "../shared/pipeFlow";
 // 방출 — 계획이 끝난 배정을 셀로 놓는다(배치 실행 계층).
 import {
   emitOutputLinks,

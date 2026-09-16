@@ -7,14 +7,14 @@
  * > **런타임으로** 불러, 저장소의 유일한 순환(`clusterModule ⇄ emitModule`)이 거기서 났다.
  */
 
-import type { SpecBelt, SpecInserter, SpecUndergroundBelt } from "../../buildSpec";
+import type { SpecBelt, SpecInserter, SpecUndergroundBelt } from "../../shared/gamedata/spec";
 import type {
   Container, ModulePortMeta, PlacedCell, PortFace, PortPair,
-} from "../../containerModel";
+} from "../../shared/types";
 import type { FluidTrunkInput } from "../fluidPorts";
 import type { IoLine, Link, PlannedLine, PortSide, SupplyCapacity } from "./line";
 import type { DepthShortage, LinkFaceStage } from "./seat";
-import type { PipeFlowPipe } from "../../util/pipeFlow";
+import type { PipeFlowPipe } from "../../shared/pipeFlow";
 
 export interface ModuleInput {
   /** 머신 prototype + footprint. */

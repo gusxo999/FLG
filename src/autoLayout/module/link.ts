@@ -32,8 +32,8 @@
  */
 
 import type { IoLine, Link, LinkCarry, SupplyCapacity } from "./types/line";
-import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../buildSpec";
-import { determineBeltCount, laneCapOfTier } from "../beltThroughput";
+import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../shared/gamedata/spec";
+import { determineBeltCount, laneCapOfTier } from "../shared/arith/belt";
 
 /**
  * **이 줄에 실린 초당 총량** — 적재 목록의 합. 목록이 없으면 `undefined`(지어내지 않는다).

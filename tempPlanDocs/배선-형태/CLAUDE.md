@@ -44,7 +44,7 @@ Step 5  모듈 전체 tap/direct 후퇴 제거                          ⏸ **�
 | `module/link.ts` `createLinks` | **Step 3·4 가 합쳐진 자리.** 줄을 만드는 유일한 곳 |
 | `module/link.ts` `externalLineGroups` | 바깥 흐름을 만들어 `createLinks` 에 넘긴다 |
 | `module/testScale.ts` | 테스트 픽스처의 저울(벨트 티어·팔 처리량·줄 rate) 단일 출처 |
-| `buildSpec.ts` `armsFor`·`makeBuildSpec` | Step 1 의 자리. 팔 개수의 단일 출처 |
+| `shared/gamedata/spec.ts` `armsFor`·`makeBuildSpec` | Step 1 의 자리. 팔 개수의 단일 출처 |
 | [battery 분석](../battery-채널-폭-분석.md) §4 · [glass 분석](../glass-채널-폭-분석.md) §3-① | 두 증상의 관측 원문 |
 
 ## 폐기된 계획

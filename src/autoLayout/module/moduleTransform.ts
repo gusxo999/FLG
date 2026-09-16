@@ -21,9 +21,9 @@ import { EntityType } from "../../types/layout";
 import type { Direction } from "../../types/layout";
 import type { BeltMerge, GeneratedModule, ModulePort } from "./types/module";
 import { bodyColumnsOf } from "../planner/perimeter/wayOuts";
-import type { Container, PlacedCell, PortFace } from "../containerModel";
-import type { PipeFlowPipe } from "../util/pipeFlow";
-import { faceVector, vectorToDirection } from "../util/helper";
+import type { Container, PlacedCell, PortFace } from "../shared/types";
+import type { PipeFlowPipe } from "../shared/pipeFlow";
+import { faceVector, vectorToDirection } from "../shared/grid";
 
 export type Rotation = 0 | 90 | 180 | 270;
 

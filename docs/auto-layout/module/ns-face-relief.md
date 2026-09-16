@@ -72,12 +72,12 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 - [tree/arith.ts](../../../src/autoLayout/planner/tree/arith.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정).
   [perimeter/exits.ts](../../../src/autoLayout/planner/perimeter/exits.ts) — `planExits` 의 변 판정을 `meta.side` 로 교체.
-- [containerModel.ts](../../../src/autoLayout/containerModel.ts) —
+- [shared/types.ts](../../../src/autoLayout/shared/types.ts) —
   `ModulePortMeta.side` 확장('W'|'E'|'N'|'S').
 
 ## 5. 남은 것 (이 문서 범위 밖)
 
-- **조각 C(납품 경로 지하벨트) 완료(2026-07-08):** 납품 경로 emit 을 `execution/emitPath.emitItemPath`
+- **조각 C(납품 경로 지하벨트) 완료(2026-07-08):** 납품 경로 emit 을 `shared/cells/path.emitItemPath`
   (edge-aware)로 통일하고 `maxJump` 를 config 게이트로 재활성 — 점프 경로가 지하벨트
   입/출구로 materialize 되고 corridor 가 납품 경로 간 누적·Area 에 기록된다. 정책: `'length'`
   비용(지상 우선, 점프=충돌 회피 전용) + 양 끝 셀 점프 방향 강제(`requiredStartJump`=

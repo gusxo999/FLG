@@ -38,7 +38,7 @@
 
 import type { Entity, PipeConnection } from "../../types/gameData";
 import type { Direction } from "../../types/layout";
-import type { PortFace } from "../containerModel";
+import type { PortFace } from "../shared/types";
 
 /** 유체 상자 하나가 노출하는 연결 칸 하나. */
 export interface FluidPortSlot {

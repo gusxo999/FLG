@@ -16,7 +16,7 @@
 import {
   AUTO_LAYOUT_COORD_DUMP,
   AUTO_LAYOUT_PERIMETER_PASS,
-} from '../autoLayout/debugFlags';
+} from '../autoLayout/shared/flags';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { useGameDataStore } from '../UI/store/gameDataStore';
 import { useLayoutStore } from '../UI/store/layoutStore';

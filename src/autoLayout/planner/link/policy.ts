@@ -47,15 +47,15 @@
  * > 납품 사다리는 `planner/deliveryRoute.ts` 의 루프 몸통과 `routeOneDelivery` 였다(2026-09-15 Step 5c).
  */
 
-import type { UndergroundCorridor } from "../../containerModel";
+import type { UndergroundCorridor } from "../../shared/types";
 import type { Link } from "../../module/types/line";
 import { shareLanes } from "../../module/link";
 import { portGeometry } from "../../module/shape";
-import { laneCapOfTier } from "../../beltThroughput";
-import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../../debugFlags";
+import { laneCapOfTier } from "../../shared/arith/belt";
+import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../../shared/flags";
 import { recordLaneShareStats } from "../../../debug/runStats";
-import { cellKey, faceVector } from "../../util/helper";
-import { dijkstraWithJumps } from "../containerRouting";
+import { cellKey, faceVector } from "../../shared/grid";
+import { dijkstraWithJumps } from "../../shared/route";
 import { planLinkFaces } from "../module/planModulePorts";
 import { clusterBeltDepthsOf } from "../module/arith";
 import { linkDepthNeed } from "../module/depthBudget";

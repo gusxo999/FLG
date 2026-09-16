@@ -66,7 +66,7 @@
 
 import type { Entity } from "../../types/gameData";
 import type { Direction } from "../../types/layout";
-import { cellKey } from "./helper";
+import { cellKey } from "./grid";
 import { fluidPortSlots } from "../module/fluidPorts";
 
 /**

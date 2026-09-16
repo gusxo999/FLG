@@ -22,7 +22,7 @@
  * > 어댑터 · 정책이고 이것들은 답이 하나다.
  */
 
-import type { PortFace } from "../containerModel";
+import type { PortFace } from "../shared/types";
 import type { FluidLinePlan, FluidTrunkInput } from "./fluidPorts";
 import type { PlannedLine } from "./types/line";
 import type { ModuleInput } from "./types/module";

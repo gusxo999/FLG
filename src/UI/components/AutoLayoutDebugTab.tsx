@@ -6,7 +6,7 @@ import {
   setAutoLayoutLinkLadder,
   AUTO_LAYOUT_LANE_MERGE,
   setAutoLayoutLaneMerge,
-} from '../../autoLayout/debugFlags';
+} from '../../autoLayout/shared/flags';
 import { useUiDebugStore } from '../store/uiDebugStore';
 
 /**

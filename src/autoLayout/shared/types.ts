@@ -8,8 +8,8 @@
  * 별도 파일로 추가된다.
  */
 
-import type { Direction, GridCell } from '../types/layout';
-import type { LayoutIssue, LayoutSnapshot } from './layoutIssue';
+import type { Direction, GridCell } from '../../types/layout';
+import type { LayoutIssue, LayoutSnapshot } from './issue';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §2. 컨테이너

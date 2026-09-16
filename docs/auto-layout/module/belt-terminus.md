@@ -151,7 +151,7 @@ tags: [auto-layout, placement, module]
 | 품목 장부 | 〃 | `pushLinkPortEnd` 의 `beltItems` |
 | 판정·교체 | [beltTerminus.ts](../../../src/autoLayout/execution/module/beltTerminus.ts) | `resolveBeltTermini` · `slowestUnderground` |
 | 호출 시점 | [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) | `finishBeltTermini` |
-| 티어 목록 | [buildSpec.ts](../../../src/autoLayout/buildSpec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
+| 티어 목록 | [shared/gamedata/spec.ts](../../../src/autoLayout/shared/gamedata/spec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
 | 사거리 장부 | [moduleWizard.ts](../../../src/autoLayout/planner/moduleWizard.ts) | `terminusCorridors` |
 | 장부 소비 | [link/ledger.ts](../../../src/autoLayout/planner/link/ledger.ts) | `seedCorridors` · `ledger`(openDeliveryLedger) |
 | 화면 경고 | [moduleWizard.ts](../../../src/autoLayout/planner/moduleWizard.ts) | `belt-terminus-merge`(1c) |

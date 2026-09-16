@@ -14,10 +14,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
 import { runLayeredWizard } from './layeredWizard';
-import { unifyLeaf } from './areaUnification';
+import { unifyLeaf } from './shared/frames';
 import { collectModules, moduleAtCell, overlayFromLayout, overlayFromSnapshot, summarizeRoutings, type ModuleSource } from './moduleInspect';
-import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from './layoutIssue';
-import type { CandidateLeaf, ContainerWizardInput } from './containerModel';
+import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from './shared/issue';
+import type { CandidateLeaf, ContainerWizardInput } from './shared/types';
 
 const item = (name: string, amount = 1) => ({ name, amount, type: 'item' as const });
 

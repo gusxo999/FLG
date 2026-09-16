@@ -35,16 +35,16 @@
  */
 
 import type { ModulePort } from "../module/types/module";
-import type { Container, PlacedCell, PortPair } from "../containerModel";
-import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../util/helper";
-import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../util/cellBuilder";
+import type { Container, PlacedCell, PortPair } from "../shared/types";
+import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../shared/grid";
+import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../shared/cells/builder";
 import { moduleExtent } from "../module/moduleTransform";
 import type { PackResult } from "../planner/tree/types";
 import { seatIsBeltFeeder } from "../module/shape";
 import type { ExitAssignment } from "../planner/perimeter/types";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";
-import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../util/pipeFlow";
-import { AUTO_LAYOUT_COORD_DUMP } from "../debugFlags";
+import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../shared/pipeFlow";
+import { AUTO_LAYOUT_COORD_DUMP } from "../shared/flags";
 
 export interface PerimeterPassConfig {
   beltEntityName: string;

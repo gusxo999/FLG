@@ -28,8 +28,8 @@ import type {
   NsEdge,
 } from "./types";
 import type { PerimeterExitPlan } from "../perimeter/types";
-import { segment, PERIMETER_MARGIN } from "../../util/helper";
-import { AUTO_LAYOUT_COORD_DUMP } from "../../debugFlags";
+import { segment, PERIMETER_MARGIN } from "../../shared/grid";
+import { AUTO_LAYOUT_COORD_DUMP } from "../../shared/flags";
 import type {
   DeliveryDirective, ModulePlacement, PackChannelGeometry, RowChannel, RowChannelEntry,
 } from "../tree/types";

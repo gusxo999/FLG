@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { Entity } from '../UI/store/gameDataStore';
-import { beltThroughput, laneThroughput, determineBeltCount } from './beltThroughput';
-import type { SpecBelt } from './buildSpec';
+import type { Entity } from '../../../UI/store/gameDataStore';
+import { beltThroughput, laneThroughput, determineBeltCount } from './belt';
+import type { SpecBelt } from '../gamedata/spec';
 
 const belt = (belt_speed?: number): Entity =>
   ({ id: 1, name: 'b', localised_name: 'b', type: 'transport-belt', tile_width: 1, tile_height: 1, belt_speed } as Entity);

@@ -6,7 +6,7 @@ import { syncCustomData, useCustomDataStore } from '../store/customDataStore';
 import { useCustomEditorStore } from '../store/customEditorStore';
 import { useToastStore } from '../store/toastStore';
 import { parseGameData } from '../../factorio/parseGameData';
-import { useI18nStore, useT } from '../i18n';
+import { useI18nStore, useT } from '../i18n/index';
 import type { BlueprintEntity } from '../../types/blueprint';
 import { EntityType } from '../../types/layout';
 import type { GridCell, Direction } from '../../types/layout';

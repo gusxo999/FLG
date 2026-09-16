@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 
 const STORAGE_KEY = 'factorio-tutorial-done';
 

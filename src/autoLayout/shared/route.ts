@@ -17,8 +17,8 @@
 
 import { EntityType } from '../../types/layout';
 import type { Direction } from '../../types/layout';
-import type { Area, UndergroundCorridor } from '../containerModel';
-import { cellKey } from '../util/helper';
+import type { Area, UndergroundCorridor } from './types';
+import { cellKey } from './grid';
 
 export function buildOccupancy(area: Area, extra?: Area): Set<string> {
   const blocked = new Set<string>();

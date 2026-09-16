@@ -22,10 +22,10 @@
  * 코드 곳곳에 하드코딩하지 않고 **여기 한 곳**에서만 읽는다.
  */
 
-import type { Entity, GameDataLookup } from "../types/gameData";
-import type { ContainerWizardInput } from "./containerModel";
-import { inserterReach, inserterThroughput } from "./inserterThroughput";
-import { beltThroughput, laneCapOfTier } from "./beltThroughput";
+import type { Entity, GameDataLookup } from "../../../types/gameData";
+import type { ContainerWizardInput } from "../types";
+import { inserterReach, inserterThroughput } from "../arith/inserter";
+import { beltThroughput, laneCapOfTier } from "../arith/belt";
 
 /** 사용자가 고른 인서터 하나 — 이름 + 게임데이터에서 뽑은 능력치. */
 export interface SpecInserter {

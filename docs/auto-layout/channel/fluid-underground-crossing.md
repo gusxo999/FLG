@@ -22,7 +22,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 ### 1.1 페어링 규칙은 이미 있다. 30줄짜리 순수 함수다
 
 지하파이프가 서로 짝을 가로채는 문제는 라우터에서 이미 풀려 있다
-([containerRouting.ts:1175](../../../src/autoLayout/planner/containerRouting.ts#L1175)):
+([containerRouting.ts:1175](../../../src/autoLayout/shared/route.ts#L1175)):
 
 ```
 충돌 규칙: 같은 axis · 같은 line 위에서 interval 이 strict disjoint 여야 함.

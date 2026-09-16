@@ -15,8 +15,8 @@
  * 처리하는 것이 중요하다"(2026-07-16).
  */
 import { describe, it, expect } from 'vitest';
-import { inserterThroughput, defaultInserterThroughput, inserterReach } from './inserterThroughput';
-import type { Entity } from '../UI/store/gameDataStore';
+import { inserterThroughput, defaultInserterThroughput, inserterReach } from './inserter';
+import type { Entity } from '../../../UI/store/gameDataStore';
 
 const ins = (rot: number | undefined, pickup?: { x: number; y: number }): Entity =>
   ({

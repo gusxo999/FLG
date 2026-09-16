@@ -9,7 +9,7 @@
  */
 
 import type { Direction } from "../../types/layout";
-import type { Area, PortFace } from "../containerModel";
+import type { Area, PortFace } from "./types";
 
 /** 칸 하나를 집합·사전의 열쇠로 쓰기 위한 문자열. */
 export function cellKey(x: number, y: number): string {

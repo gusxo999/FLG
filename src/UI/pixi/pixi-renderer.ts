@@ -13,7 +13,7 @@ import { useLayoutStore, canvasToGrid } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { EntityType, getCell, type Direction } from '../../types/layout';
-import type { Routing } from '../../autoLayout/containerModel';
+import type { Routing } from '../../autoLayout/shared/types';
 import { getEntitySizeRotated } from '../../factorio/entitySize';
 import { getDynamicEntityColor, collectPlacedEntityNames } from './entityColors';
 import {

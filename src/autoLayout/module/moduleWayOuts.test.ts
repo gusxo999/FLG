@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateModule } from "./clusterModule";
 import type { IoLine } from "./types/line";
 import type { GeneratedModule, ModulePort } from "./types/module";
-import type { PortFace } from "../containerModel";
+import type { PortFace } from "../shared/types";
 import { PER_MACHINE, scaled } from "./testScale";
 
 const inL = (name: string, amount?: number): IoLine => ({ name, kind: "belt", role: "input", amount });

@@ -22,7 +22,7 @@
  */
 
 import { EntityType } from '../types/layout';
-import type { Routing } from '../autoLayout/containerModel';
+import type { Routing } from '../autoLayout/shared/types';
 import { cellKey, classOf, machineBoxOf, type Face, type LayoutView } from './layoutView';
 
 export interface Violation {

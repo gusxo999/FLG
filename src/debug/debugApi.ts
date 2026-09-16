@@ -36,8 +36,8 @@ import {
   setAutoLayoutCoordDump,
   setAutoLayoutPerimeterPass,
   setAutoLayoutLaneMerge,
-} from '../autoLayout/debugFlags';
-import type { CandidateLeaf } from '../autoLayout/containerModel';
+} from '../autoLayout/shared/flags';
+import type { CandidateLeaf } from '../autoLayout/shared/types';
 import type { CustomDataSpec } from '../factorio/customRecipe';
 import { validateCustomData } from '../factorio/customRecipeValidate';
 import { gameDataContext, useCustomDataStore } from '../UI/store/customDataStore';

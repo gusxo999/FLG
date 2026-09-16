@@ -21,7 +21,7 @@
  */
 
 import { collectInternalRecipes, expandRecipeTree } from '../autoLayout/recipeTree';
-import type { ContainerWizardInput } from '../autoLayout/containerModel';
+import type { ContainerWizardInput } from '../autoLayout/shared/types';
 import { signatureOf, useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { useGameDataStore } from '../UI/store/gameDataStore';
 import { useWizardStore } from '../UI/store/wizardStore';

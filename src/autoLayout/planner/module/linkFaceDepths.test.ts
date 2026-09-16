@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { linkFaceDepths } from "./arith";
 import type { LinkFacePlan } from "../../module/types/seat";
-import type { PortFace } from "../../containerModel";
+import type { PortFace } from "../../shared/types";
 
 const plan = (face: PortFace, clusterBeltDepth: number, exitDepth?: number): LinkFacePlan => ({
   face,

@@ -50,7 +50,7 @@ tags: [deferred, auto-layout]
 
 | 파일 | 원본 | 무엇 |
 |---|---|---|
-| `dragArea.ts` | `areaUnification.ts` | 상자·조립기 그룹 드래그 + 재라우팅 |
+| `dragArea.ts` | `shared/frames.ts` | 상자·조립기 그룹 드래그 + 재라우팅 |
 | `facadeRouting.ts` | `containerRouting.ts` | "포트 페어 → 완성된 라우팅" 고수준 API |
 | `routeFallback.ts` | (통째) | 포트 페어 폴백 탐색 |
 | `portInference.ts` | (통째) | 컨테이너의 포트 열거·짝짓기 |
@@ -172,7 +172,7 @@ routings.map(clone) ─┘
 >
 > 둘 다 그림상 멀쩡하고 라우팅도 "성공"으로 보고된다. **기계만 굶는다.**
 
-배치 파이프라인에는 이 가드(`util/pipeFlow` 의 `collectPipeFlow`/`pipeFlowConflict`)가 걸려 있지만
+배치 파이프라인에는 이 가드(`shared/pipeFlow` 의 `collectPipeFlow`/`pipeFlowConflict`)가 걸려 있지만
 **드래그 경로에는 없었다.** 그 경로가 비활성이 되면서 결함의 영향 범위는 **0** 이 됐고, 코드를 지운 지금도 0 이다.
 
 **재구현 시 이 가드를 반드시 함께 넣을 것.**

@@ -64,9 +64,9 @@
  * 코드는 여기뿐이다).
  */
 
-import type { SpecUndergroundBelt } from "../../buildSpec";
-import { cellKey, vectorToDirection } from "../../util/helper";
-import { makeUndergroundBeltCell } from "../../util/cellBuilder";
+import type { SpecUndergroundBelt } from "../../shared/gamedata/spec";
+import { cellKey, vectorToDirection } from "../../shared/grid";
+import { makeUndergroundBeltCell } from "../../shared/cells/builder";
 import { recordBeltTerminus } from "../../../debug/runStats";
 import type { BeltMerge, BeltTerminus } from "../../module/types/module";
 

@@ -12,9 +12,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
-import { runLayeredWizard } from './layeredWizard';
-import type { ContainerWizardInput } from './containerModel';
+import { useGameDataStore, type Entity, type GameData, type Recipe } from '../../UI/store/gameDataStore';
+import { runLayeredWizard } from '../layeredWizard';
+import type { ContainerWizardInput } from './types';
 
 const item = (name: string, amount = 1) => ({ name, amount, type: 'item' as const });
 

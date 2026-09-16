@@ -19,7 +19,7 @@
  *  - 빠르게 셈 → 팔 부족 → 배치는 "성공"이라 보고하고 **게임에 넣어야 안다**.
  */
 import { describe, it, expect } from "vitest";
-import { armsFor, faceSeatArms, inserterForReach, type SpecInserter } from "./buildSpec";
+import { armsFor, faceSeatArms, inserterForReach, type SpecInserter } from "./shared/gamedata/spec";
 import { machineSpeedFraction } from "./wizardUtils";
 import type { Entity, Recipe } from "../UI/store/gameDataStore";
 

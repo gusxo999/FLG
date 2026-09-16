@@ -8,7 +8,7 @@
  */
 
 import { useEffect } from 'react';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import { useCustomDataStore } from '../store/customDataStore';
 import { useCustomEditorStore } from '../store/customEditorStore';
 import { useToastStore } from '../store/toastStore';

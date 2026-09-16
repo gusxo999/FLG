@@ -60,7 +60,7 @@ tags: [auto-layout, placement, routing]
 - 채널/공간을 실제보다 보수적으로 점유 → 면적 증가, 빡빡한 경우 우회 길이 증가.
 
 **원인:**
-- [containerRouting.ts](../../../src/autoLayout/planner/containerRouting.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
+- [containerRouting.ts](../../../src/autoLayout/shared/route.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
 
 **해결 방향:**
 - belt-route 셀에 운반 item 종류 태깅 → 같은/호환 종류 통과 허용. fluid 는 같은 fluid 파이프 공유. C3 mixing 검사와 함께 도입.
@@ -86,7 +86,7 @@ tags: [auto-layout, placement, routing]
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../../../src/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/execution/machinePlacer.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../../../src/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `machineEntityType`).
 
 **해결 방향:**
 - 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseFluidTrunkPlan`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
@@ -184,7 +184,7 @@ tags: [auto-layout, placement, routing]
 
 둘 다 그림상으론 멀쩡하고 라우팅도 "성공"으로 보고된다. 머신만 굶는다.
 
-이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../../../src/autoLayout/execution/emitPath.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
+이걸 막는 가드([[용어사전#PipeFlow / collectPipeFlow|PipeFlow / collectPipeFlow]])는 **새 모듈 파이프라인에만** 걸려 있다. 옛 경로의 유체 라우팅([`emitFluidPath`](../../../src/autoLayout/shared/cells/path.ts) — Dijkstra 로 파이프를 깐다)은 **무방비**다.
 
 **해소됨 (2026-07-25):**
 

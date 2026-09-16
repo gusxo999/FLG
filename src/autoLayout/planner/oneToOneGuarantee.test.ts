@@ -19,10 +19,10 @@ import { packModuleTree } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
-import { cellKey } from "../util/helper";
+import { cellKey } from "../shared/grid";
 import { EntityType } from "../../types/layout";
 import type { IoLine } from "../module/types/line";
-import type { Container, PlacedCell } from "../containerModel";
+import type { Container, PlacedCell } from "../shared/types";
 
 const inL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "input", amount: a });
 const outL = (n: string, a: number): IoLine => ({ name: n, kind: "belt", role: "output", amount: a });

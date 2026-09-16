@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createEmptyCell, EntityType } from '../../types/layout';
-import type { Area, PlacedCell } from '../containerModel';
+import type { Area, PlacedCell } from './types';
 import {
   collectBeltFlow,
   dijkstraWithJumps,
   type DijkstraInput,
-} from './containerRouting';
-import { cellKey } from '../util/helper';
+} from './route';
+import { cellKey } from './grid';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처

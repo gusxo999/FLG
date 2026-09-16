@@ -62,7 +62,7 @@
 
 **코드 — 호출 사슬 순서대로:**
 
-- `src/autoLayout/beltThroughput.ts` — `480 = belt_speed × 2레인 × 4 × 60`.
+- `src/autoLayout/shared/arith/belt.ts` — `480 = belt_speed × 2레인 × 4 × 60`.
   **오늘의 모든 용량 수치가 이미 「두 레인 합」이다**
 - `src/autoLayout/module/link.ts` — `createLinks` 의 붓기 ·
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
@@ -70,11 +70,11 @@
 - `src/autoLayout/execution/module/emitModule.ts` — `emitInputLinks`(공급 줄을 까는 곳)
 - `src/autoLayout/planner/deliveryRoute.ts` — `seatIsBeltFeeder`/`stripKeys`.
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다
-- `src/autoLayout/planner/containerRouting.ts` — `collectBeltFlow`·`beltFlowConflictCell`.
+- `src/autoLayout/shared/route.ts` — `collectBeltFlow`·`beltFlowConflictCell`.
   **오늘 「오염」이라 부르는 그 기하가 곧 레인 합류다**
 - `src/analysis/beltFlow.ts` — 벨트 정적 분석. *"한 벨트 = 1품목"* 근사와 `(혼합)` 표시.
   **레인을 아는 순간 그 근사가 풀린다**(Step 5)
-- `src/autoLayout/debugFlags.ts` · `src/UI/components/AutoLayoutDebugTab.tsx` —
+- `src/autoLayout/shared/flags.ts` · `src/UI/components/AutoLayoutDebugTab.tsx` —
   Step 6 의 플래그가 설 자리. 관용구는 `AUTO_LAYOUT_LINK_LADDER`(미완성 기능 = 기본 꺼짐)
 
 ## 이 계획이 **하지 않는** 것
@@ -98,7 +98,7 @@
 |---|---|---|
 | **레인 물리 일곱** — 드랍=먼 레인 · 픽업=양 레인 · **사이드로드 접힘** · 지하 보존 · 직진 1:1 · **곡선=유입 하나** · **여유 있어야 올라탄다** | 사장님 확정 → 계획서 §2 (`docs/factorio/belt-lane-semantics.md`) | 2026-09-03 ✔ |
 | 합류 칸은 **뒤 유입이 없어야** 한다(⑤⑦) — 있으면 옆 쪽이 조용히 굶는다 | 계획서 §5 의 조건 셋 | 2026-09-03 ✔ |
-| 용량 수치는 전부 **두 레인 합**이다(`× 480`) | `beltThroughput.ts` 머리말 · 프로토타입 문서 `speed × 480` | 2026-09-03 ✔ |
+| 용량 수치는 전부 **두 레인 합**이다(`× 480`) | `shared/arith/belt.ts` 머리말 · 프로토타입 문서 `speed × 480` | 2026-09-03 ✔ |
 | 링크 포트의 경계 인서터는 납품 경로가 **뗀다**(belt→belt) | `deliveryRoute.stripKeys` · `seatIsBeltFeeder` | 2026-09-03 ✔ |
 | 모듈 면 벨트는 **한쪽에만** 머신이 있다(기둥 모델) | `layout-models.md` ① · `emitInputLinks` 의 `faceCell(…, d, t)` | 2026-09-03 ✔ |
 | 인서터 필터는 **블루프린트로 안 나간다** — `GridCell` 에 자리가 없다 | `types/layout.ts` `GridCell` · `Toolbar.tsx` 의 export 필드 목록 | 2026-09-03 ✔ |

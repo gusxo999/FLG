@@ -28,7 +28,7 @@ tags: [auto-layout, placement, routing]
 
 **판정의 적용 대상은 *파이프라인 단계*다.** 아래 셋은 셀을 만들어도 `execution/` 이 아니다:
 
-- **생성자 라이브러리**(`util/cellBuilder`) — 만들 뿐 배치하지 않는다
+- **생성자 라이브러리**(`shared/cells/builder`) — 만들 뿐 배치하지 않는다
 - **파사드 API** — 여러 단계를 엮는 것이 책임이다
 
 이름에 속으면 안 되는 예:
@@ -36,7 +36,7 @@ tags: [auto-layout, placement, routing]
 | 파일 | 인상 | 실제 |
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `planner/link/emit` | 벨트를 놓는다 | 방출을 `execution/emitPath` 에 **위임** → 계획 |
+| `planner/link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** → 계획 |
 | `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 ## 축 2 — 관심사: 무엇에 대한 일인가
@@ -178,7 +178,7 @@ autoLayout/
                                moduleInspect(진단) · areaUnification(배치 결과 표시)
 ```
 
-> **`areaUnification.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
+> **`shared/frames.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
 > **레이아웃 좌표 → 그리드 좌표 경계를 넘는 문**(`unifyLeaf`)이다. 드래그 부분은
 > 2026-09-16 에 삭제된 `manualEdit/dragArea.ts` 로 갔었다(→ [[manual-edit]]). 좌표 프레임이 셋이라는 것과 그 경계를 넘는 규칙은
 > [[용어사전#좌표 프레임 (coordinate frame)]] 이 단일 출처다.
@@ -230,7 +230,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 | `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
 | `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
 | `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
-| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/link/policy`(납품의 탐색 칸) 하나뿐이고, `execution/emitPath` 는 **타입만** 가져간다(런타임 간선 아님) |
+| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `planner/link/policy`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다(런타임 간선 아님) |
 | 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
 
 **아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과
@@ -240,11 +240,11 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 
 ## util 두 파일의 경계
 
-**`util/helper.ts` — 격자 위에서 셈만 한다.** 아무것도 놓지 않는다.
+**`shared/grid.ts` — 격자 위에서 셈만 한다.** 아무것도 놓지 않는다.
 `cellKey` · `faceVector` · `vectorToDirection` · `segment` · `faceCell` ·
 `enumeratePerimeterCells` · `expandBbox` + 공유 상수(`PERIMETER_MARGIN` · `PIPE_BLOCK_GROUP`).
 
-**`util/cellBuilder.ts` — 정해진 칸을 물건으로 채운다.** 좌표와 방향이 이미 정해진 뒤 불린다.
+**`shared/cells/builder.ts` — 정해진 칸을 물건으로 채운다.** 좌표와 방향이 이미 정해진 뒤 불린다.
 어디에 놓을지 고르지 않고, 길도 찾지 않는다.
 `makeBeltCell` · `makeInserterCell` · `makeContainerCell`.
 

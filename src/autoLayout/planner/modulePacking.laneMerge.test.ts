@@ -3,7 +3,7 @@ import { packModuleTree } from "./modulePacking";
 import type { NodeSpec, PackConfig } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "../module/types/line";
-import { setAutoLayoutLaneMerge } from "../debugFlags";
+import { setAutoLayoutLaneMerge } from "../shared/flags";
 import { readRunStats } from "../../debug/runStats";
 
 /**

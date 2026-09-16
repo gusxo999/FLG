@@ -4,7 +4,7 @@ import { useGameDataStore, type Entity } from '../store/gameDataStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useInspectStore } from '../store/inspectStore';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import {
   CATEGORIES,
   CATEGORY_TO_TYPES,

@@ -252,7 +252,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 `offset ∈ [0, h)` 이므로 같은 머신 안에서는 유체 상자마다 다르고 머신끼리는 `h`(+gap)
 떨어져 있다. 그래서 **머신 수를 늘려도 새 충돌이 안 생긴다.**
 
-이 사실을 [합류 가드](../../../src/autoLayout/util/pipeFlow.ts)가 **알아야 한다.** 한때
+이 사실을 [합류 가드](../../../src/autoLayout/shared/pipeFlow.ts)가 **알아야 한다.** 한때
 가드가 지하파이프도 네 이웃을 다 막아 물리보다 보수적이었고, 그래서 위 배치를 **우리가 깔고
 우리가 거절했다.** 지금은 `PipeFlowPipe.connectDir` 로 방향을 실어 보내고, 지도와 검사
 **양쪽**이 방향을 본다(한쪽만 고치면 `T₁` 이 `C₀` 의 헤일로에 걸려 여전히 거절된다).
@@ -287,7 +287,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 | 파일 | 지금 | 바뀔 것 |
 |---|---|---|
 | `containerModel.Container` | 방향 필드 없음 | `direction?` 추가 |
-| [`machinePlacer.commitContainer`](../../../src/autoLayout/execution/machinePlacer.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
+| [`machinePlacer.commitContainer`](../../../src/autoLayout/shared/cells/place.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
 | [`moduleWizard`](../../../src/autoLayout/planner/moduleWizard.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
 | [`planModulePorts`](../../../src/autoLayout/planner/module/planModulePorts.ts) → [`pipeLinesOf`](../../../src/autoLayout/planner/module/arith.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
 | [`clusterModule`](../../../src/autoLayout/module/clusterModule.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |

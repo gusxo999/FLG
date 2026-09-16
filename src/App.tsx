@@ -15,7 +15,7 @@ import { EntityType, ENTITY_SIZES } from './types/layout';
 import { useLayoutStore } from './UI/store/layoutStore';
 import { useGameDataStore } from './UI/store/gameDataStore';
 import type { Entity } from './UI/store/gameDataStore';
-import { useT } from './UI/i18n';
+import { useT } from './UI/i18n/index';
 
 export default function App() {
   const t = useT();

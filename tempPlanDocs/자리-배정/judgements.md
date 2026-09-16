@@ -137,7 +137,7 @@ blockGroup 은 벨트 프로토타입 자체다 — 티어를 여럿 고르면 �
 ```
 
 간섭 규칙·자료형·입구 방향 제약·방출이 **전부 구현돼 있다**
-(`planner/containerRouting.ts` 의 `isJumpAllowed`·`entrance-straight`·`startJump`/`endJump`).
+(`shared/route.ts` 의 `isJumpAllowed`·`entrance-straight`·`startJump`/`endJump`).
 **없는 것은 "모듈 안쪽 트렁크 계획이 그것을 부를 자리" 하나다.**
 
 > 선례: `docs/auto-layout/channel/fluid-underground-crossing.md` §1 —

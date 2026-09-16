@@ -1,4 +1,4 @@
-import type { Entity } from '../types/gameData';
+import type { Entity } from '../../../types/gameData';
 
 /**
  * 투입기 처리량 모델 — items/sec.

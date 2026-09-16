@@ -12,8 +12,8 @@
  * > `claimSeats`·`depthClear` 의 계약이 두 파일로 갈린다 — 장부째 옮기는 것이 다음 단계의 몫이다.
  */
 
-import type { SpecInserter } from "../../buildSpec";
-import type { PortFace } from "../../containerModel";
+import type { SpecInserter } from "../../shared/gamedata/spec";
+import type { PortFace } from "../../shared/types";
 import type { Link, PortSide } from "./line";
 import type { FaceTable } from "../../planner/module/faceTable";
 

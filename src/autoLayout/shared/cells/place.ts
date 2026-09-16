@@ -6,10 +6,10 @@
  * 펼쳐 `internal.placed`/`bbox` 에 반영한다.
  */
 
-import { EntityType, createEmptyCell } from '../../types/layout';
-import type { Direction, GridCell } from '../../types/layout';
-import type { Area, Container, PlacedCell } from '../containerModel';
-import { expandBbox } from '../util/helper';
+import { EntityType, createEmptyCell } from '../../../types/layout';
+import type { Direction, GridCell } from '../../../types/layout';
+import type { Area, Container, PlacedCell } from '../types';
+import { expandBbox } from '../grid';
 
 /**
  * 컨테이너를 내부 영역에 commit — footprint 셀을 `placed` 에 펼치고 bbox 확장.

@@ -15,8 +15,8 @@
  * > 무대를 차리고 베끼는 둘은 `planModulePorts.ts` 에서 왔다(Step 3b).
  */
 
-import { faceSeatArms, inserterForReach } from "../../buildSpec";
-import type { PortFace } from "../../containerModel";
+import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
+import type { PortFace } from "../../shared/types";
 import { armsAt, machinesOn } from "../../module/link";
 import { flowEnd } from "../../module/arith";
 import type { Link } from "../../module/types/line";

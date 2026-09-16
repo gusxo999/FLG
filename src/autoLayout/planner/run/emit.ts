@@ -14,10 +14,10 @@
 import { EntityType } from "../../../types/layout";
 import type {
   Area, CandidateLeaf, ContainerPort, PortFace, Routing, UndergroundCorridor,
-} from "../../containerModel";
-import type { LayoutIssue, LayoutSnapshot } from "../../layoutIssue";
+} from "../../shared/types";
+import type { LayoutIssue, LayoutSnapshot } from "../../shared/issue";
 import { makeEmptyArea } from "../../wizardUtils";
-import { commitContainer } from "../../execution/machinePlacer";
+import { commitContainer } from "../../shared/cells/place";
 import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
 import { deliveryKey } from "../modulePacking";
 import type { PackResult } from "../tree/types";

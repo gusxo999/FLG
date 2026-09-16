@@ -12,7 +12,7 @@
  * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `perimeterExitPlanner.ts` · `layoutRegions.ts` 에서 옮겼다).
  */
 
-import type { PortFace } from "../../containerModel";
+import type { PortFace } from "../../shared/types";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 

@@ -41,7 +41,7 @@ tags: [factorio-data, routing, auto-layout]
 어느 쪽을 보고 있는지 전혀 상관없다. 유체는 관망 안에서 압력이 알아서 흐른다 — 우리가 흐름을
 설계하지 않는다. 그래서:
 
-- 파이프 셀의 `direction` 은 **항상 0** 이다([cellBuilder.makePipeCell](../../src/autoLayout/util/cellBuilder.ts)).
+- 파이프 셀의 `direction` 은 **항상 0** 이다([cellBuilder.makePipeCell](../../src/autoLayout/shared/cells/builder.ts)).
   0 은 "북쪽" 이 아니라 **"뜻 없음"** 이다.
 - 파이프 가드는 검사가 **한 갈래**다: "이 칸에 놓으면 이으면 안 될 것과 이어지느냐."
 - 남의 파이프 한 칸이 있으면 **그 사방 네 칸 전부**가 금지 칸이다(대각선은 안 닿는다).
@@ -113,7 +113,7 @@ tags: [factorio-data, routing, auto-layout]
 
 둘 다 **화면상으로는 멀쩡하고, 라우팅은 "성공" 이라고 보고한다.** 그래서 파이프를 깔기 전에
 "밟으면 안 되는 칸" 의 지도를 만들어 검사한다 = [`collectPipeFlow` / `PipeFlow`](../용어사전.md#pipeflow--collectpipeflow)
-([module/pipeFlow.ts](../../src/autoLayout/util/pipeFlow.ts)).
+([module/pipeFlow.ts](../../src/autoLayout/shared/pipeFlow.ts)).
 
 벨트 가드와의 대칭:
 
@@ -137,7 +137,7 @@ tags: [factorio-data, routing, auto-layout]
 - `underground-belt` — **같은 prototype 끼리만** 간섭한다. 티어가 다른 지하벨트는 같은 직선 위에서
   서로 통과한다.
 - `pipe-to-ground` — **prototype 무관 전부** 간섭한다. 그래서 우리 모델은 지하 파이프를 단일
-  `blockGroup = "pipe-to-ground"` 으로 묶는다([containerModel.UndergroundCorridor](../../src/autoLayout/containerModel.ts)).
+  `blockGroup = "pipe-to-ground"` 으로 묶는다([containerModel.UndergroundCorridor](../../src/autoLayout/shared/types.ts)).
 
 ## 7. 그래서 우리 배치에서 파이프는 어떻게 깔리나
 
@@ -146,7 +146,7 @@ tags: [factorio-data, routing, auto-layout]
 | **ClusterPipe + pipeJumpToClusterPipe**(2026-07-15, 기본) — 머신마다 유체 상자 칸에 지하파이프 끝(fluidboxPipeCell)을 놓고, 지하로 벨트들을 넘어(ClusterPipeTapCell) 벨트 바깥의 세로 파이프 줄(ClusterPipe)에 합류. 좌석 줄은 **상자 칸만** 먹는다 | 결정적 직선(탐색 0) | **검사 후 거절** → 배치 실패(폴백 없음) |
 | **트렁크 파이프 스파인**(폴백) — 지하파이프가 없거나 점프 거리·좌석이 부족하면([용어사전 isJumpableToClusterPipe](../용어사전.md#isjumpabletoclusterpipe) 거짓) 옛 모양 그대로: 파이프가 depth 1 을 통째로 먹으며 모든 머신의 유체 입구를 지나간다 | 결정적 직선(탐색 0) | 위와 동일 |
 | **유체 반출** — 모듈 포트에서 전역 외곽까지 파이프 한 줄, 끝에 무한파이프 | 예약 lane 안 직선/ㄱ자 | **검사 후 거절** → 그 포트만 skip(로컬 ring 잔류) |
-| **옛 경로** (`execution/emitPath.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](../auto-layout/common/known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
+| **옛 경로** (`shared/cells/path.emitFluidPath`) | Dijkstra | **없다** — 일부러 무방비. [Deprecated Dijkstra Guard](../auto-layout/common/known-limits.md#9-deprecated-dijkstra-guard--드래그-재라우팅의-파이프는-합류-가드를-안-거친다) |
 
 스파인 폴백이 면 하나를 통째로 먹는 대가는 **케이스 B** 로 계산돼 있다: 그 면엔 일반 인서터가
 앉을 자리가 없어서 긴팔 인서터가 depth 2 에 앉아 depth 4 에서 집는다 → 그 면의 아이템 레인이

@@ -6,7 +6,7 @@ import { useUiDebugStore } from '../store/uiDebugStore';
 import type { ModuleSlot } from '../../types/layout';
 import { EntityType, getCell } from '../../types/layout';
 import type { InfinityFilter, InfinitySettings, InfinityPipeSettings } from '../../types/blueprint';
-import { useT } from '../i18n';
+import { useT } from '../i18n/index';
 import { applyEffectsToMachine, sumModuleEffects } from '../../factorio/moduleEffects';
 import { formatSurfaceConditions } from '../../factorio/surfaceConditions';
 import { useInspectStore } from '../store/inspectStore';

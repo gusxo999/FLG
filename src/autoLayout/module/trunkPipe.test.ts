@@ -15,7 +15,7 @@ import { generateModule } from "./clusterModule";
 import type { IoLine } from "./types/line";
 import type { ModuleInput } from "./types/module";
 import { EntityType } from "../../types/layout";
-import { collectPipeFlow, pipeFlowConflict } from "../util/pipeFlow";
+import { collectPipeFlow, pipeFlowConflict } from "../shared/pipeFlow";
 import { scaled } from "./testScale";
 
 const inItem = (name: string): IoLine => ({ name, kind: "belt", role: "input" });

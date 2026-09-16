@@ -39,7 +39,7 @@ occupancy 를 본다 — 즉 **모두가 이 검사를 통과한 상태로 합�
 |---|---|---|---|
 | E1 | [emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitOutputLinks` | 모듈 출력 수집 벨트 | 없음 — **끝 칸이 없다**(§6) |
 | E2 | 〃 `emitInputLinks` | 모듈 입력 공급 벨트 | **끝 칸만** — [[belt-terminus]] |
-| E3 | [emitPath.ts](../../../src/autoLayout/execution/emitPath.ts) `emitItemPath` | 납품 경로(모듈↔모듈) | **없음** |
+| E3 | [emitPath.ts](../../../src/autoLayout/shared/cells/path.ts) `emitItemPath` | 납품 경로(모듈↔모듈) | **없음** |
 | E4 | [modulePerimeterPass.ts](../../../src/autoLayout/execution/modulePerimeterPass.ts) `layBeltPath` | 반출(상자→전역 외곽) | **없음** |
 
 지하벨트를 놓는 자리는 셋이다 — `emitItemPath` 의 점프 입·출구 둘과

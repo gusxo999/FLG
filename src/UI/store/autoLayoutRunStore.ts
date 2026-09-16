@@ -27,7 +27,7 @@ import type {
   CandidateLeaf,
   ContainerWizardInput,
   ContainerWizardResult,
-} from '../../autoLayout/containerModel';
+} from '../../autoLayout/shared/types';
 import {
   collectModules,
   overlayFromLayout,
@@ -36,7 +36,7 @@ import {
   type OverlayLine,
   type OverlayModule,
 } from '../../autoLayout/moduleInspect';
-import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from '../../autoLayout/layoutIssue';
+import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from '../../autoLayout/shared/issue';
 
 /**
  * 진행 스냅샷 — `ProgressReporter` 가 넘기는 것과 같은 모양.

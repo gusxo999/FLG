@@ -13,8 +13,8 @@
  * 반출 배정은 그 답만 믿고 모듈 내부를 들여다보지 않는다.
  */
 
-import type { Container, PlacedCell, PortFace } from "../../containerModel";
-import { cellKey, faceVector } from "../../util/helper";
+import type { Container, PlacedCell, PortFace } from "../../shared/types";
+import { cellKey, faceVector } from "../../shared/grid";
 import type { ModulePort } from "../../module/types/module";
 
 

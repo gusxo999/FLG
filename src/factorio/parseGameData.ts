@@ -16,7 +16,7 @@ import type {
   FluidBoxInfo,
   PipeConnection,
 } from '../UI/store/gameDataStore';
-import { t } from '../UI/i18n';
+import { t } from '../UI/i18n/index';
 
 interface RawIngredient {
   type: string;

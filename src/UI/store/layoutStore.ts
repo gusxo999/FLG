@@ -18,7 +18,7 @@ import {
 } from '../../types/layout';
 import { getEntitySizeRotated } from '../../factorio/entitySize';
 import { useToastStore } from './toastStore';
-import { t } from '../i18n';
+import { t } from '../i18n/index';
 import { nanoid } from './nanoid';
 
 /**

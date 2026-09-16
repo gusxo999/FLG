@@ -23,10 +23,10 @@ import type {
 } from "../../module/types/seat";
 import { externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows } from "../../module/link";
 import { recordLaneUnshare } from "../../../debug/runStats";
-import { inserterForReach } from "../../buildSpec";
-import { determineBeltCount } from "../../beltThroughput";
-import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../debugFlags";
-import type { PortFace } from "../../containerModel";
+import { inserterForReach } from "../../shared/gamedata/spec";
+import { determineBeltCount } from "../../shared/arith/belt";
+import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
+import type { PortFace } from "../../shared/types";
 import { planBundles } from "./depthBudget";
 import { allocateLinkFaces, tryLinkFace, spillLinkFacesToGap } from "./linkPlanner";
 import { commitLinkFace, seatOnSharedBelt } from "./ledger";

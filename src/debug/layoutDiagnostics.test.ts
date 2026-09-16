@@ -16,7 +16,7 @@ import type {
   Container,
   PlacedCell,
   Routing,
-} from '../autoLayout/containerModel';
+} from '../autoLayout/shared/types';
 import { collectModules } from '../autoLayout/moduleInspect';
 import { checkLayout } from './checkRules';
 import { renderFace } from './faceTable';

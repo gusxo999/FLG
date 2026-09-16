@@ -3,7 +3,7 @@ import { packModuleTree } from "./modulePacking";
 import type { NodeSpec, PackConfig, PackResult } from "./tree/types";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { DeliveryConfig } from "./link/types";
-import { faceVector } from "../util/helper";
+import { faceVector } from "../shared/grid";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 import { scaledPack, scaledSpecs } from "../module/testScale";

@@ -5,7 +5,7 @@ import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { IoLine } from "../module/types/line";
 import { groupRate } from "../module/link";
 import * as allocateFlowsModule from "./link/allocateFlows";
-import { faceVector } from "../util/helper";
+import { faceVector } from "../shared/grid";
 import { EntityType } from "../../types/layout";
 
 // 끝단 통합 — 벨트 줄 단위 fan-out/fan-in 이 납품 경로로 이어지는지.
