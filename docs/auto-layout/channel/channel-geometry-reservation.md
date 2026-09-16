@@ -42,7 +42,7 @@ tags: [auto-layout, placement, routing]
 
 원인은 라우터의 실력 부족이 아니라 **예약의 구멍**이다. 현재 파이프라인의 순서는:
 
-1. 채널 폭을 계산해 빈 세로 통로를 예약한다 (`channelPlanner.ts` — [.s-layer-channel-reservation §4](s-layer-channel-reservation.md)).
+1. 채널 폭을 계산해 빈 세로 통로를 예약한다 (`channel/ledger/tracks.ts` — [.s-layer-channel-reservation §4](s-layer-channel-reservation.md)).
 2. 머신을 배치하고, 자식→부모 벨트(납품 경로)를 **먼저** 깐다.
 3. 맨 마지막에 갇힌 상자를 테두리로 빼는 벨트(반출 경로)를 깔려고 시도한다.
 
@@ -120,7 +120,7 @@ tags: [auto-layout, placement, routing]
 벨트를 깔기 전에 **숫자 비교만으로** 판정할 수 있다. 지금처럼 깔아 보고 나서야
 "막혔네" 를 아는 구조와의 근본 차이가 여기다.
 
-기존 코드에도 이 재료가 이미 있다: `channelPlanner.ts` 의
+기존 코드에도 이 재료가 이미 있다: `channel/ledger/tracks.ts` 의
 [[용어사전#left-edge algorithm|left-edge algorithm]](`assignTracksLeftEdge`)은 경로별 트랙 번호(`tracks` 배열)를
 **이미 계산하고 있는데, 하류가 폭(`trackCount`)만 쓰고 트랙 번호는 버린다.** 이 버려지는 배열을
 되살리는 것이 구현의 출발점이다(§8).
@@ -250,10 +250,10 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 
 | 단계 | 파일 | 구현 |
 |---|---|---|
-| 통합 장부 | `channelGeometryPlanner.ts` (신규) | 납품·반출을 한 장부에서 배정. 같은 쪽 판정 → 해소 사다리(①진출 변 뒤집기 ②지하 횡단 — 세로/가로 두 변형 ③fallback 마킹). 지상 배정은 반복 심화 백트래킹(폭 최소 우선, 결정적), 실패 시 탐욕+열 갈아타기. fallback 경로도 폭은 phantom 트랙으로 예약 |
-| 장부 호출·폭 역전 | `channel/ledger.ts`(planChannels) · `channel/shape.ts`(materializeChannelGeometry) · 적격성은 `link/arith.ts`(pairDeliveries) | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로)은 폭만 예약(`reserveIntervals`) |
-| 납품 경로 좌표 방출 | `deliveryRoute.ts` | 계획 납품 경로는 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 납품 경로) 침범 금지** |
-| 반출 경로 재생 | `perimeterExitPlanner.ts` / `perimeterRouter.ts` / `modulePerimeterPass.ts` | `ExitAssignment.entry`(진입 벽)·`trackX`(확정 트랙 x) 추가. ⑥C 는 `trackX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). **직진** 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
+| 통합 장부 | `channel/ledger/geometry.ts` (신규) | 납품·반출을 한 장부에서 배정. 같은 쪽 판정 → 해소 사다리(①진출 변 뒤집기 ②지하 횡단 — 세로/가로 두 변형 ③fallback 마킹). 지상 배정은 반복 심화 백트래킹(폭 최소 우선, 결정적), 실패 시 탐욕+열 갈아타기. fallback 경로도 폭은 phantom 트랙으로 예약 |
+| 장부 호출·폭 역전 | `channel/ledger/assign.ts`(planChannels) · `channel/shape.ts`(materializeChannelGeometry) · 적격성은 `link/arith/pair.ts`(pairDeliveries) | 납품 경로 적격성(자식 출력 W변·부모 입력 E변) 분류 → 채널별 `planChannelGeometry`. **채널 폭 = 배정 결과 trackCount 에서 유도.** 배정을 절대좌표로 변환해 `PackResult.channelGeometry`(납품 경로 방출 지시 + 반출 예약 셀)로 방출. 부적격(스필 납품 경로)은 폭만 예약(`reserveIntervals`) |
+| 납품 경로 좌표 방출 | `link/build.ts` | 계획 납품 경로는 계단꼴/열 갈아타기/지하 횡단을 **탐색 없이** 체인으로 방출(연속성 불변식 + 점유 검증, 어긋나면 dijkstra 폴백+로그). dijkstra 는 최후 폴백으로만 남고 **예약 셀(반출 lane + 다른 계획 납품 경로) 침범 금지** |
+| 반출 경로 재생 | `perimeter/policy.ts` / `perimeter/shape/router.ts` / `perimeter/late.ts` | `ExitAssignment.entry`(진입 벽)·`trackX`(확정 트랙 x) 추가. ⑥C 는 `trackX` 를 스캔 없이 재생(막히면 기존 스캔 폴백). **직진** 반출도 예약 셀로 차단 — 옛 "straight blocked" skip 해소 |
 
 미지원(폭만 예약, 기존 경로 유지): 스필로 채널을 정면으로 안 건너는 납품 경로(planner 면 개선이
 근본 치료).
@@ -269,8 +269,8 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 
 | 문서 용어 | 현 코드 | 개명 목표 |
 |---|---|---|
-| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan`(`channel/types.ts`) | `deliveryRoute` |
-| 반출 경로 | lane (`perimeterExitPlanner.ts`) / 신규 `ExportInput`·`ExportPlan`(`channel/types.ts`) | `exportRoute` |
+| 납품 경로 | delivery (`link/build.ts`) / 신규 `DeliveryInput`·`DeliveryPlan`(`channel/types.ts`) | `deliveryRoute` |
+| 반출 경로 | lane (`perimeter/policy.ts`) / 신규 `ExportInput`·`ExportPlan`(`channel/types.ts`) | `exportRoute` |
 | 절단선 | (개념 — sameSideOfCut 내부) | `cut` / `cutLine` |
 | 같은 쪽 판정 | `sameSideOfCut` ✓ | `sameSideOfCut` |
 | 열 갈아타기 | `columnSwitch` ✓ (`tryColumnSwitch`) | `columnSwitch` |
@@ -285,7 +285,7 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 1. **골든 스냅샷** — `modulePipeline.golden.test.ts` 의 구현 전 스냅샷 대비, 의도된 diff 만 확인:
    **relocated 5→7, skipped 2→0, reason null** — 옛 skip 2건(kr-glass "no free track"— 당시 문자열은 "no free lane track",
    n0 출력 "straight blocked to W") 모두 전역 외곽 도달. hopFailures 0 유지.
-2. **불변식 테스트** — `channelGeometryPlanner.test.ts` (15 케이스): (a) 납품 경로 belt 와 모듈
+2. **불변식 테스트** — `channel/ledger/geometry.test.ts` (15 케이스): (a) 납품 경로 belt 와 모듈
    셀(strip 제외)·다른 납품 경로의 셀 서로소, (b) 지상 계획 납품 경로는 corridor 0(판정-일치), (c) 결정성
    (같은 입력 → 같은 배정/같은 파이프라인 결과). 추가로 §4.3/§4.4(뒤집기·지하 횡단 두 변형)·
    §5-3 완전 교차 fallback 마킹·폭 역전을 단위 검증. 전체 스위트 212/212 green, tsc clean.

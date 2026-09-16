@@ -125,7 +125,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 
 ```
 전제   포트가 **채널 벽을 마주 본다**  (자식 출력 W변 · 부모 입력 E변 · 깊이 인접)
-표현   link/arith.ts pairDeliveries  `eligible = out.meta.side === "W" && inp.meta.side === "E" && …`
+표현   link/arith/pair.ts pairDeliveries  `eligible = out.meta.side === "W" && inp.meta.side === "E" && …`
 
 그래야 "출발 행 · 도착 행" 이 뜻을 갖는다 — 벨트가 벽에서 **가로로** 나와 채널로 든다.
 포트가 기둥 끝(N/S)이면 벨트가 **세로로** 나오므로 "출발 행" 이 아니라 "출발 열" 이고,
@@ -196,7 +196,7 @@ colWidth[d] = max(그 깊이 모듈들의 extent.w)
 **접점이 얇은 것이 설계다.** 모듈은 자기 안을 안 보여 주고(불투명 블록), 채널은 모듈 안을
 모른다. 그래서 한쪽을 바꿔도 다른 쪽이 안 깨진다 — **접점의 뜻이 그대로인 한**.
 
-> **`ModulePort.anchor` 의 정의는 "모듈 경계"다**(`clusterModule.ts`). 실제로는
+> **`ModulePort.anchor` 의 정의는 "모듈 경계"다**(`module/build.ts`). 실제로는
 > *"자기 벨트 + 2"* 에 놓이므로, 그 둘이 같아지는 것은 **그 면에 이 그룹 혼자일 때**뿐이다.
 > 면에 여러 줄이 앉으면 얕은 줄의 상자가 깊은 줄에 둘러싸여 **경계가 아니게 된다.**
 

@@ -47,8 +47,8 @@ tags: [auto-layout, placement, module]
 | §10 지하는 아끼는 자원이 아니다 | [[trunk-blocked]] **§4** | |
 | §11 좌석 넘침 → gap (TR8) | [[trunk-blocked]] **§5** | |
 
-**남은 절의 번호는 하나도 안 바꿨다** — `depthBudget.ts` · `faceTable.ts` · `link.ts` ·
-`planModulePorts.ts` · `linkPlanner.ts` · `runStats.ts` 의 주석이 **§2 · §4.2 · §15** 를
+**남은 절의 번호는 하나도 안 바꿨다** — `module/arith/depth.ts` · `module/ledger/face.ts` · `link.ts` ·
+`module/policy/port.ts` · `module/policy/link.ts` · `runStats.ts` 의 주석이 **§2 · §4.2 · §15** 를
 직접 부르기 때문이다. 그 대가로 **§6~§8 · §10 · §11 이 빈 번호로 남는다** — 위 표가 행선지다.
 **TR1~TR14 도 안 바뀐다**(§ 와 다른 체계이고 `tempPlanDocs/` 가 60회 넘게 인용한다).
 
@@ -351,7 +351,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 > **그런데 품목 3개가 밀착 기둥에 선다** — 예전엔 여기가 *"불가능"* 이라 적혀 있었고,
 > 그것이 §4 의 약분 오류와 같은 뿌리다. 셋 다 `g=1` 이면 머신마다 한 행씩만 먹어
 > **한 깊이를 나눠 쓴다**(§4.1). 실제로 코드가 그렇게 놓는다 —
-> `clusterModule.test.ts` *"아이템 3줄이 유체 면을 비켜 W 3칸에 앉는다"*(battery, `ℛ={1}`).
+> `module/build.test.ts` *"아이템 3줄이 유체 면을 비켜 W 3칸에 앉는다"*(battery, `ℛ={1}`).
 > gap 이 필요해지는 것은 **좌석이 챙을 때**이지 깊이가 모자랄 때가 아니다.
 
 ```
@@ -362,7 +362,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
  y=92  ███ M1 ███
 ```
 
-**가로 벨트 하나가 위·아래 두 머신을 먹인다.** `clusterLayout.ts:17` 의 `ROW_GAP = 3` 이
+**가로 벨트 하나가 위·아래 두 머신을 먹인다.** `module/shape/cluster.ts:17` 의 `ROW_GAP = 3` 이
 정확히 이 폭(좌석/벨트/좌석)이다.
 
 ```
@@ -526,7 +526,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 
 **㉡ 충돌 술어** — 셀 서로소 + 흐름 인접. **행이 인접하는 것은 허용**된다:
 끝 칸이 포트 쪽으로 꺾여 이웃 벨트로 안 흐른다(`module/shape/body.outputRouteOf` 의 끝 칸 주석).
-그래서 술어가 strict 하고, `assignTracksLeftEdge` 의 `end < iv.lo`(`channelPlanner.ts:43·57`)와
+그래서 술어가 strict 하고, `assignTracksLeftEdge` 의 `end < iv.lo`(`channel/ledger/tracks.ts:43·57`)와
 **정확히 같다.** 오늘 `tryLinkFace:335` 의 겹침 판정도 이미 그것이다 — **자를 새로 만들 필요가 없다.**
 
 **㉢ 배정 3단** — 전부 결정적:
@@ -608,7 +608,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 
 #### ⑦ `containerRouting` 은 무엇으로 남나 — **지하 규칙 제공자**
 
-D10 그대로다. 부를 것은 하나 — `isJumpAllowed`(`containerRouting.ts:551`)이고 **지금
+D10 그대로다. 부를 것은 하나 — `isJumpAllowed`(`shared/route.ts:551`)이고 **지금
 `export` 도 안 돼 있다.** TR7 (가) 잠수가 실제로 필요해질 때 export 한다(트리거는 J12).
 규약 하나를 더 읽는다 — `entrance-straight`(`:351`)가 D13 의 근거다.
 **경로 탐색기로는 안 부른다.**

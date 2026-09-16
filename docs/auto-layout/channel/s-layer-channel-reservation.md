@@ -34,7 +34,7 @@ tags: [auto-layout, placement, routing]
 > [[용어사전#채널 (channel)|채널]]은 항상 비어 있으므로 **라우팅이 실패할 수 없다** (정의상).
 
 이것이 (롤백된) 완전탐색 전략 S-EXH 의 `FailureLeaf` 백트래킹·`n!` 형제순서 폭발을 없애는 핵심
-메커니즘이며, 현재 전략 S-LAYER ([run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 로 구현돼 있다.
+메커니즘이며, 현재 전략 S-LAYER ([build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 로 구현돼 있다.
 
 ---
 
@@ -119,7 +119,7 @@ automation-science-pack         (L0, 제품)
 ---
 
 > **구현 상태 (2026-06-04):** §4·§5 의 **트랙 수 산정**은 구현 완료.
-> `channelPlanner.ts` 의 `assignTracksLeftEdge` 가 left-edge interval partitioning 으로
+> `channel/ledger/tracks.ts` 의 `assignTracksLeftEdge` 가 left-edge interval partitioning 으로
 > 채널별 최소 트랙 수를 구하고, `run/build/layered.ts` 가 `channelWidthFromTracks` 로 채널 폭을 동적 결정한다
 > (고정폭 상수 대신 `CHANNEL_MIN = 3` 하한 + 트랙 수 기반 폭). 라우팅은 (depth, track, lo) 순서로 정렬해 깔되, **셀 구성
 > (벨트/투입기/파이프/방향)** 은 검증된 기존 BFS 라우터(옛 파사드 `facadeRouting.routePorts` — 2026-09-16 삭제 → [manual-edit](../../deferred/manual-edit.md))를
@@ -130,7 +130,7 @@ automation-science-pack         (L0, 제품)
 ## 4. 채널 폭(W) 계산 — 가장 중요한 디테일
 
 채널 폭은 임의 상수가 아니라 **그 경계를 가로지르는 동시 연결 수**로 계산한다.
-현재 코드의 `CHANNEL_MIN = 3` ([run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 이 이 계산의 *하한*이다.
+현재 코드의 `CHANNEL_MIN = 3` ([build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 이 이 계산의 *하한*이다.
 
 ### 4.1 한 연결이 채널에서 쓰는 자원
 
@@ -312,10 +312,10 @@ function assignColumns(layers, channels):
 
 | S-LAYER 요소 | 현재 코드 |
 |---|---|
-| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../../../src/autoLayout/channel/ledger/tracks.ts)), 열 x 누적은 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts) |
-| 트랙 내 벨트/투입기/파이프 깔기 | 옛 `routeWithFallback` → `routePorts`(2026-09-16 삭제 → [manual-edit](../../deferred/manual-edit.md)) / `commitRouting` ([shared/cells/path.ts](../../../src/autoLayout/shared/cells/path.ts)) |
+| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([ledger/tracks.ts](../../../src/autoLayout/channel/ledger/tracks.ts)), 열 x 누적은 [build/layered.ts](../../../src/autoLayout/run/build/layered.ts) |
+| 트랙 내 벨트/투입기/파이프 깔기 | 옛 `routeWithFallback` → `routePorts`(2026-09-16 삭제 → [manual-edit](../../deferred/manual-edit.md)) / `commitRouting` ([cells/path.ts](../../../src/autoLayout/shared/cells/path.ts)) |
 | 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
-| 머신 좌표 결정·commit | 좌표 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts), footprint commit `commitContainer` ([machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts)) |
+| 머신 좌표 결정·commit | 좌표 [build/layered.ts](../../../src/autoLayout/run/build/layered.ts), footprint commit `commitContainer` ([cells/place.ts](../../../src/autoLayout/shared/cells/place.ts)) |
 
 ---
 

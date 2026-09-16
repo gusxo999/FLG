@@ -26,7 +26,7 @@ tags: [auto-layout, placement, module]
 `y=t` 행에서 얕은 줄 A 가 깊은 줄 B 를 건너려 할 때, **A 는 점프를 시작할 수 없다**:
 
 ```
-containerRouting.ts:351   if (di !== cur.arr) continue;   // entrance-straight
+shared/route.ts:351   if (di !== cur.arr) continue;   // entrance-straight
 ```
 
 A 는 코너에 **남쪽으로** 도착하므로 남쪽으로만 점프할 수 있다. **B 가 잠수해야 한다:**
@@ -215,7 +215,7 @@ M3 ┘
 N 대에 필요한 gap 수 = ⌈N/2⌉
 ```
 
-`layoutCluster` 가 **이미 `rowGap: number | number[]` 를 받는다**(`clusterLayout.ts:51`) —
+`layoutCluster` 가 **이미 `rowGap: number | number[]` 를 받는다**(`module/shape/cluster.ts:51`) —
 *"gap 은 자리마다 다를 수 있다. 그 gap 을 지나는 가로 벨트 수에서 유도되기 때문이다."*
 **새 자료구조가 필요 없다.**
 

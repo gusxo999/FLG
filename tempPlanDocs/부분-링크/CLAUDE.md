@@ -53,11 +53,11 @@ c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자
 - `link/policy/edge.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle` ·
   `batchCarries`(**토막 내기 자체** — `g` 대씩 자른다)
 - `tree/build.ts` 의 간선 루프 — **거기서만** 자식·부모의 좌석표를 둘 다 본다
-- `module/arith/trunk/depth.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
-- `module/policy/trunk/port.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다) ·
+- `module/arith/depth.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
+- `module/policy/port.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다) ·
   **`spillPair`(넘침 면 순서 — 반대 면이 빠진 그 상수)** · `planModulePorts`(자매 경로.
   같은 자리에서 **반대 면을 이미 쓴다**)
-- `module/policy/trunk/link.ts` — `tryLinkFace` · `commitLinkFace` · `beltRowSpan`
+- `module/policy/link.ts` — `tryLinkFace` · `commitLinkFace` · `beltRowSpan`
   (구간이 **구멍 없는 `[최소행,최대행]`** 이라는 사실이 여기 있다) · gap 의 `machinesOn !== 1`
 
 **이웃 계획** (둘 다 `승인 대기`)
@@ -85,7 +85,7 @@ LinkDepthNeed     **무엇을 내주나**의 눈금 (free · opposite-face ·   
 나머지 줄의 `g`      이미 끝났다(`planBundles`). 여기서 안 건드린다
 면·깊이 배정         `자리-배정` 의 몫
 격자 클러스터        **`g>1` gap 형태만** 범위 밖이다 (가로 벨트 하나가 위·아래 두 대를
-                    먹이는 것). **`g=1` gap 은 이미 살아 있다** — `linkPlanner.ts:447` 이
+                    먹이는 것). **`g=1` gap 은 이미 살아 있다** — `module/policy/link.ts:447` 이
                     `machinesOn !== 1` 만 거절한다. (2026-09-04 정정: 예전 서술이
                     *"gap 을 벌리는 형태는 범위 밖"* 이라 g=1 까지 덮는 것처럼 읽혔다)
 ```

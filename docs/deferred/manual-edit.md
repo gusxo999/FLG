@@ -51,7 +51,7 @@ tags: [deferred, auto-layout]
 | 파일 | 원본 | 무엇 |
 |---|---|---|
 | `dragArea.ts` | `shared/frames.ts` | 상자·조립기 그룹 드래그 + 재라우팅 |
-| `facadeRouting.ts` | `containerRouting.ts` | "포트 페어 → 완성된 라우팅" 고수준 API |
+| `facadeRouting.ts` | `shared/route.ts` | "포트 페어 → 완성된 라우팅" 고수준 API |
 | `routeFallback.ts` | (통째) | 포트 페어 폴백 탐색 |
 | `portInference.ts` | (통째) | 컨테이너의 포트 열거·짝짓기 |
 | `storeActions.ts` | `layoutStore.ts` | **원본 조각 그대로** — 컴파일 안 됨 |

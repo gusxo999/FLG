@@ -34,7 +34,7 @@ glass 100/s 에서 납품 54건 중 **2건**이 배정에 실패한다(인서터
 
 그런데 계단꼴이 다투는 자원은 **셋**이다 — 세로 트랙 · **가로 팔이 놓이는 행** · 상자 접점.
 사다리에는 *"행을 옮긴다"* 가 없다. 납품의 두 행(startY·endY)은 포트가 이미 정했고,
-장부는 그것을 **입력으로 받는다**([channelGeometryPlanner.ts](../../src/autoLayout/channel/ledger/geometry.ts) `DeliveryInput`).
+장부는 그것을 **입력으로 받는다**([ledger/geometry.ts](../../src/autoLayout/channel/ledger/geometry.ts) `DeliveryInput`).
 
 > **가설:** 실패의 축은 세로가 아니라 **가로**다. 두 경로의 가로 팔이 같은 행에서 겹치면
 > 트랙을 아무리 늘려도(②) 지하로 내려가도(③) 안 풀린다 — 지하는 *세로선 밑*을 건널 뿐이다.
@@ -80,14 +80,14 @@ glass 100/s 에서 납품 54건 중 **2건**이 배정에 실패한다(인서터
 관측 방법: `flg.report()` 의 **`납품장부`** 줄 — `PackChannelGeometry.skips` 를 사유별로 낸다.
 
 > **2026-09-11 재감사 — 이 문장이 거짓이었다.** `PackChannelGeometry.skips` 는
-> `modulePacking.ts:289` 에 **만들어지기만 하고 읽는 곳이 0곳**이었다(`flg.report()` 의 `skips`
+> `tree/build.ts:289` 에 **만들어지기만 하고 읽는 곳이 0곳**이었다(`flg.report()` 의 `skips`
 > 는 **반출**의 것이다). 공통 규칙의 셋째 규율(*읽는 자리까지 같이 만든다*)이 깨진 자리라
 > 재감사에서 **그 줄을 만들었다** — 이제 위 문장이 참이다.
 
 ### 전제
 
 - 계단꼴의 두 행은 **포트가 정하고 장부는 못 바꾼다** — 오늘 코드 기준.
-- 지하 횡단은 **세로 주행에 안 쓰인다**([channelGeometryPlanner.ts](../../src/autoLayout/channel/ledger/geometry.ts) `placeWithJumps` 의 `trackTaken` 검사).
+- 지하 횡단은 **세로 주행에 안 쓰인다**([ledger/geometry.ts](../../src/autoLayout/channel/ledger/geometry.ts) `placeWithJumps` 의 `trackTaken` 검사).
   이 전제가 바뀌면(세로도 지하 허용) 후보 표 전체를 다시 짜야 한다 — 다만 그건 유체에서
   D2 로 이미 거절된 것과 같은 성질(같은 직선 위 페어링 절단)이다.
 

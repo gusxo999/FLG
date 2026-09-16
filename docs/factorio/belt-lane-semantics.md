@@ -38,7 +38,7 @@ itemsPerSec = speed × 480
 | express-transport-belt | 0.09375 | 45 /s | **22.5 /s** |
 
 **우리 코드의 모든 벨트 용량 수치가 이미 「두 레인 합」이다**
-([shared/arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) 의 상수 480). 레인 하나는
+([arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) 의 상수 480). 레인 하나는
 **정확히 절반**이라 새로 잴 것이 없다 — 나누기만 하면 된다.
 
 ---
@@ -141,9 +141,9 @@ itemsPerSec = speed × 480
 
 | 자리 | 지금 | 레인이 오면 |
 |---|---|---|
-| [shared/arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) | `× 480` = 두 레인 합 · `laneThroughput` = 절반 | ✅ **계획이 보는 상한은 전부 레인**(2026-09-03) |
-| [module/arith/trunk/link.ts](../../src/autoLayout/module/arith/trunk/trunk/link.ts) `createLinks` | ✅ 붓기 상한이 **레인**(`laneCapOfTier`) · `bundleCap` 도 | 남은 것은 두 줄이 **한 물리 벨트**를 쓰는 것 |
-| [containerRouting.ts](../../src/autoLayout/shared/route.ts) `collectBeltFlow` | 이 기하를 찾아내 **전부 오염으로 막는다** | 허가된 합류만 예외. 나머지는 그대로 오염 |
+| [arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) | `× 480` = 두 레인 합 · `laneThroughput` = 절반 | ✅ **계획이 보는 상한은 전부 레인**(2026-09-03) |
+| [arith/link.ts](../../src/autoLayout/module/arith/link.ts) `createLinks` | ✅ 붓기 상한이 **레인**(`laneCapOfTier`) · `bundleCap` 도 | 남은 것은 두 줄이 **한 물리 벨트**를 쓰는 것 |
+| [shared/route.ts](../../src/autoLayout/shared/route.ts) `collectBeltFlow` | 이 기하를 찾아내 **전부 오염으로 막는다** | 허가된 합류만 예외. 나머지는 그대로 오염 |
 | [analysis/beltFlow.ts](../../src/analysis/beltFlow.ts) | *"한 벨트 = 1품목"* 근사. 두 품목 보면 `(혼합)` | **칸마다 유입 개수를 세야** 곡선/사이드로드가 갈린다(⑥). 포화도 레인별 |
 | 인서터 필터(②) | `GridCell` 에 자리가 없고 export 도 안 한다 | 새 필드 + `BlueprintEntity.filters` 매핑 |
 | `filter_count` | `scripts/export-gamedata.lua` 가 **안 싣는다** | 필터를 못 다는 인서터를 가리려면 필요하다 |

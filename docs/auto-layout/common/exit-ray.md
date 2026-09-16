@@ -10,7 +10,7 @@ tags: [auto-layout, placement, routing]
 
 **한 줄 요약:** 배치는 **이름 붙은 영역의 격자**다. 그 목록은 **좌표보다 먼저** 완성되므로,
 *"이 방향으로 나가면 무엇을 지나나"* 는 **좌표 없이** 답할 수 있다.
-코드는 [`planner/layoutRegions.ts`](../../../src/autoLayout/planner/layoutRegions.ts).
+코드는 [`shape/rays.ts`](../../../src/autoLayout/perimeter/shape/rays.ts).
 
 ## 1. 왜 필요했나
 

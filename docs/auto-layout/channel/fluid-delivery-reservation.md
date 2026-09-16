@@ -34,23 +34,23 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 
 납품 경로 입력 목록을 만드는 자리에 **품목 종류를 거르는 코드가 없다**:
 
-- `productOf(s)` = 출력 라인 이름 ([link/policy.ts](../../../src/autoLayout/link/policy/delivery.ts) `productsOf`).
+- `productOf(s)` = 출력 라인 이름 ([policy/delivery.ts](../../../src/autoLayout/link/policy/delivery.ts) `productsOf`).
   라인의 `kind`(belt/pipe)를 안 본다 → 유체 출력 노드도 그대로 통과.
 - `pairDeliveryPorts` 는 이름이 같은 출력·입력 포트를 짝짓는다
-  ([link/edgeLinks.ts](../../../src/autoLayout/link/policy/edge.ts) `pairDeliveryPorts`).
+  ([policy/edge.ts](../../../src/autoLayout/link/policy/edge.ts) `pairDeliveryPorts`).
   유체 포트는 `linkId` 가 없어 ②번 위치-zip 으로 짝이 된다(v1 모듈당 유체 1포트 → 자명).
 - 그 짝이 그대로 납품 경로 입력에 쌓인다
-  ([link/arith.ts](../../../src/autoLayout/link/arith/pair.ts) `pairDeliveries`).
+  ([arith/pair.ts](../../../src/autoLayout/link/arith/pair.ts) `pairDeliveries`).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
-  ([emitModule.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 포트 `meta`).
+  ([module/emit.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 포트 `meta`).
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
-  ([channel/ledger.ts](../../../src/autoLayout/channel/ledger/assign.ts) `planChannels`).
+  ([ledger/assign.ts](../../../src/autoLayout/channel/ledger/assign.ts) `planChannels`).
 
 **즉 유체 상자가 W/E 변에 오면 그 납품 경로는 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 
 그리고 **유체는 항상 W/E 변에 온다** — 선택이 아니라 강제다
-([run/policy.ts](../../../src/autoLayout/run/policy.ts) `admitFluidTrunks` → [fluidPorts.ts](../../../src/autoLayout/module/gamedata.ts) `chooseFluidTrunkPlan`):
+([run/policy.ts](../../../src/autoLayout/run/policy.ts) `admitFluidTrunks` → [module/gamedata.ts](../../../src/autoLayout/module/gamedata.ts) `chooseFluidTrunkPlan`):
 
 ```ts
 // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E)
@@ -321,7 +321,7 @@ D3 이 D2 를 다시 열었고, 그 답이 §4.3(우선순위 재정렬)이다. 
 §4.3 은 *배정* 순서만 다뤘다. 그런데 방출 루프에도 같은 문제가 있었다:
 
 아이템 납품 경로가 막히면 "예약 무시 재시도"로 **남의 계획 칸을 밟는다**
-([deliveryRoute.ts](../../../src/autoLayout/link/build.ts) 의 그 거래). 밟힌 게
+([link/build.ts](../../../src/autoLayout/link/build.ts) 의 그 거래). 밟힌 게
 유체의 자리였으면 유체는 물러설 데가 없어 트리가 통째로 죽는다.
 
 → `routeDeliveryRoutes` 가 **유체 납품 경로를 먼저 깐다**. 유체가 실제로 칸을 차지한 뒤(`deliveryBelts`)라야

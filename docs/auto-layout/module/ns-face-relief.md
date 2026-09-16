@@ -18,7 +18,7 @@ count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 깊이가 넘칠 때 W-sp
 ## 1. 문제/배경
 
 모듈 파이프라인의 슬롯 배정(그때는 `clusterPortPlanner` — 2026-09-02 삭제, 지금은
-[linkPlanner](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) 의 `spillLinkFacesToGap`)은
+[linkPlanner](../../../src/autoLayout/module/policy/link.ts) 의 `spillLinkFacesToGap`)은
 기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 깊이는 기둥 축을 따라 달려야 N대
 전부를 서빙하므로 N/S(축의 끝면)는 스케일이 안 되기 때문이다. 그러나 count=1이면
 이 논리가 퇴화한다 — 4면이 전부 동등한데 관례상 2면을 버리고, 입력 3개 레시피에서
@@ -48,7 +48,7 @@ kr-glass 입력이 W depth3/긴팔로 spill → 상자가 W면 anchor 에 생성
    > 줄을 머신마다 쪼개므로 가로 벨트가 한 대만 먹여도 아무 문제가 없다 — 그래서 그 경로는
    > **W/E 가 다 차면 gap 으로 넘어간다**(링크가 원래 하던 `spillLinkFacesToGap` 을 그대로 탄다).
    > 탭은 여전히 W/E 뿐이고, 여기 §2의 `nsExposure`(count=1 완화)도 탭 경로 그대로다.
-   > → [[machine-link]] · `clusterModule.test.ts` "W/E 가 다 차면 위/아래로 넘어가고…"
+   > → [[machine-link]] · `module/build.test.ts` "W/E 가 다 차면 위/아래로 넘어가고…"
 5. **⑥A 변 판정 = `meta.side` 단일 출처.** N/S 깊이의 chest 는 트렁크가 깊이를 따라
    수평으로 자라 **코너 어깨**(x·y 둘 다 bbox 밖)에 앉을 수 있어, 기하 추측(X변 우선)이
    W/E 로 오분류 → self-N 직진 대신 채널 우회로 배정되는 낭비/실패. planner 슬롯을
@@ -62,16 +62,16 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 
 ## 4. 구현 위치
 
-- [linkPlanner.ts](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) — 노출 끝면 완화는
-  [policy.ts](../../../src/autoLayout/module/policy/trunk/trunk/seat.ts) `seatRestLines` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
+- [policy/link.ts](../../../src/autoLayout/module/policy/link.ts) — 노출 끝면 완화는
+  [policy/seat.ts](../../../src/autoLayout/module/policy/seat.ts) `seatRestLines` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
   `PlannedSide`(W/E/N/S), `IoLine.external`, `PortPlannerInput.nsFaces`, 입력 풀 소비
   순서(E→N/S→W), depth 재배정 루프 N/S 포함.
-- [clusterModule.ts](../../../src/autoLayout/module/build.ts) —
+- [module/build.ts](../../../src/autoLayout/module/build.ts) —
   `ModuleInput.nsExposure` → planner `nsFaces` 전달. 트렁크는 기존 faceConstraints
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
-- [tree/arith.ts](../../../src/autoLayout/tree/arith/pack.ts) —
+- [arith/pack.ts](../../../src/autoLayout/tree/arith/pack.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정).
-  [perimeter/exits.ts](../../../src/autoLayout/planner/perimeter/exits.ts) — `planExits` 의 변 판정을 `meta.side` 로 교체.
+  [shape/exits.ts](../../../src/autoLayout/perimeter/shape/exits.ts) — `planExits` 의 변 판정을 `meta.side` 로 교체.
 - [shared/types.ts](../../../src/autoLayout/shared/types.ts) —
   `ModulePortMeta.side` 확장('W'|'E'|'N'|'S').
 
@@ -94,15 +94,15 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
   미지원으로 skip 되던 문제를 방출 단계에서 두 부분으로 치료했다. **planner 는 그대로**
   (planPerimeterExits 는 여전히 meta.side 로 배정) — 좌표 확정 전이라 어느 방향이 뚫렸는지
   알 수 없기 때문. 대신 occ 를 아는 ⑥C 방출기를 고쳤다:
-  1. **trackX 구동 jog**([perimeterRouter.ts](../../../src/autoLayout/planner/perimeterRouter.ts)):
+  1. **trackX 구동 jog**([shape/router.ts](../../../src/autoLayout/perimeter/shape/router.ts)):
      채널 반출의 가로 진입 방향을 `port.face` 의 fv.x 대신 확정된 `trackX−anchor.x` 부호로
      정한다. face 가 N/S(fv.x=0)여도 trackX 가 있으면 elbow 를 그대로 재생 — 옛
      `N/S-side channel divert unsupported` 무조건 거부 제거(kr-glass 류 해소).
-  2. **auto 폴백**([modulePerimeterPass.ts](../../../src/autoLayout/execution/modulePerimeterPass.ts)):
+  2. **auto 폴백**([perimeter/late.ts](../../../src/autoLayout/perimeter/late.ts)):
      예약 배정이 실제로 막힌 경우(코너 어깨 상자의 채널 우회가 **자기 트렁크를 관통** —
      planner 가 못 본 충돌, copper-cable 사례) hint 없는 auto 탐색으로 폴백해 열린 변(대개
      face 직진)으로 내보낸다. 납품 경로의 dijkstra 최후폴백과 대칭이고, skip 을 재배치로만 바꿔
      겹침 0·회귀 0. 실측(advanced-circuit 동형, count 1~8): 상자 7개 전부 재배치, skip 0.
   - **남은 trade-off:** copper-cable 의 예약된 채널 트랙은 auto 폴백이 다른 변으로 나가면
     **쓰이지 않고 폭만 낭비**된다. planner 가 뚫린 face 를 먼저 고르는 근본 치료는 좌표 후
-    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [modulePerimeterPass.test.ts](../../../src/autoLayout/execution/modulePerimeterPass.test.ts) "count≥2 코너 어깨".
+    점유를 봐야 가능 — 후속 과제. 회귀 테스트: [perimeter/late.test.ts](../../../src/autoLayout/perimeter/late.test.ts) "count≥2 코너 어깨".

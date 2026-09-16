@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.placement-search](placement-search.md), [.s-layer-channel-reservation](../channel/s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
 
-본 문서는 **현재 구현**(모듈 파이프라인 — [run/build/module.ts](../../../src/autoLayout/run/build/module.ts), 진입점은 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
+본 문서는 **현재 구현**(모듈 파이프라인 — [build/module.ts](../../../src/autoLayout/run/build/module.ts), 진입점은 [build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
@@ -26,7 +26,7 @@ tags: [auto-layout, placement, routing]
 - **아이템 줄의 상한은 면당 [[용어사전#ClusterBelt|ClusterBelt]] 수 = 인서터 reach 종류 수**(현재 2)다. 두 면이면 4줄이 상한이고, 유체가 그 면의 좌석 행을 먹으면 더 줄어든다. 유체는 여기서 안 걸린다 — 유체 줄은 깊이로 겹쳐 쌓이므로 면 수가 아니라 지하파이프 사거리가 상한이다([[trunk-pipe]] §5.1).
 
 **원인:**
-- [module/shape/body/cluster.ts](../../../src/autoLayout/module/shape/body/body/cluster.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+깊이 타일 등 다른 형태가 없다.
+- [shape/cluster.ts](../../../src/autoLayout/module/shape/cluster.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+깊이 타일 등 다른 형태가 없다.
 - [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
@@ -60,7 +60,7 @@ tags: [auto-layout, placement, routing]
 - 채널/공간을 실제보다 보수적으로 점유 → 면적 증가, 빡빡한 경우 우회 길이 증가.
 
 **원인:**
-- [containerRouting.ts](../../../src/autoLayout/shared/route.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
+- [shared/route.ts](../../../src/autoLayout/shared/route.ts) `buildOccupancy` 가 1차 단순화로 모든 placed 셀을 blocked 처리(주석에 명시).
 
 **해결 방향:**
 - belt-route 셀에 운반 item 종류 태깅 → 같은/호환 종류 통과 허용. fluid 는 같은 fluid 파이프 공유. C3 mixing 검사와 함께 도입.
@@ -86,7 +86,7 @@ tags: [auto-layout, placement, routing]
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [build/layered.ts](../../../src/autoLayout/run/build/layered.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [cells/place.ts](../../../src/autoLayout/shared/cells/place.ts) `machineEntityType`).
 
 **해결 방향:**
 - 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseFluidTrunkPlan`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
@@ -101,7 +101,7 @@ tags: [auto-layout, placement, routing]
 - 조립기 1·2·3 을 모두 체크해도 카테고리에 맞는 **선택 목록상 첫 머신** 만 모든 노드에 사용. "후반만 조립기3" 같은 의도 표현 불가.
 
 **원인:**
-- [run/gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
+- [gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
 
 **해결 방향:**
 1. 머신 선택 UI 에 우선순위(drag-reorder) 또는 레시피별 매핑.
@@ -121,7 +121,7 @@ tags: [auto-layout, placement, routing]
 > 부족분만큼 머신이 더 놓인다. 남은 건 모듈 modelling 뿐이라 항목을 그쪽으로 좁힌다.
 
 **원인:**
-- [run/gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
+- [gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
 
 **해결 방향:**
 - 모듈 multiplier 를 `NodeMachineParams` 입력으로.
@@ -224,7 +224,7 @@ tags: [auto-layout, placement, routing]
 **원인:**
 - 한 면이 세울 수 있는 [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]] 수 = **서로 다른 reach 값 개수**
   (`depthSlots` — 2026-09-02 삭제. 지금 그 수를 세는 곳은
-  [arith.ts](../../../src/autoLayout/module/arith/trunk/trunk/face.ts) 의 `clusterBeltDepthsOf` 다).
+  [arith/face.ts](../../../src/autoLayout/module/arith/face.ts) 의 `clusterBeltDepthsOf` 다).
   같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 깊이 1칸**.
   게임 물리라 코드로 넓힐 수 없다.
 - 유체 면은 거기서 한 번 더 깎인다. 지하파이프가 없어 점프 불가면 좌석 줄 전체가 파이프라
@@ -247,7 +247,7 @@ tags: [auto-layout, placement, routing]
 > 그 근거는 파이프 방출이 tap 가지 **안에만** 있어서 물러나면 유체가 조용히 사라진다는 것이었다.
 > 방출을 갈래 밖으로 꺼내고([clusterModule](../../../src/autoLayout/module/build.ts)) 기계별
 > 포트를 링크 배분기에 태우자 그 관문의 근거가 없어졌다 → 삭제. `battery` 는 짧은 팔만으로
-> 선다(회귀: `clusterModule.test.ts` "공급 모델 통합 — 기계별 포트").
+> 선다(회귀: `module/build.test.ts` "공급 모델 통합 — 기계별 포트").
 > 같은 통합에서 **W/E 가 다 차면 위/아래(gap)로 넘어가는 길**도 열려 [[ns-face-relief]] 결정 4 의
 > 전제가 바뀌었다. → [[machine-link]]
 

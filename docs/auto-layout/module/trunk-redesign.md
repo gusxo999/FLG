@@ -15,8 +15,8 @@ tags: [auto-layout, placement, routing]
 > (2026-08-16 · 2026-09-02) — 그 일을 지금 하는 것은 다음 셋이다:
 >
 > ```
-> 줄마다 몇 대를 맡나   module/arith/trunk/depth.planBundles   ← 깊이 예산
-> 어느 면·어느 깊이에   module/policy/trunk/link             ← 링크와 같은 배분기
+> 줄마다 몇 대를 맡나   module/arith/depth.planBundles   ← 깊이 예산
+> 어느 면·어느 깊이에   module/policy/link             ← 링크와 같은 배분기
 > 무엇을 놓나           execution/module/emitOutputLinks · emitInputLinks
 > ```
 >
@@ -48,7 +48,7 @@ tags: [auto-layout, placement, routing]
 
 > **해소됨(2026-08-05).** 진단 대상이던 코드는 둘 다 없다: 씨앗 그리디 본체
 > (`trunkPath` · `trunkEmit`)는 삭제됐고, "뒤 줄이 앞 줄을 피한다"던 누적 occupancy 는
-> [`clusterModule.ts`](../../../src/autoLayout/module/build.ts) 에서 **슬롯을 먼저
+> [`module/build.ts`](../../../src/autoLayout/module/build.ts) 에서 **슬롯을 먼저
 > 못박은 뒤 같은 면 두 깊이의 좌석이 겹치지 않게 하는** 검사로 바뀌었다. 아래는 전환의
 > 근거 기록이다.
 

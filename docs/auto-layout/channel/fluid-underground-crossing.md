@@ -22,7 +22,7 @@ aliases: [유체지하횡단, fluid-underground-crossing]
 ### 1.1 페어링 규칙은 이미 있다. 30줄짜리 순수 함수다
 
 지하파이프가 서로 짝을 가로채는 문제는 라우터에서 이미 풀려 있다
-([containerRouting.ts:1175](../../../src/autoLayout/shared/route.ts#L1175)):
+([shared/route.ts:1175](../../../src/autoLayout/shared/route.ts#L1175)):
 
 ```
 충돌 규칙: 같은 axis · 같은 line 위에서 interval 이 strict disjoint 여야 함.
@@ -54,7 +54,7 @@ const tx = (t: number) => channelStartX(seed.depth) + 1 + t;
 ### 1.3 모듈 내부 지하파이프는 corridor 기록이 **아예 없다** — 선행 결함
 
 `pipeJumpToClusterPipe` 는 머신 유체 상자 행에서 지하파이프 쌍을 놓는다
-([emitModule.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 `makeUndergroundPipeCell` 쌍).
+([module/emit.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 `makeUndergroundPipeCell` 쌍).
 그런데 `GeneratedModule` 에 `corridors` 필드가 없고, `clusterModule` 은 corridor 를 한 번도
 만들지 않는다.
 

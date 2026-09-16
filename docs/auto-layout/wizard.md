@@ -134,11 +134,11 @@ tags: [auto-layout, placement, routing]
 
 ### 구현 위치
 
-- [src/autoLayout/tree/types/recipe.ts](../../src/autoLayout/tree/types/recipe.ts) — 위저드 입출력 타입
-- [src/autoLayout/tree/arith/recipe.ts](../../src/autoLayout/tree/arith/recipe.ts) — 1단계 (재료 트리 + 카운트)
-- [src/autoLayout/shared/arith/inserter.ts](../../src/autoLayout/shared/arith/inserter.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [src/autoLayout/run/build/layered.ts](../../src/autoLayout/run/build/layered.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
-- [src/UI/components/AutoLayoutModal.tsx](../../src/UI/components/AutoLayoutModal.tsx) — 위저드 UI
+- [types/recipe.ts](../../src/autoLayout/tree/types/recipe.ts) — 위저드 입출력 타입
+- [arith/recipe.ts](../../src/autoLayout/tree/arith/recipe.ts) — 1단계 (재료 트리 + 카운트)
+- [arith/inserter.ts](../../src/autoLayout/shared/arith/inserter.ts) — 투입기/벨트 처리량 모델 (사용자 override)
+- [build/layered.ts](../../src/autoLayout/run/build/layered.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
+- [components/AutoLayoutModal.tsx](../../src/UI/components/AutoLayoutModal.tsx) — 위저드 UI
 
 ## 제거된 것 — 선행 기술 자동 체크 (2026-08-03)
 

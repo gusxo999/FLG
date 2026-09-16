@@ -43,7 +43,7 @@ tags: [auto-layout, placement, routing]
 | P9  | **후보 정렬 O1** (near-square)  | `\|W−H\|` 작을수록 우선 — **현재 후보 1개라 미사용**, 기록만          | **Q** | [placement-search §6 O1](placement-search.md)                                                                                                   |
 | P10 | **채널 기하 배정 순서**            | 유체 납품 → 반출 → 아이템 납품 (**실패 비용 순**)            | **C** | [channel/policy.surfaceItemsOf](../../../src/autoLayout/channel/policy.ts), [.fluid-delivery-reservation §4.3](../channel/fluid-delivery-reservation.md) |
 | P11 | **납품 경로 방출 순서**                | 유체 납품 경로 먼저, 그다음 아이템 납품 경로                                | **C** | [link/policy.fluidFirst](../../../src/autoLayout/link/policy/delivery.ts), [.fluid-delivery-reservation §8.2](../channel/fluid-delivery-reservation.md) |
-| P12 | **반출 출구 확정 순서**              | `options.length` 오름차순 → 동률은 `id` (**자유도 적은 상자 먼저**)      | **C** | [perimeterExitPlanner.ts](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`, [.perimeter-export §3②](../perimeter/perimeter-export.md) |
+| P12 | **반출 출구 확정 순서**              | `options.length` 오름차순 → 동률은 `id` (**자유도 적은 상자 먼저**)      | **C** | [perimeter/policy.ts](../../../src/autoLayout/perimeter/policy.ts) `planPerimeterExits`, [.perimeter-export §3②](../perimeter/perimeter-export.md) |
 
 > **P1~P5 는 옛 드래그·파사드 경로의 결정점이다.** 그 코드는 2026-09-16 에 삭제됐고 의도 기록만
 > [manual-edit](../../deferred/manual-edit.md) 에 남았다. 표에서 안 지우는 이유는 **재구현하면 같은 결정을 다시 만나기**

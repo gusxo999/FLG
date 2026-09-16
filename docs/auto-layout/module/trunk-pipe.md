@@ -157,7 +157,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 깊이 상한 = 지하파이프 사거리 − 2(n−1)          n = 그 면의 유체 줄 수
 ```
 
-→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/arith/trunk/trunk/trunk.ts). 상한이 얕으면 그 면은
+→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/arith/trunk.ts). 상한이 얕으면 그 면은
 **깊은 줄을 안 준다**(예: 상한 2 → 긴팔 깊이 d3 는 안 열리고 d2 만). 그건 거절이 아니라
 사다리를 한 칸 내려가는 것이고, **거절은 상한이 1 미만일 때뿐**이다 — 아이템을 하나도 안
 놓아도 못 넘는 경우다.
@@ -197,7 +197,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 - 그 면의 유체 줄들이 **바깥으로 못 넘는 경우**. 유체가 한 줄이면 못 넘어도 옛 스파인으로
   물러나면 되지만, **두 줄이면 물러설 곳이 없다** — 스파인은 좌석 줄(d1)을 기둥 전체로 먹어
   둘째 줄의 유체 상자 칸을 막는다. 판정은
-  [`fluidJumpBlocker`](../../../src/autoLayout/module/arith/trunk/trunk/trunk.ts) 하나가 갖고, 사유는 셋이다:
+  [`fluidJumpBlocker`](../../../src/autoLayout/module/arith/trunk.ts) 하나가 갖고, 사유는 셋이다:
   `no-underground`(지하파이프를 안 골랐다) · `underground-too-short`(사거리가 모자란다 →
   `fluid-underground-too-short`) · `seats-exhausted`(유체 행을 빼면 벨트가 안 들어간다 →
   `fluid-face-seats-exhausted`).
@@ -266,7 +266,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 거절해 트리 전체가 실패한다(`battery` 트리에서 관측). 가드는 정상이었고 **입력의 좌표계가
 틀렸다** — 그래서 콘솔 사유만으로는 원인이 가드처럼 보인다.
 
-지키는 것: `moduleTransform.test.ts` 의 *"떨어뜨려 놓은 두 모듈은 서로 물지 않는다"*.
+지키는 것: `module/shape/transform.test.ts` 의 *"떨어뜨려 놓은 두 모듈은 서로 물지 않는다"*.
 그 파일의 다른 테스트는 전부 `generateModule` 직후(모듈-로컬)만 봐서 이 결함을 못 잡았다.
 → [[용어사전#좌표 프레임 (coordinate frame)]]
 
@@ -289,9 +289,9 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 | `containerModel.Container` | 방향 필드 없음 | `direction?` 추가 |
 | [`machinePlacer.commitContainer`](../../../src/autoLayout/shared/cells/place.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
 | [`moduleWizard`](../../../src/autoLayout/run/build/module.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
-| [`planModulePorts`](../../../src/autoLayout/module/policy/trunk/trunk/port.ts) → [`pipeLinesOf`](../../../src/autoLayout/module/arith/trunk/trunk/face.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
+| [`planModulePorts`](../../../src/autoLayout/module/policy/port.ts) → [`pipeLinesOf`](../../../src/autoLayout/module/arith/face.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
 | [`clusterModule`](../../../src/autoLayout/module/build.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
-| [`modulePerimeterPass`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
+| [`modulePerimeterPass`](../../../src/autoLayout/perimeter/late.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
 | `deliveryRoute` | — | **안 건드린다**(§5) |
 
 ## 8. 아직 안 하는 것
@@ -309,7 +309,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 
 유체 면도 좌석이 살아 있으니(§5.1 점프) 아이템 벨트가 앉을 수 **있다.** 문제는 앉히는 게
 **공짜가 아니라는 것**이다. 이 절은 그 값을 계산하고, 그래서 앉히는 순서가 어떻게 되는지를
-적는다. → 코드: [`linkPlanner.tryLinkFace`](../../../src/autoLayout/module/policy/trunk/trunk/link.ts)
+적는다. → 코드: [`linkPlanner.tryLinkFace`](../../../src/autoLayout/module/policy/link.ts)
 의 `allowPipeFace`.
 
 ### 9.1 값이 얼마인가 — 한 줄 앉히면 **그 면이 3칸 넓어진다**
@@ -318,7 +318,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 인서터·상자 위로 지나가고, 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다**(§5.1).
 그 규약이 `clusterPipeDepth = base + 2 + 2·rank` 이고 `base = max(그 면 벨트 최대 깊이, 1)`
 인데, 여기서 "벨트 최대 깊이"는 벨트가 아니라 **포트 끝**까지 센다(인서터 +1 · 상자 +2 —
-[`linkFaceDepths`](../../../src/autoLayout/module/arith/trunk/trunk/face.ts)).
+[`linkFaceDepths`](../../../src/autoLayout/module/arith/face.ts)).
 
 ```
 아이템 0줄        base = 1   →  ClusterPipe d3 · 탭 d2         그 면 폭 **3**

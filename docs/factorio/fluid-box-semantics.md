@@ -163,9 +163,9 @@ mod 제작자들이 공식 범위를 벗어나 사용한 경우. 우리 로직�
 | 파일 | 역할 |
 |------|------|
 | [scripts/export-gamedata.lua](../../scripts/export-gamedata.lua) `extract_fluid_boxes()` | Lua에서 `production_type`과 각 connection의 `flow_direction` 둘 다 추출 |
-| [src/UI/store/gameDataStore.ts](../../src/UI/store/gameDataStore.ts) `FluidBoxInfo`, `PipeConnection` | 두 필드 모두 타입 정의 |
-| [src/UI/pixi/pixi-manager.ts](../../src/UI/pixi/pixi-manager.ts) `drawInteractionPoints()` | **연결점별로** `flow_direction ?? production_type` 판정 후 화살표 렌더링 |
-| [src/UI/components/EntityDetails.tsx](../../src/UI/components/EntityDetails.tsx) `FluidBoxRow` | 상세 패널에서도 `connections[0].flow_direction ?? production_type`으로 대표 방향 표시 |
+| [store/gameDataStore.ts](../../src/UI/store/gameDataStore.ts) `FluidBoxInfo`, `PipeConnection` | 두 필드 모두 타입 정의 |
+| [pixi/pixi-manager.ts](../../src/UI/pixi/pixi-manager.ts) `drawInteractionPoints()` | **연결점별로** `flow_direction ?? production_type` 판정 후 화살표 렌더링 |
+| [components/EntityDetails.tsx](../../src/UI/components/EntityDetails.tsx) `FluidBoxRow` | 상세 패널에서도 `connections[0].flow_direction ?? production_type`으로 대표 방향 표시 |
 
 ---
 

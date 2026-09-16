@@ -113,12 +113,12 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 > **이 폴더가 다루는 데이터는 한 계약의 양 끝이다.** 생산자는
 > [scripts/export-gamedata.lua](../scripts/export-gamedata.lua) — 게임 콘솔에 붙여넣어 JSON 을 뽑는다
 > (앱에서는 툴바의 "Lua 복사" 가 `export-gamedata.min.lua` 를 클립보드에 넣는다).
-> 소비자는 [src/factorio/parseGameData.ts](../src/factorio/parseGameData.ts) 다.
+> 소비자는 [factorio/parseGameData.ts](../src/factorio/parseGameData.ts) 다.
 > **필드를 늘릴 때는 양쪽을 같이 고친다** — 파서가 문지기라 exporter 가 뽑아도 여기서 안
 > 담으면 그 필드는 앱에 없다(2026-07-16 `amount_min`/`amount_max`·`fluidbox_index` 가
 > 재추출까지 하고도 문 앞에서 사라졌다).
 >
-> **생산자가 하나 더 있다** — [customRecipe.ts](../src/factorio/customRecipe.ts) 는 사용자가
+> **생산자가 하나 더 있다** — [factorio/customRecipe.ts](../src/factorio/customRecipe.ts) 는 사용자가
 > 앱 안에서 만든 spec 을 같은 `GameData` 모양으로 합성한다(파서의 형제). 필드를 늘릴 때
 > 그쪽도 채울 값이 있는지 본다.
 

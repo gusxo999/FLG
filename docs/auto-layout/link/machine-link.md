@@ -77,7 +77,7 @@ tags: [auto-layout, placement, routing]
      어느 면·어느 트랙·교차 지하·gap 폭 (부산물은 전부 여기서)
 ```
 
-**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/tree/build.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateFlows` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
+**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([tree/build.ts](../../../src/autoLayout/tree/build.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateFlows` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
 
 ---
 
@@ -139,7 +139,7 @@ tags: [auto-layout, placement, routing]
 
 > **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 납품 경로가 "탐색 없이 순수"한 이유가 이 불변식이다.
 
-정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책(출력→W · 입력→E — 2026-09-02 부터 `module/policy/trunk/seat` 의 `seatModuleLinks` · `seatRestLines` 가 `allocateLinkFaces` 로 든다. 옛 `clusterPortPlanner` 는 삭제됐다)의 재적용이다.
+정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책(출력→W · 입력→E — 2026-09-02 부터 `module/policy/seat` 의 `seatModuleLinks` · `seatRestLines` 가 `allocateLinkFaces` 로 든다. 옛 `clusterPortPlanner` 는 삭제됐다)의 재적용이다.
 
 ---
 
@@ -166,7 +166,7 @@ tags: [auto-layout, placement, routing]
 - **fan-out** — 자식 머신 **하나**의 산출이 **여러 부모**로 갈라진다.
 - **fan-in** — **여러 자식**의 산출이 **한 부모**로 모인다.
 
-둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([allocateFlows.test.ts](../../../src/autoLayout/link/arith/flows.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
+둘은 같은 그림의 양쪽 끝이다. 아래는 실제 계산 결과([arith/flows.test.ts](../../../src/autoLayout/link/arith/flows.test.ts) 의 사장님 예시 — 자식 2대 각 100/s, 부모 3대 각 60.5/s 필요, 인서터 6/s, 벨트 20/s):
 
 ```
 자식0 ──[3][3][3][2]──> 부모0      ← 자식0 이 부모0·부모1 둘을 먹인다 = fan-out
@@ -195,7 +195,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](
 | 조각 | 누가 | 하는 일 |
 |---|---|---|
 | 논리 (fan-out + fan-in) | [`allocateFlows`](../../../src/autoLayout/link/arith/flows.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
-| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/build.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
+| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([module/build.ts](../../../src/autoLayout/module/build.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
 | 기하 — 부모 쪽 (입력) | `emitInputLinks` (같은 파일, **거울**) | 그룹의 부모 머신**들**을 관통하는 벨트 한 줄 + 머신마다 탭 |
 
 두 방출기는 거울상이라 코드는 닮았지만 **문제의 모양이 다르다:**
@@ -393,7 +393,7 @@ B 로 S 를 자른 조각들의 구간이 B 와 안 겹치면  →  그 조각�
 
 **대신 사다리는 아직 1단뿐이다.** 미완성인 채로 켜 두는 것이므로 *어디까지 되는지*를
 항상 알고 있어야 한다. 그래서 못 앉은 줄마다 **어느 칸의 몫인지** 이름표를 붙인다
-([rungOfLine] · [summarizeRungs], `linkPlanner.ts`):
+([rungOfLine] · [summarizeRungs], `module/policy/link.ts`):
 
 | 이름표 | 무엇이 막았나 | 누가 맡나 | 지금 |
 |---|---|---|---|
@@ -431,9 +431,9 @@ B 로 S 를 자른 조각들의 구간이 B 와 안 겹치면  →  그 조각�
 | `bcf1178` | `craftsPerSec` 가 `speedFraction` 안 곱던 버그 — 굶는 부모가 자식에 안 먹을 양 요구(자식 128→64 재현) |
 | `c60cddf` | **`allocateFlows`** 순수 함수 + 13 테스트 — 물붓기(부모 ceil/자식 floor), 예시(100/60.5/20/6) 전량 재현, 꼬리 부모 미세부족(60<60.5) 등재 |
 | `61fbea7`~ | 용어사전·본 문서 정정(클러스터=가벼운 배열, fan-in=기존 탭 재사용) — **"기존 탭 재사용"은 그 뒤 Phase 3/`groupLinkBelts` 로 뒤집혔다**([[#fan-out 과 fan-in — 논리는 하나, 기하는 둘]] 참고) |
-| Phase 1 | **`edgeFlows`**(modulePacking.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateFlows. rate 미상이면 undefined(지어내지 않음) |
+| Phase 1 | **`edgeFlows`**(tree/build.ts) — spec 의 클러스터 rate ÷count → 머신당 → allocateFlows. rate 미상이면 undefined(지어내지 않음) |
 | `459f63e` | 출력 링크를 `ModuleInput.outputLinks` 까지 전달 |
-| Phase 2 | **`emitOutputLinks`**(clusterModule.ts) — 링크당 [머신 k좌석 탭 + 세로 belt + W꺾음 포트]. 셀 생성자 재사용, 그 위 emit 은 새로(링크 필드=논리, 셀 입력=기하, 겹침 0이라 그렇게 갈림) |
+| Phase 2 | **`emitOutputLinks`**(module/build.ts) — 링크당 [머신 k좌석 탭 + 세로 belt + W꺾음 포트]. 셀 생성자 재사용, 그 위 emit 은 새로(링크 필드=논리, 셀 입력=기하, 겹침 0이라 그렇게 갈림) |
 | Phase 3 | **`emitInputLinks`**(E면 거울) + `ModuleInput.inputLinks` — 부모가 링크마다 입력 포트. **pairDeliveryPorts 는 안 고침**: 양쪽이 링크 순서로 포트를 내니 index-zip 이 곧 링크 짝짓기 |
 | 마지막 | 통합 테스트 2건 — linkDeliveries(count=2 fan-out↔fan-in↔납품 경로 2, `routeDeliveryRoutes` 실패 0) + **realTree(advanced-circuit 다-노드 트리, 실패 0)** |
 
@@ -476,7 +476,7 @@ fan-out 이므로 "count=1 은 fan-out 없다"는 내 말은 틀렸다: fan-out 
 
 > **2026-08-02 후속 — 이 조율이 한 함수 안으로 들어갔다.** 위 세 줄(제외·통보·순서)은
 > **고친 방식이 맞았지만 흩어져 있었다**. 흩어져 있는 한 *"무관한 판정이 끝난 예약을 삼키는"*
-> 버그가 다른 얼굴로 돌아올 수 있어, 셋 다 `module/policy/trunk/port` 안의 연속된
+> 버그가 다른 얼굴로 돌아올 수 있어, 셋 다 `module/policy/port` 안의 연속된
 > 단계가 됐다. 자세한 것은 **[[module-planning]]**.
 >
 > 특히 `!plan.ok` 는 `rest: {ok:true, lines} | {ok:false, unplaced}` 판별 유니온이 됐다 —
@@ -532,7 +532,7 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 ### 원료·완제품 줄도 같은 배분기를 탄다 (2026-08-05 공급 모델 통합)
 
 [[용어사전#탭 인서팅 (Tap Inserting)|탭]]이 안 되면 그 줄들은 **머신마다 하나씩 쪼개져**
-([externalLineGroups](../../../src/autoLayout/module/arith/trunk/trunk/link.ts) `perMachine`) 여기
+([externalLineGroups](../../../src/autoLayout/module/arith/link.ts) `perMachine`) 여기
 설명한 배분기·방출기를 **그대로** 탄다. 쪼개는 이유는 `tryLinkFace` 의 문턱 하나다:
 
 ```ts

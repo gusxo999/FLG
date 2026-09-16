@@ -62,4 +62,4 @@ tags: [factorio-data, auto-layout]
 이 프로젝트는 백엔드 import 엔드포인트가 별도로 존재하지 않으며 (frontend-only), 사용자가
 업로드한 JSON 을 그대로 `parseGameData.ts` 에서 변환해 zustand store 에 적재한다.
 따라서 기술 트리 인덱스(`techMap`, `recipeToTech`, `itemToRecipe`)는 모두
-[gameDataStore.ts](../../../src/UI/store/gameDataStore.ts) 의 `buildDerived()` 에서 계산된다.
+[store/gameDataStore.ts](../../../src/UI/store/gameDataStore.ts) 의 `buildDerived()` 에서 계산된다.

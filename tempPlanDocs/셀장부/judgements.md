@@ -35,7 +35,7 @@
 **정정(2026-08-21) — 옛 문장 *"지금은 못 센다"* 는 과했다.** 총량은 이미 잡혀 있다:
 
 ```
-channelGeometryPlanner.test.ts
+channel/ledger/geometry.test.ts
   "반출 예약 재생 — 예약을 켜도 skip 이 끈 것보다 늘지 않는다"
   → expected 3 to be less than or equal to 2        ← 현재 **빨강**
 ```

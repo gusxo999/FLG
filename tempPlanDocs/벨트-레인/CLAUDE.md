@@ -41,7 +41,7 @@
 오른쪽 레인 같은 말이 나와 반드시 깨진다"*), **2026-09-03 에 걷어냈다**:
 
 ```
-깊이        clusterBeltDepth · claimDepth · depthClear · depthBudget.ts · DepthShortage
+깊이        clusterBeltDepth · claimDepth · depthClear · module/arith/depth.ts · DepthShortage
 반출·채널   perimeterTrackPlanner.ts · TrackAssignment · trackX · perimeter/tracks.ts
 레인        게임의 좌/우 두 줄. 식별자로는 안 쓴다(`side: "left" | "right"`)
 ```
@@ -64,9 +64,9 @@
 
 - `src/autoLayout/shared/arith/belt.ts` — `480 = belt_speed × 2레인 × 4 × 60`.
   **오늘의 모든 용량 수치가 이미 「두 레인 합」이다**
-- `src/autoLayout/module/arith/trunk/trunk/link.ts` — `createLinks` 의 붓기 ·
+- `src/autoLayout/module/arith/link.ts` — `createLinks` 의 붓기 ·
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
-- `src/autoLayout/module/policy/trunk/trunk/link.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
+- `src/autoLayout/module/policy/link.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
 - `src/autoLayout/module/emit.ts` — `emitInputLinks`(공급 줄을 까는 곳)
 - `src/autoLayout/link/build.ts` — `seatIsBeltFeeder`/`stripKeys`.
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다

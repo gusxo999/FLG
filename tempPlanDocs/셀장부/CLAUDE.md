@@ -68,7 +68,7 @@
 |---|---|
 | [docs/layout-models.md](../../docs/auto-layout/common/layout-models.md) **§3.5** | **뼈대 그 자체.** 17쌍 전수표 · 좌표계가 경쟁을 만든다 · 피해 등급 |
 | `link/build.ts` — 머리 주석 · `buildOccupancy` · `plannedChainClear` | 순수 계약이 **중복의 이유**다. 사유 문자열이 **장부의 요구사항 명세** |
-| `execution/modulePerimeterPass.ts` — 머리 주석 · `buildOccupancy` · *"모듈 그래프 미변형"* | 같은 계약, 같은 유도. **장부는 이 계약을 안 건드린다** |
+| `perimeter/late.ts` — 머리 주석 · `buildOccupancy` · *"모듈 그래프 미변형"* | 같은 계약, 같은 유도. **장부는 이 계약을 안 건드린다** |
 | `shared/route.ts` — `dijkstraWithJumps` 의 `blocked` | **제약 가의 근거.** 라우터가 장부를 모른다는 경계선 |
 | `module/build.ts` — `origin: {x: pos.dx, …}` | 생성 시점엔 절대좌표가 **없다**. ①이 로컬인 이유 |
 | `channel/ledger/geometry.ts` — `items` 구성 · `yieldedExports` | 경쟁이 이미 풀린 곳(#14)이자 **정책 B 의 원본** |

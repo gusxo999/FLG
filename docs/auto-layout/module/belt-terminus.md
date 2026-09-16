@@ -9,7 +9,7 @@ tags: [auto-layout, placement, module]
 # 벨트의 끝 칸 — **벨트에는 끝이 없다**
 
 > **이 문서를 읽어야 하는 때**
-> - `beltTerminus.ts` · `emitInputLinks` 의 ③ 수집 루프를 건드릴 때
+> - `module/late.ts` · `emitInputLinks` 의 ③ 수집 루프를 건드릴 때
 > - *"벨트가 멀쩡한데 한 줄에 남의 품목이 섞인다"* 를 조사할 때
 > - *"끝 칸이니까 아무 방향이나 되겠지"* 라는 생각이 들 때 → **§1**
 > - *"방출할 때 그 자리에서 정하면 되지 않나"* 라는 생각이 들 때 → **§3**
@@ -147,16 +147,16 @@ tags: [auto-layout, placement, module]
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
-| 끝 칸 등록 | [emitModule.ts](../../../src/autoLayout/module/emit.ts) | `emitInputLinks` ③ · `termini.push` |
+| 끝 칸 등록 | [module/emit.ts](../../../src/autoLayout/module/emit.ts) | `emitInputLinks` ③ · `termini.push` |
 | 품목 장부 | 〃 | `pushLinkPortEnd` 의 `beltItems` |
-| 판정·교체 | [beltTerminus.ts](../../../src/autoLayout/module/late.ts) | `resolveBeltTermini` · `slowestUnderground` |
-| 호출 시점 | [clusterModule.ts](../../../src/autoLayout/module/build.ts) | `finishBeltTermini` |
-| 티어 목록 | [shared/gamedata/spec.ts](../../../src/autoLayout/shared/gamedata/spec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
-| 사거리 장부 | [moduleWizard.ts](../../../src/autoLayout/run/build/module.ts) | `terminusCorridors` |
+| 판정·교체 | [module/late.ts](../../../src/autoLayout/module/late.ts) | `resolveBeltTermini` · `slowestUnderground` |
+| 호출 시점 | [module/build.ts](../../../src/autoLayout/module/build.ts) | `finishBeltTermini` |
+| 티어 목록 | [gamedata/spec.ts](../../../src/autoLayout/shared/gamedata/spec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
+| 사거리 장부 | [build/module.ts](../../../src/autoLayout/run/build/module.ts) | `terminusCorridors` |
 | 장부 소비 | [link/ledger.ts](../../../src/autoLayout/link/ledger.ts) | `seedCorridors` · `ledger`(openDeliveryLedger) |
-| 화면 경고 | [moduleWizard.ts](../../../src/autoLayout/run/build/module.ts) | `belt-terminus-merge`(1c) |
-| 경고 운반 | [clusterModule.ts](../../../src/autoLayout/module/build.ts) · [moduleTransform.ts](../../../src/autoLayout/module/shape/body/body/transform.ts) | `GeneratedModule.beltMerges` |
-| 계측 | [runStats.ts](../../../src/debug/runStats.ts) | `BeltTerminusCounters` · `recordBeltTerminus` |
+| 화면 경고 | [build/module.ts](../../../src/autoLayout/run/build/module.ts) | `belt-terminus-merge`(1c) |
+| 경고 운반 | [module/build.ts](../../../src/autoLayout/module/build.ts) · [shape/transform.ts](../../../src/autoLayout/module/shape/transform.ts) | `GeneratedModule.beltMerges` |
+| 계측 | [debug/runStats.ts](../../../src/debug/runStats.ts) | `BeltTerminusCounters` · `recordBeltTerminus` |
 
 ## 8. 함정
 

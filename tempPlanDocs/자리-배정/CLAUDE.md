@@ -28,11 +28,11 @@
 
 **코드 — 호출 사슬 순서대로**
 
-- `module/policy/trunk/port.ts` — 단일 진입점. `allocateLinkFaces` ×3 → `spillLinkFacesToGap` ×3
-- `module/policy/trunk/link.ts` — `tryLinkFace`(후보 루프 · `DepthShortage`) · `commitLinkFace` ·
+- `module/policy/port.ts` — 단일 진입점. `allocateLinkFaces` ×3 → `spillLinkFacesToGap` ×3
+- `module/policy/link.ts` — `tryLinkFace`(후보 루프 · `DepthShortage`) · `commitLinkFace` ·
   `portCells`(**못이 여기서 난다**) · `clusterBeltDepthsOf`
 - `module/ledger/face.ts` — `depthClear` 는 **칸만** 본다. 면당 줄 수 가드는 없다
-- `module/arith/trunk/depth.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
+- `module/arith/depth.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
 
 ## 하지 않는 것
 
@@ -47,7 +47,7 @@
 
 ```
 후보 루프는 되먹임이 아니다      한 방향 전진이고, 실패해도 앞 단계를 다시 안 돈다
-                               (`generateModule` 호출 1곳 — `modulePacking.ts:571`)
+                               (`generateModule` 호출 1곳 — `tree/build.ts:571`)
 면·깊이는 수로 안 풀린다         `Σ⌈per ÷ tp⌉ ≤ h` 는 **좌석만** 말한다.
                                어느 깊이가 **어느 행 구간에서** 비었는지는 행이 있어야 안다
 못은 쪼개진 줄이 만든다          비관통 그룹의 옆 포트가 `d+1`·`d+2` 에 박힌다(`portCells`).

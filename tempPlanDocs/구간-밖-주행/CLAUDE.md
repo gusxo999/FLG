@@ -40,9 +40,9 @@
 | 무엇 | 왜 |
 |---|---|
 | `docs/auto-layout/common/pipeline-lifecycle.md` | **시대 여섯과 장부의 낟알.** 이 계획의 두 문제가 왜 안 보였는지가 §5 규칙 ①③ 이다 |
-| `module/policy/trunk/link.ts` — `LinkFaceContext.ends` 주석 | *"이것만 표 밖에 남는다"* — **오늘 ㉡ 을 막는 유일한 것**이고, 낟알이 면당 둘이다 |
-| `module/policy/trunk/link.ts` — `clusterBeltDepth` 머리말(≈430) | *"행이 안 겹치는 그룹끼리는 같은 depth 를 나눠 쓴다. **다툴 게 없으니 장부도 없다**"* — **깨질 전제의 원문** |
-| `module/policy/trunk/link.ts` — `portCells` | 기둥 밖 두 칸이 어디서 나오나. **표 밖 행은 걸러진다** |
+| `module/policy/link.ts` — `LinkFaceContext.ends` 주석 | *"이것만 표 밖에 남는다"* — **오늘 ㉡ 을 막는 유일한 것**이고, 낟알이 면당 둘이다 |
+| `module/policy/link.ts` — `clusterBeltDepth` 머리말(≈430) | *"행이 안 겹치는 그룹끼리는 같은 depth 를 나눠 쓴다. **다툴 게 없으니 장부도 없다**"* — **깨질 전제의 원문** |
+| `module/policy/link.ts` — `portCells` | 기둥 밖 두 칸이 어디서 나오나. **표 밖 행은 걸러진다** |
 | `link/build.ts` — `buildPlannedChain` 의 `if (g.fromRowChannel) push(s)` | ㉠ 을 그리는 **유일한 한 줄**. 계획에는 이 구간의 자료가 없다 |
 | `channel/ledger/row.ts` — `RowCrossing` | 행 채널에 신고하는 것이 `{id, side, x1, x2}` 뿐이라는 증거 |
 | `docs/auto-layout/common/layout-models.md` §5 전수표 | #2(A↔A 같은 모듈)가 **이 자리에서 거짓**이다 · #15·#16 이 ㉠ 의 자국 |

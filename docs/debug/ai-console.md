@@ -223,12 +223,12 @@ flg.report()                                            // ✓ 앱이 쓰는 그
 
 | 무엇 | 파일 |
 |---|---|
-| 등록·로그·저널·사전조건 | [registry.ts](../../src/debug/registry.ts) |
-| 조립 + `help()` | [debugApi.ts](../../src/debug/debugApi.ts) |
-| 실행 1회 (`flg.run`) | [runLayout.ts](../../src/debug/runLayout.ts) |
-| 결과를 좌표로 묻기 | [layoutView.ts](../../src/debug/layoutView.ts) |
-| 단면표 (`flg.face`) | [faceTable.ts](../../src/debug/faceTable.ts) |
-| 규칙 검사 (`flg.check`) | [checkRules.ts](../../src/debug/checkRules.ts) |
-| 저장·비교 (`flg.snapshot`/`diff`) | [snapshots.ts](../../src/debug/snapshots.ts) |
-| 보고서 (`flg.report`/`ui`) | [report.ts](../../src/debug/report.ts) |
-| 진단 카운터 싱크 | [runStats.ts](../../src/debug/runStats.ts) |
+| 등록·로그·저널·사전조건 | [debug/registry.ts](../../src/debug/registry.ts) |
+| 조립 + `help()` | [debug/debugApi.ts](../../src/debug/debugApi.ts) |
+| 실행 1회 (`flg.run`) | [debug/runLayout.ts](../../src/debug/runLayout.ts) |
+| 결과를 좌표로 묻기 | [debug/layoutView.ts](../../src/debug/layoutView.ts) |
+| 단면표 (`flg.face`) | [debug/faceTable.ts](../../src/debug/faceTable.ts) |
+| 규칙 검사 (`flg.check`) | [debug/checkRules.ts](../../src/debug/checkRules.ts) |
+| 저장·비교 (`flg.snapshot`/`diff`) | [debug/snapshots.ts](../../src/debug/snapshots.ts) |
+| 보고서 (`flg.report`/`ui`) | [debug/report.ts](../../src/debug/report.ts) |
+| 진단 카운터 싱크 | [debug/runStats.ts](../../src/debug/runStats.ts) |

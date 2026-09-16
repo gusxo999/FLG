@@ -21,7 +21,7 @@ tags: [auto-layout, placement, routing]
 예약의 목적은 "깔기 전에 자리를 잡아 나중에 막히는 일을 없애는 것"이다
 ([.channel-geometry-reservation §1](../channel/channel-geometry-reservation.md)).
 
-그런데 반출 경로 예약([`perimeterExitPlanner`](../../../src/autoLayout/planner/perimeterExitPlanner.ts))은
+그런데 반출 경로 예약([`perimeterExitPlanner`](../../../src/autoLayout/perimeter/policy.ts))은
 상자의 **`meta.side`**(포트 계획기가 배정한 깊이 면) 만 보고 출구를 정했다. 모듈 내부는
 안 본다는 원칙(블랙박스) 때문이다. 문제는 **그 방향이 실제로 뚫려 있는지 아무도 확인하지
 않았다**는 것이다.
@@ -52,7 +52,7 @@ tags: [auto-layout, placement, routing]
   예약된 트랙 x=10 은 **영원히 빈 채** 남아 폭만 낭비됐다.
 
 **핵심 진단:** 정보가 없어서가 아니었다. `planExits` 가 불리는 시점엔 **모듈들이 이미 생성돼
-있고**([`modulePacking.ts`](../../../src/autoLayout/tree/build.ts) —
+있고**([`tree/build.ts`](../../../src/autoLayout/tree/build.ts) —
 `planExits(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
 몰라도 판정할 수 있었다. 예약기가 **일부러 안 보고 있었을 뿐**이다.
 
@@ -93,7 +93,7 @@ bodyColumns     "**남의** 직진이 내 어느 열을 지날 수 있나"   —
 
 > **둘을 한 번에 낸다** — `fillModuleWayOuts` 가 `moduleWayOuts` 를 채우면서 이 요약도
 > 함께 반환한다. 같은 몸통에 대한 두 답이라 따로 계산하면 **언젠가 다른 순간의 몸통**을
-> 보게 된다(`perimeter/exits.ts` 가 `orderByDepth` 를 다시 세지 않고 받는 것과 같은 이유).
+> 보게 된다(`perimeter/shape/exits.ts` 가 `orderByDepth` 를 다시 세지 않고 받는 것과 같은 이유).
 > `transformModule` 은 기하가 실제로 바뀌므로 `bbox` 와 똑같이 **다시 센다**;
 > `shiftModule` 은 extent 기준값이라 그대로 넘긴다.
 
@@ -133,15 +133,15 @@ planner 가 미리 하나로 못박아 자유도를 없애면 안 된다. 느슨
 ## 4. 탐색 폴백 제거
 
 예약이 **뚫린 방향만** 고르고 채널 구간은 장부가 비워두므로, **예약된 경로는 항상 방출 가능**
-하다. 따라서 [`modulePerimeterPass`](../../../src/autoLayout/execution/modulePerimeterPass.ts)
+하다. 따라서 [`modulePerimeterPass`](../../../src/autoLayout/perimeter/late.ts)
 의 탐색 폴백(routeAuto)을 **제거**했다. 이제 hint 재생 실패는 "탐색으로 우회할 일"이 아니라
 **예약 불변식이 깨졌다는 신호**다 — 그 상자만 skip 하고 사유를 남긴다(가짜 물류 금지).
 
 ## 5. 검증 (2026-07-11)
 
-불변식 테스트: [`reservationEmittable.test.ts`](../../../src/autoLayout/run/reservationEmittable.test.ts)
+불변식 테스트: [`run/reservationEmittable.test.ts`](../../../src/autoLayout/run/reservationEmittable.test.ts)
 — "예약(hint) 재생만으로 모든 상자가 방출된다" + "배정된 출구의 진출 방향은 항상 wayOuts 안".
-[`moduleWayOuts.test.ts`](../../../src/autoLayout/module/build.wayOuts.test.ts) — 독립
+[`module/build.wayOuts.test.ts`](../../../src/autoLayout/module/build.wayOuts.test.ts) — 독립
 재계산 일치 + "자기 face 방향은 항상 나갈 수 있다".
 
 advanced-circuit 동형 트리, count 1~8 실측:
@@ -161,14 +161,14 @@ advanced-circuit 동형 트리, count 1~8 실측:
 
 | 단계 | 파일 | 구현 |
 |---|---|---|
-| 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/build.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
-| 전달 | [`tree/shape.ts`](../../../src/autoLayout/tree/shape.ts) · [`perimeter/exits.ts`](../../../src/autoLayout/planner/perimeter/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
-| 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) · [`perimeter/shape.ts`](../../../src/autoLayout/planner/perimeter/shape.ts) | 자격은 `perimeter/shape`(`directOptionOf` · `channelEntryOf` — `wayOuts` 를 여기서 본다), 선호 순 후보는 `enumerateOptions`(`perimeter/types.ExitOption`) — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
-| 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
+| 산출 | [`module/build.ts`](../../../src/autoLayout/module/build.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
+| 전달 | [`tree/shape.ts`](../../../src/autoLayout/tree/shape.ts) · [`shape/exits.ts`](../../../src/autoLayout/perimeter/shape/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
+| 소비 | [`perimeter/policy.ts`](../../../src/autoLayout/perimeter/policy.ts) · [`shape/qualify.ts`](../../../src/autoLayout/perimeter/shape/qualify.ts) | 자격은 `perimeter/shape`(`directOptionOf` · `channelEntryOf` — `wayOuts` 를 여기서 본다), 선호 순 후보는 `enumerateOptions`(`perimeter/types.ExitOption`) — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
+| 방출 | [`perimeter/late.ts`](../../../src/autoLayout/perimeter/late.ts) | 탐색 폴백 제거 — 예약 재생만 |
 
 ## 7. 함정 (다음 사람에게)
 
-- `moduleTransform.ts` 의 `xfPort`/`shiftPort` 는 `ModulePort` 를 **명시 필드로 재구성**해
+- `module/shape/transform.ts` 의 `xfPort`/`shiftPort` 는 `ModulePort` 를 **명시 필드로 재구성**해
   좌표와 무관한 필드를 조용히 떨어뜨린다. `transformModule` 은 현재 프로덕션 호출자가 없어
   (패킹은 항상 `IDENTITY` 방위) 드러나지 않을 뿐이다. 되살릴 땐 필드 누락부터 고쳐야 한다.
 - **`bodyColumns` 는 회전에 안 따라온다** — 90° 를 돌면 열이 행이 되므로 옛 집합을 옮겨

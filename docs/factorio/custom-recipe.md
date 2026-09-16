@@ -54,7 +54,7 @@ offset = floor(h / 2 + pos.y)   // E/W 면
 그래서 `direction + 4` 와 짝이 맞는다.
 
 > **이 식은 검증됐다.** `customRecipe.test.ts` 가 화학 공장 3×3 과 SE 랩 9×9 를 spec 으로
-> 적어 합성한 뒤 **실게임 덤프와 통째로 대조**한다(fixture 출처는 `fluidPorts.test.ts`).
+> 적어 합성한 뒤 **실게임 덤프와 통째로 대조**한다(fixture 출처는 `module/gamedata.test.ts`).
 > 짝수 크기는 실데이터에 대조군이 없어 `resolveFluidConnection` **왕복**으로 시험한다 —
 > 합성식이 그 함수의 역함수라는 주장 자체를 시험하는 것이라 대조군 없이도 증명이 된다.
 
@@ -159,11 +159,11 @@ customDataStore(spec)  ──compile──▶  gameDataStore.recipes / .entities
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
-| 원천 자료형 · 합성 | [customRecipe.ts](../../src/factorio/customRecipe.ts) | `CustomDataSpec` · `fluidBoxPosition` · `rot4` · `compileCustomData` |
-| 판정 | [customRecipeValidate.ts](../../src/factorio/customRecipeValidate.ts) | `validateCustomData` · `fitFluidLines` · `CustomDataIssue` |
-| 원천 보관 · 합류 | [customDataStore.ts](../../src/UI/store/customDataStore.ts) | `useCustomDataStore` · `syncCustomData` · `gameDataContext` |
-| 화면 | [CustomRecipeModal.tsx](../../src/UI/components/CustomRecipeModal.tsx) · [CustomRecipeList.tsx](../../src/UI/components/CustomRecipeList.tsx) | `FluidBoxGrid` · `RotationNote` |
-| 콘솔 | [customData.ts](../../src/debug/customData.ts) | `renderCustomMachine` · `renderFit` · `customTemplate` |
+| 원천 자료형 · 합성 | [factorio/customRecipe.ts](../../src/factorio/customRecipe.ts) | `CustomDataSpec` · `fluidBoxPosition` · `rot4` · `compileCustomData` |
+| 판정 | [factorio/customRecipeValidate.ts](../../src/factorio/customRecipeValidate.ts) | `validateCustomData` · `fitFluidLines` · `CustomDataIssue` |
+| 원천 보관 · 합류 | [store/customDataStore.ts](../../src/UI/store/customDataStore.ts) | `useCustomDataStore` · `syncCustomData` · `gameDataContext` |
+| 화면 | [components/CustomRecipeModal.tsx](../../src/UI/components/CustomRecipeModal.tsx) · [components/CustomRecipeList.tsx](../../src/UI/components/CustomRecipeList.tsx) | `FluidBoxGrid` · `RotationNote` |
+| 콘솔 | [debug/customData.ts](../../src/debug/customData.ts) | `renderCustomMachine` · `renderFit` · `customTemplate` |
 
 ## 7. 함정
 

@@ -7,46 +7,63 @@ tags: [auto-layout, placement, routing]
 > [[work-kinds]] — **직교하는 축**: 파일이 *무슨 종류의 일*을 하나(셈·장부·도형·정책 …).
 > 이 문서가 *"어느 폴더인가"* 에 답한다면 그쪽은 *"한 파일 안에서 어디를 자르나"* 에 답한다
 
-# auto-layout 코드 폴더 — 두 축으로 나눈다
+# auto-layout 코드 폴더 — **폴더는 관심사, 파일 이름은 종류**
 
-**한 줄 요약:** `src/autoLayout/` 의 폴더는 **두 가지 질문**에 답한다 —
-**축 1 계층**(계획인가 실행인가)과 **축 2 관심사**(무엇에 대한 일인가).
-`planner/` ↔ `execution/` 이 계층으로 대칭이고, 그 **안에서** 관심사 이름이 반복된다.
+**한 줄 요약:** `src/autoLayout/` 의 **폴더는 하나만** 답한다 — *"무엇에 대한 일인가"*.
+*"계획인가 실행인가"* 는 폴더가 아니라 **파일 이름**이 든다(`emit.ts` 만 셀을 만든다).
 
-> **2026-08-02 정정.** 이 문서는 예전에 `planner/` 를 *"모듈 사이를 조율하는 코드"* 로
-> 정의했다. **코드를 조사한 결과 사실이 아니었고**, 그 정의를 근거로 삼았다가 실제로 한 번
-> 잘못된 판단을 했다. 아래 §"planner 는 상위 조율 주체다" 가 정정 내용이다.
+> **2026-09-16 개정 — `planner/` 와 `execution/` 이 없어졌다**(구조-2축 계획 3).
+> 예전에는 폴더가 두 축(계층 × 관심사)을 함께 말했고, 그래서 같은 관심사(`module`)가
+> **세 폴더**에 흩어졌다. 실측이 그 대가를 말한다 — 2~12파일 커밋 61개 중 **한 폴더에서
+> 끝난 것이 15개**뿐이었고, 함께 바뀐 파일 쌍의 **74%가 폴더 경계를 넘었다.**
+> 계층은 축으로서 틀린 것이 아니라 **폴더로 표현할 축이 아니었다.**
 
-## 축 1 — 계층: 무엇을 산출하는가
+## 축 1 — 폴더: 무엇에 대한 일인가
 
-| 폴더 | 산출물 | 판정 (기계적) |
+| 폴더 | 범위 | 판정 |
 |---|---|---|
-| **`planner/`** | 좌표·배정 | `PlacedCell` 을 **안 만든다** |
-| **`execution/`** | `PlacedCell` | **만든다** |
-| **`util/`** | 순수 셈·생성자 | 계층 무관. 양쪽이 쓴다 |
-| 루트 | 타입·계약, 배치 이전 단계 | 좌표를 안 다룬다 |
+| **`run/`** | 한 번의 실행 전체 (입력 → 후보) | 진입점과 그 단계들. **스토어를 읽는 유일한 곳** |
+| **`tree/`** | 무엇을 몇 대 · 트리를 어떻게 앉히나 | 모듈 **트리 전체**를 안다 |
+| **`module/`** | 한 모듈 안쪽 | **형제 모듈을 모른다** |
+| **`link/`** | 모듈과 모듈의 연결 | 두 모듈의 **식별자**를 안다 |
+| **`channel/`** | 모듈 사이 통로 | 여러 연결이 **공유하는 자원**을 다룬다 |
+| **`perimeter/`** | 배치 전체의 바깥 테두리 | **전역 외곽**을 안다 |
+| **`shared/`** | 관심사가 없는 것 | 위 여섯 중 **아무것도 import 하지 않는다** |
 
-**판정의 적용 대상은 *파이프라인 단계*다.** 아래 셋은 셀을 만들어도 `execution/` 이 아니다:
+## 축 2 — 파일 이름: 무슨 종류의 일인가
 
-- **생성자 라이브러리**(`shared/cells/builder`) — 만들 뿐 배치하지 않는다
-- **파사드 API** — 여러 단계를 엮는 것이 책임이다
+```
+types   타입          arith  셈        ledger  장부      shape  도형
+policy  정책          emit   찍기      build   조율      late   늦은 결정
+gamedata 어댑터 (prototype·게임데이터 해석)
+```
 
-이름에 속으면 안 되는 예:
+판정은 [[work-kinds]] 가 단일 출처다. **한 종류가 300줄을 넘으면 그 파일을 폴더로 승격**하고,
+그때 파일 이름은 **주제**가 맡는다(`module/arith/link.ts` · `channel/ledger/row.ts`).
+
+**계층은 이 축 안에 있다.** *"`PlacedCell` 을 만드는가"* 는 이제 폴더가 아니라 이름이 답한다 —
+`emit` 이 만들고 나머지는 안 만든다. 이름에 속으면 안 되는 예는 그대로다:
 
 | 파일 | 인상 | 실제 |
 |---|---|---|
-| `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
-| `link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** → 계획 |
-| `tree/build` | 모듈을 배치한다 | **좌표만** → 계획 |
+| `perimeter/shape/router` | 경로를 깐다 | **좌표 배열만 반환** |
+| `link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** |
+| `tree/build` | 모듈을 배치한다 | **좌표만** |
+| `shared/cells/builder` | 셀을 만든다 | **생성자 라이브러리** — 만들 뿐 자리를 안 고른다 |
 
-## 축 2 — 관심사: 무엇에 대한 일인가
+## import 규칙 다섯 — 이 구조가 만드는 것
 
-| 관심사 | 범위 | 판정 |
-|---|---|---|
-| **module** | 한 모듈 안쪽 | **형제 모듈을 모른다** |
-| **link** | 모듈과 모듈의 연결 | 두 모듈의 **식별자**를 안다 |
-| **channel** | 모듈 사이 통로 | 여러 연결이 **공유하는 자원**을 다룬다 |
-| **perimeter** | 배치 전체의 바깥 테두리 | **전역 외곽**을 안다 |
+| 규칙 | 무엇을 지키나 |
+|---|---|
+| `shape` → `ledger` **금지** | **도형이 자원 상태를 모른다.** 계획과 방출이 같은 함수를 부를 수 있는 근거 |
+| `emit` → `policy` **금지** | 찍기는 고르지 않는다 |
+| `shared/*` → 관심사 폴더 **금지** | 공용은 위를 모른다 |
+| `module` → `link`·`channel`·`perimeter` **금지** | 관심사 경계 |
+| 스토어는 **진입점**(`run/build/layered.ts`)**만** | 게임데이터는 입구에서 한 번 읽어 넘긴다 |
+
+**오늘 위반은 하나다** — `shared/pipeFlow` 가 `module/gamedata.fluidPortSlots` 를 런타임으로
+부른다. 그 함수는 prototype 해석(**어댑터**)이라 `shared/gamedata/` 소속이고, `module/gamedata.ts`
+를 어댑터와 정책으로 가르면 사라진다. 검사를 eslint 로 옮기는 일은 구조-2축 계획 4 다.
 
 ## 축이 늘어도 **경로는 안 는다** — 판정 기준 하나
 
@@ -80,102 +97,74 @@ tags: [auto-layout, placement, routing]
 
 > **격자를 코드 구조로 착각하지 말 것.** 경우의 수는 곱해지지만 **폴더도 경로도 더해질 뿐**이어야 한다. 칸마다 경로를 만들고 싶어지면 1번 질문을 안 던진 것이다.
 
-## `planner/` 는 "모듈 사이"가 아니라 **상위 조율 주체**다
+## 예약 철학 — 자리를 먼저 잡는 주체가 하나다
 
-옛 정의(*"모듈 사이를 조율하는 코드"*)가 틀린 근거:
+*"큰 그림을 보는 주체 **하나**가 자리를 먼저 잡고, 뒤 단계는 탐색 없이 놓기만 한다."*
+주체가 둘로 갈리면 *"무관한 판정이 이미 끝난 예약을 삼키는"* 종류의 버그가 난다(2026-07-21 실측).
 
-```
-module/  →  planner/   :  거의 0     ← module 은 planner 를 (사실상) 모른다
-planner/ →  module/    :  다수       ← modulePacking · moduleWizard · deliveryRoute
-```
-
-의존이 사실상 단방향이고 **진입점(`moduleWizard`)도 `planner/` 에 있다.**
-즉 `planner` 가 상위이고 `module`·`link`·`channel`·`perimeter` 는 **그 안의 관심사**다.
-**모듈 *사이*만 조율하는 역할은 `link` 가 맡는다.**
-
-이 구분이 중요한 이유는 예약 철학이다 — *"큰 그림을 보는 주체 **하나**가 자리를 먼저 잡고,
-뒤 단계는 탐색 없이 놓기만 한다."* 그 주체가 곧 `planner/` 다. 주체가 둘로 갈리면
-*"무관한 판정이 이미 끝난 예약을 삼키는"* 종류의 버그가 난다(2026-07-21 실측).
+**옛 `planner/` 폴더가 그 주체의 이름이었다.** 폴더가 없어져도 규율은 그대로다 — 오늘 그
+주체는 **`run/build/` 의 뼈대 둘**이고, 관심사 폴더는 그 뼈대가 순서대로 부르는 단계다.
+저장소에 남은 탐색은 **하나**(`shared/route.dijkstraWithJumps` — 납품 사다리의 탐색 칸)뿐이다.
 
 ## 현재 트리
 
 ```
 autoLayout/
-├ planner/                     계획 — 조율 주체. 아무것도 놓지 않는다
-│   ├ module/                    한 모듈 안쪽 계획
-│   │   ├ planModulePorts.ts       ★ 모듈 안쪽 계획의 단일 진입점 — 순서만 쥐는 뼈대
-│   │   ├ policy.ts                정책 — 모듈 축(링크 · 나머지 줄 · 처방)과 간선 축(seatLinkEdge)에서 고른다
-│   │   ├ allocateArms.ts          팔 산술(requiredInserterCount·allocateArms)
-│   │   ├ depthBudget.ts            깊이 예산 — 줄마다 `g` 를 정한다
-│   │   ├ linkPlanner.ts           정책 — 링크 면 · 끝 · 깊이 순서를 고른다 (좌표 없음)
-│   │   ├ ledger.ts                장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
-│   │   ├ faceTable.ts             장부의 모양 — 표 한 장 (행 번호 · 주인)
-│   │   └ arith.ts                 셈 — 깊이 목록 · gap 폭 · 빠져나가는 옆면 · 옆면 최대 깊이
-│   ├ link/                      모듈과 모듈을 잇는 일
-│   │   ├ types.ts                 타입 — 납품의 설정과 결과 (DeliveryConfig · DeliveryResult · DeliveryRoute)
-│   │   ├ allocateFlows.ts  어느 기계 쌍을 몇 벨트로 (import 0 — 순수 산술)
-│   │   ├ edgeLinks.ts             신원 생성 · 간선 링크 유도 · 포트 짝짓기
-│   │   ├ policy.ts                정책 — 간선마다 산출물 · 끝 · 줄 · 레인 짝 · 다시 붓기 (edgeLinksOf) · 납품 사다리(fluidFirst · chooseRoute · routeOneDelivery)
-│   │   ├ ledger.ts                장부 — 전 모듈 점유 · 계획 체인의 예약 · 깐 칸과 corridor · 뗄 것 · 계수 (plannedChainClear · recordRoute)
-│   │   ├ shape.ts                 도형 — 탐색 경계 · 뗄 칸 · 좌석 이음 · 계획 체인 · 연속성 (buildPlannedChain)
-│   │   ├ emit.ts                  찍기 — 납품 체인 → 벨트 · 파이프 셀 (finishChain · finishFluidChain)
-│   │   └ arith.ts                 셈 — 생성된 두 모듈의 포트 짝짓기 (pairDeliveries)
-│   ├ tree/                      모듈 트리 전체 — 조율자(modulePacking)가 받고 내는 것
-│   │   ├ types.ts                 타입 — NodeSpec · PackConfig · PackResult 와 그 필드들
-│   │   ├ arith.ts                 셈 — 부모·자식 · 깊이마다 순서(DFS 한 번) · 모듈 하나의 계획 입력
-│   │   └ shape.ts                 도형 — 세로 자리(topY) · 가로 자리(colX) · 절대 배치 · 납품 조립
-│   ├ channel/                   통로 — 여러 연결이 나눠 쓰는 자원
-│   │   ├ types.ts                 타입 — 채널 기하 장부의 입력과 결과 (DeliveryInput · ExportInput · GeometryContext · ChannelGeometryPlan)
-│   │   ├ ledger.ts                장부 — 행 채널 신원·트랙·높이 (rowChannelsOf) · 세로 채널 트랙 (planChannels)
-│   │   ├ policy.ts                정책 — 반출의 진출 변(해소 사다리 1단) · 지상 배정 순서(실패 비용 순) · 유체 폴백 사유
-│   │   └ shape.ts                 도형 — 행 채널 칸 범위 · 납품 끝의 절대 행 · materializeChannelGeometry · 추상 셀 모델(경로 모양 · 충돌 · 셀 순서열 · 같은 쪽 판정)
-│   ├ perimeter/                 전역 외곽
-│   │   ├ types.ts                 타입 — 반출 출구 배정의 입력과 결과 (ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan)
-│   │   ├ shape.ts                 도형 — 출구의 자격: 직진 후보인가 · 환승할 열 채널이 있나 (directOptionOf · channelEntryOf — 광선에 묻는다)
-│   │   ├ wayOuts.ts               모듈이 "내 몸통에 안 막히는 방향"을 답한다
-│   │   └ exits.ts                 반출 배정의 입력 준비 (프레임 확장 · 대상 포트 수집)
-│   ├ run/                       한 번의 실행 전체 — 종류마다 한 파일
-│   │   ├ gamedata.ts              어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
-│   │   ├ policy.ts                정책 — 받을지 물릴지 · 처방 (planner 안에서 LayoutIssue 를 짓는 곳 — 입구 layeredWizard 도 넷을 짓는다)
-│   │   ├ ledger.ts                장부 — 유체 관망 · 종착 구간
-│   │   └ emit.ts                  찍기 — CandidateLeaf(Area · Routing) · 실패 그림
-│   ├ moduleWizard.ts            ★ 배치 전체 진입점 — run/ 을 여덟 단계로 부르는 뼈대
-│   ├ modulePacking.ts             조율자 — 사슬 열(트리 → 링크 → 좌석 → 모양 → 짝 → 행 채널 → 세로 → 통로 → 가로 → 결과)을 순서대로 엮는 뼈대
-│   ├ channelPlanner.ts            모듈 사이 통로 폭
-│   ├ channelGeometryPlanner.ts    장부 — 그 통로 안에서 누가 어느 세로줄(배정 · 지하 청구 · 폭 예약) + 사다리 순서만 쥐는 뼈대
-│   ├ perimeterExitPlanner.ts      정책 — 반출 출구 배정: 선호 순서 · 후보가 적은 상자부터 · 직진 강등(국소 장부 `laid`) · 막힘 기록
-│   ├ perimeterRouter.ts           포트 → 바깥 변 벨트 모양
-│   ├ deliveryRoute.ts             조율 — 자식 출력 → 부모 입력 잇기. 납품 사다리를 한 납품씩 부르고 신원을 찍는 뼈대
-│   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
-├ execution/                   실행 — 계획대로 셀을 놓는다
-│   ├ module/emitModule.ts         링크 줄(싣는 쪽 · 집는 쪽) · 유체 기둥의 셀을 놓는다 — 틀과 길은 module/shape/body 에서 받는다
-│   ├ module/beltTerminus.ts      흐름의 끝 칸 — 합류를 피할 방향 / 지하 종착
-│   ├ emitPath.ts                  경로 → 벨트·파이프 셀
-│   ├ machinePlacer.ts             머신 footprint
-│   └ modulePerimeterPass.ts       살아남은 상자를 전역 외곽으로
-├ module/                      한 모듈 안쪽 (형제를 모른다. 셀을 만들지 않는다)
-│   ├ types/                       타입 — 계획·조율·방출이 함께 읽는다. 실행되는 것이 없다
-│   │   ├ line.ts                    무엇을 나르나 — IoLine · PlannedLine · SupplyCapacity · Link
-│   │   ├ seat.ts                    어디에 앉나  — LinkFacePlan · LinkSeats · DepthShortage · LinkFaceStage
-│   │   └ module.ts                  무엇을 받고 내나 — ModuleInput · GeneratedModule · ModulePort · BeltTerminus
-│   ├ arith.ts                     셈 — trunkEndKey · flowEnd (방출과 계획이 함께 부른다) · 유체 점프 예산 · 막힘 · 벨트 깊이 상한 · 유체 줄 조회
-│   ├ clusterModule.ts             조율 — generateModule 뼈대(계획 → 몸통 → 장부 → 링크 줄 → 나머지 줄 → 유체 줄 → 마무리)
-│   ├ policy.ts                    정책 — 트렁크 틀(유체 기둥이 점프하나 · ClusterPipe 깊이)
-│   ├ link.ts          벨트 한 줄 = 팔 묶음 (조립·판독)
-│   ├ linkShape.ts                 도형 — 배정 → 먹는 칸 · 셀 (청구와 방출의 단일 출처 · 순번 축)
-│   ├ shape.ts                     도형 — 머신 좌표 위: 몸통 · 좌석 좌표 · 기둥 틀 · 링크 틀 · 길 · 포트 끝점 · 유체 틀 · 포트의 경계 기하(납품 · 반출이 부른다)
-│   ├ clusterLayout.ts             N대를 어떤 모양으로
-│   ├ fluidPorts.ts                어댑터 · 정책 — 유체 상자 칸 · 연결 해석 · 회전과 면 고르기(chooseFluidTrunkPlan). factorio 가 이 주소를 부른다
-│   └ moduleTransform.ts           모듈 강체 변환 — 회전·반사·평행이동·범위
-├ util/                        양쪽 계층이 쓰는 도구. 아무것도 고르지 않는다
-│   ├ cellBuilder.ts               정해진 칸을 물건으로 채운다
-│   ├ helper.ts                    격자 위에서 셈만 한다
-│   └ pipeFlow.ts                  파이프 합류 가드 (판정만 — 자리를 고르지 않는다)
-└ (루트)                       **배치 이전 단계** — 좌표가 없어 계층 축이 무의미하다
-                               layeredWizard(최상위 진입점 · **게임데이터를 읽는 유일한 곳**) · recipeTree · buildSpec ·
-                               wizardUtils · beltThroughput · inserterThroughput
-                               + containerModel(타입) · types · debugFlags ·
-                               moduleInspect(진단) · areaUnification(배치 결과 표시)
+├ run/                         한 번의 실행 전체 — 입력에서 후보까지
+│   ├ build/layered.ts           ★ 최상위 진입점. 트리 전개 + 머신 선정 · **스토어를 읽는 유일한 곳**
+│   ├ build/module.ts            ★ 배치 전체 진입점 — 여덟 단계를 순서대로 부르는 뼈대
+│   ├ gamedata/tree.ts           어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
+│   ├ gamedata/picker.ts         어댑터 — 머신 픽커 · 머신 파라미터 조회
+│   ├ policy.ts                  정책 — 받을지 물릴지 · 처방 (**LayoutIssue 를 짓는 곳**)
+│   ├ ledger.ts                  장부 — 유체 관망 · 종착 구간
+│   ├ emit.ts                    찍기 — CandidateLeaf(Area · Routing) · 실패 그림
+│   └ *.test.ts                  통합 시험 셋 — 한 관심사가 아니라 **한 번의 실행**을 잰다
+├ tree/                        무엇을 몇 대 · 트리를 어떻게 앉히나
+│   ├ types/{recipe,pack}.ts     타입 — RecipeTreeNode · NodeSpec · PackConfig · PackResult
+│   ├ arith/{recipe,pack}.ts     셈 — 레시피 전개 · 머신 수 · 깊이마다 순서 · 모듈 하나의 계획 입력
+│   ├ shape.ts                   도형 — 세로 자리(topY) · 가로 자리(colX) · 절대 배치 · 납품 조립
+│   └ build.ts                   조율 — 사슬 열(트리 → 링크 → 좌석 → 모양 → 짝 → 행 채널 → 세로 → 통로 → 가로)
+├ module/                      한 모듈 안쪽 — 형제를 모른다
+│   ├ types/{line,seat,module}.ts  타입 — 무엇을 나르나 · 어디에 앉나 · 무엇을 받고 내나
+│   ├ arith/                     셈 — link(벨트 한 줄 = 팔 묶음) · trunk · arms · face · depth
+│   ├ ledger/{face,seat}.ts      장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
+│   ├ shape/                     도형 — body(머신 좌표 위) · link(순번 축 · **계획과 방출의 단일 출처**) ·
+│   │                                  cluster · transform · ways(내 몸통에 안 막히는 방향)
+│   ├ policy/                    정책 — port(단일 진입점 뼈대) · seat · link · trunk
+│   ├ build.ts                   조율 — generateModule 뼈대
+│   ├ emit.ts                    찍기 — **이 관심사에서 셀을 만드는 유일한 파일**
+│   ├ late.ts                    늦은 결정 — 흐름의 끝 칸 · 지하 종착
+│   ├ gamedata.ts                어댑터 · 정책 — 유체 상자 칸 · 회전과 면 고르기. factorio 가 이 주소를 부른다
+│   └ inspect.ts                 진단 — 적용된 배치에서 모듈 단위 정보를 유도(UI 셋이 쓴다)
+├ link/                        모듈과 모듈을 잇는 일
+│   ├ tree/types/recipe.ts                   타입 — DeliveryConfig · DeliveryRoute · DeliveryResult
+│   ├ arith/{pair,flows}.ts      셈 — 포트 짝짓기 · 어느 기계 쌍을 몇 벨트로(import 0)
+│   ├ ledger.ts                  장부 — 전 모듈 점유 · 계획 체인의 예약 · 깐 칸과 corridor · 뗄 것
+│   ├ shape.ts                   도형 — 탐색 경계 · 뗄 칸 · 좌석 이음 · 계획 체인 · 연속성
+│   ├ policy/{edge,delivery}.ts  정책 — 간선의 링크 / 납품 사다리(계획 → 탐색 → 예약 무시)
+│   ├ emit.ts                    찍기 — 체인 → 벨트 · 파이프 셀
+│   └ build.ts                   조율 — 한 납품씩 부르고 신원을 찍는 18줄 뼈대
+├ channel/                     통로 — 여러 연결이 나눠 쓰는 자원
+│   ├ tree/types/recipe.ts                   타입 — DeliveryInput · ExportInput · ChannelGeometryPlan
+│   ├ ledger/                    장부 — tracks(세로) · row(행) · assign(신원·순서) · geometry(배정·지하·폭·점프)
+│   ├ shape.ts                   도형 — 경로 모양 · 계단꼴 · 충돌 · materializeChannelGeometry
+│   └ policy.ts                  정책 — 진출 변 · 실패 비용 순 · 유체 폴백 사유
+├ perimeter/                   전역 외곽
+│   ├ tree/types/recipe.ts                   타입 — ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan
+│   ├ ledger.ts                  장부 — 직진 등록(그은 선)
+│   ├ shape/                     도형 — qualify(출구 자격) · rays(광선) · router(포트 → 바깥 변) · exits(입력 준비)
+│   ├ policy.ts                  정책 — 선호 순서 · 자유도 적은 상자 먼저 · 강등 · 강행
+│   └ late.ts                    늦은 결정 — 살아남은 상자를 전역 외곽으로 이사
+└ shared/                      관심사가 없는 것 — 위를 모른다
+    ├ tree/types/recipe.ts · issue.ts        Container · Port · PlacedCell · Area · LayoutIssue
+    ├ grid.ts                    격자 위의 셈 — 아무것도 놓지 않는다
+    ├ frames.ts                  레이아웃 좌표 → 그리드 좌표의 문(unifyLeaf)
+    ├ arith/{belt,inserter}.ts   처리량
+    ├ cells/{builder,path,place}.ts  찍기 — 정해진 칸을 채운다
+    ├ gamedata/spec.ts           어댑터 — BuildSpec
+    ├ flags.ts                   디버그 플래그
+    ├ route.ts        ⚠          탐색 — 장부·정책·도형이 **안 갈린 자리**([[work-kinds]] §6)
+    └ pipeFlow.ts     ⚠          파이프 합류 가드 — 위 규칙의 **유일한 위반**이 여기 있다
 ```
 
 > **`shared/frames.ts` 는 이름에 속기 쉽다.** 드래그 기능처럼 보이지만 남은 것은
@@ -186,32 +175,36 @@ autoLayout/
 ## 두 축이 실제로 지켜지는가 — 기계적으로 확인할 수 있다
 
 ```powershell
-# 축 1 — 계획 계층이 셀을 만들면 위반이다. 둘 다 0 이어야 한다(주석 매치 제외).
-rg -c "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" `
-   src/autoLayout/module src/autoLayout/planner
+# ① 찍기는 이름이 말한다. 셀 생성자를 부르는 파일은 다섯이고 **넷이 emit/cells** 다.
+rg -l "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" src/autoLayout -g '!*.test.ts'
+#   → module/emit · link/emit · shared/cells/{builder,path} · perimeter/late ⚠
 
-# 축 2 — module 이 형제를 아는 통로. 0 이어야 한다.
-rg "planner/link" src/autoLayout/module
+# ② module 은 형제를 모른다 — 0 이어야 한다.
+rg "\.\./(\.\./)*(link|channel|perimeter)/" src/autoLayout/module -g '!*.test.ts'
 
-# link 는 순수 배정기다 — import 가 하나도 없어야 한다.
+# ③ shared 는 위를 모른다 — 오늘 **한 줄**(pipeFlow → module/gamedata)만 나와야 한다.
+rg -n "\.\./(\.\./)*(module|link|channel|perimeter|run|tree)/" src/autoLayout/shared -g '!*.test.ts'
+
+# ④ link/arith/flows 는 순수 배정기다 — import 가 하나도 없어야 한다.
 rg "^import" src/autoLayout/link/arith/flows.ts
 
-# 방출기는 조율자도 계획 계층도 import 하지 않는다 — 둘 다 0 (2026-09-13 D4 해소 뒤).
-rg 'from ".*(clusterModule|planner/module)' src/autoLayout/execution/module --glob '!*.test.ts'
-
-# 게임데이터 형식은 src/types/gameData.ts — autoLayout 이 UI 스토어를 보는 곳은 입구뿐이다(2026-09-14).
-rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 하나
+# ⑤ 스토어는 입구만 본다(2026-09-14).
+rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → run/build/layered 하나
 ```
 
-2026-08-02 기준 셋 다 통과한다. 예전에 어긋났던 다섯 곳은 이렇게 해소됐다:
+2026-09-16 기준 다섯 다 통과한다. ①의 `perimeter/late` 와 ③의 한 줄이 **알고 둔 두 자리**다 —
+전자는 늦은 결정이 곧 이사(셀을 옮겨 놓는 일)라 이름이 `emit` 이 아니고, 후자는 `module/gamedata`
+의 어댑터 부분이 아직 안 갈린 결과다.
+
+예전 두 축 시절에 어긋났던 다섯 곳은 이렇게 해소됐다(이름은 그때 것):
 
 | # | 무엇이 문제였나 | 어떻게 |
 |---|---|---|
-| V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `module/shape/body/ways.ts` |
+| V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `module/shape/ways.ts` |
 | V2 | `allocateFlows` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
 | V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/`.
 그 뒤 2026-09-02 에 그 파일의 계획기 둘(`planClusterPorts`·`insertingPlanner`)이 삭제되고
-남은 타입·산술이 `ioLine.ts`·`allocateArms.ts` 로 갈렸다(`ioLine.ts` 는 2026-09-13 `module/types/line.ts` 로) |
+남은 타입·산술이 `ioLine.ts`·`module/arith/arms.ts` 로 갈렸다(`ioLine.ts` 는 2026-09-13 `module/types/line.ts` 로) |
 | V4 | 한 파일에 **두 관심사**가 있어 `module/ ⇄ planner/link/` 왕복 간선이 생겼다 | 둘로 가름 — 아래 |
 | V5 | `clusterModule` 이 다이렉트 인서팅 셀을 **직접 만들었다** | → `execution/module/emitDirectInserting` |
 
@@ -227,18 +220,20 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 
 | 파일 | 어디로 | 왜 |
 |---|---|---|
-| `modulePacking` 의 헬퍼 561줄 | link·perimeter·moduleTransform 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
-| `moduleTransform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않으니 planner 가 아니고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
-| `pipeFlow` | `util/` | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 게다가 소비처가 `planner/`·`execution/` 양쪽이라 어느 한 계층에 둘 수 없다 |
-| `containerRouting` | `planner/` | Dijkstra 는 **계획의 도구**다. 런타임 소비처가 `link/policy/delivery`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다(런타임 간선 아님) |
-| 배치 이전 단계 6파일 | 루트 유지 | `layeredWizard`·`recipeTree`·`buildSpec`·`wizardUtils`·`beltThroughput`·`inserterThroughput` 은 *"무엇을 얼마나 지을까"* 만 답한다. **좌표가 없어 계층 축이 적용되지 않는다** — 루트가 그 자리다 |
+| `tree/build` 의 헬퍼 561줄 | link·perimeter·module/shape 로 분산 | 조율 로직은 366줄뿐이었고 나머지는 **다른 관심사**였다. 부르는 **순서는 그대로** 두고 정의 위치만 옮겼다(폭이 좌표를 정하고 좌표가 예약을 정하는 사슬이라 순서는 필연) |
+| `module/shape/transform` | `module/` 유지 | 회전·반사·평행이동·범위는 **강체 기하**다. 아무것도 고르지 않고, `GeneratedModule` 을 아니 격자 유틸도 아니다 |
+| `shared/pipeFlow` | `shared/` ⚠ | *"이 칸에 놓으면 안 되나"* 를 **판정만** 한다 — 자리를 고르지 않는다. 소비처가 모듈·납품·반출 **셋**이라 어느 관심사에도 못 둔다. `module/gamedata` 를 부르는 한 줄이 규칙 위반으로 남아 있다 |
+| `shared/route` | `shared/` ⚠ | Dijkstra 는 **탐색**이고 종류가 안 갈린다([[work-kinds]] §6). 런타임 소비처는 `link/policy/delivery`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다 |
+| `run/gamedata/picker` | `run/` (shared 아님) | 머신 픽커인데 `module/arith/arms` 와 `tree/arith/recipe` 를 **부른다**. 관심사를 아는 어댑터는 입구의 것이다 |
+| `module/inspect` | `module/` | 소비처가 UI 셋(렌더러 · 정보창 · 라우팅 모달)이지만 **주제는 모듈**이다 — 모듈 신원(`${moduleId}-m${j}`)의 규약에 묶여 있다 |
+| `perimeter/shape/rays` | `perimeter/` | 광선은 반출의 어휘다(`perimeter/types` 를 읽는다). 행 채널 환승 자격 때문에 `channel/ledger` 도 부르지만, 그 방향의 간선은 규칙이 막지 않는다 |
 
 **아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과
 반출(perimeter)을 **한 번에** 훑는다. 둘이 같은 트랙 풀을 다투기 때문이다
 (`planChannelGeometry(deliveries, exports, …)` 가 둘을 함께 받는 것과 같은 이유).
 관심사로 가르려면 **그 다툼을 먼저 풀어야** 한다 — 지금 가르면 배정이 갈라져 예약이 깨진다.
 
-## util 두 파일의 경계
+## `shared/` 두 파일의 경계
 
 **`shared/grid.ts` — 격자 위에서 셈만 한다.** 아무것도 놓지 않는다.
 `cellKey` · `faceVector` · `vectorToDirection` · `segment` · `faceCell` ·
@@ -248,8 +243,8 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 어디에 놓을지 고르지 않고, 길도 찾지 않는다.
 `makeBeltCell` · `makeInserterCell` · `makeContainerCell`.
 
-> 새 함수를 `util/` 에 넣기 전 확인: 이 함수가 *"어디에 무엇을 놓을지"* 를 **고르는가**,
-> 아니면 이미 고른 자리를 **채우거나 세기만** 하는가? 고른다면 `util/` 이 아니다.
+> 새 함수를 `shared/` 에 넣기 전 확인: 이 함수가 *"어디에 무엇을 놓을지"* 를 **고르는가**,
+> 아니면 이미 고른 자리를 **채우거나 세기만** 하는가? 고른다면 관심사 폴더의 `policy` 다.
 
 ## 검증 방법 — 함정 있음
 
@@ -277,7 +272,7 @@ npx vitest run
   가 Area 를 지을 때 한다.
 
 동작 변경 0(골든 스냅샷 불변). 회귀:
-[modulePerimeterPass.test.ts](../../../src/autoLayout/execution/modulePerimeterPass.test.ts)
+[perimeter/late.test.ts](../../../src/autoLayout/perimeter/late.test.ts)
 의 "순수 — pack 미변형" 이 pack 이 한 셀도 안 바뀜을 단언한다.
 
 > 남은 확인: `tryRunModulePipeline`(moduleWizard 진입점)은 gameDataStore 의존이라 단위

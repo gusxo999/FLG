@@ -113,7 +113,7 @@ tags: [factorio-data, routing, auto-layout]
 
 둘 다 **화면상으로는 멀쩡하고, 라우팅은 "성공" 이라고 보고한다.** 그래서 파이프를 깔기 전에
 "밟으면 안 되는 칸" 의 지도를 만들어 검사한다 = [`collectPipeFlow` / `PipeFlow`](../용어사전.md#pipeflow--collectpipeflow)
-([module/pipeFlow.ts](../../src/autoLayout/shared/pipeFlow.ts)).
+([shared/pipeFlow.ts](../../src/autoLayout/shared/pipeFlow.ts)).
 
 벨트 가드와의 대칭:
 

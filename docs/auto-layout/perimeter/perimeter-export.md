@@ -11,7 +11,7 @@ tags: [auto-layout, placement, routing]
 # perimeter 반출 — 살아남은 무한상자를 전역 외곽으로
 
 > **이 문서를 읽어야 하는 때**
-> - `execution/modulePerimeterPass.ts` · `planner/perimeterExitPlanner.ts` · `planner/perimeterRouter.ts` ·
+> - `perimeter/late.ts` · `perimeter/policy.ts` · `perimeter/shape/router.ts` ·
 > `planner/perimeter/{wayOuts,lanes}.ts` 를 수정할 때
 > - `PERIMETER_MARGIN` · `reservedExportCells` · `ExitAssignment` · `rePathToPerimeter` 를 건드릴 때
 > - 무한상자가 배치 **안쪽에 남아 있다**는 증상을 조사할 때 (콘솔 `[perimeterPass] SKIP`)
@@ -94,7 +94,7 @@ tags: [auto-layout, placement, routing]
 
 ### ② 예약 — 자리를 먼저 잡는다
 
-**구현:** [`planner/perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`
+**구현:** [`perimeter/policy.ts`](../../../src/autoLayout/perimeter/policy.ts) `planPerimeterExits`
 + [`tree/build.ts`](../../../src/autoLayout/tree/build.ts) `packModuleTree`
 
 상자마다 **어느 변으로(`exitEdge`), 주행선을 어디서 얻어(`exitMode`)** 나갈지 배정한다.
@@ -119,7 +119,7 @@ tags: [auto-layout, placement, routing]
 
 #### 직진 장부 — **자리를 안 사는 경로도 등록은 해야 한다**
 
-**구현:** [`planner/perimeter/directRay.ts`](../../../src/autoLayout/planner/perimeter/directRay.ts) `DirectRay` · `directRaysCross`
+**구현:** [`perimeter/ledger.ts`](../../../src/autoLayout/perimeter/ledger.ts) `DirectRay` · `directRaysCross`
 
 이 저장소의 자리 모델은 한 문장이다 — *"통로가 자기 축의 줄을 판다 → 경로가 자기 축의 줄을
 산다 → 모자라면 통로가 넓어진다."* **직진은 이 모델 밖이다.** 주행선 후보가 하나뿐이라 고를
@@ -211,8 +211,8 @@ tags: [auto-layout, placement, routing]
 
 ### ③ 방출 — 계획서대로 그린다
 
-**구현:** [`execution/modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) `rePathToPerimeter`
-+ [`planner/perimeterRouter.ts`](../../../src/autoLayout/planner/perimeterRouter.ts) `routePortToPerimeter`
+**구현:** [`perimeter/late.ts`](../../../src/autoLayout/perimeter/late.ts) `rePathToPerimeter`
++ [`shape/router.ts`](../../../src/autoLayout/perimeter/shape/router.ts) `routePortToPerimeter`
 
 ```
 1. 점유 셀 지도(occ) + 전역 외곽 사각형(perimeter) 계산
@@ -226,7 +226,7 @@ tags: [auto-layout, placement, routing]
 
 `rePathToPerimeter` 는 **순수 함수**다 — 아무것도 직접 고치지 않고 무엇을 떼고(`droppedCellKeys`)
 무엇을 놓고(`addedCells`) 상자가 어디로 갔는지(`relocations`)를 **반환만** 한다. 적용은
-[`moduleWizard.ts`](../../../src/autoLayout/run/build/module.ts) 가 `Area` 를 조립할 때
+[`build/module.ts`](../../../src/autoLayout/run/build/module.ts) 가 `Area` 를 조립할 때
 한다. 덕분에 store 없이 좌표만으로 단위 테스트가 된다.
 
 **탐색 폴백을 일부러 두지 않는다.** 예약이 "뚫린 방향만"(①의 `wayOuts`) 골랐고 채널 구간은
@@ -303,13 +303,13 @@ tags: [auto-layout, placement, routing]
 | 단계 | 파일 | 핵심 심볼 |
 |---|---|---|
 | ① 계약 | `module/build.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
-| ① 산출 | `module/shape/body/ways.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
-| ② 배정 | `planner/perimeterExitPlanner.ts` · `planner/perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
-| ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
+| ① 산출 | `module/shape/ways.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
+| ② 배정 | `perimeter/policy.ts` · `perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
+| ② 직진 장부 | `perimeter/ledger.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
 | ② 폭 반영 | `tree/build.ts` · `channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
 | ② 트랙 확정 | `channel/ledger/geometry.ts` | `trackX` 배정 |
-| ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
-| ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |
+| ③ 방출 | `perimeter/late.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
+| ③ 기하 | `perimeter/shape/router.ts` | `routePortToPerimeter` · `RouteHint` |
 | 적용 | `run/build/module.ts` | `droppedCellKeys` · `relocOrigin` 반영 |
 | 상수 | `shared/grid.ts` | `PERIMETER_MARGIN = 2` |
 

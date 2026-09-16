@@ -238,9 +238,9 @@ crafting 계열 레시피 중 **트리 안에서 만들 수 있는 재료가 3�
 
 ```
 · 링크는 반대 면을 안 본다              spillPair OUT=["W","S","N"] IN=["E","S","N"]
-                                       (planModulePorts.ts:498)
-· 자매 경로는 이미 반대 면을 쓴다        planModulePorts.ts:713
-· gap 은 `g=1` 만 받는다                linkPlanner.ts:447 `machinesOn !== 1` 이면 거절
+                                       (module/policy/port.ts:498)
+· 자매 경로는 이미 반대 면을 쓴다        module/policy/port.ts:713
+· gap 은 `g=1` 만 받는다                module/policy/link.ts:447 `machinesOn !== 1` 이면 거절
 · 링크에 `g` 를 주는 호출부가 없다        `edgeLinkGroups(…)` 인자 넷짜리 호출뿐
 · 로드된 게임데이터에 reach 3 이 없다     인서터 7종 전수 (2026-09-02)
 · §4.3 손잡이는 **코드에 없다**          `trunk-assignment.md` §0 표: `❌ 없다`
@@ -251,12 +251,12 @@ crafting 계열 레시피 중 **트리 안에서 만들 수 있는 재료가 3�
 트리거를 만나는 사람은 코드를 보고 있지 문서를 보고 있지 않다.
 
 ```
-depthBudget.ts   linkDepthNeed 머리말 — **달았다**(Step 1). 눈금의 뜻과 J14 를 가리킨다
-planModulePorts.ts:498   spillPair 의 OUT/IN — 반대 면이 빠진 그 줄. **아직 안 달았다**
+module/arith/depth.ts   linkDepthNeed 머리말 — **달았다**(Step 1). 눈금의 뜻과 J14 를 가리킨다
+module/policy/port.ts:498   spillPair 의 OUT/IN — 반대 면이 빠진 그 줄. **아직 안 달았다**
 ```
 
-> **`spillPair` 에 왜 아직 안 달았나.** `planModulePorts.ts` 는 **이 세션이 만들지 않은
-> 미커밋 변경**을 안고 있다(`linkPlanner.ts` · `emitModule.ts` 도 작업 중이다).
+> **`spillPair` 에 왜 아직 안 달았나.** `module/policy/port.ts` 는 **이 세션이 만들지 않은
+> 미커밋 변경**을 안고 있다(`module/policy/link.ts` · `module/emit.ts` 도 작업 중이다).
 > 남이 고치는 중인 파일에 주석을 얹지 않는다 — 정리되면 단다.
 
 ---

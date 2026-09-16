@@ -64,11 +64,11 @@ tags: [visualization, factorio-data]
 
 | 파일 | 역할 |
 |------|------|
-| [src/analysis/beltFlow.ts](../../src/analysis/beltFlow.ts) | `computeBeltFlowAt(grid, x, y, ctx)` — 순수 함수 분석 코어 |
-| [src/analysis/beltFlow.test.ts](../../src/analysis/beltFlow.test.ts) | 구간별 증감·머신율 캡·지하 점프·용량 클램프·side-load 합류 |
-| [src/UI/store/inspectStore.ts](../../src/UI/store/inspectStore.ts) | `cell` 좌표 추가(캔버스 클릭 시에만 set) |
-| [src/UI/pixi/pixi-manager.ts](../../src/UI/pixi/pixi-manager.ts) | 빈손/배치/라우팅수정 모드에서 벨트류 클릭 → inspect |
-| [src/UI/components/EntityDetails.tsx](../../src/UI/components/EntityDetails.tsx) | `BeltFlowSection` — 정보 모달 내 흐름 섹션 |
+| [analysis/beltFlow.ts](../../src/analysis/beltFlow.ts) | `computeBeltFlowAt(grid, x, y, ctx)` — 순수 함수 분석 코어 |
+| [analysis/beltFlow.test.ts](../../src/analysis/beltFlow.test.ts) | 구간별 증감·머신율 캡·지하 점프·용량 클램프·side-load 합류 |
+| [store/inspectStore.ts](../../src/UI/store/inspectStore.ts) | `cell` 좌표 추가(캔버스 클릭 시에만 set) |
+| [pixi/pixi-manager.ts](../../src/UI/pixi/pixi-manager.ts) | 빈손/배치/라우팅수정 모드에서 벨트류 클릭 → inspect |
+| [components/EntityDetails.tsx](../../src/UI/components/EntityDetails.tsx) | `BeltFlowSection` — 정보 모달 내 흐름 섹션 |
 
 ## 트레이드오프 메모
 

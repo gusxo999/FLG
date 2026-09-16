@@ -8,10 +8,11 @@
 **작업 전 참조 규칙:**
 
 - **자동 레이아웃(auto-layout) 코드**(`src/autoLayout/**`, `AutoLayoutModal.tsx`, 배치·라우팅·트렁크·채널)를
-  수정·설계하기 전에 **[code-folders](docs/auto-layout/common/code-folders.md)** 를 먼저 읽는다 — 폴더가 두 축
-  (계층 × 관심사) 중 무엇을 말하는지, 어느 파일이 아직 그 축과 어긋나 있는지가 거기 있다.
-  그다음은 건드리는 폴더의 `CLAUDE.md` 가 안내한다(`autoLayout/` · `planner/` · `module/` ·
-  `execution/` · `manualEdit/` 에 각각 있고, **그 폴더 파일을 열면 함께 들어온다**).
+  수정·설계하기 전에 **[code-folders](docs/auto-layout/common/code-folders.md)** 를 먼저 읽는다 — **폴더는 관심사,
+  파일 이름은 일의 종류**이고, 어느 파일이 아직 그 축과 어긋나 있는지가 거기 있다.
+  그다음은 건드리는 폴더의 `CLAUDE.md` 가 안내한다(`autoLayout/` · `module/` · `shared/` ·
+  `channel/` 에 각각 있고, **그 폴더 파일을 열면 함께 들어온다**). **`planner/` · `execution/` ·
+  `manualEdit/` 는 없어졌다**(2026-09-16 — 폴더는 관심사만 말한다).
   주제별 문서는 **`docs/auto-layout/` 가 코드 트리의 거울**이라 폴더로 찾는다
   (`common` · `module` · `link` · `channel` · `perimeter`). 지도는 [docs/README.md](docs/README.md).
 - **Blueprint import/export, Factorio 데이터 시맨틱스**(방향 인코딩, MapPosition, 유체 상자, 메타데이터)를
