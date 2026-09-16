@@ -12,7 +12,7 @@
  * | 등록·로그·저널·사전조건 | [registry](registry.ts) |
  * | 실행 1회 (`flg.run`) | [runLayout](runLayout.ts) |
  * | 결과를 좌표로 묻기 | [layoutView](layoutView.ts) |
- * | 단면표 (`flg.face`) | [faceTable](faceTable.ts) |
+ * | 단면표 (`flg.face`) | [faceTable](module/ledger/face.ts) |
  * | 규칙 검사 (`flg.check`) | [checkRules](checkRules.ts) |
  * | 이름 붙여 저장·비교 | [snapshots](snapshots.ts) |
  * | 한 덩어리 보고서 | [report](report.ts) |

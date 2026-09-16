@@ -15,10 +15,10 @@
  * 유체 셈 셋(예산 · 상한 · 막힘)은 **한 파일에 함께 산다** — 계획(`planner/module/arith`)과 거절(`planner/run/policy`)이
  * 같은 함수를 봐야 어긋나지 않고, 셋이 서로를 부른다.
  *
- * > **내력.** `trunkEndKey` 는 `module/clusterModule.ts`, `flowEnd` 는 `planner/module/linkPlanner.ts`
+ * > **내력.** `trunkEndKey` 는 `module/build.ts`, `flowEnd` 는 `module/policy/link.ts`
  * > 에 있다가 2026-09-13 여기로 왔다(계획 구조-2축 · 2 Step 1). 방출기가 이 둘을 쓰려고 조율자와
  * > 계획 계층을 **런타임으로** 불렀다 — 앞쪽이 저장소의 유일한 런타임 순환이었다.
- * > 유체 셈과 조회는 `module/fluidPorts.ts` 에 있다가 2026-09-15 여기로 왔다(Step 5e) — 그 파일은 게임데이터를 보는
+ * > 유체 셈과 조회는 `module/gamedata.ts` 에 있다가 2026-09-15 여기로 왔다(Step 5e) — 그 파일은 게임데이터를 보는
  * > 어댑터 · 정책이고 이것들은 답이 하나다.
  */
 

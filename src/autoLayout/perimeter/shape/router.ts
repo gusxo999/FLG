@@ -20,9 +20,9 @@
  * 호출자가 anchor 안쪽(feeder 자리)을 앞에 붙여 belt 로 굽는다.
  */
 
-import type { PortFace } from "../shared/types";
-import { cellKey, faceVector, segment } from "../shared/grid";
-import type { ExitEdge, ExitMode } from "./perimeter/types";
+import type { PortFace } from "../../shared/types";
+import { cellKey, faceVector, segment } from "../../shared/grid";
+import type { ExitEdge, ExitMode } from "../types";
 
 export interface Rect {
   minX: number;

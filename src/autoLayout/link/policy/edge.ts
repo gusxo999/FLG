@@ -31,7 +31,7 @@ import type { NodeSpec, PackConfig } from "../../tree/types/pack";
  * **신원 없는(옛 탭/다이렉트, 교환 가능) 납품 경로만을 위한** 위치 기반 키. **직접 부르지 않는다** —
  * 모든 소비처는 [deliveryKey] 를 쓴다. 밖으로 안 내보내는 이유: 이 함수만 부르면 `linkId` 를
  * 빠뜨린 채 `seq=0` 기본값으로 **엉뚱한 납품 경로**을 조회하게 된다(2026-07-21, 바로 이 실수가
- * `channelGeometryPlanner.test.ts` 에 있었다 — count=1 픽스처라 우연히 안 터졌을 뿐이었다).
+ * `channel/ledger/geometry.test.ts` 에 있었다 — count=1 픽스처라 우연히 안 터졌을 뿐이었다).
  *
  * 1:1 방출(트렁크 비활성)에서는 자식 출력 포트가 머신 수만큼, 부모 입력 포트도 머신 수만큼
  * 있으므로 같은 (from,to,item) 납품 경로가 **여럿**이다. `seq`(짝 index)가 그것들을 구분한다 —
@@ -170,7 +170,7 @@ export function edgeFlows(
  * ## 아직 아무도 안 준다 — 밸브만 먼저 뚫는다
  *
  * 오늘 호출부는 이 값을 **비워 둔다** → 흐름을 한 번에 붓는 옛 동작 그대로다(관통). 채울
- * 사람은 **깊이 예산**(`planner/module/depthBudget.ts` 의 `planBundles`)인데, 그쪽은 아직
+ * 사람은 **깊이 예산**(`module/arith/depth.ts` 의 `planBundles`)인데, 그쪽은 아직
  * 나머지 줄(원료·완제품)만 본다. 그 판정을 링크까지 넓히는 자리는 `modulePacking` 의 간선
  * 루프다 — **거기서만** 자식·부모의 좌석표를 둘 다 보고 있다(`tempPlanDocs/부분-링크/`).
  *

@@ -14,7 +14,7 @@
  * > **내력.** `modulePacking.packModuleTree` 의 `5)`·`6)`·`6b)` 블록과 `materializeChannelGeometry` 였다
  * > (2026-09-14 계획 구조-2축 · 2 Step 3c-3). `materializeChannelGeometry` 는 **통째로** 옮겼다 — 납품과 반출이
  * > 같은 트랙 풀을 다투므로 관심사로 가르려면 그 다툼을 먼저 풀어야 한다(code-folders).
- * > 추상 셀 모델은 `channelGeometryPlanner.ts` 에서 왔다(2026-09-15 Step 5b).
+ * > 추상 셀 모델은 `channel/ledger/geometry.ts` 에서 왔다(2026-09-15 Step 5b).
  */
 
 import type { GeneratedModule, ModulePort } from "../module/types/module";
@@ -27,7 +27,7 @@ import type {
   GeometryContext,
   NsEdge,
 } from "./types";
-import type { PerimeterExitPlan } from "../planner/perimeter/types";
+import type { PerimeterExitPlan } from "../perimeter/types";
 import { segment, PERIMETER_MARGIN } from "../shared/grid";
 import { AUTO_LAYOUT_COORD_DUMP } from "../shared/flags";
 import type {

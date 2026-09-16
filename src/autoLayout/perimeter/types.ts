@@ -9,10 +9,10 @@
  * **왜 배정 파일 밖인가.** 그 파일을 종류로 가르면 떼어 낸 자격 도형(`perimeter/shape`)이 이 타입을 읽는다.
  * 타입이 뼈대 파일에 남으면 조각이 뼈대를 **올려다보게** 된다. `LayoutGrid` 가 함께 온 것은 `ExitContext.grid` 의
  * 필드 타입이라서다 — 두 파일에 갈라 두면 `layoutRegions ⇄ perimeterExitPlanner` 가 타입으로 왕복했다
- * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `perimeterExitPlanner.ts` · `layoutRegions.ts` 에서 옮겼다).
+ * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `perimeter/policy.ts` · `perimeter/shape/rays.ts` 에서 옮겼다).
  */
 
-import type { PortFace } from "../../shared/types";
+import type { PortFace } from "../shared/types";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 

@@ -7,14 +7,14 @@
  * **판정 함수는 누적 배열을 받지 않는다** — 읽지도 쓰지도 않고 자기 몫만 돌려준다. 받는 순간 *"경고는 마지막
  * 오류 관문 뒤에"* 라는 순서 계약이 뼈대 밖으로 샌다(→ [terminusMergeWarnings]).
  *
- * > **내력.** 전부 `planner/moduleWizard.ts` 의 `runModulePipeline` 714줄 안에 있었다. 한 함수가 게임데이터를
+ * > **내력.** 전부 `run/build/module.ts` 의 `runModulePipeline` 714줄 안에 있었다. 한 함수가 게임데이터를
  * > 읽고(어댑터) 트리를 거절하고(정책) 유체 관망을 쌓고(장부) 셀을 놓았다(찍기) — work-kinds §7 **D7**.
  * > 2026-09-14 종류대로 갈랐다(계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
 import type { NodeSpec, PackResult } from "../tree/types/pack";
 import type { DeliveryResult } from "../link/types";
-import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
+import type { PerimeterPassResult } from "../perimeter/late";
 import type { BuildSpec } from "../shared/gamedata/spec";
 import type { RecipeTreeNode } from "../tree/types/recipe";
 import { summarizeRungs } from "../module/policy/link";
@@ -245,7 +245,7 @@ export function judgePipeMerges(pack: PackResult, pipeFlowByFluid: ReadonlyMap<s
 
 /**
  * **못 피한 벨트 끝 칸** — 끝 칸이 어느 방향으로 꺾어도 남의 품목과 만나는데 지하벨트를
- * 안 골라 [종착](../../execution/module/beltTerminus.ts)을 못 세운 자리다. 흐름 그대로 두고
+ * 안 골라 [종착](../module/late.ts)을 못 세운 자리다. 흐름 그대로 두고
  * **경고**로 낸다(2026-09-06 사용자 확정): 물류는 이어지고 처방은 한 단계 뒤로 가는 것
  * 뿐이라 줄을 물리지 않는다 — 대신 **보이지 않으면 안 된다**(반출 skip 과 같은 자리).
  *

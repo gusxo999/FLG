@@ -12,8 +12,8 @@
  */
 
 import type { PortFace } from "../../shared/types";
-import { regionsAlong, reachesOutside, rowChannelKey } from "../layoutRegions";
-import type { ExitContext, ExitEdge, ExitOption, ExitPortInput } from "./types";
+import { regionsAlong, reachesOutside, rowChannelKey } from "./rays";
+import type { ExitContext, ExitEdge, ExitOption, ExitPortInput } from "../types";
 
 /**
  * **직진** — 상자 좌표 그대로 그 변까지. 네 방향에 **같은 규칙**이다.

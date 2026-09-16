@@ -233,7 +233,7 @@ export function corridorFromJump(
 /**
  * 축 정렬된 두 칸 사이의 corridor. **점프가 아직 없어도 부른다** — 짝 없는 지하 입구가
  * *"여기부터 여기까지는 내 사거리다"* 를 선언할 때가 그렇다
- * ([resolveBeltTermini](module/beltTerminus.ts) 의 종착 · [run/ledger](../planner/run/ledger.ts) 가 셀에서 되읽는다).
+ * ([resolveBeltTermini](../../module/late.ts) 의 종착 · [run/ledger](../../run/ledger.ts) 가 셀에서 되읽는다).
  *
  * 두 점이 축 정렬이 아니면 가로로 본다 — 호출자가 언제나 축 위의 두 점을 준다.
  */

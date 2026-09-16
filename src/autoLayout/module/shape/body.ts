@@ -32,7 +32,7 @@
  *
  * > **내력.** 2026-09-14 까지 틀과 길은 방출기(`emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`) 안에, 몸통과
  * > 좌석 좌표는 조율자(`clusterModule`) 안에 있었고, 기둥 틀 식이 세 벌이었다(계획 구조-2축 · 2 Step 4).
- * > 포트의 경계 기하 둘은 `planner/deliveryRoute.ts` 에서 왔다(2026-09-15 Step 5c).
+ * > 포트의 경계 기하 둘은 `link/build.ts` 에서 왔다(2026-09-15 Step 5c).
  */
 
 import { flowEnd, trunkEndKey } from "../arith/trunk";

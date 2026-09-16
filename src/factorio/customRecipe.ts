@@ -10,7 +10,7 @@
  * 사용자는 *"입력은 W 면 1행"* 이라고 말한다. 게임데이터는 `{ direction, positions[4] }` 를
  * 요구한다. 그 변환이 여기 있고, 나머지는 받아 적기다.
  *
- * 식은 지어낸 것이 아니라 [resolveFluidConnection](../autoLayout/module/fluidPorts.ts) 의
+ * 식은 지어낸 것이 아니라 [resolveFluidConnection](../autoLayout/module/gamedata.ts) 의
  * **역함수**다. 그쪽이 좌표에서 행을 이렇게 뽑으므로
  *
  * ```
@@ -24,7 +24,7 @@
  * ## 두 가지를 절대 안 한다
  *
  * **① 면을 좌표로 말하지 않는다.** 면은 `direction` 에만 있다 — *"진짜 답은
- * `PipeConnection.direction` 이다 … 추정 없음"*([fluidPorts](../autoLayout/module/fluidPorts.ts)
+ * `PipeConnection.direction` 이다 … 추정 없음"*([fluidPorts](../autoLayout/module/gamedata.ts)
  * 머리말). `direction` 이 빠진 연결은 `resolveFluidConnection` 이 `null` 로 돌려보내고,
  * 그 머신은 유체를 **못 쓴다**.
  *

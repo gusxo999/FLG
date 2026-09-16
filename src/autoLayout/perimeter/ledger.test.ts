@@ -5,7 +5,7 @@
  * 그래서 여기 검사는 방향 조합을 전부 돈다: 같은 방향 · 마주 봄 · 등지고 뻗음.
  */
 import { describe, it, expect } from "vitest";
-import { directRaysCross, crossCellKey, type DirectRay } from "./directRay";
+import { directRaysCross, crossCellKey, type DirectRay } from "./ledger";
 
 /** 세로 직진 — 로컬 열 `c` 에 서서 절대 행 `y0` 에서 `toward` 로 뻗는다. */
 const V = (c: number, y0: number, toward: "N" | "S", depth = 1): DirectRay =>

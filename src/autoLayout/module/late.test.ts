@@ -9,7 +9,7 @@ import { cellKey } from "../shared/grid";
 import { resolveBeltTermini, slowestUnderground } from "./late";
 
 // 벨트 흐름의 **끝 칸** — 방향은 아무래도 좋지만 **남의 품목과 합류해선 안 된다.**
-// 규칙과 근거는 [beltTerminus.ts] 머리말.
+// 규칙과 근거는 [module/late.ts] 머리말.
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 

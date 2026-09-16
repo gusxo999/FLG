@@ -250,7 +250,7 @@ describe("pipeJumpToClusterPipe — 점프 방출 기하", () => {
 
   // **"사거리 0 → 옛 스파인 폴백" 테스트는 삭제됐다**(2026-08-16). 케이스 B(coal 이 d4·긴팔)를
   // 단언하던 것인데 그 형태가 없어졌고, 사거리가 짧은 것은 이제 폴백이 아니라 **깊이 상한**
-  // 으로 나타난다(trunk-pipe.md §4.1) — 그 축은 fluidPorts.test.ts 의 [clusterBeltDepthCap] 이 덮는다.
+  // 으로 나타난다(trunk-pipe.md §4.1) — 그 축은 module/gamedata.test.ts 의 [clusterBeltDepthCap] 이 덮는다.
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

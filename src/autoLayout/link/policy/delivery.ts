@@ -44,7 +44,7 @@
  *  - 게이트: `undergroundBeltEntityName` 이 없거나 distance≤0 이면 지상 전용(기존 동작).
  *
  * > **내력.** `modulePacking.packModuleTree` 안의 `P0` 블록이었다(2026-09-14 계획 구조-2축 · 2 Step 3c-2).
- * > 납품 사다리는 `planner/deliveryRoute.ts` 의 루프 몸통과 `routeOneDelivery` 였다(2026-09-15 Step 5c).
+ * > 납품 사다리는 `link/build.ts` 의 루프 몸통과 `routeOneDelivery` 였다(2026-09-15 Step 5c).
  */
 
 import type { UndergroundCorridor } from "../../shared/types";

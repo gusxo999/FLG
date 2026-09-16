@@ -187,7 +187,7 @@ export function buildReport(): string {
   );
 
   // **벨트 끝 칸** — 흐름의 종착이 남의 품목과 합류하지 않게 돌린 수
-  // ([resolveBeltTermini](../autoLayout/execution/module/beltTerminus.ts)).
+  // ([resolveBeltTermini](../autoLayout/module/late.ts)).
   //
   // 읽는 법: `돌림` 이 0 이 아니면 **긴팔이 연 d3 줄이 실제로 남의 d2 줄 위에 서 있다**는
   // 뜻이다(옛 코드는 그대로 흘려보냈다). `종착` 은 세 방향이 다 막혀 지하벨트 입구까지 간 수,

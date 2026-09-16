@@ -91,7 +91,7 @@ describe("유체 납품 경로가 장부의 계획대로 깔린다", () => {
     ).toBe(true);
   });
 
-  // P4-5b 이전엔 routeDeliveryRoutes 루프의 첫 줄이 유체를 걷어내(옛 deliveryRoute.ts:253)
+  // P4-5b 이전엔 routeDeliveryRoutes 루프의 첫 줄이 유체를 걷어내(옛 link/build.ts:253)
   // plannedChains 조회에 도달하지 못했다 — 계획이 있는데도 planned=0 이었다.
   // 지금은 유체도 계획 체인을 탄다. 이 트리의 납품 경로는 유체 하나뿐이므로 planned=1.
   it("라우터가 그 계획을 쓴다 — 탐색 없이 planned 로 집계", () => {

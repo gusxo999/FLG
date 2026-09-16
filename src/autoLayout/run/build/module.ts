@@ -5,7 +5,7 @@
  * 종류마다 [run/](./run/) 에 있다:
  *
  * ```
- * run/gamedata.ts   어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
+ * run/gamedata/tree.ts   어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
  * run/policy.ts     정책   — 받을지 물릴지 · 무엇을 고쳐야 하나 (LayoutIssue 를 짓는 유일한 곳)
  * run/ledger.ts     장부   — 유체 관망 · 종착 구간
  * run/emit.ts       찍기   — CandidateLeaf(Area · Routing) · 실패 그림
@@ -32,7 +32,7 @@ import type { PackConfig, PackResult } from "../../tree/types/pack";
 import { routeDeliveryRoutes } from "../../link/build";
 import type { DeliveryConfig, DeliveryResult } from "../../link/types";
 import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";
-import { rePathToPerimeter } from "../../execution/modulePerimeterPass";
+import { rePathToPerimeter } from "../../perimeter/late";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
 // 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
 import {
@@ -41,7 +41,7 @@ import {
 } from "../../../debug/runStats";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../../shared/flags";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
-// [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
+// [BuildSpec](../../shared/gamedata/spec.ts)("무엇으로 지을 수 있나")만 읽는다.
 import { makeBuildSpec, type BuildSpec } from "../../shared/gamedata/spec";
 import {
   fluidMachinesOf, logArmBeltLimits, nodeSpecsOf, resolveNodes, undergroundDistanceOf,
@@ -123,7 +123,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
    * **첫 개에서 멈추지 않는다** — 노드 3개가 막혀 있으면 예전엔 세 번 고치고 세 번 다시
    * 돌려야 전체를 알 수 있었다(2026-08-04 A-2 해소).
    *
-   * **뼈대만 이 배열을 쥔다.** 판정([run/policy](./run/policy.ts))은 자기 몫을 돌려주고, 여기서 정해진 자리에
+   * **뼈대만 이 배열을 쥔다.** 판정([run/policy](../policy.ts))은 자기 몫을 돌려주고, 여기서 정해진 자리에
    * push 한다 — 관문(`issues.length > 0`)이 경고도 실패로 세므로, **자리가 곧 계약**이다.
    */
   const issues: LayoutIssue[] = [];

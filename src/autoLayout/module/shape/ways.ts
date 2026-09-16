@@ -53,7 +53,7 @@ export function bodyColumnsOf(machines: Container[], cells: PlacedCell[]): Set<n
  * ```
  *
  * **둘을 한 번에 내는 것이 요점이다.** 같은 몸통에 대한 두 답이라 따로 계산하면 언젠가
- * 다른 순간의 몸통을 본다 — `perimeter/exits.ts` 가 `orderByDepth` 를 다시 세지 않고
+ * 다른 순간의 몸통을 본다 — `perimeter/shape/exits.ts` 가 `orderByDepth` 를 다시 세지 않고
  * 받는 것과 같은 이유다(*"같은 사실을 두 주체가 두 번 세면 언젠가 어긋난다"*).
  *
  * 몸통 = 머신 footprint + 모든 placed 셀(트렁크·인서터·상자 ghost). 상자 ghost 와 그

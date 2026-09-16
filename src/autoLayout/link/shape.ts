@@ -9,7 +9,7 @@
  * 향한다. 그래서 새 belt 체인은 `seat_from → chest_from → …경로… → chest_to → seat_to` 로
  * 흐른다(각 셀 방향 = 다음 셀 향함).
  *
- * > **내력.** `planner/deliveryRoute.ts` 에서 왔다(2026-09-15 계획 구조-2축 · 2 Step 5c). 연속성 검사가 [isContinuous] 와
+ * > **내력.** `link/build.ts` 에서 왔다(2026-09-15 계획 구조-2축 · 2 Step 5c). 연속성 검사가 [isContinuous] 와
  * > [buildPlannedChain] 꼬리에 글자까지 같은 식으로 두 벌이던 것을 한 벌로 줄였다.
  */
 

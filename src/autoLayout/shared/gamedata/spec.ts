@@ -55,7 +55,7 @@ export interface SpecBelt {
  * 이름만 나르지 않는 이유는 [SpecBelt] 와 같다(*"이름과 저울은 함께 온다"* — 2026-08-24).
  * 여기선 저울이 **가장 느린 것을 고르는 기준**이고(종착은 나르는 일이 없으니 싼 것이 낫다),
  * 사거리는 **장부에 적을 값**이다 — 짝 없는 입구도 그만큼을 예약해야 남이 그 구간에 출구를
- * 세워 **터널이 뚫려 버리는** 일이 없다([resolveBeltTermini](./execution/module/beltTerminus.ts)).
+ * 세워 **터널이 뚫려 버리는** 일이 없다([resolveBeltTermini](../../module/late.ts)).
  */
 export interface SpecUndergroundBelt {
   entityName: string;
@@ -70,7 +70,7 @@ export interface BuildSpec {
   beltEntityName: string;
   /**
    * 고른 벨트 **전부** — throughput 내림차순, 같은 처리량은 하나만.
-   * [determineBeltCount](./beltThroughput.ts) 가 수요를 이 티어들로 나눠 덮는다:
+   * [determineBeltCount](../arith/belt.ts) 가 수요를 이 티어들로 나눠 덮는다:
    * 빠른 것부터 채우고 **나머지는 그 나머지를 감당하는 가장 싼(느린) 벨트**로.
    */
   belts: SpecBelt[];

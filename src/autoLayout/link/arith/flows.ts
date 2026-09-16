@@ -34,7 +34,7 @@
  *
  * ## 여기 없는 것 — 한 클러스터만 아는 절반
  * [Link]·`makeLink`·`readLinkRole`·`externalLineGroups` 는
- * [module/link](../../module/link.ts) 에 있다. 그것들은 **로컬 머신
+ * [module/link](../../module/arith/link.ts) 에 있다. 그것들은 **로컬 머신
  * index + 팔 수**만 알아 형제를 모르므로 `link` 가 아니라 `module` 관심사다.
  *
  * **이 파일은 아무것도 import 하지 않는다.** 두 절반이 한 파일에 있던 시절엔 경계가 안 보여

@@ -454,7 +454,7 @@ export type RunContainerWizard = (
 ) => Promise<ContainerWizardResult>;
 
 /**
- * 새 위저드 입력 — 기존 WizardInput (types.ts) 과 호환되는 필드 + 새 모델
+ * 새 위저드 입력 — 기존 WizardInput (tree/types/recipe.ts) 과 호환되는 필드 + 새 모델
  * 전용 필드를 합친다. 기존 위저드와 병행하기 위해 별도 타입으로 둔다.
  */
 export interface ContainerWizardInput {
@@ -486,7 +486,7 @@ export interface ContainerWizardResult {
   partial: boolean;
   /**
    * **왜 안 됐나(또는 무엇이 아쉬운가)** — 실패면 `error` 들, 성공이어도 `warning` 이 있을 수 있다.
-   * 단일 출처는 [layoutIssue](./layoutIssue.ts).
+   * 단일 출처는 [layoutIssue](./issue.ts).
    */
   issues?: LayoutIssue[];
   /**

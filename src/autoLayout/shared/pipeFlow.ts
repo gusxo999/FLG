@@ -14,7 +14,7 @@
  * 금지 칸이다.
  *
  * **지하파이프만 예외다.** 표면에서 `direction` **한 면으로만** 연결된다
- * ([makeUndergroundPipeCell](cellBuilder.ts)) — 옆면은 벽이다. 이 사실을 가드가 몰라
+ * ([makeUndergroundPipeCell](./cells/builder.ts)) — 옆면은 벽이다. 이 사실을 가드가 몰라
  * 네 이웃을 다 막던 시절엔 물리보다 보수적이라, **한 면에 유체 두 줄**이 서는 배치를
  * 전부 거절했다(→ trunk-pipe.md §5.2). 정정 후에는 두 자리가 열린다:
  *

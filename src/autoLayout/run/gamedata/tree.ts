@@ -9,10 +9,10 @@
  * ```
  *
  * `GameDataLookup` 을 받는 함수는 이 파일과 `buildSpec` · `wizardUtils` 뿐이다 — 게임데이터를 **보는** 층이
- * 그 셋이라는 뜻이다. 판정([policy](./policy.ts))·장부([ledger](./ledger.ts))·찍기([emit](./emit.ts))는
+ * 그 셋이라는 뜻이다. 판정([policy](../policy.ts))·장부([ledger](../ledger.ts))·찍기([emit](../emit.ts))는
  * 여기서 옮겨 둔 값만 받는다.
  *
- * > **내력.** `planner/moduleWizard.ts` 의 `runModulePipeline` 안에 흩어져 있었다(조회 9곳).
+ * > **내력.** `run/build/module.ts` 의 `runModulePipeline` 안에 흩어져 있었다(조회 9곳).
  * > 2026-09-14 한 파일로 모았다(계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 

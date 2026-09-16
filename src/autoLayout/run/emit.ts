@@ -6,7 +6,7 @@
  * snapshotOf    실패 — 문제를 짚을 그림(LayoutSnapshot). CandidateLeaf 가 아니라 배치로 흘러가지 못한다
  * ```
  *
- * > **내력.** `planner/moduleWizard.ts` 의 `runModulePipeline` 끝(`2)`·`2b)`)과 파일 아래쪽에 있었다. 그 블록의
+ * > **내력.** `run/build/module.ts` 의 `runModulePipeline` 끝(`2)`·`2b)`)과 파일 아래쪽에 있었다. 그 블록의
  * > 주석은 이 일을 **"어댑터"** 라 불렀는데, work-kinds 의 어댑터는 *"게임데이터를 우리 타입으로"* 다 — 여기는
  * > 게임데이터를 안 본다. 2026-09-14 옮기면서 이름을 **찍기**로 바로잡았다(계획 구조-2축 · 2 Step 2b).
  */
@@ -18,7 +18,7 @@ import type {
 import type { LayoutIssue, LayoutSnapshot } from "../shared/issue";
 import { makeEmptyArea } from "./gamedata/picker";
 import { commitContainer } from "../shared/cells/place";
-import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
+import type { PerimeterPassResult } from "../perimeter/late";
 import { deliveryKey } from "../tree/build";
 import type { PackResult } from "../tree/types/pack";
 import type { DeliveryResult } from "../link/types";

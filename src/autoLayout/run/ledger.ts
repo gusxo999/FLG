@@ -6,9 +6,9 @@
  * terminusCorridorsOf   모듈이 세운 지하 종착의 사거리 — 남이 **이미 잡은** 구간
  * ```
  *
- * 게임데이터는 안 본다 — 유체 머신과 사거리는 [gamedata](./gamedata.ts) 가 옮겨 준 값을 받는다.
+ * 게임데이터는 안 본다 — 유체 머신과 사거리는 [gamedata](../module/gamedata.ts) 가 옮겨 준 값을 받는다.
  *
- * > **내력.** `planner/moduleWizard.ts` 의 `runModulePipeline` 안(1b · 1c)에 있었다. 2026-09-14 옮겼다
+ * > **내력.** `run/build/module.ts` 의 `runModulePipeline` 안(1b · 1c)에 있었다. 2026-09-14 옮겼다
  * > (계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
@@ -21,7 +21,7 @@ import { directionToVector } from "../shared/route";
 import { corridorBetween } from "../shared/cells/path";
 
 /**
- * **[파이프 합류 가드](../../util/pipeFlow.ts)의 지도** — 파이프는 **방향이 없어서** 직교로 닿기만
+ * **[파이프 합류 가드](../shared/pipeFlow.ts)의 지도** — 파이프는 **방향이 없어서** 직교로 닿기만
  * 하면 두 관망이 하나가 된다. 다른 유체끼리 이어지면 오염되고, 남의 머신
  * **유체 출력 상자**에 스치면 그 머신의 생산물이 내 관망으로 **조용히 샌다** — 화면상으론 멀쩡하고
  * 라우팅도 "성공"이라 보고한다. 그래서 파이프를 깔기 전에 금지 칸 지도를 만들어 둔다.
@@ -67,7 +67,7 @@ export function fluidBlockedOf(pipeFlowByFluid: ReadonlyMap<string, PipeFlow>): 
 
 /**
  * **모듈이 세운 벨트 종착의 사거리** — 지하벨트 장부에 올린다
- * ([resolveBeltTermini](../../execution/module/beltTerminus.ts) 머리말 §사거리).
+ * ([resolveBeltTermini](../module/late.ts) 머리말 §사거리).
  *
  * **셀에서 되읽는다**(모듈이 따로 실어 보내지 않는다): 모듈 안에 지하벨트를 놓는 코드는
  * 종착 하나뿐이라 *"모듈 셀 중 지하벨트 입구"* 가 곧 종착이고, 위치·방향·이름은 회전·

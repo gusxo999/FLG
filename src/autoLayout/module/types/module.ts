@@ -2,7 +2,7 @@
  * **모듈 하나가 무엇을 받고 무엇을 내나** — 입력([ModuleInput]), 산출([GeneratedModule]),
  * 경계에 선 포트([ModulePort]), 그리고 방출이 되묻는 트렁크 값([TrunkContext])·벨트 끝 칸([BeltTerminus]).
  *
- * > **내력.** `module/clusterModule.ts`·`execution/module/beltTerminus.ts` 에 있다가 2026-09-13
+ * > **내력.** `module/build.ts`·`module/late.ts` 에 있다가 2026-09-13
  * > 여기로 왔다(계획 구조-2축 · 2 Step 1). 방출기가 이 타입과 [trunkEndKey] 를 가지러 조율자를
  * > **런타임으로** 불러, 저장소의 유일한 순환(`clusterModule ⇄ emitModule`)이 거기서 났다.
  */
@@ -66,13 +66,13 @@ export interface ModuleInput {
    */
   supplyCapacity?: SupplyCapacity;
   /**
-   * 고를 수 있는 벨트들([BuildSpec.belts](../../buildSpec.ts)) — 수요가 벨트 한 줄을 넘을 때
+   * 고를 수 있는 벨트들([BuildSpec.belts](../../shared/gamedata/spec.ts)) — 수요가 벨트 한 줄을 넘을 때
    * [determineBeltCount] 가 여기서 티어를 골라 **줄을 늘린다**. 미지정이면 줄을 안 늘린다
    * (옛 동작: 거절 → 다이렉트). `beltEntityName` 은 기본/폴백 벨트로 남는다.
    */
   belts?: SpecBelt[];
   /**
-   * 고를 수 있는 지하벨트들([BuildSpec.undergroundBelts](../../buildSpec.ts)) — **벨트 흐름의
+   * 고를 수 있는 지하벨트들([BuildSpec.undergroundBelts](../../shared/gamedata/spec.ts)) — **벨트 흐름의
    * 종착**에 쓴다([resolveBeltTermini]). 끝 칸이 어느 방향으로 꺾어도 남의 품목과 합류하게
    * 되면, 그 칸을 **가장 느린** 지하벨트 입구로 바꿔 흐름을 그 자리에서 끝낸다.
    * 미지정이면 종착을 못 세우고 그 줄을 정직하게 포기한다.
@@ -218,7 +218,7 @@ export interface GeneratedModule {
   /**
    * **이 모듈이 깐 파이프류 셀 하나하나가 어느 유체를 나르나** — 트렁크·포트·점프 셀 전부.
    *
-   * 왜 필요한가: [합류 가드](../../util/pipeFlow.ts)는 "이 칸의 파이프가 **무슨 유체**냐"를 알아야
+   * 왜 필요한가: [합류 가드](../../shared/pipeFlow.ts)는 "이 칸의 파이프가 **무슨 유체**냐"를 알아야
    * 하는데, 모듈이 유체를 여럿 다루면 **모듈 단위로는 답할 수 없다.** 예전엔 호출자가
    * "이 배치의 파이프 셀 = 그 모듈의 유일 유체" 로 태깅했고, 유체가 둘이 되는 순간 자기
    * 파이프를 남의 유체로 오인해 **오염을 못 잡거나 자기 자신을 거절**한다. 그래서 방출한
@@ -230,7 +230,7 @@ export interface GeneratedModule {
   pipeCells: PipeFlowPipe[];
   /**
    * **피할 수 없어 합류한 채로 남긴 끝 칸** — 벨트 흐름의 종착이 어느 방향으로 꺾어도 남의
-   * 품목과 만나는데 지하벨트를 하나도 안 골라 [벨트 종착](../../execution/module/beltTerminus.ts)을
+   * 품목과 만나는데 지하벨트를 하나도 안 골라 [벨트 종착](../late.ts)을
    * 못 세운 자리다. 비어 있는 것이 정상이다.
    *
    * 모듈은 **판정만** 하고 화면에 못 올린다(형제도 위저드도 모른다). `planner/run/policy` 가

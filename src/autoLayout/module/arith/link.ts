@@ -1,5 +1,5 @@
 /**
- * link — **이 클러스터의 벨트 한 줄**([Link])의 조립·판독. 타입 자체는 [types/line](./types/line.ts) 에 있다.
+ * link — **이 클러스터의 벨트 한 줄**([Link])의 조립·판독. 타입 자체는 [types/line](../types/line.ts) 에 있다.
  *
  * ## 왜 `module/` 인가 — 형제를 모른다
  * 여기 있는 것은 전부 **로컬 머신 index → 팔 수**만 안다. 상대 클러스터의 대수도, 좌표도,
@@ -25,7 +25,7 @@
  *
  * ## 형제를 아는 절반은 여기 없다
  * *"어느 기계 쌍을 몇 벨트로 잇나"* 는 두 클러스터의 대수를 봐야 정해지므로
- * [planner/link/allocateFlows](../planner/link/allocateFlows.ts) 소관이다.
+ * [planner/link/allocateFlows](../../link/arith/flows.ts) 소관이다.
  * 두 파일은 **서로를 import 하지 않는다** — 한 파일에 있던 시절엔 그 경계가 안 보여
  * `module/` 이 `planner/link/` 를 부르고 `planner/link/` 가 다시 `module/` 을 부르는
  * 왕복 간선이 있었다(2026-08-02 해소).

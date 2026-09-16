@@ -4,7 +4,7 @@
  *
  * 좌표는 없다 — 전부 **모듈 안 순번**이다. 좌표를 입히는 것은 방출의 덧셈 한 줄이다.
  *
- * > **내력.** `planner/module/linkPlanner.ts`·`planModulePorts.ts` 에 있다가 2026-09-13 여기로 왔다
+ * > **내력.** `module/policy/link.ts`·`module/policy/port.ts` 에 있다가 2026-09-13 여기로 왔다
  * > (계획 구조-2축 · 2 Step 1). 방출기(`execution/module`)와 조율자(`module/clusterModule`)가 이
  * > 타입을 가지러 계획 계층을 올려다보고 있었다.
  * >

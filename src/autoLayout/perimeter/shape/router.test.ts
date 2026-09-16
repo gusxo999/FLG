@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { cellKey } from "../shared/grid";
+import { cellKey } from "../../shared/grid";
 import {
   routePortToPerimeter,
   type Pt,
   type Rect,
-} from "./perimeterRouter";
-import { segment } from "../shared/grid";
+} from "./router";
+import { segment } from "../../shared/grid";
 
 /** obstacle Set 헬퍼 — 사각형(inclusive) footprint 채우기. */
 function fillRect(occ: Set<string>, r: Rect): void {

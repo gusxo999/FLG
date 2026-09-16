@@ -129,7 +129,7 @@ describe("transformModule (D4)", () => {
 // 아무도 몰랐다. `pipeCells` 가 모듈-로컬에 남아 배치가 통째로 실패했다(2026-08-05).
 
 describe("좌표 프레임 경계 — 옮길 것을 다 옮기나", () => {
-  /** 유체 세 줄(지상 파이프 + 지하파이프 둘 다 나온다) — `trunkPipe.test.ts` 와 같은 꼴. */
+  /** 유체 세 줄(지상 파이프 + 지하파이프 둘 다 나온다) — `module/build.trunkPipe.test.ts` 와 같은 꼴. */
   const fluidLine = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "pipe", role });
   const cracking: ModuleInput = {
     machine: { entityName: "chemical-plant", w: 3, h: 3 },

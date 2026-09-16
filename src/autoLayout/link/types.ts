@@ -6,7 +6,7 @@
  *
  * **왜 납품 파일 밖인가.** 그 파일을 종류로 가르면 떼어 낸 조각(`link/policy` · `link/ledger` · `link/emit`)이 이 타입을
  * 읽는다. 타입이 뼈대 파일에 남으면 조각이 뼈대를 **올려다보게** 된다
- * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `deliveryRoute.ts` 에서 옮겼다).
+ * (계획 구조-2축 · 2 Step 5a, 2026-09-15 `link/build.ts` 에서 옮겼다).
  */
 
 import type { PlacedCell, UndergroundCorridor } from "../shared/types";
@@ -31,7 +31,7 @@ export interface DeliveryConfig {
   fluidBlocked?: ReadonlyMap<string, ReadonlySet<string>>;
   /**
    * **이미 놓인 지하 입/출구가 예약해 둔 구간** — 지금은 모듈이 세운 **벨트 종착**
-   * ([resolveBeltTermini](../../execution/module/beltTerminus.ts))이 유일한 출처다.
+   * ([resolveBeltTermini](../module/late.ts))이 유일한 출처다.
    *
    * 왜 필요한가: 종착은 **짝 없는 입구**라 터널이 안 뚫린 채로 서 있다. 그 사거리 안에
    * 납품 경로가 **같은 티어의 출구**를 세우면 그 순간 짝이 맺혀 터널이 뚫리고, 모듈 안

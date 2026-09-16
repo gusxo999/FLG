@@ -13,8 +13,8 @@ import { planRowChannel, type RowCrossing } from "./row";
 import { channelWidthFromTracks, type Interval } from "./tracks";
 import { planChannelGeometry } from "./geometry";
 import type { ChannelGeometryPlan, DeliveryInput, ExportInput } from "../types";
-import type { PerimeterExitPlan } from "../../planner/perimeter/types";
-import { rowChannelKey } from "../../planner/layoutRegions";
+import type { PerimeterExitPlan } from "../../perimeter/types";
+import { rowChannelKey } from "../../perimeter/shape/rays";
 import type { PackConfig, RowChannel } from "../../tree/types/pack";
 import type { DeliverySeed, RowChannelNeed } from "../../link/arith/pair";
 

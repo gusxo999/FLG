@@ -7,14 +7,14 @@
  *
  * **왜 조율자 파일 밖인가.** 조율자에서 떼어 낸 조각(`tree/` · `link/` · `channel/`)이 이 타입을
  * 읽는다. 타입이 조율자 파일에 있으면 조각이 조율자를 **올려다보게** 된다 — 역방향 타입 간선도
- * D4(런타임 순환)의 모양이다(계획 구조-2축 · 2 Step 3c-1, 2026-09-14 `modulePacking.ts` 에서 옮겼다).
+ * D4(런타임 순환)의 모양이다(계획 구조-2축 · 2 Step 3c-1, 2026-09-14 `tree/build.ts` 에서 옮겼다).
  */
 
 import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { IoLine } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/shape/transform";
-import type { PerimeterExitPlan } from "../../planner/perimeter/types";
+import type { PerimeterExitPlan } from "../../perimeter/types";
 
 /**
  * **행 채널 하나** — 같은 깊이에서 세로로 이웃한 두 모듈 사이의 빈 가로 통로.
@@ -96,14 +96,14 @@ export interface PackConfig {
   inserterEntityName: string;
   beltEntityName: string;
   /**
-   * 고를 수 있는 벨트 전부([BuildSpec.belts](../buildSpec.ts)) — 수요가 벨트 한 줄을 넘을 때
+   * 고를 수 있는 벨트 전부([BuildSpec.belts](../../shared/gamedata/spec.ts)) — 수요가 벨트 한 줄을 넘을 때
    * [determineBeltCount] 가 티어를 골라 **줄을 늘린다**. 미지정이면 줄을 안 늘린다(옛 동작:
    * 거절 → 다이렉트).
    */
   belts?: ModuleInput["belts"];
   /**
-   * 고를 수 있는 지하벨트 전부([BuildSpec.undergroundBelts](../buildSpec.ts)) — 모듈이
-   * **벨트 종착**([resolveBeltTermini](../execution/module/beltTerminus.ts))에 쓴다.
+   * 고를 수 있는 지하벨트 전부([BuildSpec.undergroundBelts](../../shared/gamedata/spec.ts)) — 모듈이
+   * **벨트 종착**([resolveBeltTermini](../../module/late.ts))에 쓴다.
    * `belts` 와 같은 자리(전역 선택)다.
    */
   undergroundBelts?: ModuleInput["undergroundBelts"];

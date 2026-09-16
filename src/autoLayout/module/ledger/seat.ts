@@ -11,8 +11,8 @@
  * 너머로 전하지 못해 생긴 중복이었다 — 이제 [commitLinkFace] 가 그 순번을
  * [LinkFacePlan.slotIndex] 에 실어 보내므로, 좌표 단계는 **덧셈만** 한다.
  *
- * > **내력.** `linkPlanner.ts` 에 정책과 섞여 있다가 2026-09-14 여기로 왔다(계획 구조-2축 · 2 Step 3a).
- * > 무대를 차리고 베끼는 둘은 `planModulePorts.ts` 에서 왔다(Step 3b).
+ * > **내력.** `module/policy/link.ts` 에 정책과 섞여 있다가 2026-09-14 여기로 왔다(계획 구조-2축 · 2 Step 3a).
+ * > 무대를 차리고 베끼는 둘은 `module/policy/port.ts` 에서 왔다(Step 3b).
  */
 
 import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";

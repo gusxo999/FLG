@@ -4,7 +4,7 @@
  *
  * 벨트판([finishChain])과 유체판([finishFluidChain])이 **같은 체인**을 받는다 — 계획 체인은 품목-무관하다.
  *
- * > **내력.** `planner/deliveryRoute.ts` 에서 왔다(2026-09-15 계획 구조-2축 · 2 Step 5c).
+ * > **내력.** `link/build.ts` 에서 왔다(2026-09-15 계획 구조-2축 · 2 Step 5c).
  */
 
 import type { ContainerPort, PortFace, PortPair } from "../shared/types";

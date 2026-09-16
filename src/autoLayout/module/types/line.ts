@@ -7,7 +7,7 @@
  * — 가르는 기준은 읽는 사람의 질문이다(나르나 · [seat](./seat.ts) 앉나 · [module](./module.ts) 받고 내나).
  *
  * > **내력.** 줄의 타입은 `clusterPortPlanner.ts` 에 있다가(2026-09-02 분리) `planner/module/ioLine.ts`
- * > 로, [Link] 는 `module/link.ts` 에 있다가 2026-09-13 여기로 왔다(계획 구조-2축 · 2 Step 1).
+ * > 로, [Link] 는 `module/arith/link.ts` 에 있다가 2026-09-13 여기로 왔다(계획 구조-2축 · 2 Step 1).
  * > 계획 계층에 두면 `module/` 과 `execution/` 이 타입을 가지러 위로 올라가야 했다.
  *
  * ## ClusterBeltDepth 규약 (머신 면에서 바깥으로 N칸 — 용어: docs/용어사전.md §D)

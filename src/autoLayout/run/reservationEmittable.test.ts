@@ -19,7 +19,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../link/build";
-import { routePortToPerimeter } from "../planner/perimeterRouter";
+import { routePortToPerimeter } from "../perimeter/shape/router";
 import { cellKey } from "../shared/grid";
 import type { IoLine } from "../module/types/line";
 

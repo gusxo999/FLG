@@ -8,7 +8,7 @@
  * ## 규칙을 다시 적지 않는다 — 그 함수를 부른다
  *
  * 가장 센 제약(입력은 E · 출력은 W 인 회전이 있어야 한다)은 여기서 재현하지 않고
- * [chooseFluidTrunkPlan](../autoLayout/module/fluidPorts.ts) 을 **실제로 돌린다.**
+ * [chooseFluidTrunkPlan](../autoLayout/module/gamedata.ts) 을 **실제로 돌린다.**
  * `resolveFluidConnection` 의 주석이 그 이유를 이미 적어 뒀다 —
  * *"유체 상자의 면을 읽는 규칙이 두 벌 있으면 한쪽만 고쳐지고 다른 쪽이 조용히 틀린다."*
  *

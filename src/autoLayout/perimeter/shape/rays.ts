@@ -56,7 +56,7 @@
  * **순수·결정적.** 좌표도 `PlacedCell` 도 안 만든다 → `planner/`(코드 폴더 축 1).
  */
 
-import type { ExitEdge, LayoutGrid } from "./perimeter/types";
+import type { ExitEdge, LayoutGrid } from "../types";
 
 /**
  * 광선이 지나는 영역 하나. **넷 중 하나**이고, 넷이 곧 자격 규칙의 네 경우다.

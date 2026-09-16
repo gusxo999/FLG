@@ -31,7 +31,7 @@
  */
 import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/arith/link';
 import type { LinkDepthNeed } from '../autoLayout/module/arith/depth';
-import type { ExitBlocked } from '../autoLayout/planner/perimeter/types';
+import type { ExitBlocked } from '../autoLayout/perimeter/types';
 export type { BeltFormCounters };
 
 /** 납품 경로 — [deliveryRoute.routeDeliveryRoutes] 의 카운터 그대로. */
@@ -253,7 +253,7 @@ const freshFaceDepths = (): FaceDepthCounters => ({
 });
 
 /**
- * **벨트 흐름의 끝 칸** — [resolveBeltTermini](../autoLayout/execution/module/beltTerminus.ts)
+ * **벨트 흐름의 끝 칸** — [resolveBeltTermini](../autoLayout/module/late.ts)
  * 가 무엇을 골랐나.
  *
  * 세는 이유: 끝 칸의 기본값(머신 쪽으로 꺾기)은 벨트가 `d2` 일 때만 *"자기 좌석이라 언제나

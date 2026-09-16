@@ -93,7 +93,7 @@ describe("머신마다 자기 벨트 — 여럿이 같은 깊이를 나눠 쓴�
   });
 
   // 순서 우선(문서 체크리스트 "(나)") — 입력 쪽도 정렬 없이 그룹 배열 순서 그대로 좌석
-  // 행에 앉는다(emitOutputLinks.test.ts 의 같은 불변식, 입력 방향에서 확인).
+  // 행에 앉는다(module/emit.outputLinks.test.ts 의 같은 불변식, 입력 방향에서 확인).
   it("그룹 배열 순서 = 좌석 행 순서 — 정렬 없이 그대로", () => {
     const rows = mod.inputPorts.map((p) => p.anchor.y);
     const sorted = [...rows].sort((a, b) => a - b);

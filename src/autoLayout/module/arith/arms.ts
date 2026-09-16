@@ -5,7 +5,7 @@
  * 타입은 `module/types/line` 에 있다. 여기엔 자리도 좌표도 없다 — **수만 센다.**
  *
  * > `clusterPortPlanner.ts` 에서 갈라져 나왔다(2026-09-02). 짝 테스트가 이미
- * > `allocateArms.test.ts` 라는 이름으로 있었다.
+ * > `module/arith/arms.test.ts` 라는 이름으로 있었다.
  */
 
 import type { SpecInserter } from "../../shared/gamedata/spec";

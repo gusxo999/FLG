@@ -8,7 +8,7 @@
  *   2. 노드마다 머신을 고르고 메타(footprint·대수·깊이)를 모은다.
  *   3. 배치를 [tryRunModulePipeline] 에 맡기고, 그 결과를 후보 트리로 감싼다.
  *
- * **배치 알고리즘은 여기 없다.** `planner/moduleWizard.ts` 가 소유한다 —
+ * **배치 알고리즘은 여기 없다.** `run/build/module.ts` 가 소유한다 —
  * 단일 출처: docs/auto-layout-wizard.placement-search.md.
  *
  * ## 이름이 역사를 담고 있다 (2026-07-25)

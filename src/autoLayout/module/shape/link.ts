@@ -140,7 +140,7 @@ export function linkShape(i: LinkShapeInput): LinkShape {
  *
  * 예전엔 계획 파일이 그 도형을 직접 계산했고, 주석이 근거로 `emitModule` 의 **줄 번호**를
  * 인용하고 있었다. 그래서 방출이 도형을 바꾸면 여기가 조용히 낡았다.
- * (2026-09-14 `planner/module/linkPlanner.ts` 에서 여기로 — 도형은 도형 파일에.)
+ * (2026-09-14 `module/policy/link.ts` 에서 여기로 — 도형은 도형 파일에.)
  */
 export function portCells(
   cand: Pick<LinkFacePlan, "clusterBeltDepth" | "portEnd" | "exitEnd">,

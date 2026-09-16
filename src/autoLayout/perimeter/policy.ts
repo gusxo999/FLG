@@ -59,7 +59,7 @@
  * **선호 순서**에만 쓴다.
  */
 
-import { directRaysCross, crossCellKey, type DirectRay } from "./perimeter/directRay";
+import { directRaysCross, crossCellKey, type DirectRay } from "./ledger";
 import type {
   ExitAssignment,
   ExitBlocked,
@@ -69,8 +69,8 @@ import type {
   ExitOption,
   ExitPortInput,
   PerimeterExitPlan,
-} from "./perimeter/types";
-import { channelEntryOf, directOptionOf } from "./perimeter/shape";
+} from "./types";
+import { channelEntryOf, directOptionOf } from "./shape/qualify";
 
 /** N/S 중 anchor 에 더 가까운 변. */
 function nearerNS(anchorY: number, gy: { min: number; max: number }): "N" | "S" {

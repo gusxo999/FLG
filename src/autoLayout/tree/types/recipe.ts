@@ -2,7 +2,7 @@
  * 레시피 트리의 한 노드. 사용자가 선택한 타깃 레시피를 루트로 하여,
  * 그 재료의 첫 매칭 레시피를 자식으로 가지는 BFS 트리.
  *
- * 컨테이너 모델의 wizard 입출력 타입은 [containerModel.ts](./containerModel.ts) 에 별도로 정의.
+ * 컨테이너 모델의 wizard 입출력 타입은 [shared/types.ts](../../shared/types.ts) 에 별도로 정의.
  */
 export interface RecipeTreeNode {
   /** 이 노드가 만들어내는 레시피 이름. 외부 공급(external) 노드면 undefined */

@@ -61,7 +61,7 @@ import { pairDeliveries } from "../link/arith/pair";
 import { planChannels, rowChannelsOf } from "../channel/ledger/assign";
 import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "../channel/shape";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
-import { planExits, expandBbox } from "../planner/perimeter/exits";
+import { planExits, expandBbox } from "../perimeter/shape/exits";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이

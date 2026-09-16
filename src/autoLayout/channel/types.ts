@@ -7,7 +7,7 @@
  *
  * **왜 장부 파일 밖인가.** 그 파일을 종류로 가르면 떼어 낸 조각(`channel/shape` · `channel/policy`)이 이 타입을
  * 읽는다. 타입이 뼈대 파일에 남으면 조각이 뼈대를 **올려다보게** 된다 — 역방향 타입 간선도 D4(런타임 순환)의
- * 모양이다(계획 구조-2축 · 2 Step 5a, 2026-09-15 `channelGeometryPlanner.ts` 에서 옮겼다).
+ * 모양이다(계획 구조-2축 · 2 Step 5a, 2026-09-15 `channel/ledger/geometry.ts` 에서 옮겼다).
  */
 
 import type { Interval } from "./ledger/tracks";

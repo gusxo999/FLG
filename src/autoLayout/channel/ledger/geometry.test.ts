@@ -9,7 +9,7 @@ import type { DeliveryInput, ExportInput } from "../types";
 import { packModuleTree, deliveryKey } from "../../tree/build";
 import type { NodeSpec, PackConfig } from "../../tree/types/pack";
 import { routeDeliveryRoutes } from "../../link/build";
-import { rePathToPerimeter } from "../../execution/modulePerimeterPass";
+import { rePathToPerimeter } from "../../perimeter/late";
 import { cellKey } from "../../shared/grid";
 import type { IoLine } from "../../module/types/line";
 

@@ -10,7 +10,7 @@
  *
  * 본 모듈은 *컨테이너 모델 v2 의 라우팅* 이며, legacy `router.ts` (Lee BFS,
  * item-only) 와 별개의 파일이다 — 이름 충돌을 피하려고
- * `containerRouting.ts` 로 분리. legacy 는 새 위저드 통합 시점에 삭제.
+ * `shared/route.ts` 로 분리. legacy 는 새 위저드 통합 시점에 삭제.
  *
  * 1차 구현 범위: item kind 만. fluid kind / underground 변형은 후속 커밋에서.
  */

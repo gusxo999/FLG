@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree, moduleExtent } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../link/build";
-import { rePathToPerimeter } from "./modulePerimeterPass";
+import { rePathToPerimeter } from "./late";
 import { PERIMETER_MARGIN, faceVector } from "../shared/grid";
 import { seatIsBeltFeeder } from "../module/shape/body";
 import type { IoLine } from "../module/types/line";

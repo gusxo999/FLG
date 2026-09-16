@@ -17,8 +17,8 @@
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/shape/transform";
 import { moduleExtent } from "../../module/shape/transform";
-import { planPerimeterExits } from "../perimeterExitPlanner";
-import type { ExitContext, PerimeterExitPlan, ExitPortInput, ExitEdge } from "./types";
+import { planPerimeterExits } from "../policy";
+import type { ExitContext, PerimeterExitPlan, ExitPortInput, ExitEdge } from "../types";
 import { PERIMETER_MARGIN } from "../../shared/grid";
 import type { NodeSpec } from "../../tree/types/pack";
 

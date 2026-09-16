@@ -18,7 +18,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../link/build";
-import { rePathToPerimeter } from "../execution/modulePerimeterPass";
+import { rePathToPerimeter } from "../perimeter/late";
 import { cellKey } from "../shared/grid";
 import { EntityType } from "../../types/layout";
 import type { IoLine } from "../module/types/line";
