@@ -37,19 +37,19 @@
  */
 
 import type { NodeSpec, PackConfig, PackResult } from "./types/pack";
-import { generateModule } from "../module/clusterModule";
+import { generateModule } from "../module/build";
 import type { Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../module/types/module";
 import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
-import { planLinkFaces } from "../planner/module/planModulePorts";
-import { seatLinkEdge } from "../planner/module/policy";
-import { cloneLinkFaceStage } from "../planner/module/ledger";
-import { clusterBeltDepthsOf } from "../planner/module/arith";
-import { linkDepthNeed, type LinkDepthNeed } from "../planner/module/depthBudget";
-import { summarizeBeltForms } from "../module/link";
+import { planLinkFaces } from "../module/policy/port";
+import { seatLinkEdge } from "../module/policy/seat";
+import { cloneLinkFaceStage } from "../module/ledger/seat";
+import { clusterBeltDepthsOf } from "../module/arith/face";
+import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";
+import { summarizeBeltForms } from "../module/arith/link";
 import { laneCapOfTier } from "../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_LADDER } from "../shared/flags";
-import type { Orientation } from "../module/moduleTransform";
+import type { Orientation } from "../module/shape/transform";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 // 트리 관심사 — 좌표 없이 트리가 답하는 것 · 그 순서를 좌표로 옮기는 것.
 import { moduleInputOf, treeIndexOf, type TreeIndex } from "./arith/pack";
@@ -67,7 +67,7 @@ import { planExits, expandBbox } from "../planner/perimeter/exits";
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
 // 자연스럽다. 정의의 소유자는 각각 `link/edgeLinks` 와 `module/moduleTransform` 이다.
 export { deliveryKey, edgeFlows, edgeLinkGroups } from "../planner/link/edgeLinks";
-export { moduleExtent } from "../module/moduleTransform";
+export { moduleExtent } from "../module/shape/transform";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 진입점

@@ -112,7 +112,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 > (2026-09-01 실측 — `electric-motor` 4줄이 E 두 깊이만 보고 둘을 헛되이 내렸다).
 > **그 근거가 링크에는 거짓이다** (2026-09-04 확인) — 링크의 넘침 경로 `spillPair` 는
 > `OUT=["W","S","N"]` · `IN=["E","S","N"]` 이라 **반대 옆면이 없다**
-> ([planModulePorts.ts](../../../src/autoLayout/planner/module/planModulePorts.ts)).
+> ([planModulePorts.ts](../../../src/autoLayout/module/policy/trunk/trunk/port.ts)).
 > 넘어가는 것은 `planModulePorts` 가 앉히는 **모듈 자기 줄**뿐이다.
 > **이것이 미결 판단 J14 의 물음 ① 이다**(`tempPlanDocs/부분-링크/judgements.md`).
 
@@ -168,7 +168,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 
 | # | 구조 | 지금 | 얻는 것 |
 |---|---|---|---|
-| 1 | **`RowSpan` 이라는 용어** | `beltRowSpan` 은 `planner/module/ledger` 안의 지역 함수, 구간은 칸으로 흩어진 뒤 사라진다 | `{face, clusterBeltDepth, spans}` 가 계획의 **값**이면 예산·배정·방출이 **같은 것**을 본다 |
+| 1 | **`RowSpan` 이라는 용어** | `beltRowSpan` 은 `module/ledger/seat` 안의 지역 함수, 구간은 칸으로 흩어진 뒤 사라진다 | `{face, clusterBeltDepth, spans}` 가 계획의 **값**이면 예산·배정·방출이 **같은 것**을 본다 |
 | 2 | **좌석 커서를 표 밖으로** | `seatsTaken(table, mi)` — 표가 있어야 답한다 | `seatBase(면, 머신)` 이 순수 함수면 앉혀 보지 않고 행이 나온다(§2 에서 이미 참인 산술) |
 | 3 | **얕은 → 깊은 스윕** | 못을 부딪혀서 안다 | 깊이 `d` 가 확정되면 그 포트가 깊이 `d+1` 의 못이다 — **층 스윕이라 되먹임이 없다** |
 | 4 | **예산 낟알을 면 단위로** | 모듈 전체 `Σ_f R_f` | ③ 을 쓰려면 불가피. **대신 `spillLinkFacesToGap` 을 예산이 알아야 한다**(→ §3 · J14) |
@@ -198,14 +198,14 @@ TR7 (나) **잠수**가 들어오면 팔 없는 구간을 건너뛰므로 한 �
 
 | 무엇 | 파일 | 심볼 |
 |---|---|---|
-| 행 번호의 정의 | [faceTable.ts](../../../src/autoLayout/planner/module/faceTable.ts) | `rowIndex` · `SEAT_DEPTH` |
+| 행 번호의 정의 | [faceTable.ts](../../../src/autoLayout/module/ledger/face.ts) | `rowIndex` · `SEAT_DEPTH` |
 | 빈 좌석 · 겹침 판정 | 〃 | `freeSeatRows` · `seatsTaken` · `depthClear` |
 | 채워 보고 버리기 | 〃 | `copyFaceTable` |
-| 행 구간의 유도 | [ledger.ts](../../../src/autoLayout/planner/module/ledger.ts) · [linkShape.ts](../../../src/autoLayout/module/linkShape.ts) | `beltRowSpan` · `portCells` |
-| 좌석 확정(접두합) | [ledger.ts](../../../src/autoLayout/planner/module/ledger.ts) | `commitLinkFace` |
-| 면 배정 2단 | [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) | `allocateLinkFaces` → `spillLinkFacesToGap` |
-| 행 없는 깊이 예산 | [depthBudget.ts](../../../src/autoLayout/planner/module/depthBudget.ts) | `planBundles` |
-| 부분집합 팔 수 | [link.ts](../../../src/autoLayout/module/link.ts) | `armsAt` · `spansAllMachines` |
+| 행 구간의 유도 | [ledger.ts](../../../src/autoLayout/module/ledger/seat.ts) · [linkShape.ts](../../../src/autoLayout/module/shape/body/body/link.ts) | `beltRowSpan` · `portCells` |
+| 좌석 확정(접두합) | [ledger.ts](../../../src/autoLayout/module/ledger/seat.ts) | `commitLinkFace` |
+| 면 배정 2단 | [linkPlanner.ts](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) | `allocateLinkFaces` → `spillLinkFacesToGap` |
+| 행 없는 깊이 예산 | [depthBudget.ts](../../../src/autoLayout/module/arith/trunk/trunk/depth.ts) | `planBundles` |
+| 부분집합 팔 수 | [link.ts](../../../src/autoLayout/module/arith/trunk/trunk/link.ts) | `armsAt` · `spansAllMachines` |
 | 막힌 뒤 쪼개기 | 〃 | `resolveSpanBlock` · `splitLinkAtRows` |
 
 ## 10. 함정

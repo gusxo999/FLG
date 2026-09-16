@@ -18,7 +18,7 @@ count=1(퇴화 기둥) 모듈의 **raw 입력**은 W/E 깊이가 넘칠 때 W-sp
 ## 1. 문제/배경
 
 모듈 파이프라인의 슬롯 배정(그때는 `clusterPortPlanner` — 2026-09-02 삭제, 지금은
-[linkPlanner](../../../src/autoLayout/planner/module/linkPlanner.ts) 의 `spillLinkFacesToGap`)은
+[linkPlanner](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) 의 `spillLinkFacesToGap`)은
 기둥 클러스터 가정 하에 **W/E 두 면만** 썼다. 깊이는 기둥 축을 따라 달려야 N대
 전부를 서빙하므로 N/S(축의 끝면)는 스케일이 안 되기 때문이다. 그러나 count=1이면
 이 논리가 퇴화한다 — 4면이 전부 동등한데 관례상 2면을 버리고, 입력 3개 레시피에서
@@ -62,11 +62,11 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 
 ## 4. 구현 위치
 
-- [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) — 노출 끝면 완화는
-  [policy.ts](../../../src/autoLayout/planner/module/policy.ts) `seatRestLines` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
+- [linkPlanner.ts](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) — 노출 끝면 완화는
+  [policy.ts](../../../src/autoLayout/module/policy/trunk/trunk/seat.ts) `seatRestLines` 의 `spillLinkFacesToGap(inRaw, [...nsExposure, ...])` 에 있다 (옛 `clusterPortPlanner` —
   `PlannedSide`(W/E/N/S), `IoLine.external`, `PortPlannerInput.nsFaces`, 입력 풀 소비
   순서(E→N/S→W), depth 재배정 루프 N/S 포함.
-- [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) —
+- [clusterModule.ts](../../../src/autoLayout/module/build.ts) —
   `ModuleInput.nsExposure` → planner `nsFaces` 전달. 트렁크는 기존 faceConstraints
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
 - [tree/arith.ts](../../../src/autoLayout/tree/arith/pack.ts) —

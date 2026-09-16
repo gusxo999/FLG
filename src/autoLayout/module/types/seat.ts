@@ -15,7 +15,7 @@
 import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { PortFace } from "../../shared/types";
 import type { Link, PortSide } from "./line";
-import type { FaceTable } from "../../planner/module/faceTable";
+import type { FaceTable } from "../ledger/face";
 
 export interface LinkFacePlan {
   /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */

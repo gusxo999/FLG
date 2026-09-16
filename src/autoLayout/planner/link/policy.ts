@@ -49,16 +49,16 @@
 
 import type { UndergroundCorridor } from "../../shared/types";
 import type { Link } from "../../module/types/line";
-import { shareLanes } from "../../module/link";
-import { portGeometry } from "../../module/shape";
+import { shareLanes } from "../../module/arith/link";
+import { portGeometry } from "../../module/shape/body";
 import { laneCapOfTier } from "../../shared/arith/belt";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../../shared/flags";
 import { recordLaneShareStats } from "../../../debug/runStats";
 import { cellKey, faceVector } from "../../shared/grid";
 import { dijkstraWithJumps } from "../../shared/route";
-import { planLinkFaces } from "../module/planModulePorts";
-import { clusterBeltDepthsOf } from "../module/arith";
-import { linkDepthNeed } from "../module/depthBudget";
+import { planLinkFaces } from "../../module/policy/port";
+import { clusterBeltDepthsOf } from "../../module/arith/face";
+import { linkDepthNeed } from "../../module/arith/depth";
 import { edgeLinkGroups } from "./edgeLinks";
 import { finishChain, finishFluidChain } from "./emit";
 import { plannedChainClear, type DeliveryLedger, type PlannedChains } from "./ledger";

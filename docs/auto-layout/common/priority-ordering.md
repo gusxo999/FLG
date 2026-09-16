@@ -90,7 +90,7 @@ P11 은 같은 순서를 **방출 단계**에도 적용한다. 아이템 납품 
 머신이 노출하는 포트 셀 수는 kind마다 다르다:
 
 - **item:** footprint 둘레 전체 `2(w+h)`개 (옛 `portInference.itemPorts` — 삭제됨)
-- **fluid:** `fluid_boxes[].connections[].positions`의 셀만, `fb.filter` 일치 box만 — 보통 1~2개 ([fluidPortSlots](../../../src/autoLayout/module/fluidPorts.ts) 가 같은 필드를 읽는다)
+- **fluid:** `fluid_boxes[].connections[].positions`의 셀만, `fb.filter` 일치 box만 — 보통 1~2개 ([fluidPortSlots](../../../src/autoLayout/module/gamedata.ts) 가 같은 필드를 읽는다)
 
 → fluid 후보는 item의 **엄격한 부분집합이자 훨씬 작음** = 제약이 크다. *(이 방향성은 코드로 확인됨.)*
 

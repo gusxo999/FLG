@@ -10,7 +10,7 @@
 여기 있는 것은 **아직 안 한 일** — 목표 트리와 이관 순서다. 전체 설계는 [구조-2축.md](구조-2축.md).
 
 ```
-1 · 도형 단일 출처   계획과 방출이 같은 도형 함수를 부른다      ← 완료(2026-09-12). 도형은 `module/linkShape` 한 곳
+1 · 도형 단일 출처   계획과 방출이 같은 도형 함수를 부른다      ← 완료(2026-09-12). 도형은 `module/shape/body/link` 한 곳
 2 · 종류로 가르기     일곱 파일을 결정 종류로. **타입부터**(D4)   ← 완료(2026-09-15). D4 · D7 닫힘 · D2 삭제 · 200줄+ 함수 8 → 1(남은 하나는 탐색)
 3 · 폴더 이관        planner/execution/module → 관심사 폴더       ← **여기**
 4 · import 규칙      산문 규칙을 eslint 로 옮긴다                ← 방향
@@ -53,8 +53,8 @@
 | [docs/code-folders.md](../../docs/auto-layout/common/code-folders.md) | **오늘의 폴더가 무엇을 말하나.** 3 이 끝나면 이 문서가 새 트리의 단일 출처가 된다 |
 | [docs/pipeline-lifecycle.md](../../docs/auto-layout/common/pipeline-lifecycle.md) | 시대 여섯. **새 트리는 시대를 폴더로 안 쓴다** — 그 이유가 §"정직하게 잃는 것" |
 | [docs/CLAUDE.md](../../docs/CLAUDE.md) 판정표 | 문서와 코드가 어긋날 때. **코드가 개념에 미달한 것은 문서를 고치지 않고 결함으로 적는다** |
-| `planner/module/linkPlanner.ts` — `portCells` · `splitByTable` · `beltRowSpan` | 계획 쪽 도형. D1 의 한쪽 |
-| `execution/module/emitModule.ts` — `emitOutputLinks` · `emitInputLinks` 의 `path`/`span` | 방출 쪽 도형. D1 의 다른 쪽 |
+| `module/policy/trunk/link.ts` — `portCells` · `splitByTable` · `beltRowSpan` | 계획 쪽 도형. D1 의 한쪽 |
+| `module/emit.ts` — `emitOutputLinks` · `emitInputLinks` 의 `path`/`span` | 방출 쪽 도형. D1 의 다른 쪽 |
 
 ## 하지 않는 것 (전 계획 공통)
 

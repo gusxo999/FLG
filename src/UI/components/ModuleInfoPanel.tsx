@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { useAutoLayoutRunStore, overlayView } from '../store/autoLayoutRunStore';
 import { useGameDataStore } from '../store/gameDataStore';
-import { type ModulePortCell } from '../../autoLayout/moduleInspect';
+import { type ModulePortCell } from '../../autoLayout/module/inspect';
 import { useWizardStore } from '../store/wizardStore';
 import type { LayoutIssue } from '../../autoLayout/shared/issue';
 

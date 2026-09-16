@@ -17,7 +17,7 @@ import type {
   PlacedCell,
   Routing,
 } from '../autoLayout/shared/types';
-import { collectModules } from '../autoLayout/moduleInspect';
+import { collectModules } from '../autoLayout/module/inspect';
 import { checkLayout } from './checkRules';
 import { renderFace } from './faceTable';
 import { cellKey, machineBoxOf, type LayoutView } from './layoutView';

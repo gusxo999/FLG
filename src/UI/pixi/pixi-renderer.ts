@@ -22,7 +22,7 @@ import {
   isPipeCell,
   type PipeNetworkResult,
 } from '../../analysis/pipeNetwork';
-import { summarizeRoutings, type ModuleInfo } from '../../autoLayout/moduleInspect';
+import { summarizeRoutings, type ModuleInfo } from '../../autoLayout/module/inspect';
 import { overlaySource, overlayView, useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { centerAnchorOrigin, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';

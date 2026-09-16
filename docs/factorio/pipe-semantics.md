@@ -89,7 +89,7 @@ tags: [factorio-data, routing, auto-layout]
 
 즉 유체 줄이 **어느 면으로 들어가는지는 우리가 고르는 게 아니라 머신이 정한다.** 우리가 할 수 있는
 건 **머신을 돌리는 것**뿐이다. 그래서 유체 레시피 모듈은 머신을 90° 돌려 유체 입구가 우리가 원하는
-면(E)을 보게 한다([fluidPorts.chooseFluidTrunkPlan](../../src/autoLayout/module/fluidPorts.ts)).
+면(E)을 보게 한다([fluidPorts.chooseFluidTrunkPlan](../../src/autoLayout/module/gamedata.ts)).
 
 **연결 칸이 어디인지는 좌표로 못 뽑는다.** 화학 공장의 유체 상자는 3×3 의 **모서리 칸**이라 `|x| = |y|`
 이고, 그 연결이 위로 나가는지 옆으로 나가는지 좌표에 정보가 **없다.** 답은 `PipeConnection.direction`

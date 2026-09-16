@@ -25,7 +25,7 @@ Step 5  모듈 전체 tap/direct 후퇴 제거                          ⏸ **�
 하나**로 모았다. 안쪽 줄(자식→부모)과 바깥 줄(원료·완제품)이 같은 붓기를 타고, 바깥 줄은
 *한쪽 끝이 빈 흐름*으로 들어온다(`LinkCarry` 의 `from`/`to` 중 빈 쪽 = 모듈 밖). → 계획서 §10.
 
-**기준선: 타입 0 · 48파일 596테스트 · 기존 실패 2건**(`module/trunkPipe.test.ts` 유체 면 ×2).
+**기준선: 타입 0 · 48파일 596테스트 · 기존 실패 2건**(`module/build.trunkPipe.test.ts` 유체 면 ×2).
 2026-08-23 까지 3건이던 것이 2건이 됐다 — `channelGeometryPlanner` 의 *"반출 예약 재생"* 이
 이 작업으로 통과한다. **늘면 회귀다.**
 
@@ -41,8 +41,8 @@ Step 5  모듈 전체 tap/direct 후퇴 제거                          ⏸ **�
 | [docs/auto-layout/link/machine-link.md](../../docs/auto-layout/link/machine-link.md) §0 | 이 문서가 폐기하는 문장 넷 |
 | `planner/link/allocateFlows.ts` | Step 2 의 자리 |
 | `planner/link/edgeLinks.ts` `edgeLinkGroups` | Step 3 의 자리 — 지금은 `links.map` 한 줄 |
-| `module/link.ts` `createLinks` | **Step 3·4 가 합쳐진 자리.** 줄을 만드는 유일한 곳 |
-| `module/link.ts` `externalLineGroups` | 바깥 흐름을 만들어 `createLinks` 에 넘긴다 |
+| `module/arith/trunk/link.ts` `createLinks` | **Step 3·4 가 합쳐진 자리.** 줄을 만드는 유일한 곳 |
+| `module/arith/trunk/link.ts` `externalLineGroups` | 바깥 흐름을 만들어 `createLinks` 에 넘긴다 |
 | `module/testScale.ts` | 테스트 픽스처의 저울(벨트 티어·팔 처리량·줄 rate) 단일 출처 |
 | `shared/gamedata/spec.ts` `armsFor`·`makeBuildSpec` | Step 1 의 자리. 팔 개수의 단일 출처 |
 | [battery 분석](../battery-채널-폭-분석.md) §4 · [glass 분석](../glass-채널-폭-분석.md) §3-① | 두 증상의 관측 원문 |

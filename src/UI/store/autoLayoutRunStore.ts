@@ -35,7 +35,7 @@ import {
   type ModuleSource,
   type OverlayLine,
   type OverlayModule,
-} from '../../autoLayout/moduleInspect';
+} from '../../autoLayout/module/inspect';
 import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from '../../autoLayout/shared/issue';
 
 /**

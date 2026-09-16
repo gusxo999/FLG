@@ -40,7 +40,7 @@ import {
   setHoveredModuleKey,
 } from './pixi-renderer';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
-import { moduleAtCell } from '../../autoLayout/moduleInspect';
+import { moduleAtCell } from '../../autoLayout/module/inspect';
 import { overlayView, useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
 import { isBeltLike } from '../../analysis/beltFlow';
 

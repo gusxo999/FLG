@@ -169,7 +169,7 @@ a(j, d) = ⌈ per_j / tp(d) ⌉        그 깊이의 팔로 머신 하나를 먹
 
 위 약분은 *한 구간이 `g×h` 행을 먹는다* 를 전제로 했다. 그게 틀렸다 —
 벨트가 덮는 행은 **그 줄의 팔이 앉은 행**이지 머신 면 전체가 아니다
-(`planner/module/ledger.beltRowSpan`: 머신마다 `freeSeatRows(mi).slice(0, k)` 의 처음·끝).
+(`module/ledger/seat.beltRowSpan`: 머신마다 `freeSeatRows(mi).slice(0, k)` 의 처음·끝).
 
 ```
 g = 1   구간 하나 = 머신 한 대의 `a_j(m)` 행       → 여러 품목이 한 깊이를 **나눠 쓴다**
@@ -467,7 +467,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 ㉡ N 개의 줄이 한 면에서 동시에 서나  ← 아무도 안 답한다.  **여기가 문제다**
 ```
 
-㉠ 은 싣는 쪽 틀과 길(`module/shape` 의 `linkFrameOf` · `outputRouteOf`)이 **다섯 수**에서 덧셈으로 만든다:
+㉠ 은 싣는 쪽 틀과 길(`module/shape/body` 의 `linkFrameOf` · `outputRouteOf`)이 **다섯 수**에서 덧셈으로 만든다:
 
 | 수 | 누가 정하나 | 자리 |
 |---|---|---|
@@ -518,14 +518,14 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 
 > **구간은 입력이 아니라 후보의 결과다.** 깊이가 인서터를 정하고(§12), 인서터가 팔 수를
 > 정하고(`a = ⌈per / tp⌉`), 팔 수가 좌석 행을 먹고, 그 행들이 구간이 된다.
-> `beltRowSpan`(`planner/module/ledger.ts`)이 **이미 그렇게 센다**(`used` 를 읽어 시작 행을 안다).
+> `beltRowSpan`(`module/ledger/seat.ts`)이 **이미 그렇게 센다**(`used` 를 읽어 시작 행을 안다).
 >
 > **여기가 채널과 다른 유일한 점이다.** 채널은 출발·도착 행이 포트에 고정돼 구간이
 > 상수인데, 트렁크는 **색(깊이)을 고르면 구간이 바뀐다.** 그래서 순수 left-edge 를
 > 그대로 못 쓴다 — 구간이 색에 의존하는 채색이다. **이것이 ㉢ 이 3단인 이유다.**
 
 **㉡ 충돌 술어** — 셀 서로소 + 흐름 인접. **행이 인접하는 것은 허용**된다:
-끝 칸이 포트 쪽으로 꺾여 이웃 벨트로 안 흐른다(`module/shape.outputRouteOf` 의 끝 칸 주석).
+끝 칸이 포트 쪽으로 꺾여 이웃 벨트로 안 흐른다(`module/shape/body.outputRouteOf` 의 끝 칸 주석).
 그래서 술어가 strict 하고, `assignTracksLeftEdge` 의 `end < iv.lo`(`channelPlanner.ts:43·57`)와
 **정확히 같다.** 오늘 `tryLinkFace:335` 의 겹침 판정도 이미 그것이다 — **자를 새로 만들 필요가 없다.**
 
@@ -581,7 +581,7 @@ h_f       머신 면 칸 − 유체 상자 행                                 �
 
 | 조각 | 있나 | 자리 |
 |---|---|---|
-| **면 좌석표** — 칸 = `(행, 깊이)`. 옛 장부 셋이 여기로 접혔다 | ✅ **신규** | `planner/module/faceTable.ts` · 설계는 [[module-planning]] §4.5 |
+| **면 좌석표** — 칸 = `(행, 깊이)`. 옛 장부 셋이 여기로 접혔다 | ✅ **신규** | `module/ledger/face.ts` · 설계는 [[module-planning]] §4.5 |
 | 깊이 장부 · 좌석 장부 · 구간 계산 | ✅ | 표를 읽는 질문이 됐다 — `depthClear` · `seatsTaken` · `beltRowSpan` |
 | 끝(N/S) 장부 | ✅ | `ends` — **표 밖에 남는 유일한 것**(기둥 끝은 면의 칸이 아니다) |
 | 방출이 덧셈뿐 (R1) | ✅ | `emitOutputLinks` |
@@ -669,7 +669,7 @@ for (const m of mod.machines) mk(...);
 for (const c of mod.cells)    mk(c.x, c.y);   // ← 벨트 한 칸만 밖으로 나가도 반영된다
 ```
 
-`planner/module/ledger.fitOnGap` 주석이 이미 그렇게 적고 있다 — *"자리는 그냥 **바깥으로 자란다**: 모듈이
+`module/ledger/seat.fitOnGap` 주석이 이미 그렇게 적고 있다 — *"자리는 그냥 **바깥으로 자란다**: 모듈이
 차지하는 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다."*
 
 **소비처 넷은 전부 `moduleExtent` 하나만 본다** — 모듈 내부를 아무도 안 들여다본다:

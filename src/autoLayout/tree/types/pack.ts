@@ -13,7 +13,7 @@
 import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { IoLine } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../../module/types/module";
-import type { Orientation } from "../../module/moduleTransform";
+import type { Orientation } from "../../module/shape/transform";
 import type { PerimeterExitPlan } from "../../planner/perimeter/types";
 
 /**

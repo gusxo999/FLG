@@ -130,7 +130,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 (위아래 면이면 x, 좌우 면이면 y) 좌표가 안쪽 칸이든 바깥 연결점이든 답이 같다 — 모호한 건 수직
 성분뿐인데 그건 안 본다.
 
-읽는 규칙은 [`resolveFluidConnection`](../../../src/autoLayout/module/fluidPorts.ts) **한
+읽는 규칙은 [`resolveFluidConnection`](../../../src/autoLayout/module/gamedata.ts) **한
 곳**에 있다. 자동 레이아웃(`fluidPorts`)과 라우팅(`portInference`)이 같은 함수를 쓴다 — 규칙이 두
 벌 있으면 한쪽만 고쳐지고 다른 쪽이 조용히 틀린다.
 
@@ -157,7 +157,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 깊이 상한 = 지하파이프 사거리 − 2(n−1)          n = 그 면의 유체 줄 수
 ```
 
-→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/arith.ts). 상한이 얕으면 그 면은
+→ [`clusterBeltDepthCap`](../../../src/autoLayout/module/arith/trunk/trunk/trunk.ts). 상한이 얕으면 그 면은
 **깊은 줄을 안 준다**(예: 상한 2 → 긴팔 깊이 d3 는 안 열리고 d2 만). 그건 거절이 아니라
 사다리를 한 칸 내려가는 것이고, **거절은 상한이 1 미만일 때뿐**이다 — 아이템을 하나도 안
 놓아도 못 넘는 경우다.
@@ -197,7 +197,7 @@ N→E, S→W 가 된다. 즉 **유체 입력이 입력 면(E)에, 유체 출력�
 - 그 면의 유체 줄들이 **바깥으로 못 넘는 경우**. 유체가 한 줄이면 못 넘어도 옛 스파인으로
   물러나면 되지만, **두 줄이면 물러설 곳이 없다** — 스파인은 좌석 줄(d1)을 기둥 전체로 먹어
   둘째 줄의 유체 상자 칸을 막는다. 판정은
-  [`fluidJumpBlocker`](../../../src/autoLayout/module/arith.ts) 하나가 갖고, 사유는 셋이다:
+  [`fluidJumpBlocker`](../../../src/autoLayout/module/arith/trunk/trunk/trunk.ts) 하나가 갖고, 사유는 셋이다:
   `no-underground`(지하파이프를 안 골랐다) · `underground-too-short`(사거리가 모자란다 →
   `fluid-underground-too-short`) · `seats-exhausted`(유체 행을 빼면 벨트가 안 들어간다 →
   `fluid-face-seats-exhausted`).
@@ -273,7 +273,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 ## 6. 유체 상자를 어느 것으로 고르나
 
 머신에 유체 입력 상자가 여러 개일 수 있고(화학 공장 2개, SE 생화학 랩 6개), 줄보다 **남을 수도**
-있다. 그때는 배정이 실제 선택이 된다. 규칙([`chooseFluidTrunkPlan`](../../../src/autoLayout/module/fluidPorts.ts)):
+있다. 그때는 배정이 실제 선택이 된다. 규칙([`chooseFluidTrunkPlan`](../../../src/autoLayout/module/gamedata.ts)):
 
 1. `fb.filter` 가 그 유체 이름과 일치하는 유체 상자가 있으면 그것.
 2. 레시피가 `fluidbox_index` 로 못박은 줄은 **그 서수의 유체 상자**에(역할별 1-based).
@@ -289,8 +289,8 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 | `containerModel.Container` | 방향 필드 없음 | `direction?` 추가 |
 | [`machinePlacer.commitContainer`](../../../src/autoLayout/shared/cells/place.ts) | `direction: 0` **하드코딩** | 컨테이너 방향을 셀로 내려보냄 |
 | [`moduleWizard`](../../../src/autoLayout/run/build/module.ts) | 유체 하나면 **트리 전체** 폴백 | §5 범위만 통과 · `kind: "pipe"` 로 줄 생성 |
-| [`planModulePorts`](../../../src/autoLayout/planner/module/planModulePorts.ts) → [`pipeLinesOf`](../../../src/autoLayout/planner/module/arith.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
-| [`clusterModule`](../../../src/autoLayout/module/clusterModule.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
+| [`planModulePorts`](../../../src/autoLayout/module/policy/trunk/trunk/port.ts) → [`pipeLinesOf`](../../../src/autoLayout/module/arith/trunk/trunk/face.ts) | (옛 `clusterPortPlanner`: pipe 보면 즉시 `complex`) | 파이프 줄을 직접 조립 — 면 = 유체 상자가 정함, depth 1, 인서터 없음 + 깊이 상한(§4.1) |
+| [`clusterModule`](../../../src/autoLayout/module/build.ts) | pipe 줄 버림 | **트렁크 파이프 방출기** + 머신 회전 각도 결정 |
 | [`modulePerimeterPass`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 반출 = 벨트 + 인서터 | 유체 포트는 **파이프**로 반출, 끝에 `infinity-pipe` |
 | `deliveryRoute` | — | **안 건드린다**(§5) |
 
@@ -309,7 +309,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 
 유체 면도 좌석이 살아 있으니(§5.1 점프) 아이템 벨트가 앉을 수 **있다.** 문제는 앉히는 게
 **공짜가 아니라는 것**이다. 이 절은 그 값을 계산하고, 그래서 앉히는 순서가 어떻게 되는지를
-적는다. → 코드: [`linkPlanner.tryLinkFace`](../../../src/autoLayout/planner/module/linkPlanner.ts)
+적는다. → 코드: [`linkPlanner.tryLinkFace`](../../../src/autoLayout/module/policy/trunk/trunk/link.ts)
 의 `allowPipeFace`.
 
 ### 9.1 값이 얼마인가 — 한 줄 앉히면 **그 면이 3칸 넓어진다**
@@ -318,7 +318,7 @@ n = 1 이고 beltMax = 0   →  옛 스파인. 파이프가 d1 로 기둥 전체
 인서터·상자 위로 지나가고, 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다**(§5.1).
 그 규약이 `clusterPipeDepth = base + 2 + 2·rank` 이고 `base = max(그 면 벨트 최대 깊이, 1)`
 인데, 여기서 "벨트 최대 깊이"는 벨트가 아니라 **포트 끝**까지 센다(인서터 +1 · 상자 +2 —
-[`linkFaceDepths`](../../../src/autoLayout/planner/module/arith.ts)).
+[`linkFaceDepths`](../../../src/autoLayout/module/arith/trunk/trunk/face.ts)).
 
 ```
 아이템 0줄        base = 1   →  ClusterPipe d3 · 탭 d2         그 면 폭 **3**

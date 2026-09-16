@@ -28,9 +28,9 @@ tags: [auto-layout]
 
 | 실물 | 무엇이 갈렸나 |
 |---|---|
-| `planner/perimeter/wayOuts.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule](../../../src/autoLayout/module/clusterModule.ts) 의 `finishModule` · [moduleTransform](../../../src/autoLayout/module/moduleTransform.ts) 의 `bodyColumnsOf`) |
+| `module/shape/body/ways.ts` | code-folders 는 *"무엇을 아는가로 판정한다"* 고 적었는데, V1 이관은 *"소비처가 planner 뿐"* 으로 판정했다. 그 결과 `module/` → `planner/` 상향 import 둘이 남아 있다([clusterModule](../../../src/autoLayout/module/build.ts) 의 `finishModule` · [moduleTransform](../../../src/autoLayout/module/shape/body/body/transform.ts) 의 `bodyColumnsOf`) |
 | "좌석 배정" | 한 이름 아래 성질이 다른 다섯이 있다 — 장부 · 가격표 · 적합성 · 청구 · 정책. 그래서 `tryLinkFace` 가 `forceEnd`·`preferEnd`·`preferDepth` 라는 **정책 인자 셋**을 들고 있다 |
-| 포트 칸 도형 | 같은 도형이 계획과 방출에 **두 벌** 있었고, 둘을 붙들고 있는 것이 줄 번호를 적은 주석뿐이었다. 2026-09-12 에 [linkShape](../../../src/autoLayout/module/linkShape.ts) 로 합쳤다 — **종류를 물었더니 답이 나온 자리**다(도형은 도형끼리) |
+| 포트 칸 도형 | 같은 도형이 계획과 방출에 **두 벌** 있었고, 둘을 붙들고 있는 것이 줄 번호를 적은 주석뿐이었다. 2026-09-12 에 [linkShape](../../../src/autoLayout/module/shape/body/body/link.ts) 로 합쳤다 — **종류를 물었더니 답이 나온 자리**다(도형은 도형끼리) |
 
 셋 다 *"이 코드가 **무슨 종류의 일**을 하는가"* 를 묻지 않아서 생겼다. 폴더 축과 직교하는 축이
 하나 더 필요하다.
@@ -47,7 +47,7 @@ tags: [auto-layout]
 **셈과 정책의 경계**가 가장 자주 흐려진다. 판정은 *"대안이 있었나"* 다 — `armsFor` 는 답이 하나라
 셈이고, `link/policy.productsOf` 는 다산출 레시피에서 부모가 먹는 것으로 고르므로 정책이다. (이 자리의 옛 예 —
 *"`edgeLinkGroups` 는 배선 형태 셋 중에서 고르므로 정책이 섞여 있다"* — 는 2026-08-22 재설계로 낡았다. 그 머리말이
-*"형태를 고르는 `if` 가 없다"* 고 적는다. 같은 오판이 `module/link` 를 *"셈 · 정책"* 으로 세게 했다 — 종류 하나다.)
+*"형태를 고르는 `if` 가 없다"* 고 적는다. 같은 오판이 `module/arith/link` 를 *"셈 · 정책"* 으로 세게 했다 — 종류 하나다.)
 
 ## 3. 결정하지 않는 일 넷
 
@@ -66,7 +66,7 @@ tags: [auto-layout]
 >
 > 그리고 그 이름이 실제로 오분류를 불렀다 — `trunkEndKey`·`flowEnd` 두 **함수**가 *"이름을
 > 정하는 일이니 낱말"* 이라는 이유로 타입 파일 목적지에 들어가 있었다. 위 판정(*실행되지
-> 않는다*)에 그대로 걸린다. 둘은 **셈**이고 `module/arith.ts` 로 간다.
+> 않는다*)에 그대로 걸린다. 둘은 **셈**이고 `module/arith/trunk/trunk.ts` 로 간다.
 > ①은 **타입**, ②는 **용어**, ③은 **라벨**로 갈라 적는다.
 
 **어댑터가 따로 서는 것이 중요하다.** 게임데이터 조회(`useGameDataStore.getState()`)가 파이프라인
@@ -94,8 +94,8 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 동작을 안 바꾼다고 **코드가 스스로 선언한** 자리가 여섯이다.
 
-- [planModulePorts.ts](../../../src/autoLayout/planner/module/planModulePorts.ts) `recordPortPlanStats` *"계측 — 관측만 한다(계산도 분기도 반환값도 안 바꾼다)"*
-- [linkPlanner.ts](../../../src/autoLayout/planner/module/linkPlanner.ts) `recordEndsAudit`(`endsDisagree`·`endsCoarse`) *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
+- [planModulePorts.ts](../../../src/autoLayout/module/policy/trunk/trunk/port.ts) `recordPortPlanStats` *"계측 — 관측만 한다(계산도 분기도 반환값도 안 바꾼다)"*
+- [linkPlanner.ts](../../../src/autoLayout/module/policy/trunk/trunk/link.ts) `recordEndsAudit`(`endsDisagree`·`endsCoarse`) *"결정은 아직 `ends` 가 한다. 여기서는 두 답을 대조만 한다"*
 - `perimeter/types` 의 `ExitDemotion`·`ExitBlocked` *"읽기 전용 계측이라 동작을 안 바꾼다"*
 - `emitModule` 의 `netTrips` 안전망
 
@@ -153,7 +153,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > ```
 > 200줄 넘는 함수 = 4   packModuleTree 868 → 53 · planModulePorts 317 → 37 · tryLinkFace 208 → 54 가 빠졌다
 >                       남은 넷: planChannelGeometry · searchWithJumps(탐색) · emitOutputLinks · emitInputLinks(D2)
-> 500줄 이상 = 8 파일  linkPlanner · planModulePorts · modulePacking 이 빠지고 planner/module/policy 529 가 섰다(종류 하나)
+> 500줄 이상 = 8 파일  linkPlanner · planModulePorts · modulePacking 이 빠지고 module/policy/trunk/seat 529 가 섰다(종류 하나)
 > ```
 >
 > **2026-09-14 Step 4 뒤**(모듈 하나를 만드는 사슬 — 방출기 셋과 조율자를 단계로):
@@ -162,7 +162,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > 200줄 넘는 함수 = 2   emitOutputLinks 253 → 96 · emitInputLinks 209 → 98 이 빠졌다. 남은 둘 — planChannelGeometry · searchWithJumps(탐색)
 >                       (이 줄은 처음에 둘 다 탐색이라 적었다. planChannelGeometry 는 사다리였다 — Step 5 재측정)
 > 100줄 넘는 함수 = 11  emitTrunkPipe 174 → 86 · generateModule 176 → 33 이 더 빠졌다
-> 500줄 이상 = 8 파일  emitModule 898 → 720 (찍기 하나 — 틀과 길은 module/shape 450 으로)
+> 500줄 이상 = 8 파일  emitModule 898 → 720 (찍기 하나 — 틀과 길은 module/shape/body 450 으로)
 > ```
 >
 > **2026-09-15 Step 5 뒤**(남은 관심사 파일을 종류로 — 채널 사다리 · 납품 사다리 · 출구 자격):
@@ -171,7 +171,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > 200줄 넘는 함수 = 1   planChannelGeometry 230 → 20 이 빠졌다 — 탐색이 아니었다(탐색은 안의 search 16줄). 남은 하나가 searchWithJumps(탐색)
 > 100줄 넘는 함수 = 7   routeDeliveryRoutes 159 → 18 · buildPlannedChain 106 → 97(연속성 검사 두 벌 → 한 벌) · enumerateOptions 130 → 58(자격 → perimeter/shape)이 더 빠졌다
 > 500줄 이상 = 7 파일  perimeterExitPlanner 592 → 310(타입 → perimeter/types · 자격 → perimeter/shape) · channelGeometryPlanner 770 → 450(도형 → channel/shape · 정책 → channel/policy) ·
->                      deliveryRoute 717 → 59(link/ 넷으로)가 빠지고 module/shape 506 · link/policy 504 가 섰다 — 둘 다 종류 하나, 규칙 3 의 과녁
+>                      deliveryRoute 717 → 59(link/ 넷으로)가 빠지고 module/shape/body 506 · link/policy 504 가 섰다 — 둘 다 종류 하나, 규칙 3 의 과녁
 > ```
 
 **단위는 파일만이 아니다.** 파일을 갈라도 함수가 안 갈라지면 안 읽힌다 —
@@ -184,7 +184,7 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 
 > **그래서 "파일이 크다"는 증상이고 원인은 "종류가 섞였다"이다.** 줄 수 상한을 규칙으로 두는
 > 대신 종류를 묻는다 — 500줄이 넘는데 종류가 하나면 그건 정상이다(오늘 실측에서
-> 그런 파일은 `containerModel` 하나뿐이다 — 2026-09-14 부터 `planner/module/policy` 가 둘째다. 그 파일은
+> 그런 파일은 `containerModel` 하나뿐이다 — 2026-09-14 부터 `module/policy/trunk/seat` 가 둘째다. 그 파일은
 > 규칙 3(한 종류 300줄 초과 → 폴더)의 과녁이다).
 >
 > **다만 함수는 다르다.** 종류가 하나라도 한 함수가 700줄이면 읽히지 않는다. 파일에는
@@ -238,11 +238,11 @@ corridor 되읽기        놓인 셀에서 사실 유도(관측)                
 > emitModule` 역방향을 *"import type 이라 순환이 아니다"* 라 적었지만 `emitModule` 이 `trunkEndKey`
 > 를 런타임으로 가져왔다)는 **소유권 판단은 옳고 주소가 틀린** 경우였다 — 6줄짜리 셈 하나가
 > 조율자 파일에 얹혀 있었다. 타입을 [module/types/](../../../src/autoLayout/module/types/) 로,
-> `trunkEndKey`·`flowEnd` 를 [module/arith](../../../src/autoLayout/module/arith.ts) 로 옮기자
+> `trunkEndKey`·`flowEnd` 를 [module/arith/trunk](../../../src/autoLayout/module/arith/trunk/trunk/trunk.ts) 로 옮기자
 > `autoLayout` 의 런타임 순환이 **1 → 0**, `execution/module → planner/module` 간선이 **2 → 0** 이 됐다.
 > 좌표는 픽스처 다섯에서 **바이트 단위로 같다.**
 
-> **2026-09-12 에 넷이 닫혔다.** **D1**(도형이 두 벌)은 [linkShape](../../../src/autoLayout/module/linkShape.ts)
+> **2026-09-12 에 넷이 닫혔다.** **D1**(도형이 두 벌)은 [linkShape](../../../src/autoLayout/module/shape/body/body/link.ts)
 > 로 합쳤고 — 계획의 청구·검사와 방출이 같은 함수에서 답을 받는다(축은 호출자의 것) — 그때
 > 낡은 주석 **D3** 도 함께 지웠다. 실측: 4모듈 배치에서 좌표 **차이 없음** · 도형대조 84/84.
 > 도형 대조 계측이 **D5**(합류 여부를 계획과 방출이 다른

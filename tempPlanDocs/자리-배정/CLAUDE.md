@@ -28,11 +28,11 @@
 
 **코드 — 호출 사슬 순서대로**
 
-- `planner/module/planModulePorts.ts` — 단일 진입점. `allocateLinkFaces` ×3 → `spillLinkFacesToGap` ×3
-- `planner/module/linkPlanner.ts` — `tryLinkFace`(후보 루프 · `DepthShortage`) · `commitLinkFace` ·
+- `module/policy/trunk/port.ts` — 단일 진입점. `allocateLinkFaces` ×3 → `spillLinkFacesToGap` ×3
+- `module/policy/trunk/link.ts` — `tryLinkFace`(후보 루프 · `DepthShortage`) · `commitLinkFace` ·
   `portCells`(**못이 여기서 난다**) · `clusterBeltDepthsOf`
-- `planner/module/faceTable.ts` — `depthClear` 는 **칸만** 본다. 면당 줄 수 가드는 없다
-- `planner/module/depthBudget.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
+- `module/ledger/face.ts` — `depthClear` 는 **칸만** 본다. 면당 줄 수 가드는 없다
+- `module/arith/trunk/depth.ts` — `g` 는 이미 정해져서 온다. **여기서 안 바꾼다**
 
 ## 하지 않는 것
 

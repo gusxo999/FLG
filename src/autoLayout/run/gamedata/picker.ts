@@ -1,7 +1,7 @@
 import type { Entity, GameDataLookup, Recipe } from "../../../types/gameData";
 import type { Area, ContainerWizardInput } from "../../shared/types";
 import { clusterLineRate, type MachineParamsLookup } from "../../tree/arith/recipe";
-import { allocateArms } from "../../planner/module/allocateArms";
+import { allocateArms } from "../../module/arith/arms";
 import type { IoLine } from "../../module/types/line";
 import { inserterForReach, type SpecInserter } from "../../shared/gamedata/spec";
 

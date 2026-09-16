@@ -29,8 +29,8 @@
  * 세어** 알았다. 형태는 산출물 어디에도 안 남기 때문이다. 모듈마다 한 벌씩 나므로
  * [mergeBeltFormCounters] 로 누적한다.
  */
-import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/link';
-import type { LinkDepthNeed } from '../autoLayout/planner/module/depthBudget';
+import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/arith/link';
+import type { LinkDepthNeed } from '../autoLayout/module/arith/depth';
 import type { ExitBlocked } from '../autoLayout/planner/perimeter/types';
 export type { BeltFormCounters };
 

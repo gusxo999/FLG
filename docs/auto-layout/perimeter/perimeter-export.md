@@ -48,7 +48,7 @@ tags: [auto-layout, placement, routing]
 
 ## 2. 왜 상자가 안쪽에 갇히나 — 문제
 
-[`clusterModule.generateModule`](../../../src/autoLayout/module/clusterModule.ts) 은 각
+[`clusterModule.generateModule`](../../../src/autoLayout/module/build.ts) 은 각
 클러스터를 **"자기가 트리의 루트인 척"** 만든다(부모를 전혀 보지 않는다). 그래서 완성된 모듈은
 자기 [[용어사전#perimeter ring|ring]] 위에 입·출력 무한상자를 갖는다.
 
@@ -76,7 +76,7 @@ tags: [auto-layout, placement, routing]
 
 ### ① 계약 — 모듈이 자기에 대해 답한다
 
-**구현:** [`module/clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) `generateModule`
+**구현:** [`module/build.ts`](../../../src/autoLayout/module/build.ts) `generateModule`
 
 모듈은 바깥에서 볼 때 **불투명한 블랙박스**이고, 포트마다 다음만 공개한다:
 
@@ -302,8 +302,8 @@ tags: [auto-layout, placement, routing]
 
 | 단계 | 파일 | 핵심 심볼 |
 |---|---|---|
-| ① 계약 | `module/clusterModule.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
-| ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
+| ① 계약 | `module/build.ts` | `generateModule` · `ModulePort` · `moduleWayOuts` |
+| ① 산출 | `module/shape/body/ways.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
 | ② 배정 | `planner/perimeterExitPlanner.ts` · `planner/perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
 | ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
 | ② 폭 반영 | `tree/build.ts` · `planner/channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |

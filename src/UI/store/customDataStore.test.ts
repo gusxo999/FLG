@@ -143,7 +143,7 @@ describe('합류 — 커스텀이 파생 인덱스까지 실린다', () => {
     const { gd, cd } = await stores();
     cd.useCustomDataStore.getState().merge(SPEC);
 
-    const { chooseFluidTrunkPlan } = await import('../../autoLayout/module/fluidPorts');
+    const { chooseFluidTrunkPlan } = await import('../../autoLayout/module/gamedata');
     const { fluidLinesOf } = await import('../../factorio/customRecipe');
     const { fitFluidLines } = await import('../../factorio/customRecipeValidate');
 

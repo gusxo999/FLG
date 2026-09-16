@@ -11,7 +11,7 @@ import type { SpecBelt, SpecInserter, SpecUndergroundBelt } from "../../shared/g
 import type {
   Container, ModulePortMeta, PlacedCell, PortFace, PortPair,
 } from "../../shared/types";
-import type { FluidTrunkInput } from "../fluidPorts";
+import type { FluidTrunkInput } from "../gamedata";
 import type { IoLine, Link, PlannedLine, PortSide, SupplyCapacity } from "./line";
 import type { DepthShortage, LinkFaceStage } from "./seat";
 import type { PipeFlowPipe } from "../../shared/pipeFlow";

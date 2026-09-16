@@ -14,7 +14,7 @@
  */
 
 import type { DijkstraResult } from "../../shared/route";
-import { portGeometry, seatIsBeltFeeder } from "../../module/shape";
+import { portGeometry, seatIsBeltFeeder } from "../../module/shape/body";
 import { cellKey, segment } from "../../shared/grid";
 import type { DeliveryDirective, DeliverySpec, PackResult } from "../../tree/types/pack";
 

@@ -147,15 +147,15 @@ tags: [auto-layout, placement, module]
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
-| 끝 칸 등록 | [emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) | `emitInputLinks` ③ · `termini.push` |
+| 끝 칸 등록 | [emitModule.ts](../../../src/autoLayout/module/emit.ts) | `emitInputLinks` ③ · `termini.push` |
 | 품목 장부 | 〃 | `pushLinkPortEnd` 의 `beltItems` |
-| 판정·교체 | [beltTerminus.ts](../../../src/autoLayout/execution/module/beltTerminus.ts) | `resolveBeltTermini` · `slowestUnderground` |
-| 호출 시점 | [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) | `finishBeltTermini` |
+| 판정·교체 | [beltTerminus.ts](../../../src/autoLayout/module/late.ts) | `resolveBeltTermini` · `slowestUnderground` |
+| 호출 시점 | [clusterModule.ts](../../../src/autoLayout/module/build.ts) | `finishBeltTermini` |
 | 티어 목록 | [shared/gamedata/spec.ts](../../../src/autoLayout/shared/gamedata/spec.ts) | `SpecUndergroundBelt` · `undergroundBelts` |
 | 사거리 장부 | [moduleWizard.ts](../../../src/autoLayout/run/build/module.ts) | `terminusCorridors` |
 | 장부 소비 | [link/ledger.ts](../../../src/autoLayout/planner/link/ledger.ts) | `seedCorridors` · `ledger`(openDeliveryLedger) |
 | 화면 경고 | [moduleWizard.ts](../../../src/autoLayout/run/build/module.ts) | `belt-terminus-merge`(1c) |
-| 경고 운반 | [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) · [moduleTransform.ts](../../../src/autoLayout/module/moduleTransform.ts) | `GeneratedModule.beltMerges` |
+| 경고 운반 | [clusterModule.ts](../../../src/autoLayout/module/build.ts) · [moduleTransform.ts](../../../src/autoLayout/module/shape/body/body/transform.ts) | `GeneratedModule.beltMerges` |
 | 계측 | [runStats.ts](../../../src/debug/runStats.ts) | `BeltTerminusCounters` · `recordBeltTerminus` |
 
 ## 8. 함정

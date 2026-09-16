@@ -9,7 +9,7 @@
  */
 
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { moduleExtent } from "../../module/moduleTransform";
+import { moduleExtent } from "../../module/shape/transform";
 import { deliveryKey, pairDeliveryPorts } from "./edgeLinks";
 import type { NodeSpec, RowChannelEntry } from "../../tree/types/pack";
 import type { TreeIndex } from "../../tree/arith/pack";

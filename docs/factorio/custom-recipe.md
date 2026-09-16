@@ -32,7 +32,7 @@ tags: [factorio-data, fluid, tooling]
 ## 2. 좌표 합성 — `resolveFluidConnection` 의 역함수
 
 사용자는 **면과 행**으로 말한다. 게임데이터는 좌표를 요구한다.
-[fluidPorts](../../src/autoLayout/module/fluidPorts.ts) 가 좌표에서 행을 이렇게 뽑으므로
+[fluidPorts](../../src/autoLayout/module/gamedata.ts) 가 좌표에서 행을 이렇게 뽑으므로
 
 ```ts
 offset = floor(w / 2 + pos.x)   // N/S 면

@@ -27,7 +27,7 @@ import {
   chooseFluidTrunkPlan,
   type FluidLinePlan,
   type FluidLineSpec,
-} from '../autoLayout/module/fluidPorts';
+} from '../autoLayout/module/gamedata';
 import {
   compileCustomMachine,
   fluidLinesOf,

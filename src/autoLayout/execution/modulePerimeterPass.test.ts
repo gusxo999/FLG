@@ -4,7 +4,7 @@ import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "./modulePerimeterPass";
 import { PERIMETER_MARGIN, faceVector } from "../shared/grid";
-import { seatIsBeltFeeder } from "../module/shape";
+import { seatIsBeltFeeder } from "../module/shape/body";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 import { scaledPack, scaledSpecs } from "../module/testScale";

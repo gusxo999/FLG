@@ -26,7 +26,7 @@ tags: [auto-layout, placement, routing]
 - **아이템 줄의 상한은 면당 [[용어사전#ClusterBelt|ClusterBelt]] 수 = 인서터 reach 종류 수**(현재 2)다. 두 면이면 4줄이 상한이고, 유체가 그 면의 좌석 행을 먹으면 더 줄어든다. 유체는 여기서 안 걸린다 — 유체 줄은 깊이로 겹쳐 쌓이므로 면 수가 아니라 지하파이프 사거리가 상한이다([[trunk-pipe]] §5.1).
 
 **원인:**
-- [module/clusterLayout.ts](../../../src/autoLayout/module/clusterLayout.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+깊이 타일 등 다른 형태가 없다.
+- [module/shape/body/cluster.ts](../../../src/autoLayout/module/shape/body/body/cluster.ts) `layoutCluster` 가 세로로만 쌓는다. 행/격자/머신+깊이 타일 등 다른 형태가 없다.
 - [[용어사전#기둥 (column)|기둥]]에서 안쪽 머신은 N/S 면을 이웃에게 뺏기고 W·E 면만 남는다([[용어사전#포트 기하|포트 기하]] 한계).
 
 **해결 방향:**
@@ -82,7 +82,7 @@ tags: [auto-layout, placement, routing]
 - fluid 입출력은 prototype 의 `fluid_boxes` 가 정의한 **고정 면 셀** 에만 닿을 수 있다. 회전으로 W/E 에 모으는 것까지는 되지만, **어느 각도로도 W/E 에 다 못 모이는 머신**(유체 상자가 N/S 를 강제하는 배치)은 `no-rotation` 으로 거절된다 — 회전이 footprint 를 안 바꾼다는 전제(정사각형) 위에 서 있어서다.
 
 **원인:**
-- 유체 회전은 [module/fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) `chooseFluidTrunkPlan` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
+- 유체 회전은 [module/gamedata.ts](../../../src/autoLayout/module/gamedata.ts) `chooseFluidTrunkPlan` 이 푼다 — 단 **유체 상자를 그 면에 놓는 것**만 목표고, 아이템 면 배분은 고려하지 않는다.
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
@@ -224,7 +224,7 @@ tags: [auto-layout, placement, routing]
 **원인:**
 - 한 면이 세울 수 있는 [[용어사전#ClusterBelt / ClusterBelts|ClusterBelt]] 수 = **서로 다른 reach 값 개수**
   (`depthSlots` — 2026-09-02 삭제. 지금 그 수를 세는 곳은
-  [arith.ts](../../../src/autoLayout/planner/module/arith.ts) 의 `clusterBeltDepthsOf` 다).
+  [arith.ts](../../../src/autoLayout/module/arith/trunk/trunk/face.ts) 의 `clusterBeltDepthsOf` 다).
   같은 reach 둘은 같은 depth 를 집으므로 줄을 못 늘린다 — reach 1 만 고르면 **면당 깊이 1칸**.
   게임 물리라 코드로 넓힐 수 없다.
 - 유체 면은 거기서 한 번 더 깎인다. 지하파이프가 없어 점프 불가면 좌석 줄 전체가 파이프라
@@ -245,7 +245,7 @@ tags: [auto-layout, placement, routing]
 > 통째로 미생성"* 이었다. 원인은 깊이 수가 아니라 **물러설 곳이 없다는 것**이었다:
 > `planModulePorts` 의 `fluidNeedsTap` 이 *"유체가 있는데 1:1 로 떨어지면 실패"* 로 막고 있었고,
 > 그 근거는 파이프 방출이 tap 가지 **안에만** 있어서 물러나면 유체가 조용히 사라진다는 것이었다.
-> 방출을 갈래 밖으로 꺼내고([clusterModule](../../../src/autoLayout/module/clusterModule.ts)) 기계별
+> 방출을 갈래 밖으로 꺼내고([clusterModule](../../../src/autoLayout/module/build.ts)) 기계별
 > 포트를 링크 배분기에 태우자 그 관문의 근거가 없어졌다 → 삭제. `battery` 는 짧은 팔만으로
 > 선다(회귀: `clusterModule.test.ts` "공급 모델 통합 — 기계별 포트").
 > 같은 통합에서 **W/E 가 다 차면 위/아래(gap)로 넘어가는 길**도 열려 [[ns-face-relief]] 결정 4 의
@@ -311,7 +311,7 @@ tags: [auto-layout, placement, routing]
 - 같은 E 면에 줄 셋(`d2 advanced-circuit · d2 kr-rare-metals · d3 sulfuric-acid`)이 서고 **가장
   바깥 깊이를 유체 파이프**가 가져가, 벨트 원료 상자가 그 안쪽에 선다.
 - `wayOuts` 는 모듈 몸통이 다 선 **뒤**에 계산된다(`fillModuleWayOuts` —
-  [clusterModule](../../../src/autoLayout/module/clusterModule.ts)). 좌석을 정하는 계획 단계는
+  [clusterModule](../../../src/autoLayout/module/build.ts)). 좌석을 정하는 계획 단계는
   그 상자가 밖으로 나갈 수 있는지를 **볼 수 없다**([[pipeline-lifecycle]] §2 — 뒤 시대의 값이다).
 
 **해결 방향:**

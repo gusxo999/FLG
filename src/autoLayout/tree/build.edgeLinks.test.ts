@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { edgeLinkGroups, edgeFlows } from "./build";
 import type { NodeSpec, PackConfig } from "./types/pack";
 import type { IoLine } from "../module/types/line";
-import { groupRate } from "../module/link";
+import { groupRate } from "../module/arith/link";
 
 // edgeFlows 는 논리 어댑터 — spec 의 **클러스터 전체** rate 를 대수로 나눠 머신당으로
 // 만든 뒤 allocateFlows 로 넘긴다. 그 나눗셈이 맞는지가 이 테스트의 핵심이다.

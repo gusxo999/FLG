@@ -148,7 +148,7 @@ autoLayout/
 │   ├ deliveryRoute.ts             조율 — 자식 출력 → 부모 입력 잇기. 납품 사다리를 한 납품씩 부르고 신원을 찍는 뼈대
 │   └ containerRouting.ts          Dijkstra · occupancy · beltFlow (계획의 탐색 도구)
 ├ execution/                   실행 — 계획대로 셀을 놓는다
-│   ├ module/emitModule.ts         링크 줄(싣는 쪽 · 집는 쪽) · 유체 기둥의 셀을 놓는다 — 틀과 길은 module/shape 에서 받는다
+│   ├ module/emitModule.ts         링크 줄(싣는 쪽 · 집는 쪽) · 유체 기둥의 셀을 놓는다 — 틀과 길은 module/shape/body 에서 받는다
 │   ├ module/beltTerminus.ts      흐름의 끝 칸 — 합류를 피할 방향 / 지하 종착
 │   ├ emitPath.ts                  경로 → 벨트·파이프 셀
 │   ├ machinePlacer.ts             머신 footprint
@@ -207,7 +207,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → layeredWizard 
 
 | # | 무엇이 문제였나 | 어떻게 |
 |---|---|---|
-| V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `planner/perimeter/wayOuts.ts` |
+| V1 | `fillModuleWayOuts` 의 소비처가 `planner/` 뿐인데 `module/` 에 있었다 | → `module/shape/body/ways.ts` |
 | V2 | `allocateFlows` 가 `module/` 에 있는데 **형제를 알았다** | → `planner/link/` |
 | V3 | `clusterPortPlanner`(796줄)가 **계획인데** `module/` 에 있었다 | → `planner/module/`.
 그 뒤 2026-09-02 에 그 파일의 계획기 둘(`planClusterPorts`·`insertingPlanner`)이 삭제되고

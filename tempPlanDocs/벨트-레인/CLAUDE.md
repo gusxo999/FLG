@@ -64,10 +64,10 @@
 
 - `src/autoLayout/shared/arith/belt.ts` — `480 = belt_speed × 2레인 × 4 × 60`.
   **오늘의 모든 용량 수치가 이미 「두 레인 합」이다**
-- `src/autoLayout/module/link.ts` — `createLinks` 의 붓기 ·
+- `src/autoLayout/module/arith/trunk/trunk/link.ts` — `createLinks` 의 붓기 ·
   `Link.carries` 불변식(`Σ rate ≤ 그 벨트의 처리량`)
-- `src/autoLayout/planner/module/linkPlanner.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
-- `src/autoLayout/execution/module/emitModule.ts` — `emitInputLinks`(공급 줄을 까는 곳)
+- `src/autoLayout/module/policy/trunk/trunk/link.ts` — `LinkFacePlan.clusterBeltDepth`(= 깊이)
+- `src/autoLayout/module/emit.ts` — `emitInputLinks`(공급 줄을 까는 곳)
 - `src/autoLayout/planner/deliveryRoute.ts` — `seatIsBeltFeeder`/`stripKeys`.
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다
 - `src/autoLayout/shared/route.ts` — `collectBeltFlow`·`beltFlowConflictCell`.

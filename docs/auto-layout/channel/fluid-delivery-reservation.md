@@ -43,14 +43,14 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
   ([link/arith.ts](../../../src/autoLayout/planner/link/arith.ts) `pairDeliveries`).
   `eligible` 판정은 **변(side)만** 본다 — 자식 출력이 W변, 부모 입력이 E변, 깊이 인접.
   유체 포트도 `meta.side` 를 똑같이 갖는다
-  ([emitModule.ts](../../../src/autoLayout/execution/module/emitModule.ts) `emitTrunkPipe` 의 포트 `meta`).
+  ([emitModule.ts](../../../src/autoLayout/module/emit.ts) `emitTrunkPipe` 의 포트 `meta`).
 - 적격이면 `DeliveryInput` 으로 장부에 들어가고, 아니면 폭만 예약
   ([channel/ledger.ts](../../../src/autoLayout/planner/channel/ledger.ts) `planChannels`).
 
 **즉 유체 상자가 W/E 변에 오면 그 납품 경로는 계단꼴 계획을 받고 트랙을 하나 차지한다.**
 
 그리고 **유체는 항상 W/E 변에 온다** — 선택이 아니라 강제다
-([run/policy.ts](../../../src/autoLayout/run/policy.ts) `admitFluidTrunks` → [fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) `chooseFluidTrunkPlan`):
+([run/policy.ts](../../../src/autoLayout/run/policy.ts) `admitFluidTrunks` → [fluidPorts.ts](../../../src/autoLayout/module/gamedata.ts) `chooseFluidTrunkPlan`):
 
 ```ts
 // 출력 유체는 부모 쪽(W), 입력 유체는 자식 쪽(E)

@@ -101,7 +101,7 @@ tags: [auto-layout, planning, judgement]
 `J-버스` 에서 한 번 내려졌다(*"관통한다는 뜻이지 관통해야 하는 것이 가로 벨트인 건 아니다"*) —
 **그 판단이 뒤집히는 것이 이 판단의 트리거**다.
 
-**달 자리:** `module/clusterModule.ts` 의 `ModulePort.moduleWayOuts` 주석 — 계약의 이웃이 설 자리.
+**달 자리:** `module/build.ts` 의 `ModulePort.moduleWayOuts` 주석 — 계약의 이웃이 설 자리.
 
 ---
 

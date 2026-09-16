@@ -48,7 +48,7 @@ H2  점프 모드에서 링크 좌석 행 == fluidboxOffset 이면 그 머신의
 둘 다 *"면마다 유체가 먹은 행을 누가 아나"* 라는 이 판단과 같은 축이다. **재조사해야 한다** —
 2026-08-03 의 코드 위에서 세운 가설이라 그대로는 못 쓴다.
 
-**관련 신호.** 남은 기존 실패 2건이 전부 `module/trunkPipe.test.ts` 의 **유체 면** 건이다
+**관련 신호.** 남은 기존 실패 2건이 전부 `module/build.trunkPipe.test.ts` 의 **유체 면** 건이다
 (*"coal 입력은 반대 면(E)에 벨트로"* · *"아이템 탭이 자기 면의 유체 상자 행만 건너뛴다"*).
 이 판단과 **같은 뿌리인지 아직 확인 안 했다** — 둘 다 *"면마다 유체가 먹은 칸이 다르다"* 를
 건드리지만, 저쪽은 **배정**의 문제고 이쪽은 **붓기**의 문제라 다를 수 있다. 확인하면 이
@@ -67,6 +67,6 @@ H2  점프 모드에서 링크 좌석 행 == fluidboxOffset 이면 그 머신의
 **코드 역참조** — 트리거를 만나는 사람은 코드를 보고 있다.
 
 ```ts
-// planner/link/edgeLinks.ts · module/link.ts 의 faceSeatArms 호출부
+// planner/link/edgeLinks.ts · module/arith/trunk/link.ts 의 faceSeatArms 호출부
 // fluidRows=0 은 **상속된 낙관**이다. 좁힐지는 tempPlanDocs/배선-형태/judgements.md J2
 ```

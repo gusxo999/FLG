@@ -9,8 +9,8 @@ tags: [auto-layout, placement, module]
 # 모듈 안쪽 계획 — 자리를 정하는 주체는 하나다
 
 > **이 문서를 읽어야 하는 때**
-> - `planner/module/planModulePorts.ts` · `linkPlanner.ts` · `depthBudget.ts` 를 수정할 때
-> - `module/clusterModule.generateModule` 의 **순서**를 바꾸고 싶을 때
+> - `module/policy/trunk/port.ts` · `linkPlanner.ts` · `depthBudget.ts` 를 수정할 때
+> - `module/build.generateModule` 의 **순서**를 바꾸고 싶을 때
 > - `ModulePortPlan` · `rest.ok` · `slotIndex` · `rowGaps` 를 건드릴 때
 > - 링크 포트가 **통째로 사라지는** 증상을 조사할 때
 > - *"여기서 자리를 좀 더 찾아보면 되지 않나"* 라는 생각이 들 때 → **§1 을 먼저 읽을 것**
@@ -52,8 +52,8 @@ planModulePorts(input, count)              ← 좌표가 없다
   → ModulePortPlan
 
 generateModule
-  layoutModule(plan.rowGaps) → machines    ← 좌표가 여기서 생긴다(module/shape)
-  placeLinkSeats(machines, plan.linkFaces) ← 덧셈뿐(module/shape)
+  layoutModule(plan.rowGaps) → machines    ← 좌표가 여기서 생긴다(module/shape/body)
+  placeLinkSeats(machines, plan.linkFaces) ← 덧셈뿐(module/shape/body)
   emit*(...)                                ← 방출
 ```
 
@@ -135,7 +135,7 @@ rest: { ok: true;  lines: PlannedLine[] }      // 나머지 줄의 배정
 
 ## 4.5 면의 자리는 **표 한 장**이다 (2026-08-26)
 
-배정이 아는 자리는 **모듈**의 방향마다 [`FaceTable`](../../../src/autoLayout/planner/module/faceTable.ts)
+배정이 아는 자리는 **모듈**의 방향마다 [`FaceTable`](../../../src/autoLayout/module/ledger/face.ts)
 한 장이다 — 한 장이 머신 하나가 아니라 **기둥의 머신 전부**를 덮는다. 칸 하나 = `(행, 깊이)` 이고,
 **행은 좌표가 아니라 모듈-로컬 순번**(`머신index × 면의 칸수 + 칸`)이다.
 
@@ -561,7 +561,7 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | 8 | `buildTrunkContext.maxDepthAtEnd` | 같은 면·같은 끝을 전부 훑어야 나온다 | 배정이 stagger 를 예측하지 못한다 |
 | 9 | `emitTapInserting.skipRows` | 유체 상자 행 번호를 계획이 안 읽는다 | `commitLinkFace` 와 **같은 산술이 두 벌** |
 
-축 4의 대가가 실물로 드러난 자리가 [`emitModule`](../../../src/autoLayout/execution/module/emitModule.ts)
+축 4의 대가가 실물로 드러난 자리가 [`emitModule`](../../../src/autoLayout/module/emit.ts)
 의 좌석 초과 방어다 — 스스로 *"planner 용량과 어긋난 것(안전망)"* 이라 적고 있다. 링크에는
 그런 방어가 없다: 세는 곳이 하나뿐이라 어긋날 데가 없기 때문이다. 2026-08-06 에 지운
 `insertingPlanner` 끝의 좌석 예산 재검도 같은 뿌리였다 — 두 곳이 유도한 값을 세 번째 곳이
@@ -583,20 +583,20 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
-| 진입점 | `planner/module/planModulePorts.ts` | `planModulePorts` · `ModulePortPlan` |
-| ① 링크 면 | `planner/module/linkPlanner.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` — 고른다(면 · 끝 · 깊이 순서) |
-| ①의 묻기·적기 | `planner/module/ledger.ts` | `fitOnGap` · `fitOnFace` · `commitLinkFace` · `seatOnSharedBelt` |
-| ①의 셈 · 도형 | `planner/module/arith.ts` · `module/linkShape.ts` | `clusterBeltDepthsOf` · `gapRowsFromPlans` · `gapExitSidesFromPlans` · `linkFaceDepths` · `portCells` |
-| ①의 자리 장부 | `planner/module/faceTable.ts` | `FaceTable` — 면마다 한 장(§4.5) |
-| ①의 팔 수 | `module/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
-| ③ 줄마다 `g` | `planner/module/depthBudget.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |
-| ③ 붓기 | `module/link.ts` | `externalLineGroups` · `bundleCap` |
-| ③ 자리 | `planner/module/policy.ts` | `seatRestLines` — ①과 **같은 함수**(`allocateLinkFaces`)를 탄다(2026-09-02 통합) |
-| 간선 축 좌석 | `planner/module/policy.ts` | `seatLinkEdge` — 한 링크의 양끝을 함께 |
-| 좌표 입히기 | `module/shape.ts` | `layoutModule`(머신) · `placeLinkSeats`(좌석 — 덧셈만) |
-| 트렁크 틀 | `module/policy.ts` | `buildTrunkContext` — 점프 여부 · ClusterPipe 깊이 · 엇갈림 기준 |
-| 조율 | `module/clusterModule.ts` | `generateModule` — 순서만 쥐는 뼈대 |
-| 방출 | `execution/module/emitModule.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`(`emitTapInserting` 은 2026-08-16 삭제) |
+| 진입점 | `module/policy/trunk/port.ts` | `planModulePorts` · `ModulePortPlan` |
+| ① 링크 면 | `module/policy/trunk/link.ts` | `allocateLinkFaces` · `spillLinkFacesToGap` · `tryLinkFace` — 고른다(면 · 끝 · 깊이 순서) |
+| ①의 묻기·적기 | `module/ledger/seat.ts` | `fitOnGap` · `fitOnFace` · `commitLinkFace` · `seatOnSharedBelt` |
+| ①의 셈 · 도형 | `module/arith/trunk/face.ts` · `module/shape/body/link.ts` | `clusterBeltDepthsOf` · `gapRowsFromPlans` · `gapExitSidesFromPlans` · `linkFaceDepths` · `portCells` |
+| ①의 자리 장부 | `module/ledger/face.ts` | `FaceTable` — 면마다 한 장(§4.5) |
+| ①의 팔 수 | `module/arith/trunk/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
+| ③ 줄마다 `g` | `module/arith/trunk/depth.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |
+| ③ 붓기 | `module/arith/trunk/link.ts` | `externalLineGroups` · `bundleCap` |
+| ③ 자리 | `module/policy/trunk/seat.ts` | `seatRestLines` — ①과 **같은 함수**(`allocateLinkFaces`)를 탄다(2026-09-02 통합) |
+| 간선 축 좌석 | `module/policy/trunk/seat.ts` | `seatLinkEdge` — 한 링크의 양끝을 함께 |
+| 좌표 입히기 | `module/shape/body/body.ts` | `layoutModule`(머신) · `placeLinkSeats`(좌석 — 덧셈만) |
+| 트렁크 틀 | `module/policy/trunk/trunk.ts` | `buildTrunkContext` — 점프 여부 · ClusterPipe 깊이 · 엇갈림 기준 |
+| 조율 | `module/build.ts` | `generateModule` — 순서만 쥐는 뼈대 |
+| 방출 | `module/emit.ts` | `emitOutputLinks` · `emitInputLinks` · `emitTrunkPipe`(`emitTapInserting` 은 2026-08-16 삭제) |
 
 ## 7. 함정
 

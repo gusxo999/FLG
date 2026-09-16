@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
 import { overlaySource } from '../store/autoLayoutRunStore';
-import { summarizeRoutings, type RoutingSummary } from '../../autoLayout/moduleInspect';
+import { summarizeRoutings, type RoutingSummary } from '../../autoLayout/module/inspect';
 import type { Container } from '../../autoLayout/shared/types';
 
 interface Props {

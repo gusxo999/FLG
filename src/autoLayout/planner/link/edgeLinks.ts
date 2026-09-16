@@ -21,7 +21,7 @@
 
 import type { Link, LinkCarry } from "../../module/types/line";
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { createLinks } from "../../module/link";
+import { createLinks } from "../../module/arith/link";
 import { allocateFlows, type Flow } from "./allocateFlows";
 import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
 import { determineBeltCount } from "../../shared/arith/belt";

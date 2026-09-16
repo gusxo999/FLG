@@ -23,7 +23,7 @@ import type {
   PlacedCell,
   Routing,
 } from '../autoLayout/shared/types';
-import { collectModules, type ModuleInfo } from '../autoLayout/moduleInspect';
+import { collectModules, type ModuleInfo } from '../autoLayout/module/inspect';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { EntityType } from '../types/layout';
 

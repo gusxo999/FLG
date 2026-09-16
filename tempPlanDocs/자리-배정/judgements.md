@@ -21,7 +21,7 @@ tags: [auto-layout, placement, judgement]
 
 | 전제 | 확인 방법 |
 |---|---|
-| 클러스터는 **세로 기둥**이다 (`positions.push({ dx: 0, dy })`) | `module/clusterLayout.ts:59`. 격자(J4 — 범위 밖)가 들어오면 모델을 다시 세워야 한다 |
+| 클러스터는 **세로 기둥**이다 (`positions.push({ dx: 0, dy })`) | `module/shape/body/cluster.ts:59`. 격자(J4 — 범위 밖)가 들어오면 모델을 다시 세워야 한다 |
 | 좌석·벨트·전달 타일이 **같은 장부**를 쓴다(레인 = 자유 타일 한 줄) | D10 |
 | 유체 파이프 자리는 **트렁크보다 먼저** 차감된다 | 모듈 안의 저자가 트렁크 하나뿐이라는 전제 |
 | 포트의 **면**은 밖에서 주어진다 | TR5 |
@@ -42,7 +42,7 @@ tags: [auto-layout, placement, judgement]
 그전까지는 **열거표가 곧 증명**이다(1·2·3 을 다 셌다).
 ```
 
-**코드 역참조 — 아직 안 달았다.** 달 자리는 `module/clusterLayout.ts:90`(`columnTapCapacity`).
+**코드 역참조 — 아직 안 달았다.** 달 자리는 `module/shape/body/cluster.ts:90`(`columnTapCapacity`).
 부모 폴더 정책상 **코드 변경 0** 을 지키느라 보류했고, 착수하는 단계에서 단다.
 
 > **부수 발견 (미결이 아니라 사실):** `columnTapCapacity` 의 **수는 맞고 주석의 이유는 좁다.**

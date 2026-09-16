@@ -53,11 +53,11 @@ c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자
 - `planner/link/edgeLinks.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle` ·
   `batchCarries`(**토막 내기 자체** — `g` 대씩 자른다)
 - `tree/build.ts` 의 간선 루프 — **거기서만** 자식·부모의 좌석표를 둘 다 본다
-- `planner/module/depthBudget.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
-- `planner/module/planModulePorts.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다) ·
+- `module/arith/trunk/depth.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
+- `module/policy/trunk/port.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다) ·
   **`spillPair`(넘침 면 순서 — 반대 면이 빠진 그 상수)** · `planModulePorts`(자매 경로.
   같은 자리에서 **반대 면을 이미 쓴다**)
-- `planner/module/linkPlanner.ts` — `tryLinkFace` · `commitLinkFace` · `beltRowSpan`
+- `module/policy/trunk/link.ts` — `tryLinkFace` · `commitLinkFace` · `beltRowSpan`
   (구간이 **구멍 없는 `[최소행,최대행]`** 이라는 사실이 여기 있다) · gap 의 `machinesOn !== 1`
 
 **이웃 계획** (둘 다 `승인 대기`)

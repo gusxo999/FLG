@@ -54,7 +54,7 @@ tags: [auto-layout, placement, routing]
 | item port | footprint 둘레 셀 (`2(w + h)` 개) | ✓ | ✓ | — |
 | fluid port (특정 fluid) | `fluid_boxes[].connections[].positions` (회전 0 기준 고정) | ✓ (해당 머신만) | — | ✓ |
 
-`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현이었던 `portInference.enumerateContainerPorts` 는 2026-09-16 에 삭제됐다(→ [manual-edit](../../deferred/manual-edit.md)). 유체 포트 칸을 prototype 에서 읽는 일은 [module/fluidPorts.ts](../../../src/autoLayout/module/fluidPorts.ts) 가 이어받았다.
+`port.kind ∈ {item, fluid:<fluid-name>}`. 라우팅은 같은 kind 의 두 port 사이만 짝지을 수 있다. 구현이었던 `portInference.enumerateContainerPorts` 는 2026-09-16 에 삭제됐다(→ [manual-edit](../../deferred/manual-edit.md)). 유체 포트 칸을 prototype 에서 읽는 일은 [module/gamedata.ts](../../../src/autoLayout/module/gamedata.ts) 가 이어받았다.
 
 ---
 
@@ -104,7 +104,7 @@ tags: [auto-layout, placement, routing]
 |---|---|---|
 | **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [tree/arith/recipe.ts](../../../src/autoLayout/tree/arith/recipe.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
 | **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `commitContainer` |
-| **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `execution/module/emitModule.emitTapInserting` |
+| **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `module/emit.emitTapInserting` |
 | **채널 계획** | 모듈 사이 라우팅 채널 폭/트랙 산정 | `channelPlanner.ts` |
 | **오케스트레이터** | 위 모듈을 엮어 후보 생성 | `moduleWizard.ts` `tryRunModulePipeline` |
 

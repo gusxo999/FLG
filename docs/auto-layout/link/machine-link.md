@@ -139,7 +139,7 @@ tags: [auto-layout, placement, routing]
 
 > **불변식: 통로 경계마다 링크에 고정 포트를 준다.** 이걸 어기고 링크가 통로들을 자유롭게 관통하며 최적 트랙을 찾게 하면 그 순간 연립(구조적 폭증)이 된다. 지금 납품 경로가 "탐색 없이 순수"한 이유가 이 불변식이다.
 
-정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책(출력→W · 입력→E — 2026-09-02 부터 `planner/module/policy` 의 `seatModuleLinks` · `seatRestLines` 가 `allocateLinkFaces` 로 든다. 옛 `clusterPortPlanner` 는 삭제됐다)의 재적용이다.
+정합성은 한 방향 사슬이라 안 얽히고, **새로 설계할 건 gap 예약의 줄 순서(교차를 줄이는 정렬)뿐**인데 그것도 기존 (B) 정책(출력→W · 입력→E — 2026-09-02 부터 `module/policy/trunk/seat` 의 `seatModuleLinks` · `seatRestLines` 가 `allocateLinkFaces` 로 든다. 옛 `clusterPortPlanner` 는 삭제됐다)의 재적용이다.
 
 ---
 
@@ -195,7 +195,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](
 | 조각 | 누가 | 하는 일 |
 |---|---|---|
 | 논리 (fan-out + fan-in) | [`allocateFlows`](../../../src/autoLayout/planner/link/allocateFlows.ts) | 누가 누구에게 인서터 몇 개어치 — 좌표 없음 |
-| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
+| 기하 — 자식 쪽 (출력) | `emitOutputLinks` ([clusterModule.ts](../../../src/autoLayout/module/build.ts)) | 그룹마다 자식 머신 **한 대**의 좌석에 팔을 앉히고 벨트를 뽑아 포트로 |
 | 기하 — 부모 쪽 (입력) | `emitInputLinks` (같은 파일, **거울**) | 그룹의 부모 머신**들**을 관통하는 벨트 한 줄 + 머신마다 탭 |
 
 두 방출기는 거울상이라 코드는 닮았지만 **문제의 모양이 다르다:**
@@ -476,7 +476,7 @@ fan-out 이므로 "count=1 은 fan-out 없다"는 내 말은 틀렸다: fan-out 
 
 > **2026-08-02 후속 — 이 조율이 한 함수 안으로 들어갔다.** 위 세 줄(제외·통보·순서)은
 > **고친 방식이 맞았지만 흩어져 있었다**. 흩어져 있는 한 *"무관한 판정이 끝난 예약을 삼키는"*
-> 버그가 다른 얼굴로 돌아올 수 있어, 셋 다 `planner/module/planModulePorts` 안의 연속된
+> 버그가 다른 얼굴로 돌아올 수 있어, 셋 다 `module/policy/trunk/port` 안의 연속된
 > 단계가 됐다. 자세한 것은 **[[module-planning]]**.
 >
 > 특히 `!plan.ok` 는 `rest: {ok:true, lines} | {ok:false, unplaced}` 판별 유니온이 됐다 —
@@ -532,7 +532,7 @@ gap 으로 넘기면 가로 벨트가 gap 을 따라 서쪽 변까지 와서 90�
 ### 원료·완제품 줄도 같은 배분기를 탄다 (2026-08-05 공급 모델 통합)
 
 [[용어사전#탭 인서팅 (Tap Inserting)|탭]]이 안 되면 그 줄들은 **머신마다 하나씩 쪼개져**
-([externalLineGroups](../../../src/autoLayout/module/link.ts) `perMachine`) 여기
+([externalLineGroups](../../../src/autoLayout/module/arith/trunk/trunk/link.ts) `perMachine`) 여기
 설명한 배분기·방출기를 **그대로** 탄다. 쪼개는 이유는 `tryLinkFace` 의 문턱 하나다:
 
 ```ts

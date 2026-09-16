@@ -18,7 +18,7 @@
  */
 
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { moduleExtent, type Orientation } from "../../module/moduleTransform";
+import { moduleExtent, type Orientation } from "../../module/shape/transform";
 import type {
   ChannelGeometryPlan,
   ChannelWall,

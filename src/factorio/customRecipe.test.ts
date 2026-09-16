@@ -24,7 +24,7 @@ import {
   type CustomFluidBoxSpec,
   type CustomMachineSpec,
 } from './customRecipe';
-import { resolveFluidConnection } from '../autoLayout/module/fluidPorts';
+import { resolveFluidConnection } from '../autoLayout/module/gamedata';
 import type { Direction } from '../types/layout';
 
 const machine = (
