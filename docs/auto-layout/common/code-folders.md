@@ -273,7 +273,7 @@ npx vitest run
 - 이사 **계획**만 산정하고 `PerimeterPassResult` 로 돌려준다:
   `droppedCellKeys`(뗄 옛 ghost/feeder 좌표) · `addedCells`(놓을 belt/feeder/chest 셀) ·
   `relocations`(상자별 새 origin·belts).
-- 적용은 호출자 [moduleWizard](../../../src/autoLayout/planner/moduleWizard.ts)
+- 적용은 호출자 [moduleWizard](../../../src/autoLayout/run/build/module.ts)
   가 Area 를 지을 때 한다.
 
 동작 변경 0(골든 스냅샷 불변). 회귀:

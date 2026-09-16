@@ -19,8 +19,8 @@
  * 걸려 별도 작업으로 둔다.
  */
 
-import { useGameDataStore } from "../UI/store/gameDataStore";
-import { gameDataLookupOf } from "../types/gameData";
+import { useGameDataStore } from "../../../UI/store/gameDataStore";
+import { gameDataLookupOf } from "../../../types/gameData";
 import type {
   CandidateTree,
   Container,
@@ -29,17 +29,17 @@ import type {
   MachineNode,
   ProgressReporter,
   RunContainerWizard,
-} from "./shared/types";
-import type { RecipeTreeNode } from "./types";
+} from "../../shared/types";
+import type { RecipeTreeNode } from "../../types";
 import {
   assignMinimumCounts,
   assignThroughputCounts,
   expandRecipeTree,
-} from "./recipeTree";
-import { makeMachinePicker, makeMachineParamsLookup } from "./wizardUtils";
-import { tryRunModulePipeline } from "./planner/moduleWizard";
-import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "./shared/issue";
-import { makeBuildSpec } from "./shared/gamedata/spec";
+} from "../../recipeTree";
+import { makeMachinePicker, makeMachineParamsLookup } from "../gamedata/picker";
+import { tryRunModulePipeline } from "./module";
+import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";
+import { makeBuildSpec } from "../../shared/gamedata/spec";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // id 카운터 — 모듈 스코프

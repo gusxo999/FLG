@@ -23,36 +23,36 @@
  * > *"실패하면 null → 옛 경로로 폴백"* 은 옛 경로가 2026-07-25 에 지워진 뒤로 거짓이었다 — 실패는 사유다.
  */
 
-import type { GameDataLookup } from "../../types/gameData";
-import type { CandidateLeaf, ContainerWizardInput, UndergroundCorridor } from "../shared/types";
-import type { RecipeTreeNode } from "../types";
-import type { PipeFlow } from "../shared/pipeFlow";
-import { packModuleTree } from "./modulePacking";
-import type { PackConfig, PackResult } from "./tree/types";
-import { routeDeliveryRoutes } from "./deliveryRoute";
-import type { DeliveryConfig, DeliveryResult } from "./link/types";
-import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../shared/issue";
-import { rePathToPerimeter } from "../execution/modulePerimeterPass";
+import type { GameDataLookup } from "../../../types/gameData";
+import type { CandidateLeaf, ContainerWizardInput, UndergroundCorridor } from "../../shared/types";
+import type { RecipeTreeNode } from "../../types";
+import type { PipeFlow } from "../../shared/pipeFlow";
+import { packModuleTree } from "../../planner/modulePacking";
+import type { PackConfig, PackResult } from "../../planner/tree/types";
+import { routeDeliveryRoutes } from "../../planner/deliveryRoute";
+import type { DeliveryConfig, DeliveryResult } from "../../planner/link/types";
+import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";
+import { rePathToPerimeter } from "../../execution/modulePerimeterPass";
 // 진단 카운터 싱크 — **관측만 한다**(계산·분기·반환값 무영향). import 가 0 인 파일이라
 // 계층을 거스르지 않는다. 왜 반환값에 실어 올리지 않는지는 그 파일 서두에.
 import {
   beginRunStats, recordChannelLedgerStats, recordDeliveryStats, recordExitPlanStats,
   recordPerimeterStats, recordRowChannelStats,
-} from "../../debug/runStats";
-import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../shared/flags";
+} from "../../../debug/runStats";
+import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_PERIMETER_PASS } from "../../shared/flags";
 // 예약 경로는 **탐색기를 안 본다** — 옛 경로의 `routeFallback`(Dijkstra 폴백) 대신
 // [BuildSpec](../buildSpec.ts)("무엇으로 지을 수 있나")만 읽는다.
-import { makeBuildSpec, type BuildSpec } from "../shared/gamedata/spec";
+import { makeBuildSpec, type BuildSpec } from "../../shared/gamedata/spec";
 import {
   fluidMachinesOf, logArmBeltLimits, nodeSpecsOf, resolveNodes, undergroundDistanceOf,
   type ModuleNodeMeta,
-} from "./run/gamedata";
+} from "../gamedata/tree";
 import {
   admitBuildSpec, admitFluidTrunks, deliveryWarnings, judgeDeliveries, judgePack, judgePipeMerges,
   terminusMergeWarnings,
-} from "./run/policy";
-import { fluidBlockedOf, fluidNetworksOf, terminusCorridorsOf } from "./run/ledger";
-import { candidateOf, snapshotOf } from "./run/emit";
+} from "../policy";
+import { fluidBlockedOf, fluidNetworksOf, terminusCorridorsOf } from "../ledger";
+import { candidateOf, snapshotOf } from "../emit";
 
 export interface ModulePipelineArgs {
   input: ContainerWizardInput;

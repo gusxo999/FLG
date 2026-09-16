@@ -11,7 +11,7 @@ import {
   assignMinimumCounts,
   assignThroughputCounts,
 } from '../../autoLayout/recipeTree';
-import { makeMachineParamsLookup } from '../../autoLayout/wizardUtils';
+import { makeMachineParamsLookup } from '../../autoLayout/run/gamedata/picker';
 import { gameDataLookupOf } from '../../types/gameData';
 import type { RecipeTreeNode } from '../../autoLayout/types';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';

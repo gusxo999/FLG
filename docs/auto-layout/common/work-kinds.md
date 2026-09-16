@@ -72,7 +72,7 @@ tags: [auto-layout]
 **어댑터가 따로 서는 것이 중요하다.** 게임데이터 조회(`useGameDataStore.getState()`)가 파이프라인
 안쪽 다섯 곳에 흩어져 있었고, 그 다섯이 전부 이 종류였다. 2026-09-14 **입구(`layeredWizard`) 한 곳**에서
 읽어 `GameDataLookup` 으로 넘기게 모았다 — 게임데이터를 **보는** 함수는 그것을 받는 `buildSpec` ·
-`wizardUtils` · `planner/run/gamedata` 뿐이다. 넘기는 일 자체도 한 단계다: `gameDataLookupOf` 가 스토어가 가진
+`wizardUtils` · `run/gamedata/tree` 뿐이다. 넘기는 일 자체도 한 단계다: `gameDataLookupOf` 가 스토어가 가진
 것 중 **배치에 필요한 셋만** 떼어 낸다 — 실행 입구와 화면(레시피 단계 트리의 대수 계산)이 같은 함수로 넘긴다.
 
 ## 4. 표식 둘 — 종류가 아니라 꼬리표

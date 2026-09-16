@@ -22,7 +22,7 @@
 
 import { create } from 'zustand';
 import { useLayoutStore } from './layoutStore';
-import { runLayeredWizard } from '../../autoLayout/layeredWizard';
+import { runLayeredWizard } from '../../autoLayout/run/build/layered';
 import type {
   CandidateLeaf,
   ContainerWizardInput,

@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { armsFor, faceSeatArms, inserterForReach, type SpecInserter } from "./shared/gamedata/spec";
-import { machineSpeedFraction } from "./wizardUtils";
+import { machineSpeedFraction } from "./run/gamedata/picker";
 import type { Entity, Recipe } from "../UI/store/gameDataStore";
 
 /** 실측 모드팩 값 — fast 10/s, long-handed 1.2/s (8배 차이). */

@@ -23,12 +23,12 @@ import type { IoLine } from "../../module/types/line";
 import type { FluidLineSpec } from "../../module/fluidPorts";
 import { externalLineGroups, groupRate } from "../../module/link";
 import type { PipeFlowMachine } from "../../shared/pipeFlow";
-import { edgeLinkGroups } from "../modulePacking";
-import type { NodeSpec, PackConfig, PackResult } from "../tree/types";
+import { edgeLinkGroups } from "../../planner/modulePacking";
+import type { NodeSpec, PackConfig, PackResult } from "../../planner/tree/types";
 import { inserterThroughput } from "../../shared/arith/inserter";
 import { clusterLineRate } from "../../recipeTree";
 import { inserterForReach, type BuildSpec } from "../../shared/gamedata/spec";
-import { machineSpeedFraction } from "../../wizardUtils";
+import { machineSpeedFraction } from "./picker";
 
 /** layeredWizard NodeMeta 와 동형(필요한 부분만). */
 export interface ModuleNodeMeta {

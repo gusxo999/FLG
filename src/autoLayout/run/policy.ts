@@ -12,17 +12,17 @@
  * > 2026-09-14 종류대로 갈랐다(계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
-import type { NodeSpec, PackResult } from "../tree/types";
-import type { DeliveryResult } from "../link/types";
-import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
-import type { BuildSpec } from "../../shared/gamedata/spec";
-import type { RecipeTreeNode } from "../../types";
-import { summarizeRungs } from "../module/linkPlanner";
-import { chooseFluidTrunkPlan } from "../../module/fluidPorts";
-import { fluidJumpBlocker, fluidJumpBudgetOf } from "../../module/arith";
-import { pipeFlowConflict, type PipeFlow } from "../../shared/pipeFlow";
-import type { IssueScope, LayoutIssue } from "../../shared/issue";
-import type { ResolvedNode } from "./gamedata";
+import type { NodeSpec, PackResult } from "../planner/tree/types";
+import type { DeliveryResult } from "../planner/link/types";
+import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
+import type { BuildSpec } from "../shared/gamedata/spec";
+import type { RecipeTreeNode } from "../types";
+import { summarizeRungs } from "../planner/module/linkPlanner";
+import { chooseFluidTrunkPlan } from "../module/fluidPorts";
+import { fluidJumpBlocker, fluidJumpBudgetOf } from "../module/arith";
+import { pipeFlowConflict, type PipeFlow } from "../shared/pipeFlow";
+import type { IssueScope, LayoutIssue } from "../shared/issue";
+import type { ResolvedNode } from "./gamedata/tree";
 
 /**
  * issue 하나 조립 — 카탈로그(개요 §5)의 한 줄에 대응한다.

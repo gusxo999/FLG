@@ -11,7 +11,7 @@ tags: [auto-layout, placement, routing]
 >
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
-> `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
+> `run/build/module.tryRunModulePipeline`(배치 전부).
 > 흐름은 [[code-folders]], 링크 모델은 [[machine-link]],
 > 채널 예약은 [[channel-geometry-reservation]] 를 보라.
 >
@@ -137,7 +137,7 @@ tags: [auto-layout, placement, routing]
 - [src/autoLayout/types.ts](../../src/autoLayout/types.ts) — 위저드 입출력 타입
 - [src/autoLayout/recipeTree.ts](../../src/autoLayout/recipeTree.ts) — 1단계 (재료 트리 + 카운트)
 - [src/autoLayout/shared/arith/inserter.ts](../../src/autoLayout/shared/arith/inserter.ts) — 투입기/벨트 처리량 모델 (사용자 override)
-- [src/autoLayout/layeredWizard.ts](../../src/autoLayout/layeredWizard.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
+- [src/autoLayout/run/build/layered.ts](../../src/autoLayout/run/build/layered.ts) — **진입점** (`runLayeredWizard` — 트리 전개·머신 선정 후 `tryRunModulePipeline` 에 위임)
 - [src/UI/components/AutoLayoutModal.tsx](../../src/UI/components/AutoLayoutModal.tsx) — 위저드 UI
 
 ## 제거된 것 — 선행 기술 자동 체크 (2026-08-03)

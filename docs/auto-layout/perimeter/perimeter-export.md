@@ -226,7 +226,7 @@ tags: [auto-layout, placement, routing]
 
 `rePathToPerimeter` 는 **순수 함수**다 — 아무것도 직접 고치지 않고 무엇을 떼고(`droppedCellKeys`)
 무엇을 놓고(`addedCells`) 상자가 어디로 갔는지(`relocations`)를 **반환만** 한다. 적용은
-[`moduleWizard.ts`](../../../src/autoLayout/planner/moduleWizard.ts) 가 `Area` 를 조립할 때
+[`moduleWizard.ts`](../../../src/autoLayout/run/build/module.ts) 가 `Area` 를 조립할 때
 한다. 덕분에 store 없이 좌표만으로 단위 테스트가 된다.
 
 **탐색 폴백을 일부러 두지 않는다.** 예약이 "뚫린 방향만"(①의 `wayOuts`) 골랐고 채널 구간은
@@ -310,7 +310,7 @@ tags: [auto-layout, placement, routing]
 | ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
 | ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |
-| 적용 | `planner/moduleWizard.ts` | `droppedCellKeys` · `relocOrigin` 반영 |
+| 적용 | `run/build/module.ts` | `droppedCellKeys` · `relocOrigin` 반영 |
 | 상수 | `shared/grid.ts` | `PERIMETER_MARGIN = 2` |
 
 > **읽을 때 함정 — `seat` 가 두 뜻이다.**

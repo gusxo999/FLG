@@ -98,7 +98,7 @@ for (const p of r.products) {
 패널은 값을 넘기고 타입에도 있었는데 **읽는 쪽만** 빠져 있었다. 유체를 열자 바로 드러났다(water 를
 `kr-water-from-atmosphere` 로 골라도 실행은 첫 매칭 `se-melting-water-ice` → 원유 체인 →
 `basic-oil-processing 카테고리 머신 없음` 으로 실패). **`runLayeredWizard` 를 돌리는 테스트가
-하나도 없어서** 살아남은 버그다 → `layeredWizard.recipeOverrides.test.ts` 로 고정했다.
+하나도 없어서** 살아남은 버그다 → `run/build/layered.recipeOverrides.test.ts` 로 고정했다.
 
 ## 왜 이 문서
 

@@ -12,13 +12,13 @@
  * > (계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
-import { EntityType } from "../../../types/layout";
-import type { UndergroundCorridor } from "../../shared/types";
-import type { RecipeTreeNode } from "../../types";
-import { collectPipeFlow, type PipeFlow, type PipeFlowMachine, type PipeFlowPipe } from "../../shared/pipeFlow";
-import type { PackResult } from "../tree/types";
-import { directionToVector } from "../../shared/route";
-import { corridorBetween } from "../../shared/cells/path";
+import { EntityType } from "../../types/layout";
+import type { UndergroundCorridor } from "../shared/types";
+import type { RecipeTreeNode } from "../types";
+import { collectPipeFlow, type PipeFlow, type PipeFlowMachine, type PipeFlowPipe } from "../shared/pipeFlow";
+import type { PackResult } from "../planner/tree/types";
+import { directionToVector } from "../shared/route";
+import { corridorBetween } from "../shared/cells/path";
 
 /**
  * **[파이프 합류 가드](../../util/pipeFlow.ts)의 지도** — 파이프는 **방향이 없어서** 직교로 닿기만

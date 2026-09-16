@@ -7,7 +7,7 @@
 import { it, vi } from 'vitest';
 import fs from 'fs';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
-import { runLayeredWizard } from './layeredWizard';
+import { runLayeredWizard } from './run/build/layered';
 import { readRunStats } from '../debug/runStats';
 import type { ContainerWizardInput } from './shared/types';
 import { setAutoLayoutLinkLadder, setAutoLayoutLinkOppositeFace, setAutoLayoutLinkDirect, setAutoLayoutLaneMerge } from './shared/flags';

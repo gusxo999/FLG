@@ -11,17 +11,17 @@
  * > 게임데이터를 안 본다. 2026-09-14 옮기면서 이름을 **찍기**로 바로잡았다(계획 구조-2축 · 2 Step 2b).
  */
 
-import { EntityType } from "../../../types/layout";
+import { EntityType } from "../../types/layout";
 import type {
   Area, CandidateLeaf, ContainerPort, PortFace, Routing, UndergroundCorridor,
-} from "../../shared/types";
-import type { LayoutIssue, LayoutSnapshot } from "../../shared/issue";
-import { makeEmptyArea } from "../../wizardUtils";
-import { commitContainer } from "../../shared/cells/place";
-import type { PerimeterPassResult } from "../../execution/modulePerimeterPass";
-import { deliveryKey } from "../modulePacking";
-import type { PackResult } from "../tree/types";
-import type { DeliveryResult } from "../link/types";
+} from "../shared/types";
+import type { LayoutIssue, LayoutSnapshot } from "../shared/issue";
+import { makeEmptyArea } from "./gamedata/picker";
+import { commitContainer } from "../shared/cells/place";
+import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
+import { deliveryKey } from "../planner/modulePacking";
+import type { PackResult } from "../planner/tree/types";
+import type { DeliveryResult } from "../planner/link/types";
 
 /** [candidateOf] 가 받는 것 — 앞 단계들이 낸 사실 전부. */
 export interface CandidateFacts {

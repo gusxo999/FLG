@@ -11,7 +11,7 @@ tags: [auto-layout, placement, routing]
 >
 > 지금 실제로 도는 것은 **모듈 파이프라인**이다:
 > `layeredWizard.runLayeredWizard`(진입점 — 트리 전개·머신 선정만) →
-> `planner/moduleWizard.tryRunModulePipeline`(배치 전부).
+> `run/build/module.tryRunModulePipeline`(배치 전부).
 > 흐름은 [[code-folders]], 링크 모델은 [[machine-link]],
 > 채널 예약은 [[channel-geometry-reservation]] 를 보라.
 

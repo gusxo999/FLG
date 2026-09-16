@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
-import { runLayeredWizard } from './layeredWizard';
+import { runLayeredWizard } from './run/build/layered';
 import { unifyLeaf } from './shared/frames';
 import { collectModules, moduleAtCell, overlayFromLayout, overlayFromSnapshot, summarizeRoutings, type ModuleSource } from './moduleInspect';
 import { translateFailureFrame, type LayoutIssue, type LayoutSnapshot } from './shared/issue';

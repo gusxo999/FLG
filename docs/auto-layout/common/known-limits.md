@@ -7,7 +7,7 @@ tags: [auto-layout, placement, routing]
 > **부모 문서:** [auto-layout-wizard.md](../wizard.md) — 위저드 인터페이스
 > **관련 문서:** [.placement-search](placement-search.md), [.s-layer-channel-reservation](../channel/s-layer-channel-reservation.md), [.entity-roles](entity-roles.md)
 
-본 문서는 **현재 구현**(모듈 파이프라인 — [planner/moduleWizard.ts](../../../src/autoLayout/planner/moduleWizard.ts), 진입점은 [layeredWizard.ts](../../../src/autoLayout/layeredWizard.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
+본 문서는 **현재 구현**(모듈 파이프라인 — [run/build/module.ts](../../../src/autoLayout/run/build/module.ts), 진입점은 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts)) 가 제공하지 못하는 것을 정확히 기록한다. 각 항목에 (1) 증상, (2) 원인(코드), (3) 해결 방향, (4) 우선순위.
 
 > 우선순위: **P0** 다음 마일스톤 / **P1** 베타 진입 전 / **P2** 정상 동작 시 개선 / **P3** 장기 백로그.
 > 항목이 해결되면 해당 절을 삭제하고 우선순위 표를 갱신한다.
@@ -86,7 +86,7 @@ tags: [auto-layout, placement, routing]
 - 아이템 쪽은 회전을 아예 후보로 두지 않는다.
 
 **참고(이미 해결된 인접 항목):**
-- *머신 footprint 다양화* 는 지원됨 — [layeredWizard.ts](../../../src/autoLayout/layeredWizard.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `machineEntityType`).
+- *머신 footprint 다양화* 는 지원됨 — [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts) 의 메타 수집이 `entity.tile_width/tile_height` 를 그대로 size 로 써 비-3×3(보일러 3×2, 사일로 9×9 등)도 배치된다. 다만 `EntityType` 매핑은 단순화(무한상자/파이프 외 전부 Assembler 타입, [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `machineEntityType`).
 
 **해결 방향:**
 - 아이템 머신도 회전 4방향을 후보로. 유체 회전(`chooseFluidTrunkPlan`)과 충돌하지 않게 **유체가 있는 노드는 유체가 각도를 정한다**는 현 규칙을 유지한 채 나머지 노드에만 자유도를 준다. §1 형태 선택기와 함께.
@@ -101,7 +101,7 @@ tags: [auto-layout, placement, routing]
 - 조립기 1·2·3 을 모두 체크해도 카테고리에 맞는 **선택 목록상 첫 머신** 만 모든 노드에 사용. "후반만 조립기3" 같은 의도 표현 불가.
 
 **원인:**
-- [wizardUtils.ts](../../../src/autoLayout/wizardUtils.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
+- [run/gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
 
 **해결 방향:**
 1. 머신 선택 UI 에 우선순위(drag-reorder) 또는 레시피별 매핑.
@@ -121,7 +121,7 @@ tags: [auto-layout, placement, routing]
 > 부족분만큼 머신이 더 놓인다. 남은 건 모듈 modelling 뿐이라 항목을 그쪽으로 좁힌다.
 
 **원인:**
-- [wizardUtils.ts](../../../src/autoLayout/wizardUtils.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
+- [run/gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachineParamsLookup` 가 `craftingSpeed` 만 사용, `productivityMultiplier=1` 고정.
 
 **해결 방향:**
 - 모듈 multiplier 를 `NodeMachineParams` 입력으로.
