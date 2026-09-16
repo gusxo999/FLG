@@ -9,7 +9,7 @@
 
 import type { Link } from "../../module/types/line";
 import type { ModuleInput } from "../../module/types/module";
-import type { NodeSpec, PackConfig } from "./types";
+import type { NodeSpec, PackConfig } from "../types/pack";
 
 /** [treeIndexOf] 의 답 — 좌표 없이 트리가 답하는 것 전부. */
 export interface TreeIndex {

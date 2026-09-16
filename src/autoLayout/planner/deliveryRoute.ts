@@ -28,8 +28,8 @@
  * 무배선·순수 — Area·store 의존 0. 단위 테스트 + 브라우저 ASCII harness 로만 검증.
  */
 
-import { deliveryKey } from "./modulePacking";
-import type { PackResult } from "./tree/types";
+import { deliveryKey } from "../tree/build";
+import type { PackResult } from "../tree/types/pack";
 import type { DeliveryConfig, DeliveryResult } from "./link/types";
 import { buildOccupancy, deliveryResultOf, openDeliveryLedger, plannedChainsOf, recordRoute } from "./link/ledger";
 import { searchBoundsOf } from "./link/shape";

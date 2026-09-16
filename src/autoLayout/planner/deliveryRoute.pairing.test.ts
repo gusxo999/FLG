@@ -24,8 +24,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { packModuleTree, deliveryKey } from "./modulePacking";
-import type { NodeSpec, PackConfig } from "./tree/types";
+import { packModuleTree, deliveryKey } from "../tree/build";
+import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { DeliveryConfig } from "./link/types";
 import type { IoLine } from "../module/types/line";

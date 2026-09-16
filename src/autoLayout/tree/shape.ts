@@ -8,12 +8,12 @@
  * > (2026-09-14 계획 구조-2축 · 2 Step 3c-3).
  */
 
-import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { moduleExtent, shiftModule, type Orientation } from "../../module/moduleTransform";
-import { ROW_CHANNEL_MIN } from "../rowChannelPlanner";
-import type { DeliverySpec, ModulePlacement, NodeSpec, RowChannel } from "./types";
-import type { TreeIndex } from "./arith";
-import type { DeliveryPairing } from "../link/arith";
+import type { GeneratedModule, ModulePort } from "../module/types/module";
+import { moduleExtent, shiftModule, type Orientation } from "../module/moduleTransform";
+import { ROW_CHANNEL_MIN } from "../planner/rowChannelPlanner";
+import type { DeliverySpec, ModulePlacement, NodeSpec, RowChannel } from "./types/pack";
+import type { TreeIndex } from "./arith/pack";
+import type { DeliveryPairing } from "../planner/link/arith";
 
 type Oriented = ReadonlyMap<string, { module: GeneratedModule; orientation: Orientation }>;
 

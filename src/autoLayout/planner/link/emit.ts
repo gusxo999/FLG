@@ -11,7 +11,7 @@ import type { ContainerPort, PortFace, PortPair } from "../../shared/types";
 import type { DijkstraResult } from "../../shared/route";
 import { emitItemPath, emitFluidPath } from "../../shared/cells/path";
 import { faceVector } from "../../shared/grid";
-import type { DeliverySpec } from "../tree/types";
+import type { DeliverySpec } from "../../tree/types/pack";
 import { chainWithSeats, isContinuous } from "./shape";
 import type { DeliveryConfig, DeliveryRoute } from "./types";
 

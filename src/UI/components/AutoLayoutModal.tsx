@@ -10,10 +10,10 @@ import {
   collectInternalRecipes,
   assignMinimumCounts,
   assignThroughputCounts,
-} from '../../autoLayout/recipeTree';
+} from '../../autoLayout/tree/arith/recipe';
 import { makeMachineParamsLookup } from '../../autoLayout/run/gamedata/picker';
 import { gameDataLookupOf } from '../../types/gameData';
-import type { RecipeTreeNode } from '../../autoLayout/types';
+import type { RecipeTreeNode } from '../../autoLayout/tree/types/recipe';
 import AutoLayoutContainerPanel from './AutoLayoutContainerPanel';
 import AutoLayoutDebugTab from './AutoLayoutDebugTab';
 import {

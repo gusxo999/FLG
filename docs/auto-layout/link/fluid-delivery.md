@@ -34,7 +34,7 @@ aliases: [유체납품 경로, fluid-delivery]
 > | `concrete ← kr-water-from-atmosphere` | `[fluid-unplannable] water ×2` | **1 납품 경로**, 파이프 22칸 한 관망이 두 머신에 접함, 무한파이프 0 |
 > | `battery ← empty-sulfuric-acid-barrel` | 후보는 나오나 **0 납품 경로** + 모순된 무한파이프 2개 | **1 납품 경로**, 20칸 한 관망, 무한파이프 0 |
 >
-> 회귀 테스트: `planner/modulePacking.fluidLink.test.ts`.
+> 회귀 테스트: `tree/build.fluidLink.test.ts`.
 >
 > **유체 납품 경로를 볼 레시피 고르는 법** — 자식이 유체를 *소비하지 않고* 생산하는 쌍이
 > 가장 단순하다. K2+SE 기준 **1038개** 있다(배럴 비우기·얼음 녹이기 등). 유체를 받아

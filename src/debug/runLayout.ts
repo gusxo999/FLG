@@ -20,7 +20,7 @@
  * 이 함수는 어느 쪽이었는지 반환값에 적는다.
  */
 
-import { collectInternalRecipes, expandRecipeTree } from '../autoLayout/recipeTree';
+import { collectInternalRecipes, expandRecipeTree } from '../autoLayout/tree/arith/recipe';
 import type { ContainerWizardInput } from '../autoLayout/shared/types';
 import { signatureOf, useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 import { useGameDataStore } from '../UI/store/gameDataStore';

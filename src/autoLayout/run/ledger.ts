@@ -14,9 +14,9 @@
 
 import { EntityType } from "../../types/layout";
 import type { UndergroundCorridor } from "../shared/types";
-import type { RecipeTreeNode } from "../types";
+import type { RecipeTreeNode } from "../tree/types/recipe";
 import { collectPipeFlow, type PipeFlow, type PipeFlowMachine, type PipeFlowPipe } from "../shared/pipeFlow";
-import type { PackResult } from "../planner/tree/types";
+import type { PackResult } from "../tree/types/pack";
 import { directionToVector } from "../shared/route";
 import { corridorBetween } from "../shared/cells/path";
 

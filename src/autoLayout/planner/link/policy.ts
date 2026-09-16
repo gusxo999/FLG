@@ -64,8 +64,8 @@ import { finishChain, finishFluidChain } from "./emit";
 import { plannedChainClear, type DeliveryLedger, type PlannedChains } from "./ledger";
 import type { Bounds } from "./shape";
 import type { DeliveryConfig, DeliveryRoute } from "./types";
-import type { DeliverySpec, NodeSpec, PackConfig } from "../tree/types";
-import { moduleInputOf, type TreeIndex } from "../tree/arith";
+import type { DeliverySpec, NodeSpec, PackConfig } from "../../tree/types/pack";
+import { moduleInputOf, type TreeIndex } from "../../tree/arith/pack";
 
 /** [edgeLinksOf] 의 답. `linkCache` 는 **같은 Map 이 좌석 단계에서 최종본으로 갈아 끼워진다.** */
 export interface EdgeLinks {

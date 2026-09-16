@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { packModuleTree } from "./modulePacking";
-import type { NodeSpec, PackConfig, PackResult } from "./tree/types";
+import { packModuleTree } from "../tree/build";
+import type { NodeSpec, PackConfig, PackResult } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "./deliveryRoute";
 import type { DeliveryConfig } from "./link/types";
 import { faceVector } from "../shared/grid";

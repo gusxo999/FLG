@@ -25,10 +25,10 @@
 
 import type { GameDataLookup } from "../../../types/gameData";
 import type { CandidateLeaf, ContainerWizardInput, UndergroundCorridor } from "../../shared/types";
-import type { RecipeTreeNode } from "../../types";
+import type { RecipeTreeNode } from "../../tree/types/recipe";
 import type { PipeFlow } from "../../shared/pipeFlow";
-import { packModuleTree } from "../../planner/modulePacking";
-import type { PackConfig, PackResult } from "../../planner/tree/types";
+import { packModuleTree } from "../../tree/build";
+import type { PackConfig, PackResult } from "../../tree/types/pack";
 import { routeDeliveryRoutes } from "../../planner/deliveryRoute";
 import type { DeliveryConfig, DeliveryResult } from "../../planner/link/types";
 import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";

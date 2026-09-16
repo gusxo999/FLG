@@ -9,7 +9,7 @@
 import type { PlacedCell, UndergroundCorridor } from "../../shared/types";
 import type { DijkstraResult } from "../../shared/route";
 import { cellKey } from "../../shared/grid";
-import type { DeliverySpec, PackResult } from "../tree/types";
+import type { DeliverySpec, PackResult } from "../../tree/types/pack";
 import { deliveryKey } from "./edgeLinks";
 import { buildPlannedChain, stripKeys } from "./shape";
 import type { DeliveryConfig, DeliveryResult, DeliveryRoute } from "./types";

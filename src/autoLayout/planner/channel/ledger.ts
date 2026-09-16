@@ -15,7 +15,7 @@ import { planChannelGeometry } from "../channelGeometryPlanner";
 import type { ChannelGeometryPlan, DeliveryInput, ExportInput } from "./types";
 import type { PerimeterExitPlan } from "../perimeter/types";
 import { rowChannelKey } from "../layoutRegions";
-import type { PackConfig, RowChannel } from "../tree/types";
+import type { PackConfig, RowChannel } from "../../tree/types/pack";
 import type { DeliverySeed, RowChannelNeed } from "../link/arith";
 
 /**

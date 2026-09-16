@@ -16,7 +16,7 @@
 import type { DijkstraResult } from "../../shared/route";
 import { portGeometry, seatIsBeltFeeder } from "../../module/shape";
 import { cellKey, segment } from "../../shared/grid";
-import type { DeliveryDirective, DeliverySpec, PackResult } from "../tree/types";
+import type { DeliveryDirective, DeliverySpec, PackResult } from "../../tree/types/pack";
 
 /** 탐색 경계 — 칸 범위(양 끝 포함). */
 export type Bounds = { x0: number; y0: number; x1: number; y1: number };

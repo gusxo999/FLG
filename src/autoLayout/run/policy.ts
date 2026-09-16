@@ -12,11 +12,11 @@
  * > 2026-09-14 종류대로 갈랐다(계획 구조-2축 · 2 Step 2b). 본문은 옮기기만 했다.
  */
 
-import type { NodeSpec, PackResult } from "../planner/tree/types";
+import type { NodeSpec, PackResult } from "../tree/types/pack";
 import type { DeliveryResult } from "../planner/link/types";
 import type { PerimeterPassResult } from "../execution/modulePerimeterPass";
 import type { BuildSpec } from "../shared/gamedata/spec";
-import type { RecipeTreeNode } from "../types";
+import type { RecipeTreeNode } from "../tree/types/recipe";
 import { summarizeRungs } from "../planner/module/linkPlanner";
 import { chooseFluidTrunkPlan } from "../module/fluidPorts";
 import { fluidJumpBlocker, fluidJumpBudgetOf } from "../module/arith";

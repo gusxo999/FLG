@@ -77,7 +77,7 @@ tags: [auto-layout, placement, routing]
      어느 면·어느 트랙·교차 지하·gap 폭 (부산물은 전부 여기서)
 ```
 
-**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/planner/modulePacking.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateFlows` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
+**논리 층이 S-LAYER 와 무관하다는 건 코드가 증언한다:** `pairDeliveryPorts`([modulePacking.ts](../../../src/autoLayout/tree/build.ts))는 좌표·depth 를 **한 번도 안 본다** — 품목으로 거르고 순서로 zip 할 뿐이다. depth 를 쓰는 곳은 전부 기하(채널 트랙·N/S 노출·열 좌표)다. 그래서 `allocateFlows` 는 배치가 돌기 **전에** 계산할 수 있고, 다른 배치 전략이 와도 논리 층은 그대로 재사용된다.
 
 ---
 
@@ -261,7 +261,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](
 
 ### cap 이 여전히 하는 일
 
-합치기로 한 자리에서만 쓰인다. cap 은 두 한계의 min 이다([`edgeLinkGroups`](../../../src/autoLayout/planner/modulePacking.ts)):
+합치기로 한 자리에서만 쓰인다. cap 은 두 한계의 min 이다([`edgeLinkGroups`](../../../src/autoLayout/tree/build.ts)):
 
 - **그릇** `maxInsertersPerBelt = floor(벨트처리량 ÷ 인서터처리량)` — 벨트 한 줄이 실어 나를 수 있는 양.
 - **자식 머신의 면 좌석** `machine.h` — 그룹 전체가 자식 머신 **한 대**의 한 면에 연속으로 앉아야 하므로.

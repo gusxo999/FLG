@@ -14,8 +14,8 @@ import {
   beltLineForm, flowsOn, machinesOn, externalLineGroups, spansAllMachines, summarizeBeltForms,
 } from "./link";
 import type { IoLine, Link, LinkCarry } from "./types/line";
-import { edgeLinkGroups } from "../planner/modulePacking";
-import type { NodeSpec, PackConfig } from "../planner/tree/types";
+import { edgeLinkGroups } from "../tree/build";
+import type { NodeSpec, PackConfig } from "../tree/types/pack";
 
 
 const line = (name: string, role: "input" | "output"): IoLine => ({ name, kind: "belt", role });

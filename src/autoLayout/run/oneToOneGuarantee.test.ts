@@ -15,9 +15,9 @@
  * ⚠ 파일명(`oneToOneGuarantee`)은 1:1 만 있던 시절의 잔재다 — 지금은 두 방식을 다 덮는다.
  */
 import { describe, it, expect } from "vitest";
-import { packModuleTree } from "./modulePacking";
-import type { NodeSpec, PackConfig } from "./tree/types";
-import { routeDeliveryRoutes } from "./deliveryRoute";
+import { packModuleTree } from "../tree/build";
+import type { NodeSpec, PackConfig } from "../tree/types/pack";
+import { routeDeliveryRoutes } from "../planner/deliveryRoute";
 import { rePathToPerimeter } from "../execution/modulePerimeterPass";
 import { cellKey } from "../shared/grid";
 import { EntityType } from "../../types/layout";

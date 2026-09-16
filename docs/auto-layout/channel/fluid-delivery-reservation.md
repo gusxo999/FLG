@@ -9,7 +9,7 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 > **관련:** [[fluid-delivery]] · [[trunk-pipe]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 구현 완료.** 리팩토링 Phase 4-B(P4-4 · P4-5).
-> 검증 = `planner/fluidDeliveryReservation.test.ts`(11개) + 전체 521 테스트.
+> 검증 = `run/fluidDeliveryReservation.test.ts`(11개) + 전체 521 테스트.
 > 구현 중 설계가 두 군데 바뀌었다 — §8 참조.
 
 ## 0. 한 줄 요약

@@ -14,7 +14,7 @@ import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { IoLine } from "../../module/types/line";
 import type { GeneratedModule, ModuleInput, ModulePort } from "../../module/types/module";
 import type { Orientation } from "../../module/moduleTransform";
-import type { PerimeterExitPlan } from "../perimeter/types";
+import type { PerimeterExitPlan } from "../../planner/perimeter/types";
 
 /**
  * **행 채널 하나** — 같은 깊이에서 세로로 이웃한 두 모듈 사이의 빈 가로 통로.

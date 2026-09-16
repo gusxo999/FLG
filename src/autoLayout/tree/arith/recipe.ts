@@ -1,5 +1,5 @@
-import { productYield, type Recipe } from '../types/gameData';
-import type { RecipeTreeNode } from './types';
+import { productYield, type Recipe } from '../../../types/gameData';
+import type { RecipeTreeNode } from '../types/recipe';
 
 interface ExpandContext {
   recipeMap: Map<string, Recipe>;

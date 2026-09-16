@@ -39,7 +39,7 @@ import type { Container, PlacedCell, PortPair } from "../shared/types";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../shared/grid";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../shared/cells/builder";
 import { moduleExtent } from "../module/moduleTransform";
-import type { PackResult } from "../planner/tree/types";
+import type { PackResult } from "../tree/types/pack";
 import { seatIsBeltFeeder } from "../module/shape";
 import type { ExitAssignment } from "../planner/perimeter/types";
 import { routePortToPerimeter, type Rect } from "../planner/perimeterRouter";

@@ -32,7 +32,7 @@ import { segment, PERIMETER_MARGIN } from "../../shared/grid";
 import { AUTO_LAYOUT_COORD_DUMP } from "../../shared/flags";
 import type {
   DeliveryDirective, ModulePlacement, PackChannelGeometry, RowChannel, RowChannelEntry,
-} from "../tree/types";
+} from "../../tree/types/pack";
 import type { DeliveryPairing } from "../link/arith";
 
 /**

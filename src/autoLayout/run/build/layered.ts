@@ -30,12 +30,12 @@ import type {
   ProgressReporter,
   RunContainerWizard,
 } from "../../shared/types";
-import type { RecipeTreeNode } from "../../types";
+import type { RecipeTreeNode } from "../../tree/types/recipe";
 import {
   assignMinimumCounts,
   assignThroughputCounts,
   expandRecipeTree,
-} from "../../recipeTree";
+} from "../../tree/arith/recipe";
 import { makeMachinePicker, makeMachineParamsLookup } from "../gamedata/picker";
 import { tryRunModulePipeline } from "./module";
 import { describeIssue, type LayoutIssue, type LayoutSnapshot } from "../../shared/issue";

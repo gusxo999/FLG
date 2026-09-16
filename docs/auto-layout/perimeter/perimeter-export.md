@@ -52,7 +52,7 @@ tags: [auto-layout, placement, routing]
 클러스터를 **"자기가 트리의 루트인 척"** 만든다(부모를 전혀 보지 않는다). 그래서 완성된 모듈은
 자기 [[용어사전#perimeter ring|ring]] 위에 입·출력 무한상자를 갖는다.
 
-그다음 [`modulePacking.packModuleTree`](../../../src/autoLayout/planner/modulePacking.ts) 가
+그다음 [`modulePacking.packModuleTree`](../../../src/autoLayout/tree/build.ts) 가
 모듈들을 **depth(트리 깊이) 별 세로 열**로 타일링하면서 사이에 [[용어사전#채널 (channel)|채널]]을 둔다.
 이 순간 **로컬 ring 들이 전체 배치의 내부가 된다**:
 
@@ -95,7 +95,7 @@ tags: [auto-layout, placement, routing]
 ### ② 예약 — 자리를 먼저 잡는다
 
 **구현:** [`planner/perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) `planPerimeterExits`
-+ [`planner/modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) `packModuleTree`
++ [`tree/build.ts`](../../../src/autoLayout/tree/build.ts) `packModuleTree`
 
 상자마다 **어느 변으로(`exitEdge`), 주행선을 어디서 얻어(`exitMode`)** 나갈지 배정한다.
 
@@ -306,7 +306,7 @@ tags: [auto-layout, placement, routing]
 | ① 산출 | `planner/perimeter/wayOuts.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
 | ② 배정 | `planner/perimeterExitPlanner.ts` · `planner/perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
 | ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
-| ② 폭 반영 | `planner/modulePacking.ts` · `planner/channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
+| ② 폭 반영 | `tree/build.ts` · `planner/channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
 | ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
 | ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |

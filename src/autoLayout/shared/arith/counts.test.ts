@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { assignThroughputCounts, type MachineParamsLookup } from '../../recipeTree';
-import type { RecipeTreeNode } from '../../types';
+import { assignThroughputCounts, type MachineParamsLookup } from '../../tree/arith/recipe';
+import type { RecipeTreeNode } from '../../tree/types/recipe';
 import type { Recipe } from '../../../UI/store/gameDataStore';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────

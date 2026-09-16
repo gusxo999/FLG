@@ -37,7 +37,7 @@ tags: [auto-layout, placement, routing]
 |---|---|---|
 | `planner/perimeterRouter` | 경로를 깐다 | **좌표 배열만 반환** → 계획 |
 | `planner/link/emit` | 벨트를 놓는다 | 방출을 `shared/cells/path` 에 **위임** → 계획 |
-| `planner/modulePacking` | 모듈을 배치한다 | **좌표만** → 계획 |
+| `tree/build` | 모듈을 배치한다 | **좌표만** → 계획 |
 
 ## 축 2 — 관심사: 무엇에 대한 일인가
 

@@ -52,7 +52,7 @@ tags: [auto-layout, placement, routing]
   예약된 트랙 x=10 은 **영원히 빈 채** 남아 폭만 낭비됐다.
 
 **핵심 진단:** 정보가 없어서가 아니었다. `planExits` 가 불리는 시점엔 **모듈들이 이미 생성돼
-있고**([`modulePacking.ts`](../../../src/autoLayout/planner/modulePacking.ts) —
+있고**([`modulePacking.ts`](../../../src/autoLayout/tree/build.ts) —
 `planExits(specs, oriented, …)`), 막힘은 **전적으로 모듈 내부 성질**이라 채널 위치(colX)를
 몰라도 판정할 수 있었다. 예약기가 **일부러 안 보고 있었을 뿐**이다.
 
@@ -139,7 +139,7 @@ planner 가 미리 하나로 못박아 자유도를 없애면 안 된다. 느슨
 
 ## 5. 검증 (2026-07-11)
 
-불변식 테스트: [`reservationEmittable.test.ts`](../../../src/autoLayout/planner/reservationEmittable.test.ts)
+불변식 테스트: [`reservationEmittable.test.ts`](../../../src/autoLayout/run/reservationEmittable.test.ts)
 — "예약(hint) 재생만으로 모든 상자가 방출된다" + "배정된 출구의 진출 방향은 항상 wayOuts 안".
 [`moduleWayOuts.test.ts`](../../../src/autoLayout/module/moduleWayOuts.test.ts) — 독립
 재계산 일치 + "자기 face 방향은 항상 나갈 수 있다".
@@ -162,7 +162,7 @@ advanced-circuit 동형 트리, count 1~8 실측:
 | 단계 | 파일 | 구현 |
 |---|---|---|
 | 산출 | [`clusterModule.ts`](../../../src/autoLayout/module/clusterModule.ts) | `ModulePort.moduleWayOuts` + `GeneratedModule.bodyColumns` — 전 포트 emit 후(몸통 확정 후) `fillModuleWayOuts` 가 **둘을 함께** 낸다 |
-| 전달 | [`tree/shape.ts`](../../../src/autoLayout/planner/tree/shape.ts) · [`perimeter/exits.ts`](../../../src/autoLayout/planner/perimeter/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
+| 전달 | [`tree/shape.ts`](../../../src/autoLayout/tree/shape.ts) · [`perimeter/exits.ts`](../../../src/autoLayout/planner/perimeter/exits.ts) | `shiftModule`(placeColumns)이 포트 재구성 시 보존(평행이동 불변), `planExits` 가 `ExitPortInput.wayOuts` · `ExitContext.moduleBodyColumns` 로 전달 |
 | 소비 | [`perimeterExitPlanner.ts`](../../../src/autoLayout/planner/perimeterExitPlanner.ts) · [`perimeter/shape.ts`](../../../src/autoLayout/planner/perimeter/shape.ts) | 자격은 `perimeter/shape`(`directOptionOf` · `channelEntryOf` — `wayOuts` 를 여기서 본다), 선호 순 후보는 `enumerateOptions`(`perimeter/types.ExitOption`) — 뚫린 방향만 후보화, 폭은 확정 하나만 반영 |
 | 방출 | [`modulePerimeterPass.ts`](../../../src/autoLayout/execution/modulePerimeterPass.ts) | 탐색 폴백 제거 — 예약 재생만 |
 

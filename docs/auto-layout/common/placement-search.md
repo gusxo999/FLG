@@ -102,7 +102,7 @@ tags: [auto-layout, placement, routing]
 
 | 모듈 | 책임 | 구현 |
 |---|---|---|
-| **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [recipeTree.ts](../../../src/autoLayout/recipeTree.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
+| **머신 수 산정** | 레시피 throughput → 노드별 머신 대수 | [tree/arith/recipe.ts](../../../src/autoLayout/tree/arith/recipe.ts) `assignMinimumCounts` / `assignThroughputCounts` *(상세는 범위 밖)* |
 | **머신 배치** | 결정된 좌표로 footprint 를 internal 에 commit | [machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts) `commitContainer` |
 | **트렁크 병합** | N:1 공유 belt + 머신별 탭 | `execution/module/emitModule.emitTapInserting` |
 | **채널 계획** | 모듈 사이 라우팅 채널 폭/트랙 산정 | `channelPlanner.ts` |

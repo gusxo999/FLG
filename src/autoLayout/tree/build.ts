@@ -36,37 +36,37 @@
  * > 4a-c) · 5) · 6) · 6b) · 5) · 5b) · 5c) · 6) · 7) · 7b)` 로 되돌아갔다(계획 구조-2축 · 2 Step 3c).
  */
 
-import type { NodeSpec, PackConfig, PackResult } from "./tree/types";
+import type { NodeSpec, PackConfig, PackResult } from "./types/pack";
 import { generateModule } from "../module/clusterModule";
 import type { Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../module/types/module";
 import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
-import { planLinkFaces } from "./module/planModulePorts";
-import { seatLinkEdge } from "./module/policy";
-import { cloneLinkFaceStage } from "./module/ledger";
-import { clusterBeltDepthsOf } from "./module/arith";
-import { linkDepthNeed, type LinkDepthNeed } from "./module/depthBudget";
+import { planLinkFaces } from "../planner/module/planModulePorts";
+import { seatLinkEdge } from "../planner/module/policy";
+import { cloneLinkFaceStage } from "../planner/module/ledger";
+import { clusterBeltDepthsOf } from "../planner/module/arith";
+import { linkDepthNeed, type LinkDepthNeed } from "../planner/module/depthBudget";
 import { summarizeBeltForms } from "../module/link";
 import { laneCapOfTier } from "../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_LADDER } from "../shared/flags";
 import type { Orientation } from "../module/moduleTransform";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 // 트리 관심사 — 좌표 없이 트리가 답하는 것 · 그 순서를 좌표로 옮기는 것.
-import { moduleInputOf, treeIndexOf, type TreeIndex } from "./tree/arith";
-import { absPortYOf, assembleDeliveries, placeColumns, spanYOf, stackColumns, unionExtent } from "./tree/shape";
+import { moduleInputOf, treeIndexOf, type TreeIndex } from "./arith/pack";
+import { absPortYOf, assembleDeliveries, placeColumns, spanYOf, stackColumns, unionExtent } from "./shape";
 // link 관심사 — 두 모듈의 식별자를 아는 계산(간선마다 줄 · 끝 · 레인 짝 · 포트 짝짓기).
-import { edgeLinksOf, type EdgeLinks } from "./link/policy";
-import { pairDeliveries } from "./link/arith";
+import { edgeLinksOf, type EdgeLinks } from "../planner/link/policy";
+import { pairDeliveries } from "../planner/link/arith";
 // channel 관심사 — 행 채널 · 세로 채널 장부와 그 절대화.
-import { planChannels, rowChannelsOf } from "./channel/ledger";
-import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "./channel/shape";
+import { planChannels, rowChannelsOf } from "../planner/channel/ledger";
+import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "../planner/channel/shape";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
-import { planExits, expandBbox } from "./perimeter/exits";
+import { planExits, expandBbox } from "../planner/perimeter/exits";
 
 // 조율자를 단일 창구로 유지하기 위한 재수출 — 소비처(테스트·deliveryRoute·moduleWizard·
 // modulePerimeterPass)는 "배치 결과를 다루는 것"이라 `modulePacking` 에서 가져오는 편이
 // 자연스럽다. 정의의 소유자는 각각 `link/edgeLinks` 와 `module/moduleTransform` 이다.
-export { deliveryKey, edgeFlows, edgeLinkGroups } from "./link/edgeLinks";
+export { deliveryKey, edgeFlows, edgeLinkGroups } from "../planner/link/edgeLinks";
 export { moduleExtent } from "../module/moduleTransform";
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -18,15 +18,15 @@
 
 import type { Entity, GameDataLookup, Recipe } from "../../../types/gameData";
 import type { ContainerWizardInput } from "../../shared/types";
-import type { RecipeTreeNode } from "../../types";
+import type { RecipeTreeNode } from "../../tree/types/recipe";
 import type { IoLine } from "../../module/types/line";
 import type { FluidLineSpec } from "../../module/fluidPorts";
 import { externalLineGroups, groupRate } from "../../module/link";
 import type { PipeFlowMachine } from "../../shared/pipeFlow";
-import { edgeLinkGroups } from "../../planner/modulePacking";
-import type { NodeSpec, PackConfig, PackResult } from "../../planner/tree/types";
+import { edgeLinkGroups } from "../../tree/build";
+import type { NodeSpec, PackConfig, PackResult } from "../../tree/types/pack";
 import { inserterThroughput } from "../../shared/arith/inserter";
-import { clusterLineRate } from "../../recipeTree";
+import { clusterLineRate } from "../../tree/arith/recipe";
 import { inserterForReach, type BuildSpec } from "../../shared/gamedata/spec";
 import { machineSpeedFraction } from "./picker";
 

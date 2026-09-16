@@ -69,7 +69,7 @@ jog 0). skip 3→2(합성 골든 기준), 후보 penalty 22→20.
 - [clusterModule.ts](../../../src/autoLayout/module/clusterModule.ts) —
   `ModuleInput.nsExposure` → planner `nsFaces` 전달. 트렁크는 기존 faceConstraints
   경로 그대로(N/S 면 탭은 `tapCandidates` 가 원래 지원).
-- [tree/arith.ts](../../../src/autoLayout/planner/tree/arith.ts) —
+- [tree/arith.ts](../../../src/autoLayout/tree/arith/pack.ts) —
   `nsExposureOf`(DFS 열-내 서열), `toModuleInput` 의 external 마킹(childFed 판정).
   [perimeter/exits.ts](../../../src/autoLayout/planner/perimeter/exits.ts) — `planExits` 의 변 판정을 `meta.side` 로 교체.
 - [shared/types.ts](../../../src/autoLayout/shared/types.ts) —

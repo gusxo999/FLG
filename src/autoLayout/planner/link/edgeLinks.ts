@@ -25,7 +25,7 @@ import { createLinks } from "../../module/link";
 import { allocateFlows, type Flow } from "./allocateFlows";
 import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
 import { determineBeltCount } from "../../shared/arith/belt";
-import type { NodeSpec, PackConfig } from "../tree/types";
+import type { NodeSpec, PackConfig } from "../../tree/types/pack";
 
 /**
  * **신원 없는(옛 탭/다이렉트, 교환 가능) 납품 경로만을 위한** 위치 기반 키. **직접 부르지 않는다** —

@@ -11,8 +11,8 @@
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
 import { moduleExtent } from "../../module/moduleTransform";
 import { deliveryKey, pairDeliveryPorts } from "./edgeLinks";
-import type { NodeSpec, RowChannelEntry } from "../tree/types";
-import type { TreeIndex } from "../tree/arith";
+import type { NodeSpec, RowChannelEntry } from "../../tree/types/pack";
+import type { TreeIndex } from "../../tree/arith/pack";
 
 /**
  * 납품 경로 씨앗 — 기하 예약(통로 단계)의 납품 경로 입력. eligible = 자식 출력이 W변·부모 입력이 E변
