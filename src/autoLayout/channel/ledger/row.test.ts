@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./rowChannelPlanner";
+import { planRowChannel, ROW_CHANNEL_MIN, type RowCrossing } from "./row";
 
 // 행 채널은 세로 채널의 **직교 짝**이다. 이 파일은 그 대칭이 실제로 성립하는지 —
 // 즉 같은 알고리즘이 가로축에서도 같은 답을 내는지 — 를 못 박는다.

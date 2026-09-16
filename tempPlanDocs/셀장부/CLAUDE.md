@@ -71,7 +71,7 @@
 | `execution/modulePerimeterPass.ts` — 머리 주석 · `buildOccupancy` · *"모듈 그래프 미변형"* | 같은 계약, 같은 유도. **장부는 이 계약을 안 건드린다** |
 | `shared/route.ts` — `dijkstraWithJumps` 의 `blocked` | **제약 가의 근거.** 라우터가 장부를 모른다는 경계선 |
 | `module/build.ts` — `origin: {x: pos.dx, …}` | 생성 시점엔 절대좌표가 **없다**. ①이 로컬인 이유 |
-| `planner/channelGeometryPlanner.ts` — `items` 구성 · `yieldedExports` | 경쟁이 이미 풀린 곳(#14)이자 **정책 B 의 원본** |
+| `channel/ledger/geometry.ts` — `items` 구성 · `yieldedExports` | 경쟁이 이미 풀린 곳(#14)이자 **정책 B 의 원본** |
 | `shared/pipeFlow.ts` 머리 주석 | #11·12 의 규칙. **인접은 칸 쌍의 성질**이라 왜 못 흡수하는지 |
 | `debug/checkRules.ts` — `checkOverlap` | 사후 탐지기. 장부의 **대조군**으로 남긴다 — 없애지 않는다 |
 

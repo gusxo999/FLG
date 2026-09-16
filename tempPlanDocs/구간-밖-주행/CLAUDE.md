@@ -44,7 +44,7 @@
 | `module/policy/trunk/link.ts` — `clusterBeltDepth` 머리말(≈430) | *"행이 안 겹치는 그룹끼리는 같은 depth 를 나눠 쓴다. **다툴 게 없으니 장부도 없다**"* — **깨질 전제의 원문** |
 | `module/policy/trunk/link.ts` — `portCells` | 기둥 밖 두 칸이 어디서 나오나. **표 밖 행은 걸러진다** |
 | `link/build.ts` — `buildPlannedChain` 의 `if (g.fromRowChannel) push(s)` | ㉠ 을 그리는 **유일한 한 줄**. 계획에는 이 구간의 자료가 없다 |
-| `planner/rowChannelPlanner.ts` — `RowCrossing` | 행 채널에 신고하는 것이 `{id, side, x1, x2}` 뿐이라는 증거 |
+| `channel/ledger/row.ts` — `RowCrossing` | 행 채널에 신고하는 것이 `{id, side, x1, x2}` 뿐이라는 증거 |
 | `docs/auto-layout/common/layout-models.md` §5 전수표 | #2(A↔A 같은 모듈)가 **이 자리에서 거짓**이다 · #15·#16 이 ㉠ 의 자국 |
 | `tempPlanDocs/셀장부/셀장부.md` §축 4 · 계획 4 | **경계**: 저쪽은 *"등록하는 자리"*, 이쪽은 *"등록할 자료"* |
 | `tempPlanDocs/벨트-레인/벨트-레인.md` ㉣ | ㉡ 이 세 번 막은 그 계획. **A 트랙이 서야 ㉣ 이 선다** |

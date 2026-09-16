@@ -75,7 +75,7 @@ innerColumnChannel  내부 열 채널   트랙이 **열**로 달린다(열 채�
 | `module/policy/trunk/link.ts` — `clusterBeltDepthsOf` · `tryLinkFace` 의 gap 분기 · `gapRowsFromPlans` | `R` 의 출처 · **미룬 능력**(`machinesOn(...) !== 1`) · 폭 역전 |
 | `module/shape/body/cluster.ts` (93줄) | 형태의 실물 전부. `dx: 0` · `rowGap: number \| number[]` · `columnTapCapacity`(= `2R`) |
 | `module/emit.ts` — `mExt` | **깊이를 어디서 재나.** gap 은 이미 *머신 자기 면*에서 잰다 |
-| `planner/rowChannelPlanner.ts` (머리말) | 축과 무관한 순수 배정 + **순환의 진단**(밖에만 있는 이유) |
+| `channel/ledger/row.ts` (머리말) | 축과 무관한 순수 배정 + **순환의 진단**(밖에만 있는 이유) |
 | `tempPlanDocs/자리-배정/judgements.md` **J4** · 그 문서 머리말 | 착수 조건의 원본, 그리고 **트리거를 규칙으로 적는 규율**(D3) |
 
 ## 실제로 밟은 함정

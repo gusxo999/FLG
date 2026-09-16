@@ -312,7 +312,7 @@ function assignColumns(layers, channels):
 
 | S-LAYER 요소 | 현재 코드 |
 |---|---|
-| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../../../src/autoLayout/planner/channelPlanner.ts)), 열 x 누적은 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts) |
+| 채널 폭 (하한 + 동적) | `CHANNEL_MIN = 3` 하한 + `channelWidthFromTracks` ([channelPlanner.ts](../../../src/autoLayout/channel/ledger/tracks.ts)), 열 x 누적은 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts) |
 | 트랙 내 벨트/투입기/파이프 깔기 | 옛 `routeWithFallback` → `routePorts`(2026-09-16 삭제 → [manual-edit](../../deferred/manual-edit.md)) / `commitRouting` ([shared/cells/path.ts](../../../src/autoLayout/shared/cells/path.ts)) |
 | 라우팅 실패 처리 | 백트래킹 없음 — 실패는 `routeFailures` 카운트만(채널 보장으로 사실상 미발생). `FailureLeaf` 는 머신매칭 실패 전용 |
 | 머신 좌표 결정·commit | 좌표 [run/build/layered.ts](../../../src/autoLayout/run/build/layered.ts), footprint commit `commitContainer` ([machinePlacer.ts](../../../src/autoLayout/shared/cells/place.ts)) |

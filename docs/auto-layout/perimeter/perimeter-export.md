@@ -306,8 +306,8 @@ tags: [auto-layout, placement, routing]
 | ① 산출 | `module/shape/body/ways.ts` | `fillModuleWayOuts` — 모듈이 자기 몸통에 대해 답한다(`moduleWayOuts` + `bodyColumns`) |
 | ② 배정 | `planner/perimeterExitPlanner.ts` · `planner/perimeter/types.ts` | `planPerimeterExits` · 타입 `ExitMode` · `ExitAssignment` · `PerimeterExitPlan` |
 | ② 직진 장부 | `planner/perimeter/directRay.ts` | `DirectRay` · `directRaysCross` — 자리를 안 사는 경로의 등록부 |
-| ② 폭 반영 | `tree/build.ts` · `planner/channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
-| ② 트랙 확정 | `planner/channelGeometryPlanner.ts` | `trackX` 배정 |
+| ② 폭 반영 | `tree/build.ts` · `channel/shape.ts` | `planExits` · `expandBbox` 호출 · `reservedExportCells`(materializeChannelGeometry) |
+| ② 트랙 확정 | `channel/ledger/geometry.ts` | `trackX` 배정 |
 | ③ 방출 | `execution/modulePerimeterPass.ts` | `rePathToPerimeter` · `PerimeterPassResult` |
 | ③ 기하 | `planner/perimeterRouter.ts` | `routePortToPerimeter` · `RouteHint` |
 | 적용 | `run/build/module.ts` | `droppedCellKeys` · `relocOrigin` 반영 |

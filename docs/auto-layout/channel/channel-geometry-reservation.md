@@ -9,7 +9,7 @@ tags: [auto-layout, placement, routing]
 > [.ns-face-relief](../module/ns-face-relief.md) — 같은 갇힘 문제의 N/S 면 측 치료, [.priority-ordering](../common/priority-ordering.md)
 
 > **상태: 구현 완료** (2026-07-09 설계 확정, 같은 날 구현). 통합 장부 =
-> `src/autoLayout/planner/channelGeometryPlanner.ts`. **스위치는 없다** — 2026-09-08 에
+> `src/autoLayout/channel/ledger/geometry.ts`. **스위치는 없다** — 2026-09-08 에
 > off 모드를 통째로 지웠다(아래). 신규 코드는 이 문서의 용어를 쓰지만(§8 대응표) 기존
 > 파일명(delivery, lane)의 개명은 장기 과제로 남아 있다. 검증 결과는 §9.
 >
@@ -269,8 +269,8 @@ dijkstra 를 유지하는 설계에서는 이 역전이 불가능하다(폭을 �
 
 | 문서 용어 | 현 코드 | 개명 목표 |
 |---|---|---|
-| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan`(`planner/channel/types.ts`) | `deliveryRoute` |
-| 반출 경로 | lane (`perimeterExitPlanner.ts`) / 신규 `ExportInput`·`ExportPlan`(`planner/channel/types.ts`) | `exportRoute` |
+| 납품 경로 | delivery (`deliveryRoute.ts`) / 신규 `DeliveryInput`·`DeliveryPlan`(`channel/types.ts`) | `deliveryRoute` |
+| 반출 경로 | lane (`perimeterExitPlanner.ts`) / 신규 `ExportInput`·`ExportPlan`(`channel/types.ts`) | `exportRoute` |
 | 절단선 | (개념 — sameSideOfCut 내부) | `cut` / `cutLine` |
 | 같은 쪽 판정 | `sameSideOfCut` ✓ | `sameSideOfCut` |
 | 열 갈아타기 | `columnSwitch` ✓ (`tryColumnSwitch`) | `columnSwitch` |

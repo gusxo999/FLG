@@ -10,7 +10,7 @@
  * 모양이다(계획 구조-2축 · 2 Step 5a, 2026-09-15 `channelGeometryPlanner.ts` 에서 옮겼다).
  */
 
-import type { Interval } from "../channelPlanner";
+import type { Interval } from "./ledger/tracks";
 
 export type ChannelWall = "W" | "E";
 export type NsEdge = "N" | "S";

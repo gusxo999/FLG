@@ -3,8 +3,8 @@ import { packModuleTree, deliveryKey } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../link/build";
 import type { DeliveryConfig } from "../link/types";
-import { planChannelGeometry } from "../planner/channelGeometryPlanner";
-import type { DeliveryInput, ExportInput } from "../planner/channel/types";
+import { planChannelGeometry } from "../channel/ledger/geometry";
+import type { DeliveryInput, ExportInput } from "../channel/types";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
 

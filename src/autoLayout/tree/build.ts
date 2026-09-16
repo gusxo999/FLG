@@ -58,8 +58,8 @@ import { absPortYOf, assembleDeliveries, placeColumns, spanYOf, stackColumns, un
 import { edgeLinksOf, type EdgeLinks } from "../link/policy/delivery";
 import { pairDeliveries } from "../link/arith/pair";
 // channel 관심사 — 행 채널 · 세로 채널 장부와 그 절대화.
-import { planChannels, rowChannelsOf } from "../planner/channel/ledger";
-import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "../planner/channel/shape";
+import { planChannels, rowChannelsOf } from "../channel/ledger/assign";
+import { materializeChannelGeometry, placeRowChannels, settleDeliveryRows } from "../channel/shape";
 // perimeter 관심사 — 전역 외곽으로 나갈 길의 입력 준비(프레임 확장·반출 대상 포트 수집).
 import { planExits, expandBbox } from "../planner/perimeter/exits";
 

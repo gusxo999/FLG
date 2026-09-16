@@ -23,10 +23,10 @@ Step 3  행 채널을 장부로 승격                                     ← �
 |---|---|
 | [docs/auto-layout/channel/channel-geometry-reservation.md](../../docs/auto-layout/channel/channel-geometry-reservation.md) §3·§6 | **이 계획이 지키려는 문장.** *"경로는 숫자 몇 개로 그려지는 도형"* · 폭 역전 |
 | [docs/auto-layout/channel/s-layer-channel-reservation.md](../../docs/auto-layout/channel/s-layer-channel-reservation.md) §4·§5 | left-edge 를 폭 공식으로 삼은 **원래 논거**. 그때는 경로가 1차원이라고 봤다 |
-| `planner/channelPlanner.ts` 전체 (79줄) | 세 함수의 지위가 이 계획의 대상 |
-| `planner/channelGeometryPlanner.ts` `phantom`(669–689) + 그 위 주석 | **장부 안에서 모델이 갈리는 자리.** 1차원을 고른 사유가 주석에 있다 |
+| `channel/ledger/tracks.ts` 전체 (79줄) | 세 함수의 지위가 이 계획의 대상 |
+| `channel/ledger/geometry.ts` `phantom`(669–689) + 그 위 주석 | **장부 안에서 모델이 갈리는 자리.** 1차원을 고른 사유가 주석에 있다 |
 | `tree/build.ts` `channelWidth`(770–776) · `intervalsByDepth`(552·637·723) | 옛 분기와 **기본 경로에서 죽은 장부** |
-| `planner/rowChannelPlanner.ts` 머리 주석 §*"왜 위치 반영이 여기 없나 — 순환"* | Step 3 의 관문. 같은 하계 모델을 쓰고 있다 |
+| `channel/ledger/row.ts` 머리 주석 §*"왜 위치 반영이 여기 없나 — 순환"* | Step 3 의 관문. 같은 하계 모델을 쓰고 있다 |
 | [tempPlanDocs/glass-채널-폭-분석.md](../glass-채널-폭-분석.md) §3-② | 3 vs 6 실측. 이 계획의 관측 출처 |
 | [tempPlanDocs/채널-양보-명세/](../채널-양보-명세/) | **양보 규칙·관측의 주인.** 이 계획은 폭만 본다 |
 

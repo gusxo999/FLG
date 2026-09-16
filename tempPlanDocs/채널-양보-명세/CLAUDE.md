@@ -25,10 +25,10 @@ Area 를 만진다. 흔들 수 있는 것은 **파이프라인 입력**뿐이다
 
 | 무엇 | 왜 |
 |---|---|
-| `planner/channelGeometryPlanner.ts` 머리 주석 · `planChannelGeometry` 의 **①②③ 블록** | **요소·우선순위·양보 사다리가 전부 거기 있다.** 이 계획은 그걸 옮겨 적지 않고 **확인**한다 |
+| `channel/ledger/geometry.ts` 머리 주석 · `planChannelGeometry` 의 **①②③ 블록** | **요소·우선순위·양보 사다리가 전부 거기 있다.** 이 계획은 그걸 옮겨 적지 않고 **확인**한다 |
 | 같은 파일 `planChannelGeometry` 안 *"실패 비용 순"* 주석 | 우선순위의 **근거**. S8 이 증명하려는 문장이 이것이다 |
 | `tree/build.ts` — `PackChannelGeometry` · `materializeChannelGeometry` 호출부 | **관측 구멍이 여기다.** `exports` 맵이 여기서 소비되고 버려진다 |
-| `planner/rowChannelPlanner.ts` 머리 주석 §*"왜 위치 반영이 여기 없나 — 순환"* | Step 3 의 **관문**. 세로 채널의 수가 행 채널엔 안 통하는 이유 |
+| `channel/ledger/row.ts` 머리 주석 §*"왜 위치 반영이 여기 없나 — 순환"* | Step 3 의 **관문**. 세로 채널의 수가 행 채널엔 안 통하는 이유 |
 | [docs/layout-models.md](../../docs/auto-layout/common/layout-models.md) §3.5 | 피해 등급 · *"진짜 축은 양보"* · 자유도를 재는 법 |
 | `tempPlanDocs/행채널-모델/judgements.md` **J-양보** | 자유도 판단의 본진. **이 계획은 그 앞 단계**다 |
 | `tempPlanDocs/셀장부/judgements.md` **J-충돌차수** | 차수·우선순위의 개념 정리. 이 계획이 그 (나)의 재료를 만든다 |

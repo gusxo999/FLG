@@ -10,7 +10,7 @@
 
 import type { GeneratedModule, ModulePort } from "../module/types/module";
 import { moduleExtent, shiftModule, type Orientation } from "../module/shape/transform";
-import { ROW_CHANNEL_MIN } from "../planner/rowChannelPlanner";
+import { ROW_CHANNEL_MIN } from "../channel/ledger/row";
 import type { DeliverySpec, ModulePlacement, NodeSpec, RowChannel } from "./types/pack";
 import type { TreeIndex } from "./arith/pack";
 import type { DeliveryPairing } from "../link/arith/pair";

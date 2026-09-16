@@ -62,7 +62,7 @@ channelGeometryPlanner.test.ts
 달라지는 건수가 0이 아닐 때.
 0이면 (다)가 옳다 — 안 달라지는 정책을 바꿀 이유가 없다. **물음 2 는 이 조건과 무관하게
 이미 0건이 아니다**(위 빨간 테스트).
-**코드 역참조:** `planner/channelGeometryPlanner.ts` `yieldedExports` — 정책 B 의 원본.
+**코드 역참조:** `channel/ledger/geometry.ts` `yieldedExports` — 정책 B 의 원본.
 **전제가 썩는 조건:** 세로 채널이 유체 우선을 그만두면 정책 B 의 근거가 사라진다.
 
 > **추가(2026-09-10) — 정책 A 가 자리를 하나 더 얻었다.** `직진-장부` 가 반출 배정에

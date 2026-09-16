@@ -55,7 +55,7 @@ import type {
   ExportPlan,
   GeometryContext,
   Jump,
-} from "./channel/types";
+} from "../types";
 import {
   cellsOf,
   columnSwitchShape,
@@ -68,14 +68,14 @@ import {
   type Cell,
   type Placed,
   type Shape,
-} from "./channel/shape";
+} from "../shape";
 import {
   nameFluidFallbacks,
   settleExitSides,
   surfaceItemsOf,
   type ExitSides,
   type SurfaceItem,
-} from "./channel/policy";
+} from "../policy";
 
 /** trackCap 미지정 시의 하한 — 경로가 적어도 이만큼의 트랙은 골라 쓸 수 있게. */
 const MIN_TRACK_CAP = 8;

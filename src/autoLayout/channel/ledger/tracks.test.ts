@@ -4,7 +4,7 @@ import {
   channelWidthFromTracks,
   crossingCount,
   type Interval,
-} from "./channelPlanner";
+} from "./tracks";
 
 describe("channelPlanner — left-edge 트랙 배정", () => {
   it("겹치지 않는 구간은 한 트랙을 공유한다", () => {

@@ -17,8 +17,8 @@
  * > 추상 셀 모델은 `channelGeometryPlanner.ts` 에서 왔다(2026-09-15 Step 5b).
  */
 
-import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { moduleExtent, type Orientation } from "../../module/shape/transform";
+import type { GeneratedModule, ModulePort } from "../module/types/module";
+import { moduleExtent, type Orientation } from "../module/shape/transform";
 import type {
   ChannelGeometryPlan,
   ChannelWall,
@@ -27,13 +27,13 @@ import type {
   GeometryContext,
   NsEdge,
 } from "./types";
-import type { PerimeterExitPlan } from "../perimeter/types";
-import { segment, PERIMETER_MARGIN } from "../../shared/grid";
-import { AUTO_LAYOUT_COORD_DUMP } from "../../shared/flags";
+import type { PerimeterExitPlan } from "../planner/perimeter/types";
+import { segment, PERIMETER_MARGIN } from "../shared/grid";
+import { AUTO_LAYOUT_COORD_DUMP } from "../shared/flags";
 import type {
   DeliveryDirective, ModulePlacement, PackChannelGeometry, RowChannel, RowChannelEntry,
-} from "../../tree/types/pack";
-import type { DeliveryPairing } from "../../link/arith/pair";
+} from "../tree/types/pack";
+import type { DeliveryPairing } from "../link/arith/pair";
 
 /**
  * **⑥ 행 채널 자리** — 이제야 좌표가 붙는다. `top`/`bottom` 은 행 채널의 **빈 칸 범위**다.

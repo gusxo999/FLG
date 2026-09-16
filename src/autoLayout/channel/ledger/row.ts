@@ -23,7 +23,7 @@
  *  그래서 배정이 `topY` **앞**에 설 수 있고, 두 패스가 필요 없다.)
  */
 
-import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./channelPlanner";
+import { assignTracksLeftEdge, channelWidthFromTracks, type Interval } from "./tracks";
 
 /**
  * 행 채널 높이의 **하한**. 세로 채널의 `MODULE_CHANNEL_MIN` 과 짝이다.
