@@ -66,6 +66,8 @@ import {
   registerCommands,
 } from './registry';
 import { runLayout, type RunOverrides } from './runLayout';
+import { renderAt, renderMachines } from './flowView';
+import { currentFlow } from '../UI/store/flowStore';
 import {
   clearSnapshots,
   diffDigests,
@@ -346,6 +348,38 @@ function machinesFor(recipe: { category: string }) {
     m.craftingCategories.includes(recipe.category),
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 가동률 — 캔버스의 빨간 테두리를 텍스트로
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 그리드를 정상상태로 푼 결과(`analysis/flow`). 화면의 테두리와 **같은 함수**(`flowStore.currentFlow`)를
+ * 부르므로 둘이 다른 답을 낼 수 없다. 자동 배치 결과만이 아니라 손으로 놓은 그리드도 푼다.
+ */
+const flow = defineGroup('flow', {
+  machines: {
+    desc: '머신마다 가동률 · 모자란 한 줄과 까닭(✗ 미달 · ? 판정 불가)',
+    fn: () => {
+      const s = renderMachines(currentFlow());
+      console.log(s);
+      return s;
+    },
+  },
+  at: {
+    usage: '(x, y)',
+    desc: '칸 하나 — 벨트면 레인별 흐름·팔, 머신이면 재료별 받음/필요',
+    fn: (x: number, y: number) => {
+      const s = renderAt(currentFlow(), x, y);
+      console.log(s);
+      return s;
+    },
+  },
+  result: {
+    desc: '분석 결과 객체 그대로(FlowResult)',
+    fn: () => currentFlow(),
+  },
+});
 
 const custom = defineGroup('custom', {
   template: {
@@ -632,6 +666,7 @@ function renderHelp(only?: string): string {
     '  copy(flg.report())               카운터·이슈·위반·명령이력을 한 덩어리로',
     "  flg.face('n0-concrete', 'W')     한 면의 단면표 (인자 없이 부르면 모듈 목록)",
     '  flg.check()                      규칙 위반만',
+    '  flg.flow.machines()              머신마다 가동률 — 캔버스의 빨간 테두리를 텍스트로',
     "  flg.snapshot('before') … flg.diff('before')   같은 코드에서 입력만 바꾼 비교",
     '',
     '게임에 없는 레시피를 만들어 시험하려면:',
@@ -654,11 +689,12 @@ export type FlgApi = typeof top & {
   wizard: typeof wizard;
   flags: typeof flags;
   custom: typeof custom;
+  flow: typeof flow;
   store: typeof useLayoutStore;
 };
 
 export function installLayoutDebugApi(): void {
-  const api = { ...top, grid, wizard, flags, custom, store: useLayoutStore } as FlgApi;
+  const api = { ...top, grid, wizard, flags, custom, flow, store: useLayoutStore } as FlgApi;
   (window as unknown as { flg: FlgApi }).flg = api;
   console.log('[flg] 콘솔 디버그 API 설치됨. flg.help() 로 명령 목록.');
 }

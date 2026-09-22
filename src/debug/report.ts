@@ -25,6 +25,8 @@ import { checkLayout, formatViolations } from './checkRules';
 import { currentView, type LayoutView } from './layoutView';
 import { formatJournal, hasScope } from './registry';
 import { readRunStats } from './runStats';
+import { flowSummaryLine } from './flowView';
+import { currentFlow } from '../UI/store/flowStore';
 
 const line = (label: string, body: string): string => `${`─ ${label}`.padEnd(10)}${body}`;
 const sub = (body: string): string => `${' '.repeat(12)}${body}`;
@@ -87,6 +89,10 @@ export function buildReport(): string {
   const out: string[] = [`[flg] 보고 — ${new Date().toLocaleString('ko-KR')}`, ''];
 
   out.push(screenState(), '');
+
+  // **가동률** — 방출이 끝난 그리드를 정상상태로 푼 결과. 위의 카운터가 전부 초록이어도 여기가
+  // 미달이면 게임에서 머신이 논다(`analysis/flow`). 머신별은 `flg.flow.machines()`.
+  out.push(line('가동률', flowSummaryLine(currentFlow())), '');
 
   const d = stats.delivery;
   out.push(
