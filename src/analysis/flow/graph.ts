@@ -347,7 +347,7 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
       let dropLane = -1;
       if (to.kind === 'belt') {
         const b = belts[to.cell];
-        // ① 먼 레인. 벨트와 나란히 서면(옆이 아니면) 오른쪽 — 계획서 §4.9 (b) 의 가정.
+        // ① 먼 레인. 벨트와 나란히 서면(옆이 아니면) 오른쪽 — 게임에서 확인 안 된 가정(`flow-model` §4 (b)).
         const near = sideOf(b, b.dir, { x, y });
         const far: LaneSide = near === 'right' ? 'left' : 'right';
         dropLane = b.lanes[far === 'left' ? 0 : 1];
@@ -387,7 +387,7 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
 
   // ⑦ 투입 순서 — 뿌리에서 거슬러 올라가는 후위 순회. 한 칸에서: 뒤 가지 전부 → 옆 가지 전부 →
   //    그 칸 자신의 투입(왼 레인 → 오른 레인). 그래서 **상류가 먼저, 직진이 먼저, 유입이 투입보다 먼저**
-  //    (계획서 §4.5 · `belt-lane-semantics` ⑦).
+  //    (`flow-model` §2.1 · `belt-lane-semantics` ⑦).
   const dropsByLane = new Map<number, number[]>();
   for (let k = 0; k < arms.length; k++) {
     if (arms[k].dropLane < 0) continue;

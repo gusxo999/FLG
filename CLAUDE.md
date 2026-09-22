@@ -27,7 +27,7 @@
 치고, 아니면 사용자에게 `copy(flg.report())` 결과를 받는다.
 
 ```js
-await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.check()
+await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.check() · flg.flow.machines()
 ```
 
 목록은 `flg.help()`, 규약·괴리는 [docs/debug/ai-console.md](docs/debug/ai-console.md).
@@ -42,7 +42,7 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
-npx vitest run                          # 기준선: 타입 0 · 62파일 784테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
+npx vitest run                          # 기준선: 타입 0 · 65파일 818테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
 ```
 
 ## 프로젝트 메모리

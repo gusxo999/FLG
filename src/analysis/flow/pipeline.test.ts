@@ -1,8 +1,9 @@
 /**
  * ⑫ 진짜 파이프라인의 배치를 푼다 — `runLayeredWizard` 합성 → 패널과 같은 `unifyLeaf` → 그리드.
  *
- * 이 파일의 둘째 시험은 **배치기의 성질을 기록한다**(계획서 §1.3 손셈). 배치기가 외부 공급 상자의
- * 팔 수를 수요에서 세게 되면 그 시험은 깨지는 것이 맞다 — 그때는 기대값을 "전부 100%" 로 바꾼다.
+ * 이 파일의 둘째 시험은 **배치기의 성질을 기록한다** — 링크 포트는 인서터 하나로 선다
+ * (`docs/auto-layout/common/known-limits.md` §13). 배치기가 포트 팔 수를 수요에서 세게 되면 그 시험은
+ * 깨지는 것이 맞다 — 그때는 기대값을 "전부 100%" 로 바꾸고 §13 을 지운다.
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -91,7 +92,7 @@ describe('⑫ 파이프라인 배치의 가동률', () => {
     expect(made).toBeCloseTo(eaten, 6);
   });
 
-  it('§1.3 손셈 — 외부 공급 팔 하나(2.4/s)가 광석 4/s 를 먹여야 해서 하위 60%, 상위는 트렁크 순서대로 굶는다', () => {
+  it('손셈 — 외부 공급 팔 하나(2.4/s)가 광석 4/s 를 먹여야 해서 하위 60%, 상위는 트렁크 순서대로 굶는다', () => {
     const r = analyzeLayout(grid, ctx);
     const subs = byRecipe(r, 'sub-item');
     for (const s of subs) {

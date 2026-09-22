@@ -33,7 +33,7 @@ export function currentFlow(): FlowResult {
 }
 
 interface FlowUiState {
-  /** 캔버스에 머신 가동률 테두리를 그리나. 기본 켜짐(D2). */
+  /** 캔버스에 머신 가동률 테두리를 그리나. 기본 켜짐(`docs/UI/flow-inspection.md` §2.1). */
   showMachines: boolean;
   setShowMachines: (v: boolean) => void;
 }

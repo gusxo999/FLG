@@ -1,7 +1,6 @@
 /**
  * 가동률 분석 — **의도**를 시험한다(스냅샷 수치가 아니다).
  *
- * 번호는 계획서 `tempPlanDocs/가동률-검사/가동률-검사.md` §6 Step 1 의 시험 표와 같다.
  * 좌표 그림에서 인서터 방향은 **픽업 방향**이다(향한 쪽에서 집고 반대쪽에 놓는다).
  */
 
@@ -388,7 +387,7 @@ describe('analyzeLayout — ⑩ 판정 불가', () => {
     expect(v.unknown).toEqual(['scale']);
   });
 
-  it('유체 재료가 있고 아이템이 충분하면 fluid 로 판정 불가 (D4)', () => {
+  it('유체 상자 연결을 모르는데 아이템이 충분하면 fluid 로 판정 불가', () => {
     const grid = createEmptyGrid(12, 8);
     machine(grid, 3, 2, 'plastic');
     feedLeft(grid, 3, 2, 'coal');
@@ -398,7 +397,7 @@ describe('analyzeLayout — ⑩ 판정 불가', () => {
     expect(v.unknown).toEqual(['fluid']);
   });
 
-  it('유체 재료가 있어도 아이템이 모자라면 미달이 확정이다 (D4)', () => {
+  it('유체 상자 연결을 몰라도 아이템이 모자라면 미달이 확정이다 — 낙관 가정 아래서도 모자라므로', () => {
     const grid = createEmptyGrid(12, 8);
     machine(grid, 3, 2, 'plastic');
     feedLeft(grid, 3, 2, 'coal', 'slow-inserter');

@@ -72,8 +72,9 @@
   **경계 인서터가 떨어져 belt→belt 가 된다** = 레인이 모듈 경계를 넘어 산다
 - `src/autoLayout/shared/route.ts` — `collectBeltFlow`·`beltFlowConflictCell`.
   **오늘 「오염」이라 부르는 그 기하가 곧 레인 합류다**
-- `src/analysis/beltFlow.ts` — 벨트 정적 분석. *"한 벨트 = 1품목"* 근사와 `(혼합)` 표시.
-  **레인을 아는 순간 그 근사가 풀린다**(Step 5)
+- `src/analysis/flow/` — 그리드 흐름 분석(가동률 검사). **레인을 센다** — 옛 `beltFlow.ts` 는
+  2026-09-22 에 이것으로 바뀌어 삭제됐고, Step 5 의 몸통(유입 개수 · 레인별 흐름·포화)이 거기서 끝났다
+  (`docs/analysis/flow-model.md`)
 - `src/autoLayout/shared/flags.ts` · `src/UI/components/AutoLayoutDebugTab.tsx` —
   Step 6 의 플래그가 설 자리. 관용구는 `AUTO_LAYOUT_LINK_LADDER`(미완성 기능 = 기본 꺼짐)
 

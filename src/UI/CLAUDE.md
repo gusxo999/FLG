@@ -2,7 +2,7 @@
 
 | 폴더 | 무엇 |
 |---|---|
-| `components/` | React 컴포넌트 — 툴바 · 사이드바 · 모달 · 패널 |
+| `components/` | React 컴포넌트 — 툴바 · 사이드바 · 모달 · 패널. **흐름·가동률 표시는 전부 `components/flow/`** |
 | `store/` | zustand 스토어 (게임데이터 · 레이아웃 · 검사 · 위저드 · 설정 · 토스트) |
 | `pixi/` | PixiJS 렌더러 — 그리드 · 엔티티 · 벨트 · 파이프 그리기 |
 | `i18n/` | ko/en 문자열 + `useT` |
@@ -21,4 +21,5 @@ React 와 PixiJS 를 나눈 이유(캔버스는 React 밖에서 명령형으로 
 ## 읽을 문서
 
 `docs/UI/` 가 이 폴더의 거울이다 —
-[belt-flow-inspection](../../docs/UI/belt-flow-inspection.md)(벨트 셀 클릭 → 흐름량 검사).
+[flow-inspection](../../docs/UI/flow-inspection.md)(100% 가 아닌 머신은 빨간 테두리 · 벨트·머신을 누르면 흐름과 까닭).
+흐름 값 자체의 모델은 [flow-model](../../docs/analysis/flow-model.md) — 화면은 `store/flowStore.currentFlow()` 하나를 읽는다.

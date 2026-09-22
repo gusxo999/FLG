@@ -10,7 +10,7 @@ tags: [factorio-data, routing, auto-layout]
 > **이 문서를 읽어야 하는 때**
 > - 벨트 한 칸에 **두 품목**을 실으려 할 때
 > - 두 벨트를 **합류**시키려 할 때 (`collectBeltFlow` · `beltFlowConflictCell` 을 건드릴 때)
-> - `analysis/beltFlow.ts` 의 흐름 계산을 고칠 때
+> - `analysis/flow/` 의 흐름 계산(가동률 검사)을 고칠 때 — 이 문서의 규칙 일곱이 그 모델의 벨트 규칙이다([[flow-model]])
 > - *"벨트가 멀쩡히 이어져 있는데 한쪽 품목만 안 흐른다"* 를 조사할 때
 
 ## 0. 한 줄 요약
@@ -144,7 +144,7 @@ itemsPerSec = speed × 480
 | [arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) | `× 480` = 두 레인 합 · `laneThroughput` = 절반 | ✅ **계획이 보는 상한은 전부 레인**(2026-09-03) |
 | [arith/link.ts](../../src/autoLayout/module/arith/link.ts) `createLinks` | ✅ 붓기 상한이 **레인**(`laneCapOfTier`) · `bundleCap` 도 | 남은 것은 두 줄이 **한 물리 벨트**를 쓰는 것 |
 | [shared/route.ts](../../src/autoLayout/shared/route.ts) `collectBeltFlow` | 이 기하를 찾아내 **전부 오염으로 막는다** | 허가된 합류만 예외. 나머지는 그대로 오염 |
-| [analysis/beltFlow.ts](../../src/analysis/beltFlow.ts) | *"한 벨트 = 1품목"* 근사. 두 품목 보면 `(혼합)` | **칸마다 유입 개수를 세야** 곡선/사이드로드가 갈린다(⑥). 포화도 레인별 |
+| [analysis/flow/](../../src/analysis/flow/graph.ts) | ✅ **레인을 센다**(2026-09-22) — 칸마다 유입 개수로 곡선/접힘을 가르고(⑥) 흐름·포화가 레인별이다. 옛 `analysis/beltFlow.ts`(한 벨트 = 1품목 · 줄 용량)는 삭제됐다 | 남은 것은 [[flow-model]] §4 의 확인 안 된 가정 둘(정체된 벨트의 우선순위 · 나란히 선 인서터의 레인) |
 | 인서터 필터(②) | `GridCell` 에 자리가 없고 export 도 안 한다 | 새 필드 + `BlueprintEntity.filters` 매핑 |
 | `filter_count` | `scripts/export-gamedata.lua` 가 **안 싣는다** | 필터를 못 다는 인서터를 가리려면 필요하다 |
 
@@ -164,8 +164,8 @@ itemsPerSec = speed × 480
   **모듈 안에서는 레인을 만들 수 없다.** 갈려서 들어와야 한다.
 - **총량이 맞는데 안 흐르는 실패가 있다**(⑦). 벨트 검사가 줄 단위로 포화를 재면 그
   상황을 **정상이라고 말한다** — 한 레인이 22.5 에 닿았는데 줄로는 45 가 안 찼기 때문이다.
-- **`(혼합)` 표시가 항상 결함인 것은 아니다.** [[belt-flow-inspection]] 의 그 표시는
-  *"한 벨트 = 1품목"* 가정에서 나온 경고인데, 레인이 들어오면 **정상 상태**가 된다.
+- **한 벨트에 두 품목은 정상이고, 한 레인에 두 품목이 경고다.** 흐름 검사([[flow-inspection]])는 레인마다
+  품목을 따로 보이고 **한 레인**에 둘이 섞일 때만 경고한다(정상상태가 못 보는 막힘 — [[flow-model]] §5).
 
 ---
 

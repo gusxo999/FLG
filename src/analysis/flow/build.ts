@@ -2,7 +2,7 @@
  * `analyzeLayout` — 그리드 한 판을 풀어 머신 판정과 벨트 칸 흐름을 낸다.
  *
  * 조율만 한다: 그래프를 짓고([graph](graph.ts)) 풀고([solve](solve.ts)) 판정한다. 판정 규칙은
- * 계획서(`tempPlanDocs/가동률-검사/가동률-검사.md`) §4.8 과 D1·D4 다:
+ * `docs/analysis/flow-model.md` §2.5 다:
  *
  * ```
  * u < 1 − 1e-6                         → 미달 (낙관적으로 가정하고도 모자라면 확정이다)
@@ -27,7 +27,7 @@ import type {
   UnknownReason,
 } from './types';
 
-/** D1 — 부동소수 오차만 허용한다. 99% 도 미달이다. */
+/** 부동소수 오차만 허용한다 — 99% 도 미달이다(여유를 두면 머신 수 올림으로 생긴 과잉 생산이 안 보인다). */
 export const FULL_THRESHOLD = 1 - 1e-6;
 const EPS = 1e-9;
 

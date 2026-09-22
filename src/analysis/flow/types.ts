@@ -1,7 +1,7 @@
 /**
  * 흐름 분석의 타입 — 그리드를 **정상상태로** 풀었을 때 무엇이 나오나.
  *
- * 모델은 `tempPlanDocs/가동률-검사/가동률-검사.md` §4 가 적고, 코드의 단일 출처는
+ * 모델은 `docs/analysis/flow-model.md` 가 적고, 코드의 단일 출처는
  * [solve](solve.ts) 머리말이다.
  */
 
@@ -96,7 +96,7 @@ export interface BeltCellFlow {
   y: number;
   lanes: Record<LaneSide, LaneFlow>;
   taps: BeltTap[];
-  /** 한 레인에 두 품목 이상 — 정상상태가 못 보는 막힘 위험(`가동률-검사` §2). */
+  /** 한 레인에 두 품목 이상 — 정상상태가 못 보는 막힘 위험(`flow-model` §5). */
   mixedLane: boolean;
 }
 

@@ -38,6 +38,7 @@ docs/
 ├ factorio/     ← src/factorio/ 의 거울 (+ scripts/export-gamedata.lua)
 ├ blueprint/    ← src/blueprint/ 의 거울
 ├ UI/           ← src/UI/ 의 거울 (components · i18n · pixi · store)
+├ analysis/     ← src/analysis/ 의 거울 (그리드를 읽어 흐름·가동률을 낸다)
 ├ debug/        ← src/debug/ 의 거울 (콘솔 조작 API `flg`)
 └ deferred/     보류·폐기 — 다음 시도가 같은 함정에 안 빠지게
 ```
@@ -140,12 +141,13 @@ Factorio API/데이터의 비직관적 동작과 그 해석. 코드는 [src/fact
 
 ### 🖥️ UI · 검사 · 진단 `#visualization`
 
-화면에 붙은 것 — React 컴포넌트 · 상태 저장소 · PixiJS 렌더러 · 다국어.
-코드는 [src/UI/](../src/UI/) 다.
+화면에 붙은 것 — React 컴포넌트 · 상태 저장소 · PixiJS 렌더러 · 다국어 — 그리고 그 화면이 보여 주는
+**배치 검사**(그리드를 읽어 흐름·가동률을 내는 분석). 코드는 [src/UI/](../src/UI/) · [src/analysis/](../src/analysis/) 다.
 
 | 문서 | 주제 |
 |------|------|
-| [belt-flow-inspection](UI/belt-flow-inspection.md) | 벨트 셀 클릭 → 운반 품목·items/sec. 세션이 아니라 **그리드 정적 분석**이라 수동 배치도 동작 |
+| [flow-model](analysis/flow-model.md) | **가동률 검사의 모델** — 그리드를 정상상태로 풀어 머신마다 가동률. 레인 · 정체(집히는 만큼만 들어간다) · 탐침 둘(공급 능력 · 배출 능력) · 관망은 용량 무한의 풀 · 판정 불가. **탐침을 한 번으로 줄이자는 생각이 들면 §3** |
+| [flow-inspection](UI/flow-inspection.md) | **흐름 검사 화면** — 100% 가 아닌 머신은 빨간 테두리, 누르면 까닭. 흐름 UI 는 전부 `components/flow/` · **연결선이 벨트 클릭을 가로챈다**(§2.3) · 그리드 정적 분석이라 수동 배치도 동작 |
 | [ai-console](debug/ai-console.md) | **콘솔 조작 API `flg`** — 화면을 텍스트로 누르고 읽는다. 왕복 규약 · 세 방식 판정 · 정직한 괴리. 목록은 `flg.help()` |
 
 ### 🚧 보류 · 폐기 결정 `#deferred`
