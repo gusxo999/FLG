@@ -42,7 +42,9 @@ import {
 import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { moduleAtCell } from '../../autoLayout/module/inspect';
 import { overlayView, useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
-import { isBeltLike } from '../../analysis/beltFlow';
+import { isBeltLike } from '../../analysis/flow/graph';
+import { useFlowStore } from '../store/flowStore';
+import { useWizardStore } from '../store/wizardStore';
 
 // ---------------------------------------------------------------------------
 // 이벤트 핸들러
@@ -112,14 +114,16 @@ function handlePointerDown(e: PointerEvent) {
     }
 
     // 연결선 클릭 → 연결 정보. **모드 무관**이며 셀 클릭보다 먼저 본다 —
-    // 실패 진단 선은 빈 그리드 위에 떠 있어 이 분기가 유일한 입구다.
+    // 실패 진단 선은 빈 그리드 위에 떠 있어 이 분기가 유일한 입구다. 성공 배치의 연결선은 벨트 칸
+    // 위에 그려져 아래 벨트 분기를 가로채므로, 누른 칸을 함께 넘겨 모달이 그 칸의 흐름도 보인다.
     const hitLine = hitTestRoutingLine(cx, cy);
     if (hitLine) {
-      store.setSelectedRouting(hitLine);
+      store.setSelectedRouting(hitLine, { x: gx, y: gy });
       return;
     }
 
-    // 빈손 모드에서 벨트류 셀 클릭 → 그 지점 흐름 정보 모달 (선택 드래그보다 우선)
+    // 빈손 모드에서 벨트류 셀 클릭 → 그 지점 흐름 정보 모달 (선택 드래그보다 우선). 머신은 아래
+    // 선택 드래그의 단일 클릭 분기가 모달을 연다 — 흐름 섹션은 entityId 로 머신 판정을 찾는다.
     if (hitCell?.entityName && isBeltLike(hitCell.entityType)) {
       useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId, { x: gx, y: gy });
       return;
@@ -367,6 +371,11 @@ export async function initPixi(
   unsubFns.push(useAutoLayoutRunStore.subscribe(() => renderAll()));
   // gameData 가 늦게 로드돼도 파이프 네트워크 색/터널이 정확히 그려지도록 재렌더 트리거
   unsubFns.push(useGameDataStore.subscribe(() => renderAll()));
+  // 가동률 테두리 — 표시 토글과, 분석의 입력인 인서터 보정(위저드 3단계)이 바뀌면 다시 그린다.
+  unsubFns.push(useFlowStore.subscribe(() => renderAll()));
+  unsubFns.push(useWizardStore.subscribe((s, prev) => {
+    if (s.inserterOverrides !== prev.inserterOverrides) renderAll();
+  }));
 
   // 브라우저 줌(DPR 변경) 감지 — PixiJS resolution 동기화
   const watchDpr = () => {

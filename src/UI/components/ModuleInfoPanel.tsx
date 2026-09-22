@@ -14,6 +14,7 @@ import { useGameDataStore } from '../store/gameDataStore';
 import { type ModulePortCell } from '../../autoLayout/module/inspect';
 import { useWizardStore } from '../store/wizardStore';
 import type { LayoutIssue } from '../../autoLayout/shared/issue';
+import { ModuleFlowRow } from './flow/FlowSummary';
 
 export default function ModuleInfoPanel() {
   const moduleKey = useModuleInspectStore((s) => s.moduleKey);
@@ -79,6 +80,7 @@ export default function ModuleInfoPanel() {
             <span className="text-red-400">출력 {outputPorts}</span>
           </span>
         } />
+        <ModuleFlowRow bbox={mod.bbox} />
 
         {recipe && recipe.ingredients.length > 0 && (
           <ItemList title="입력 품목" color="text-blue-300" items={recipe.ingredients} />

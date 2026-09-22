@@ -3,6 +3,7 @@ import { useLayoutStore } from '../store/layoutStore';
 import { overlaySource } from '../store/autoLayoutRunStore';
 import { summarizeRoutings, type RoutingSummary } from '../../autoLayout/module/inspect';
 import type { Container } from '../../autoLayout/shared/types';
+import { BeltFlowAt } from './flow/FlowSection';
 
 interface Props {
   open: boolean;
@@ -89,6 +90,7 @@ function ContainerCard({
 
 export default function RoutingConnectionModal({ open, onClose }: Props) {
   const selectedRoutingId = useLayoutStore((s) => s.selectedRoutingId);
+  const at = useLayoutStore((s) => s.selectedRoutingAt);
   const src = overlaySource();
 
   useEffect(() => {
@@ -149,6 +151,13 @@ export default function RoutingConnectionModal({ open, onClose }: Props) {
 
           <ContainerCard container={toC} role={toRole} label="To" />
         </div>
+
+        {/* 누른 칸이 벨트면 그 칸의 흐름 — 연결선이 벨트 클릭을 가로채는 자리의 대신 창구 */}
+        {at && (
+          <div className="px-4 pb-3 text-xs">
+            <BeltFlowAt x={at.x} y={at.y} />
+          </div>
+        )}
       </div>
     </div>
   );

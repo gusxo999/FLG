@@ -14,7 +14,7 @@ interface InspectState {
   entityId: string | null;
   /**
    * 클릭한 그리드 셀 좌표 (캔버스 클릭 inspect 시에만 set).
-   * 벨트류 셀이면 정보 모달이 그 지점의 흐름량(beltFlow)을 함께 표시한다.
+   * 벨트류 셀이면 정보 모달의 흐름 섹션이 그 칸의 레인별 흐름을 보여 준다(`components/flow/FlowSection`).
    */
   cell: { x: number; y: number } | null;
   inspect: (name: string | null, entityId?: string | null, cell?: { x: number; y: number } | null) => void;

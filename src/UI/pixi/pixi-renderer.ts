@@ -28,6 +28,8 @@ import { useModuleInspectStore } from '../store/moduleInspectStore';
 import { centerAnchorOrigin, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';
 import { drawPipeShape } from './pixi-draw-pipe';
 import { drawInteractionPoints } from './pixi-draw-entity';
+import { drawFlowOverlay } from './pixi-draw-flow';
+import { currentFlow, useFlowStore } from '../store/flowStore';
 
 // ---------------------------------------------------------------------------
 // 그리드 보조 색상 상수
@@ -604,6 +606,14 @@ export function renderGrid() {
         });
       }
     }
+  }
+
+  // ── 머신 가동률 — 그리드를 정상상태로 푼 결과(`analysis/flow`). 100% 가 아닌 머신만 그린다.
+  //    모듈 테두리 **위에** 얹는다 — 모듈 안의 어느 머신이 노는지가 이 그림의 물음이다.
+  //    게임데이터가 없으면 전부 판정 불가라 그리지 않는다(칩이 그 사실을 말한다).
+  if (useFlowStore.getState().showMachines && useGameDataStore.getState().loaded) {
+    drawFlowOverlay(gridContainer, currentFlow(), scaledTile, offsetX, offsetY,
+      { x1: startX, y1: startY, x2: endX, y2: endY });
   }
 
   // ── 실패 진단 선 — 스냅샷의 납품 경로. 성공 배치의 연결선(위 오버레이 패스)과 **같은

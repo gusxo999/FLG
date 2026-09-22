@@ -10,6 +10,7 @@ import CustomRecipeModal from './UI/components/CustomRecipeModal';
 import CustomRecipeList from './UI/components/CustomRecipeList';
 import AutoLayoutSidebar from './UI/components/AutoLayoutModal';
 import ModuleInfoPanel from './UI/components/ModuleInfoPanel';
+import FlowSummary from './UI/components/flow/FlowSummary';
 import { useInspectStore } from './UI/store/inspectStore';
 import { EntityType, ENTITY_SIZES } from './types/layout';
 import { useLayoutStore } from './UI/store/layoutStore';
@@ -138,6 +139,7 @@ export default function App() {
         {/* Canvas area */}
         <main className="flex-1 relative overflow-hidden bg-[#1a1a2e]">
           <GridCanvas />
+          <FlowSummary />
           <ModuleInfoPanel />
           <Tutorial />
 

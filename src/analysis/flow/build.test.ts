@@ -8,7 +8,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeLayout, machineVerdictAt } from './build';
 import type { FlowCtx, FlowResult, MachineVerdict } from './types';
-import { computeBeltFlowAt } from '../beltFlow';
 import {
   EntityType,
   createEmptyGrid,
@@ -265,6 +264,7 @@ describe('analyzeLayout — 머신 가동률', () => {
     return grid;
   }
 
+  // 옛 beltFlow 는 같은 그리드의 선 벨트 집기를 **첫 재료(판) 율 1/s** 로 잡았다(결함 ㉡, 2026-09-22 삭제 직전 시험으로 확인).
   it('⑤ 다재료 머신은 벨트에 실린 것으로 제 재료를 고른다', () => {
     const grid = circuitGrid();
     const r = analyzeLayout(grid, makeCtx());
@@ -276,12 +276,6 @@ describe('analyzeLayout — 머신 가동률', () => {
     ]));
     const cableTap = r.belts.get('5,8')!.taps.find((t) => t.kind === 'pick')!;
     expect(cableTap.rate).toBeCloseTo(3);
-  });
-
-  it('⑤ 대조 — 옛 beltFlow 는 선 벨트의 집기를 **첫 재료(판)** 율로 잡는다(결함 ㉡)', () => {
-    const grid = circuitGrid();
-    const old = computeBeltFlowAt(grid, 5, 8, makeCtx())!;
-    expect(old.tapsAtCell.find((t) => t.kind === 'pick')!.rate).toBeCloseTo(1);
   });
 
   /** A(gear) → B(rod) → C(rodbox) 직결. 공급 팔·회수 팔 이름으로 병목을 고른다. */
@@ -457,7 +451,7 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
     expect(r.belts.get('3,5')!.lanes.right.items).toEqual([{ item: 'plate', rate: 4 }]);
   });
 
-  it('하류에 소비가 없으면 투입이 막힌다 — 옛 계산은 흐른다고 했던 자리(결함 ㉢)', () => {
+  it('하류에 소비가 없으면 투입이 막힌다 — 옛 beltFlow 는 여기서 4/s 가 흐른다고 했다(결함 ㉢)', () => {
     const grid = createEmptyGrid(14, 8);
     beltRow(grid, 5, 1, 10);
     supply(grid, 2, 3, 'plate');
@@ -467,7 +461,6 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
     const tap = r.belts.get('2,5')!.taps[0];
     expect(tap.rate).toBe(0);
     expect(tap.refused).toBeCloseTo(4);
-    expect(computeBeltFlowAt(grid, 6, 5, makeCtx())!.outflow).toBeCloseTo(4);
   });
 
   it('머신 생산율이 인서터 처리량보다 작으면 머신율로 캡', () => {

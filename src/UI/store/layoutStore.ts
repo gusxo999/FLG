@@ -82,6 +82,11 @@ interface LayoutState {
   autoLayoutCanvasBbox: { x: number; y: number; w: number; h: number } | null;
   /** 클릭한 연결선(오버레이) — `RoutingConnectionModal` 이 이걸로 열린다. 편집과 무관하다. */
   selectedRoutingId: string | null;
+  /**
+   * 연결선을 **누른 칸**. 연결선은 벨트 칸 위에 그려져 벨트 클릭을 가로채므로, 그 칸의 흐름을
+   * 연결선 모달이 대신 보여 준다(`components/flow/FlowSection`). 콘솔·키보드로 열면 null.
+   */
+  selectedRoutingAt: { x: number; y: number } | null;
 
   // Grid actions
   resizeGrid: (width: number, height: number) => void;
@@ -101,7 +106,7 @@ interface LayoutState {
   setAutoLayoutRunning: (v: boolean) => void;
   setExternalAreaBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
   setAutoLayoutCanvasBbox: (bbox: { x: number; y: number; w: number; h: number } | null) => void;
-  setSelectedRouting: (id: string | null) => void;
+  setSelectedRouting: (id: string | null, at?: { x: number; y: number } | null) => void;
   /** InfinityChest/InfinityPipe 를 새 위치로 이동. 성공 여부 반환. */
   moveEntityById: (entityId: string, toX: number, toY: number) => boolean;
 
@@ -224,6 +229,7 @@ export const useLayoutStore = create<LayoutState>()(
     externalAreaBbox: null,
     autoLayoutCanvasBbox: null,
     selectedRoutingId: null,
+    selectedRoutingAt: null,
 
     resizeGrid: (width, height) => {
       get().pushHistory('resizeGrid');
@@ -238,6 +244,7 @@ export const useLayoutStore = create<LayoutState>()(
         externalAreaBbox: null,
         autoLayoutCanvasBbox: null,
         selectedRoutingId: null,
+        selectedRoutingAt: null,
       });
     },
 
@@ -406,7 +413,7 @@ export const useLayoutStore = create<LayoutState>()(
     setExternalAreaBbox: (bbox) => set({ externalAreaBbox: bbox }),
     setAutoLayoutCanvasBbox: (bbox) => set({ autoLayoutCanvasBbox: bbox }),
 
-    setSelectedRouting: (id) => set({ selectedRoutingId: id }),
+    setSelectedRouting: (id, at = null) => set({ selectedRoutingId: id, selectedRoutingAt: id ? at : null }),
 
     moveEntityById: (entityId, toX, toY) => {
       const { grid } = get();
