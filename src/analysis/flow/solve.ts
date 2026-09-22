@@ -38,6 +38,13 @@
  * 직전 탐침에서 **실제로 오간 비율**이다(처음엔 그 품목에 닿는 팔끼리 균등). 그래서 성분 하나만
  * 다시 풀어도 다른 성분에 걸친 몫을 몰라도 된다 — 탐침이 싸진다.
  *
+ * ## 유체 — 관망은 용량 무한의 풀
+ *
+ * 관망에는 순서도 레인도 없다(`pipe-semantics` §2). 탐침은 벨트와 같은 물음을 관망에 던진다 —
+ * 모자라면 **비례로 나눈다** — 다투는 머신은 *이 유체 말고 다른 까닭으로 얼마나 돌 수 있나* 로
+ * 센다(`consumeIntent`). 배출 쪽은 그 거울이다. 무한파이프 공급이 닿으면 언제나 충분하고, 무한 회수가 닿으면
+ * 언제나 다 빠진다 — 반대로 **공급 무한파이프가 붙은 관망에는 생산자가 한 방울도 못 넣는다**(늘 차 있다).
+ *
  * ## 중계 — 보통 상자 · 벨트→벨트 팔
  *
  * 들어온 만큼만 나간다. 판과 판 사이에 값을 넘긴다: 다음 판의 재고 = 이번 판에 들어온 양,
@@ -68,6 +75,9 @@ interface SolveState {
   us: Float64Array;
   /** 배출 능력 — 더 만들려 하면 내보낼 수 있는 비율. */
   ud: Float64Array;
+  /** 머신 → 재료마다의 공급 비율 · 산출마다의 배출 비율(`us`·`ud` 는 그 최솟값). 유체 나눠 갖기가 쓴다. */
+  usParts: Map<number, ItemMap>;
+  udParts: Map<number, ItemMap>;
   /** 팔 → 품목 → 그 머신 몫 중 이 팔의 비율. */
   wIn: Map<number, ItemMap>;
   wOut: Map<number, ItemMap>;
@@ -98,6 +108,8 @@ export interface SolveOutput {
   /** 머신 → 마지막 공급 탐침 · 배출 탐침. 율을 모르는 머신은 없다. */
   supplyProbes: Map<number, PassRecord>;
   drainProbes: Map<number, PassRecord>;
+  /** 머신 → 유체 탐침(받을 수 있는 유체 · 내보낼 수 있는 유체). */
+  fluidProbes: Map<number, { got: ItemMap; sent: ItemMap }>;
   /** 수렴한 `u` 로 그리드 전체를 푼 판. */
   final: PassRecord;
   converged: boolean;
@@ -340,17 +352,26 @@ export function probeTotals(g: FlowGraph, m: number, r: PassRecord, side: 'in' |
   return out;
 }
 
-/** 비율 — 필요/생산이 0 인 품목은 안 본다. 수율 미상 산출은 `makes` 에 없어 빠진다(낙관). */
-function ratio(want: ItemMap, got: ItemMap): number {
-  let u = 1;
-  for (const [it, need] of want) if (need > EPS) u = Math.min(u, (got.get(it) ?? 0) / need);
-  return Math.max(0, u);
+/** 품목마다의 비율 — 필요/생산이 0 인 품목은 안 본다. 수율 미상 산출은 `makes` 에 없어 빠진다(낙관). */
+function parts(pairs: Array<[want: ItemMap, got: ItemMap]>): ItemMap {
+  const out: ItemMap = new Map();
+  for (const [want, got] of pairs) {
+    for (const [it, need] of want) if (need > EPS) out.set(it, Math.max(0, Math.min(1, (got.get(it) ?? 0) / need)));
+  }
+  return out;
 }
+
+const minOf = (m: ItemMap | undefined, except?: string): number => {
+  let u = 1;
+  if (m) for (const [it, r] of m) if (it !== except) u = Math.min(u, r);
+  return u;
+};
 
 export function solveFlow(g: FlowGraph): SolveOutput {
   const n = g.machines.length;
   const st: SolveState = {
     u: new Float64Array(n), us: new Float64Array(n), ud: new Float64Array(n),
+    usParts: new Map(), udParts: new Map(),
     wIn: new Map(), wOut: new Map(),
     relayStock: new Map(), relayDrain: new Map(),
     armStock: new Map(), armDrain: new Map(),
@@ -369,6 +390,7 @@ export function solveFlow(g: FlowGraph): SolveOutput {
 
   const supplyProbes = new Map<number, PassRecord>();
   const drainProbes = new Map<number, PassRecord>();
+  const fluidProbes = new Map<number, { got: ItemMap; sent: ItemMap }>();
   let converged = false;
   let iter = 0;
   for (iter = 1; iter <= MAX_ITER; iter++) {
@@ -390,8 +412,15 @@ export function solveFlow(g: FlowGraph): SolveOutput {
       drainProbes.set(m, rd);
       const got = probeTotals(g, m, rs, 'in');
       const sent = probeTotals(g, m, rd, 'out');
-      const us = ratio(rates.needs, got);
-      const ud = ratio(rates.makes, sent);
+      const gotFluid = fluidSupply(g, st, m);
+      const sentFluid = fluidDrain(g, st, m);
+      fluidProbes.set(m, { got: gotFluid, sent: sentFluid });
+      const usParts = parts([[rates.needs, got], [rates.needsFluid, gotFluid]]);
+      const udParts = parts([[rates.makes, sent], [rates.makesFluid, sentFluid]]);
+      st.usParts.set(m, usParts);
+      st.udParts.set(m, udParts);
+      const us = minOf(usParts);
+      const ud = minOf(udParts);
       delta = Math.max(delta, Math.abs(us - st.us[m]), Math.abs(ud - st.ud[m]));
       st.us[m] = us;
       st.ud[m] = ud;
@@ -418,9 +447,100 @@ export function solveFlow(g: FlowGraph): SolveOutput {
 
   const final = runPass(g, st, allComps, g.directs, -1, 'actual', true);
   return {
-    u: st.u, us: st.us, ud: st.ud, supplyProbes, drainProbes, final,
+    u: st.u, us: st.us, ud: st.ud, supplyProbes, drainProbes, fluidProbes, final,
     converged, iterations: Math.min(iter, MAX_ITER),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 유체
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 이 머신이 유체 f 를 드나드는 관망 중 하나라도 `nets` 에 있나. */
+const touches = (ports: Map<string, Set<number>>, f: string, nets: Set<number>) => {
+  const mine = ports.get(f);
+  if (!mine) return false;
+  for (const n of mine) if (nets.has(n)) return true;
+  return false;
+};
+
+/** 관망들에 붙은 머신(자기 빼고). */
+function around(g: FlowGraph, nets: Set<number>, side: 'in' | 'out', self: number): Set<number> {
+  const out = new Set<number>();
+  const book = side === 'in' ? g.netConsumers : g.netProducers;
+  for (const n of nets) for (const m of book.get(n) ?? []) if (m !== self) out.add(m);
+  return out;
+}
+
+/**
+ * 관망 하나를 다투는 머신의 **뜻** — 이 유체 말고 다른 까닭으로는 얼마까지 돌 수 있나.
+ *
+ * 관망에는 우선순위가 없어 모자라면 비례로 나누는데, 다투는 쪽을 실제 `u` 로 두면 그 `u` 가 **바로 이
+ * 관망 탓에** 줄어든 값이라 나눠 갖기가 스스로를 깎는다(소비자 둘이 10 을 나누면 0.5 씩이어야 하는데
+ * 0.618 로 수렴했다 — `u = 1/(1+u)`). 그래서 이 유체를 뺀 나머지 까닭으로만 잰다:
+ * 소비자는 `min(배출 능력, 다른 재료의 공급 비율)`, 생산자는 `min(공급 능력, 다른 산출의 배출 비율)`.
+ */
+const consumeIntent = (st: SolveState, c: number, f: string) => Math.min(st.ud[c], minOf(st.usParts.get(c), f));
+const produceIntent = (st: SolveState, p: number, f: string) => Math.min(st.us[p], minOf(st.udParts.get(p), f));
+
+/** 공급 탐침(유체) — 이 머신이 100% 로 먹으려 하면 유체마다 받을 수 있는 양. */
+function fluidSupply(g: FlowGraph, st: SolveState, m: number): ItemMap {
+  const mn = g.machines[m];
+  const got: ItemMap = new Map();
+  if (mn.fluid.unresolved) {
+    for (const [f, need] of mn.rates!.needsFluid) got.set(f, need); // 연결을 모른다 — 낙관(판정 불가)
+    return got;
+  }
+  for (const [f, need] of mn.rates!.needsFluid) {
+    const nets = mn.fluid.in.get(f) ?? new Set<number>();
+    if ([...nets].some((n) => g.nets[n].infiniteSupply.has(f))) {
+      got.set(f, need);
+      continue;
+    }
+    let supply = 0;
+    for (const p of around(g, nets, 'out', m)) {
+      if (touches(g.machines[p].fluid.out, f, nets)) supply += (g.machines[p].rates!.makesFluid.get(f) ?? 0) * produceIntent(st, p, f);
+    }
+    let others = 0;
+    for (const c of around(g, nets, 'in', m)) {
+      if (touches(g.machines[c].fluid.in, f, nets)) others += (g.machines[c].rates!.needsFluid.get(f) ?? 0) * consumeIntent(st, c, f);
+    }
+    got.set(f, supply >= need + others - EPS ? need : (supply * need) / (need + others));
+  }
+  return got;
+}
+
+/** 배출 탐침(유체) — 이 머신이 100% 로 만들려 하면 유체마다 내보낼 수 있는 양. */
+function fluidDrain(g: FlowGraph, st: SolveState, m: number): ItemMap {
+  const mn = g.machines[m];
+  const sent: ItemMap = new Map();
+  if (mn.fluid.unresolved) {
+    for (const [f, made] of mn.rates!.makesFluid) sent.set(f, made);
+    return sent;
+  }
+  for (const [f, made] of mn.rates!.makesFluid) {
+    const nets = mn.fluid.out.get(f) ?? new Set<number>();
+    const ns = [...nets].map((n) => g.nets[n]);
+    if (ns.some((n) => n.infiniteSink.has(f) || n.infiniteSink.has('*'))) {
+      sent.set(f, made);
+      continue;
+    }
+    // 공급 무한파이프가 붙어 있으면 관망은 늘 차 있다 — 넣을 자리가 없다.
+    if (ns.some((n) => n.infiniteSupply.has(f))) {
+      sent.set(f, 0);
+      continue;
+    }
+    let drain = 0;
+    for (const c of around(g, nets, 'in', m)) {
+      if (touches(g.machines[c].fluid.in, f, nets)) drain += (g.machines[c].rates!.needsFluid.get(f) ?? 0) * consumeIntent(st, c, f);
+    }
+    let others = 0;
+    for (const p of around(g, nets, 'out', m)) {
+      if (touches(g.machines[p].fluid.out, f, nets)) others += (g.machines[p].rates!.makesFluid.get(f) ?? 0) * produceIntent(st, p, f);
+    }
+    sent.set(f, drain >= made + others - EPS ? made : (drain * made) / (made + others));
+  }
+  return sent;
 }
 
 /**

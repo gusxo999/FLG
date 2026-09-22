@@ -16,7 +16,7 @@ const UNKNOWN_LABEL: Record<string, string> = {
   kind: '레시피 모델 밖(연구실·채굴기)',
   yield: '수율 미상',
   scale: '저울 없는 팔·벨트',
-  fluid: '유체(아직 안 푼다)',
+  fluid: '유체 상자 연결 미상',
 };
 
 /** 한 줄 요약 — `flg.report()` 가 쓴다. */
@@ -32,9 +32,11 @@ export function limitText(v: MachineVerdict): string {
   if (v.state === 'unknown') return `판정 불가 — ${v.unknown.map((u) => UNKNOWN_LABEL[u] ?? u).join(' · ')}`;
   if (!v.limit) return v.unknown.length ? `(가정: ${v.unknown.map((u) => UNKNOWN_LABEL[u] ?? u).join(' · ')})` : '';
   const { side, item, by } = v.limit;
-  const why = side === 'input'
-    ? (by === 'arms' ? '넣는 팔이 모자란다' : '벨트가 덜 준다')
-    : (by === 'arms' ? '꺼내는 팔이 모자란다' : '벨트가 안 받아 간다(정체)');
+  const why = by === 'pipe'
+    ? (side === 'input' ? '관이 덜 준다(유체)' : '관이 안 받아 간다(유체)')
+    : side === 'input'
+      ? (by === 'arms' ? '넣는 팔이 모자란다' : '벨트가 덜 준다')
+      : (by === 'arms' ? '꺼내는 팔이 모자란다' : '벨트가 안 받아 간다(정체)');
   const row = side === 'input'
     ? v.inputs.find((i) => i.item === item)
     : v.outputs.find((o) => o.item === item);

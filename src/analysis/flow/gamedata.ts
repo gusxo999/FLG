@@ -104,6 +104,13 @@ export interface MachineRates {
   makes: Map<string, number>;
   /** 수율을 모르는 아이템 산출 — 흐름에는 싣되(낙관) 비율 판정에서는 뺀다. */
   unknownYield: Set<string>;
+  /** 유체 재료 → 정격 필요량(/s). */
+  needsFluid: Map<string, number>;
+  /** 유체 산출 → 정격 생산량(/s). 수율을 모르면 빠진다(`yield`). */
+  makesFluid: Map<string, number>;
+  /** 레시피의 유체 줄 — 유체 상자 배정(`fluidbox_index`)을 [fluid](fluid.ts) 가 읽는다. */
+  fluidIngredients: { name: string; fluidbox_index?: number }[];
+  fluidProducts: { name: string; fluidbox_index?: number }[];
   reasons: UnknownReason[];
 }
 
@@ -124,29 +131,32 @@ export function machineRates(origin: GridCell, ctx: FlowCtx): MachineRates | Unk
 
   const reasons: UnknownReason[] = [];
   const needs = new Map<string, number>();
+  const needsFluid = new Map<string, number>();
+  const fluidIngredients: MachineRates['fluidIngredients'] = [];
   for (const ing of recipe.ingredients) {
-    if (ing.type === 'fluid') {
-      if (!reasons.includes('fluid')) reasons.push('fluid');
-      continue;
-    }
-    needs.set(ing.name, (needs.get(ing.name) ?? 0) + craftsPerSec * ing.amount);
+    const into = ing.type === 'fluid' ? needsFluid : needs;
+    into.set(ing.name, (into.get(ing.name) ?? 0) + craftsPerSec * ing.amount);
+    if (ing.type === 'fluid') fluidIngredients.push({ name: ing.name, fluidbox_index: ing.fluidbox_index });
   }
   const makes = new Map<string, number>();
+  const makesFluid = new Map<string, number>();
+  const fluidProducts: MachineRates['fluidProducts'] = [];
   const unknownYield = new Set<string>();
   for (const p of recipe.products) {
-    if (p.type === 'fluid') {
-      if (!reasons.includes('fluid')) reasons.push('fluid');
-      continue;
-    }
+    if (p.type === 'fluid') fluidProducts.push({ name: p.name, fluidbox_index: p.fluidbox_index });
     const y = productYield(p);
     if (y === undefined) {
-      unknownYield.add(p.name);
+      if (p.type === 'item') unknownYield.add(p.name);
       if (!reasons.includes('yield')) reasons.push('yield');
       continue;
     }
-    makes.set(p.name, (makes.get(p.name) ?? 0) + craftsPerSec * y * eff.productivityMultiplier);
+    const into = p.type === 'fluid' ? makesFluid : makes;
+    into.set(p.name, (into.get(p.name) ?? 0) + craftsPerSec * y * eff.productivityMultiplier);
   }
-  return { recipe: recipe.name, craftsPerSec, needs, makes, unknownYield, reasons };
+  return {
+    recipe: recipe.name, craftsPerSec, needs, makes, unknownYield,
+    needsFluid, makesFluid, fluidIngredients, fluidProducts, reasons,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

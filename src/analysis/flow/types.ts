@@ -25,7 +25,7 @@ export interface FlowCtx {
  *  - `kind`      — 레시피 모델 밖의 변환기(연구실·채굴기)
  *  - `yield`     — 범위 산출물의 기대 수율을 모른다
  *  - `scale`     — 그 머신이 닿는 팔·벨트에 저울(회전 속도·벨트 속도)이 없는 프로토타입이 있다
- *  - `fluid`     — 유체 재료·산출이 있다(유체는 아직 안 푼다)
+ *  - `fluid`     — 유체를 쓰는데 게임데이터가 유체 상자의 연결을 말해 주지 않는다
  *
  * 앞의 둘은 **율을 아예 모른다**. 뒤의 셋은 **낙관적으로 가정하고 푼다** — 그래서 그 가정
  * 아래서도 모자라면 미달은 확정이고, 모자라지 않을 때만 판정 불가가 된다.
@@ -48,15 +48,16 @@ export interface MachineVerdict {
   u: number;
   /** 정격 제작 수/초(모듈 반영). 모르면 NaN. */
   craftsPerSec: number;
-  /** 재료마다 — 100% 로 돌려 할 때 **받을 수 있는 양**과 정격 필요량(/s). 아이템만. */
-  inputs: { item: string; got: number; need: number }[];
-  /** 산출마다 — 100% 로 돌려 할 때 **내보낼 수 있는 양**과 정격 생산량(/s). 아이템만. */
-  outputs: { item: string; sent: number; made: number }[];
+  /** 재료마다 — 100% 로 돌려 할 때 **받을 수 있는 양**과 정격 필요량(/s). `fluid` 면 유체. */
+  inputs: { item: string; got: number; need: number; fluid?: true }[];
+  /** 산출마다 — 100% 로 돌려 할 때 **내보낼 수 있는 양**과 정격 생산량(/s). `fluid` 면 유체. */
+  outputs: { item: string; sent: number; made: number; fluid?: true }[];
   /**
    * 가장 모자란 한 줄 — 화면의 "왜". `u < 1` 일 때만.
-   * `by`: `arms` = 그 머신 팔의 처리량이 모자란다 · `belt` = 벨트(나 상대)가 안 준다/안 받는다.
+   * `by`: `arms` = 그 머신 팔의 처리량이 모자란다 · `belt` = 벨트(나 상대)가 안 준다/안 받는다 ·
+   * `pipe` = 유체 관망이 안 준다/안 받는다(닿은 관망이 없으면 그것도 여기다).
    */
-  limit?: { side: 'input' | 'output'; item: string; by: 'arms' | 'belt' };
+  limit?: { side: 'input' | 'output'; item: string; by: 'arms' | 'belt' | 'pipe' };
   /** 판정 불가 사유 전부(`state === 'unknown'` 일 때 비어 있지 않다). */
   unknown: UnknownReason[];
   /** 율을 모르는 머신(`no-recipe`·`kind`)과 벨트·직결을 공유한다 — 그 가정 위의 판정이다. */

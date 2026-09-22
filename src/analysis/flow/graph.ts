@@ -28,6 +28,7 @@ import {
   type ChestRole,
   type MachineRates,
 } from './gamedata';
+import { buildFluidNets, machineFluidPorts, type FluidNet, type MachineFluidPorts } from './fluid';
 import type { FlowCtx, LaneSide, UnknownReason } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +94,8 @@ export interface MachineNode {
   comps: Set<number>;
   /** 이 머신이 끝인 직결 팔(양끝이 벨트가 아닌 것). */
   directs: number[];
+  /** 유체 재료·산출이 드나드는 관망. */
+  fluid: MachineFluidPorts;
 }
 
 export interface ChestNode {
@@ -127,6 +130,11 @@ export interface FlowGraph {
   directs: number[];
   /** 벨트→벨트 팔 — 한 성분에서 집어 다른 성분에 놓는다. */
   transfers: number[];
+  /** 유체 관망 — 용량 무한의 풀([fluid](fluid.ts)). */
+  nets: FluidNet[];
+  /** 관망 → 그 관망에 유체를 넣는 머신 · 빼는 머신. */
+  netProducers: Map<number, Set<number>>;
+  netConsumers: Map<number, Set<number>>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,6 +309,7 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
           rates: typeof r === 'string' ? null : r,
           unknownKind: typeof r === 'string' ? r : null,
           armsIn: [], armsOut: [], comps: new Set(), directs: [],
+          fluid: { in: new Map(), out: new Map(), unresolved: false },
         });
       } else if (isContainer(c, ctx)) {
         chestIdx.set(key(x, y), chests.length);
@@ -458,7 +467,25 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
     if (a.from.kind === 'belt' && a.to.kind === 'belt') transfers.push(k);
   }
 
-  return { belts, lanes, arms, machines, chests, comps, directs, transfers };
+  // ⑨ 유체 — 관망을 묶고 머신의 유체 상자를 잇는다
+  const { nets, netAt } = buildFluidNets(grid, ctx);
+  const netProducers = new Map<number, Set<number>>();
+  const netConsumers = new Map<number, Set<number>>();
+  const addTo = (m: Map<number, Set<number>>, n: number, v: number) => {
+    const s = m.get(n);
+    if (s) s.add(v);
+    else m.set(n, new Set([v]));
+  };
+  machines.forEach((mn, m) => {
+    const r = mn.rates;
+    if (!r || (r.fluidIngredients.length === 0 && r.fluidProducts.length === 0)) return;
+    const ent = mn.cell.entityName ? ctx.entityMap.get(mn.cell.entityName) : undefined;
+    mn.fluid = machineFluidPorts(grid, mn, ent, netAt, r.fluidIngredients, r.fluidProducts);
+    for (const set of mn.fluid.in.values()) for (const n of set) addTo(netConsumers, n, m);
+    for (const set of mn.fluid.out.values()) for (const n of set) addTo(netProducers, n, m);
+  });
+
+  return { belts, lanes, arms, machines, chests, comps, directs, transfers, nets, netProducers, netConsumers };
 }
 
 /** 머신 footprint — 프로토타입 크기, E/W 면 가로세로를 바꾼다. */

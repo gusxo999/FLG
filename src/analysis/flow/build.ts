@@ -85,13 +85,19 @@ function verdictOf(g: FlowGraph, sol: SolveOutput, m: number): MachineVerdict {
   const r = mn.rates;
   const got = probeTotals(g, m, rs, 'in');
   const sent = probeTotals(g, m, rd, 'out');
-  const inputs = [...r.needs].map(([item, need]) => ({ item, got: got.get(item) ?? 0, need }));
-  const outputs = [
+  const fl = sol.fluidProbes.get(m) ?? { got: new Map<string, number>(), sent: new Map<string, number>() };
+  const inputs: MachineVerdict['inputs'] = [
+    ...[...r.needs].map(([item, need]) => ({ item, got: got.get(item) ?? 0, need })),
+    ...[...r.needsFluid].map(([item, need]) => ({ item, got: fl.got.get(item) ?? 0, need, fluid: true as const })),
+  ];
+  const outputs: MachineVerdict['outputs'] = [
     ...[...r.makes].map(([item, made]) => ({ item, sent: sent.get(item) ?? 0, made })),
     ...[...r.unknownYield].map((item) => ({ item, sent: sent.get(item) ?? 0, made: NaN })),
+    ...[...r.makesFluid].map(([item, made]) => ({ item, sent: fl.sent.get(item) ?? 0, made, fluid: true as const })),
   ];
 
   const unknown: UnknownReason[] = [...r.reasons];
+  if (mn.fluid.unresolved) unknown.push('fluid');
   const scale = [...mn.armsIn, ...mn.armsOut].some((k) => !g.arms[k].capKnown)
     || [...mn.comps].some((c) => g.comps[c].scaleUnknown);
   if (scale) unknown.push('scale');
@@ -127,11 +133,12 @@ function limitOf(
 ): MachineVerdict['limit'] {
   const mn = g.machines[m];
   const rows = side === 'input'
-    ? inputs.map((i) => ({ item: i.item, ratio: i.need > EPS ? i.got / i.need : Infinity }))
-    : outputs.map((o) => ({ item: o.item, ratio: o.made > EPS ? o.sent / o.made : Infinity }));
-  const best = rows.reduce<{ item: string; ratio: number } | null>(
+    ? inputs.map((i) => ({ item: i.item, fluid: !!i.fluid, ratio: i.need > EPS ? i.got / i.need : Infinity }))
+    : outputs.map((o) => ({ item: o.item, fluid: !!o.fluid, ratio: o.made > EPS ? o.sent / o.made : Infinity }));
+  const best = rows.reduce<{ item: string; fluid: boolean; ratio: number } | null>(
     (b, x) => (x.ratio < (b?.ratio ?? Infinity) ? x : b), null);
   if (!best) return undefined;
+  if (best.fluid) return { side, item: best.item, by: 'pipe' };
   // 그 품목에 **닿을 수 있는** 팔만 본다 — 판 벨트의 팔이 남는다고 선 벨트가 모자란 까닭이
   // 팔일 수는 없다. 출력은 팔마다 산출 전부를 나르므로 전부 닿는다.
   const all = side === 'input' ? mn.armsIn : mn.armsOut;

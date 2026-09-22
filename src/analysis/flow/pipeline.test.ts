@@ -102,3 +102,64 @@ describe('⑫ 파이프라인 배치의 가동률', () => {
     expect(tops.map((u) => Math.round(u * 100))).toEqual([100, 100, 40, 0]);
   });
 });
+
+/**
+ * 유체 트리 — 가스(유체)를 만드는 머신이 관을 타고 플라스틱 머신을 먹인다.
+ * 머신은 커스텀 레시피 합성기(`factorio/customRecipe`)로 만든다 — 유체 상자 좌표를 손으로 적으면
+ * 배치기와 분석이 같은 어긋남을 같이 믿는다.
+ *
+ * 손셈: 플라스틱 2대 × 가스 20/s = 40 = 가스 머신 2대 × 20/s. 석탄·원유는 팔 하나(2.4/s)로 1/s 씩.
+ * 그래서 **전부 100%** 이고, 판정 불가(유체)가 **하나도 없어야** 한다.
+ */
+describe('⑫ 파이프라인 배치의 가동률 — 유체', () => {
+  it('유체를 만들고 쓰는 머신이 모두 판정되고 전부 100%', async () => {
+    const { compileCustomData } = await import('../../factorio/customRecipe');
+    const custom = compileCustomData({
+      machines: [{
+        name: 'chem', size: 3, craftingSpeed: 1, craftingCategories: ['chem'],
+        fluidBoxes: [{ role: 'input', face: 'W', offset: 1 }, { role: 'output', face: 'E', offset: 1 }],
+      }],
+      recipes: [
+        { name: 'plastic', category: 'chem', energyRequired: 1,
+          ingredients: [{ name: 'coal', amount: 1, type: 'item' }, { name: 'gas', amount: 20, type: 'fluid' }],
+          products: [{ name: 'plastic', amount: 1, type: 'item' }] },
+        { name: 'gas', category: 'chem', energyRequired: 1,
+          ingredients: [{ name: 'crude', amount: 1, type: 'item' }],
+          products: [{ name: 'gas', amount: 20, type: 'fluid' }] },
+      ],
+    });
+    useGameDataStore.getState().setGameData({
+      entities: [
+        ...custom.entities,
+        ...DATA.entities.filter((e) => e.type !== 'assembling-machine'),
+        { name: 'pipe', type: 'pipe', tile_width: 1, tile_height: 1 },
+        { name: 'pipe-to-ground', type: 'pipe-to-ground', tile_width: 1, tile_height: 1, max_underground_distance: 10 },
+      ] as unknown as Entity[],
+      recipes: custom.recipes,
+    });
+    const res = await runLayeredWizard({
+      ...INPUT,
+      targetRecipe: 'plastic',
+      internalIngredients: new Set(['gas']),
+      selectedMachines: ['chem'],
+      selectedUndergroundPipes: ['pipe-to-ground'],
+    });
+    const leaf = res.tree.candidates[0];
+    expect(leaf).toBeDefined();
+    const { placed } = unifyLeaf(leaf);
+    let w = 0;
+    let h = 0;
+    for (const p of placed) { w = Math.max(w, p.x + 2); h = Math.max(h, p.y + 2); }
+    const g = createEmptyGrid(w, h);
+    for (const p of placed) g.cells[p.y * w + p.x] = p.cell;
+    const gd = useGameDataStore.getState();
+    const r = analyzeLayout(g, { entityMap: gd.entityMap, recipeMap: gd.recipeMap, moduleMap: gd.moduleMap });
+
+    expect(r.summary.unknown).toBe(0);
+    expect(byRecipe(r, 'gas').length).toBeGreaterThan(0);
+    expect(r.summary.full).toBe(r.summary.total);
+    for (const m of byRecipe(r, 'plastic')) {
+      expect(m.inputs.find((i) => i.item === 'gas')).toMatchObject({ got: 20, need: 20, fluid: true });
+    }
+  });
+});

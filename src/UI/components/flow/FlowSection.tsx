@@ -25,9 +25,8 @@ type T = ReturnType<typeof useT>;
 /** 모자란 한 줄 — 화면의 "왜". */
 export function limitLabel(v: MachineVerdict, t: T): string | null {
   if (!v.limit) return null;
-  const key = v.limit.side === 'input'
-    ? (v.limit.by === 'arms' ? 'inputArms' : 'inputBelt')
-    : (v.limit.by === 'arms' ? 'outputArms' : 'outputBelt');
+  const by = v.limit.by === 'arms' ? 'Arms' : v.limit.by === 'pipe' ? 'Pipe' : 'Belt';
+  const key = `${v.limit.side}${by}`;
   return t(`flow.limit.${key}`, { item: v.limit.item });
 }
 
@@ -86,14 +85,14 @@ function MachineFlowView({ v, result }: { v: MachineVerdict; result: FlowResult 
       {v.inputs.length > 0 && (
         <RateTable
           head={[t('flow.machine.ingredients'), t('flow.machine.got'), t('flow.machine.need')]}
-          rows={v.inputs.map((i) => ({ item: i.item, a: i.got, b: i.need, bad: i.item === shortItem && v.limit?.side === 'input' }))}
+          rows={v.inputs.map((i) => ({ item: i.item, fluid: i.fluid, a: i.got, b: i.need, bad: i.item === shortItem && v.limit?.side === 'input' }))}
           unit={t('flow.machine.perSec')}
         />
       )}
       {v.outputs.length > 0 && (
         <RateTable
           head={[t('flow.machine.products'), t('flow.machine.sent'), t('flow.machine.made')]}
-          rows={v.outputs.map((o) => ({ item: o.item, a: o.sent, b: o.made, bad: o.item === shortItem && v.limit?.side === 'output' }))}
+          rows={v.outputs.map((o) => ({ item: o.item, fluid: o.fluid, a: o.sent, b: o.made, bad: o.item === shortItem && v.limit?.side === 'output' }))}
           unit={t('flow.machine.perSec')}
         />
       )}
@@ -107,9 +106,10 @@ function MachineFlowView({ v, result }: { v: MachineVerdict; result: FlowResult 
 
 function RateTable({ head, rows, unit }: {
   head: [string, string, string];
-  rows: { item: string; a: number; b: number; bad: boolean }[];
+  rows: { item: string; fluid?: true; a: number; b: number; bad: boolean }[];
   unit: string;
 }) {
+  const t = useT();
   return (
     <div className="space-y-0.5">
       <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-[10px] uppercase tracking-wide text-gray-500">
@@ -122,7 +122,10 @@ function RateTable({ head, rows, unit }: {
           key={r.item}
           className={`grid grid-cols-[1fr_auto_auto] gap-x-3 font-mono text-[11px] ${r.bad ? 'text-red-300' : 'text-gray-200'}`}
         >
-          <span className="truncate" title={r.item}>{r.item}</span>
+          <span className="truncate" title={r.item}>
+            {r.fluid && <span className="text-[9px] uppercase tracking-wide text-sky-400 mr-1">{t('flow.machine.fluid')}</span>}
+            {r.item}
+          </span>
           <span className="text-right">{fmtRate(r.a)}</span>
           <span className="text-right text-gray-400">{Number.isNaN(r.b) ? '?' : fmtRate(r.b)}{unit}</span>
         </div>
