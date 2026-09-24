@@ -22,6 +22,8 @@
  *
  * ```
  * ① 링크 면 배정      자기 기하를 스스로 갖는다 → 가장 덜 자유롭다 → 먼저
+ *                     **좌석 단계(`tree/build.seatTree`)가 이미 끝냈다** — 양끝이 함께 정하는 일이라
+ *                     모듈 밖에서 좌석 창구로 앉히고, 여기서는 굳힌 값(`seatedFaces`)을 받는다
  * ② 유체 줄 조립      면을 우리가 못 고른다(머신 fluid_box 가 강제) → 그다음
  * ③ 나머지 줄 배정    ①②가 남긴 예산 안에서 고른다
  * ④ gap 폭 산출       ①의 부산물 — 이 값이 머신 좌표를 정한다
@@ -38,8 +40,8 @@
  *
  * ## 이 파일은 순서만 쥔다
  *
- * 두 함수가 뼈대다 — [planLinkFaces](⓪ 유체 면 → ① 무대 → ② 링크 좌석)와 [planModulePorts]
- * (① 무대 → ② 링크 몫 → ③ 유체 줄 → ④ 나머지 줄 → ⑤ 못 부은 줄 → ⑥ 부산물). 고르는 일은
+ * 두 함수가 뼈대다 — [moduleFacesOf](굳힌 좌석에서 장부를 다시 연다)와 [planModulePorts]
+ * (① 장부 → ② 링크 몫 → ③ 유체 줄 → ④ 나머지 줄 → ⑤ 못 부은 줄 → ⑥ 부산물). 고르는 일은
  * [policy] · [linkPlanner], 자리를 묻고 적는 일은 [ledger], 세는 일은 [arith] 가 한다
  * (2026-09-14 계획 구조-2축 · 2 Step 3b). 좌석표는 먼저 앉은 것이 이기므로 **부르는 순서가 곧 답**이고,
  * 그 순서가 이 파일에 있다.
@@ -245,16 +247,16 @@ export function planModulePorts(
   const unpourable = unpourableOf(input, restLines, restLinks);
   recordPortPlanStats(st, input, count, restLinks);
   // ⑥ 부산물 — 좌석이 정한 gap 폭 · 점프해야 할 면 · 링크 깊이 · 사다리로 올릴 사유
-  const plans = [st.out.plans, st.in.plans, restLinks.out.plans, restLinks.in.plans];
+  const faces = faceAssignmentOf(st, restLinks);
   return {
     linkFaces: { out: st.out.plans, in: st.in.plans },
     restLinks,
     // gap 폭 — ①④의 부산물. 우리가 고르는 값이 아니다.
-    rowGaps: gapRowsFromPlans(count, plans),
+    rowGaps: gapRowsFromPlans(count, faces.all),
     pipePlanned: pipe.planned,
     isJumpableToClusterPipe: st.isJumpableToClusterPipe,
-    gapExitSides: gapExitSidesFromPlans([st.out.plans, restLinks.out.plans], [st.in.plans, restLinks.in.plans]),
-    linkFaceDepths: linkFaceDepths(plans),
+    gapExitSides: gapExitSidesFromPlans(faces.out, faces.in),
+    linkFaceDepths: linkFaceDepths(faces.all),
     linkedKeys,
     depthShortages: depthShortagesOf(st),
     // 부을 수 없어 줄이 하나도 안 난 나머지 줄 — **삼키지 않는다**(위 [unpourableLines]).
@@ -263,6 +265,21 @@ export function planModulePorts(
     // 유체가 못 앉으면 나머지 줄도 통째로 실패한다(반만 놓으면 그 머신이 조용히 굶는다).
     rest: restOutcomeOf(input, linkedKeys, pipe),
   };
+}
+
+/**
+ * **이 모듈의 면 배정** — 링크 줄과 나머지 줄의 계획을 한 이름으로. 부산물(gap 폭 · 빠져나가는 옆면 ·
+ * 옆면 최대 깊이)은 모두 **이것 하나**에서 유도된다.
+ *
+ * 예전엔 이름이 없어 배열 넷을 부르는 자리마다 다시 묶었다 — 한 곳이 나머지 줄을 빠뜨려도 아무도 모른다.
+ */
+function faceAssignmentOf(
+  st: Pick<ModuleFaces, "out" | "in">,
+  rest: RestSeating,
+): { all: (LinkFacePlan | undefined)[][]; out: (LinkFacePlan | undefined)[][]; in: (LinkFacePlan | undefined)[][] } {
+  const out = [st.out.plans, rest.out.plans];
+  const inn = [st.in.plans, rest.in.plans];
+  return { all: [st.out.plans, st.in.plans, rest.out.plans, rest.in.plans], out, in: inn };
 }
 
 /**

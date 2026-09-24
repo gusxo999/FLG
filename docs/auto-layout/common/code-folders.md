@@ -115,8 +115,13 @@ gamedata 어댑터 (prototype·게임데이터 해석)
 뼈대가 단계를 순서대로 부른다.** 시간 축(무엇이 언제 태어나나)은 [[pipeline-lifecycle]] 이 든다.
 
 폴더에 번호를 붙여 순서를 드러내는 안은 **기각했다(구조-2축, 2026-09-12). 거짓말이 되기 때문이다** —
-`module` 과 `link` 는 얽혀 돈다. 링크 하나를 앉히려면 두 모듈의 장부를 함께 봐야 해서 `seatLinkEdge`
-(`module/policy/seat`)가 **링크 축으로 돌면서 모듈 장부를 쓴다.** 번호는 이 사실을 감춘다.
+`module` 과 `link` 는 얽혀 돈다. 링크 하나를 앉히려면 두 모듈에 함께 물어야 해서 `seatLinkEdge`
+(`link/policy/seat`)가 **링크 축으로 돌면서 두 모듈의 좌석 창구에 묻고 받는다.** 번호는 이 사실을 감춘다.
+
+> **2026-09-24 — 장부는 모듈 밖으로 안 나간다**(계획 링크-좌석 · 1). 예전 문장은 *"두 모듈의 장부를 함께 봐야 해서
+> `seatLinkEdge`(`module/policy/seat`)가 모듈 장부를 쓴다"* 였다. 함께 봐야 하는 것은 장부가 아니라 **대답**이었다 —
+> 한 링크의 양끝 자리는 서로를 안 본다([[module-planning]] §4.6). 그래서 모듈은 좌석 창구(`FaceSeating`)를 내주고,
+> 양끝이 합의해야 하는 결정(합류 · 쪼갬 · 원자성 · 수단 사이의 순서)만 `link/` 가 쥔다.
 
 ## 현재 트리
 
@@ -142,7 +147,7 @@ autoLayout/
 │   ├ ledger/{face,seat}.ts      장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
 │   ├ shape/                     도형 — body(머신 좌표 위) · link(순번 축 · **계획과 방출의 단일 출처**) ·
 │   │                                  cluster · transform · ways(내 몸통에 안 막히는 방향)
-│   ├ policy/                    정책 — port(단일 진입점 뼈대) · seat · link · trunk
+│   ├ policy/                    정책 — port(단일 진입점 뼈대) · seat(좌석 창구 · 나머지 줄) · link · trunk
 │   ├ build.ts                   조율 — generateModule 뼈대
 │   ├ emit.ts                    찍기 — **이 관심사에서 셀을 만드는 유일한 파일**
 │   ├ late.ts                    늦은 결정 — 흐름의 끝 칸 · 지하 종착
@@ -154,6 +159,8 @@ autoLayout/
 │   ├ ledger.ts                  장부 — 전 모듈 점유 · 계획 체인의 예약 · 깐 칸과 corridor · 뗄 것
 │   ├ shape.ts                   도형 — 탐색 경계 · 뗄 칸 · 좌석 이음 · 계획 체인 · 연속성
 │   ├ policy/{edge,delivery}.ts  정책 — 간선의 링크 / 납품 사다리(계획 → 탐색 → 예약 무시)
+│   ├ policy/seat.ts             정책 — 링크를 양끝 모듈의 좌석 창구에 함께 앉힌다(합류 · 쪼갬 · 원자성 · 수단 순서)
+│   ├ testSeat.ts                시험 전용 — 모듈 하나짜리 시험에 좌석을 제품 경로로 앉혀 준다
 │   ├ emit.ts                    찍기 — 체인 → 벨트 · 파이프 셀
 │   └ build.ts                   조율 — 한 납품씩 부르고 신원을 찍는 18줄 뼈대
 ├ channel/                     통로 — 여러 연결이 나눠 쓰는 자원

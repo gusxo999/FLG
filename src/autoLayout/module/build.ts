@@ -6,7 +6,8 @@
  * ## 사슬 — 단계마다 새로 아는 것
  *
  * ```
- * ① 계획      자리 전부(좌표 없음) — 면 · 깊이 · 좌석 · gap 폭     planner/module/planModulePorts
+ * ① 계획      자리 전부(좌표 없음) — 면 · 깊이 · 좌석 · gap 폭     module/policy/port.planModulePorts
+ *             (링크의 자리는 좌석 단계가 이미 정해 굳힌 값으로 온다 — `input.seatedFaces`)
  * ② 몸통      머신 좌표 · 틀 · ring                               module/shape.layoutModule
  * ③ 장부      점유(머신 발자국) · 방출 누적기                      openModuleSheet(여기)
  * ④ 링크 줄    링크 좌석의 좌표 → 링크 셀                         layLinkLines(여기) · module/shape.placeLinkSeats
@@ -17,7 +18,7 @@
  * ```
  *
  * ④ → ⑥ → ⑦ 은 **점유가 쌓이는 순서**다 — ④가 쓴 칸을 ⑥이 피하고, ⑥이 쓴 칸에 ⑦의 기둥이 끊긴다.
- * 셀을 만드는 일은 전부 `execution/module/emitModule` 에 있다.
+ * 셀을 만드는 일은 전부 `module/emit` 에 있다.
  *
  * ## 왜 "루트처럼"
  * 자식 클러스터를 만들 때 부모를 전혀 보지 않고, 클러스터 자신을 루트로 간주한다 —
@@ -41,10 +42,10 @@ import type { IoLine } from "./types/line";
 import type { BeltMerge, BeltTerminus, GeneratedModule, ModuleInput, ModulePort } from "./types/module";
 import { layoutModule, placeLinkSeats, type ModuleBody } from "./shape/body";
 import { buildTrunkContext } from "./policy/trunk";
-// 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(planner/module/ 소관).
+// 계획 — 자리 배정 전부. 좌표 이전 단계라 머신을 놓기 전에 돈다(module/policy).
 import { planModulePorts } from "./policy/port";
 import type { ModulePortPlan } from "./policy/port";
-// 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, planner/perimeter 소관).
+// 반출 계획의 입력 — 모듈이 자기 몸통에 대해 답한다(계층 위반 V1 해소, 소비처는 perimeter).
 import { fillModuleWayOuts } from "./shape/ways";
 import type { Container, PlacedCell } from "../shared/types";
 import { cellKey } from "../shared/grid";

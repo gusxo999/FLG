@@ -66,7 +66,7 @@ export interface FluidJumpBudget {
 }
 
 /**
- * **점프 예산을 조립하는 한 곳** — 계획([planLinkFaces])과 거절([admitFluidTrunks])이 이 함수를 부른다.
+ * **점프 예산을 조립하는 한 곳** — 계획([fluidFacesOf])과 거절([admitFluidTrunks])이 이 함수를 부른다.
  * 식은 [FluidJumpBudget.beltDepths] 머리말의 문장 그대로다.
  *
  * **면당 깊이 = 서로 다른 reach 값 개수.** 예전엔 `longInserter ? 2 : 1` 로 세어 reach 3종을 골라도

@@ -44,11 +44,16 @@ tags: [auto-layout, placement, module]
 ## 2. 어떻게 하나 — 제약이 센 쪽부터, 한 함수 안에서
 
 ```
-planModulePorts(input, count)              ← 좌표가 없다
-  ① 링크 면 배정      allocateLinkFaces ×2 → spillLinkFacesToGap ×2
+tree/build.seatTree                        ← 좌표가 없다 · 트리 전체
+  ① 링크 면 배정      모듈마다 좌석 창구(openFaceSeating)를 열고,
+                      간선마다 seatLinkEdge(link/policy/seat)가 양끝 창구에 묻고(ask) 받는다(take)
+                      → 창구를 닫아 굳힌 값(SeatedFaces)을 ModuleInput.seatedFaces 에 싣는다
+
+planModulePorts(input, count)              ← 좌표가 없다 · 모듈 하나
+  ①′ 장부 다시 열기   moduleFacesOf — 굳힌 값에서 **복사해** 연다(받은 값은 안 바꾼다)
   ② 유체 줄 조립      pipePlanned · isJumpableToClusterPipe
   ③ 나머지 줄 배정    planBundles(줄마다 `g`) → externalLineGroups → allocateLinkFaces ×3
-  ④ gap 폭 산출       gapRowsFromPlans
+  ④ gap 폭 산출       gapRowsFromPlans(이 모듈의 면 배정 — faceAssignmentOf)
   → ModulePortPlan
 
 generateModule
@@ -56,6 +61,16 @@ generateModule
   placeLinkSeats(machines, plan.linkFaces) ← 덧셈뿐(module/shape/body)
   emit*(...)                                ← 방출
 ```
+
+> **2026-09-24 — ①이 모듈 밖으로 나갔고, 넘기는 것이 값이 됐다**(계획 링크-좌석 · 1).
+> 링크는 양끝이 함께 앉아야 하므로(한쪽만 꽂힌 링크는 쓸모가 없다) 트리 전체를 보는 좌석 단계가 앉힌다.
+> 그런데 한 링크의 양끝 **자리**는 서로를 안 본다(§4.6 표의 *"무엇을 안 보고"*) — 그래서 모듈은 장부를 내주지 않고
+> **좌석 창구**만 내준다. 면 · 깊이 · 끝은 창구가 고르고, 양끝이 합의해야 하는 것(합류 · 쪼갬 · 원자성 · 막혔을 때
+> 수단의 순서)만 링크 쪽이 쥔다.
+>
+> **`generateModule` 은 입력의 순수 함수다** — 같은 입력이면 같은 답이다. 굳힌 좌석은 그 입력의 일부라
+> `generateModule` 은 그것을 안 바꾸고 복사해서 연다. 예전에는 넘기는 쪽이 *"쓰다 만 장부"* 를 넘기며 방어용
+> 사본을 떴다(`cloneLinkFaceStage` — 2026-08-29 에 사본 없이 재사용해 21개 시험이 떨어진 뒤의 방어).
 
 **순서는 취향이 아니라 제약의 세기다(스도쿠 원칙).**
 
@@ -269,6 +284,11 @@ a(j, d) = ⌈ per_j / tp(reach d−1) ⌉      후보마다 다시 센다 (`arms
 > 국소성  구간막힘이면 그 자리에서 쪼개고 토막을 이어 앉힌다      ← 밖에서 고쳐 다시 안 만든다
 > 무대    배정이 `generateModule` **밖**에서 산다(방출 없이 돈다)
 > ```
+>
+> **2026-09-24 — 좌석 창구.** 간선마다 앉히는 일은 `link/policy/seat` 로 갔고, 모듈의 좌석표를 **직접** 쥐지 않는다.
+> 모듈마다 좌석 창구(`FaceSeating`)를 열어 **묻고**(`ask` — 장부 불변, 면은 창구가 고른다: `near` = 선호 면 · `far` = 넘침 순서)
+> **받는다**(`take`). 끝나면 창구를 닫아 **굳힌 값**(`SeatedFaces`)으로 넘긴다 — 위 셋째 줄의 *"무대"* 는 이제
+> 반쯤 채운 무대가 아니라 **값**이다(§2).
 
 배정이란 `plans[i]` 가 `undefined` → [LinkFacePlan] 으로 바뀌는 **단 한 번의 쓰기**다.
 그때 [commitLinkFace] 가 좌석표에 칸까지 청구하므로 **되돌릴 자리가 없다**(R1).

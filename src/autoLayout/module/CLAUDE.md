@@ -11,13 +11,14 @@
 
 ```
 types/line.ts     무엇을 나르나      IoLine · PlannedLine · SupplyCapacity · Link
-types/seat.ts     어디에 앉나        LinkFacePlan · LinkSeats · DepthShortage · LinkFaceStage
+types/seat.ts     어디에 앉나        LinkFacePlan · LinkSeats · DepthShortage · ModuleFaces
+                                     좌석 창구 — FaceSeating · SeatOffer · SeatReceipt · SeatedFaces(링크 쪽에 내주는 계약)
 types/module.ts   무엇을 받고 내나   ModuleInput · GeneratedModule · ModulePort · TrunkContext · BeltTerminus
 arith/trunk.ts   셈                 trunkEndKey · flowEnd · 유체 점프 예산 · 막힘 · 벨트 깊이 상한 · 유체 줄 조회
 ```
 
-**함수의 서명에만 쓰이는 타입은 옮기지 않는다**(`ModulePortPlan`·`EdgeSeatResult`·`LadderRung` 은
-`policy/` 제자리). 여러 층이 함께 읽을 때만 여기로 온다. 여기 두는 이유는 하나다 —
+**함수의 서명에만 쓰이는 타입은 옮기지 않는다**(`ModulePortPlan`·`LadderRung` 은 `policy/` 제자리,
+`EdgeSeatResult` 는 `link/policy/seat` 제자리). 여러 층이 함께 읽을 때만 여기로 온다. 여기 두는 이유는 하나다 —
 타입이 계획 계층에 있으면 방출기가 그걸 가지러 **위로** 올라가고, 값까지 얹혀 있으면 순환이 된다
 (2026-09-13 전까지 `emit → build` 가 `trunkEndKey` 하나 때문에 런타임 간선이었다).
 
@@ -61,6 +62,22 @@ arith/trunk.ts   셈                 trunkEndKey · flowEnd · 유체 점프 예
 `linkId` 를 만드는 곳은 `tree/build.makeLinkId` **한 곳뿐**이고,
 여기서는 `ModulePort.linkId` 로 그대로 흘려보낸다. **파싱하는 코드가 0 인 것이
 모듈-링크 분리의 실질**이다 — 파싱하는 순간 모듈이 형제를 알게 된다.
+
+## 링크의 자리는 **좌석 창구**로 정해진다
+
+링크는 양끝 모듈이 함께 앉아야 하므로(한쪽만 꽂힌 링크는 쓸모가 없다) 좌석 단계(`tree/build.seatTree`)가
+**모듈 밖에서** 앉힌다. 그때 이 폴더가 내주는 것은 **좌석 창구**(`policy/seat.openFaceSeating` — `FaceSeating`)
+하나다. 장부는 창구 안에 있고, 링크 쪽(`link/policy/seat`)은 묻고(`ask`) 받을(`take`) 뿐이다.
+
+```
+링크 쪽이 정한다   합류 · 쪼갬 · 원자성 · 막혔을 때 수단의 순서      — 양끝을 다 봐야 답이 선다
+창구가 정한다      면 · 깊이 · 끝 · 인서터 행                         — 한 모듈만 봐도 답이 선다
+```
+
+좌석 단계가 끝나면 창구를 닫아 **굳힌 값**(`SeatedFaces`)으로 `ModuleInput.seatedFaces` 에 싣는다.
+`generateModule` 은 그 값에서 자기 장부를 **복사해** 열고(`policy/port.moduleFacesOf`) 나머지 줄을 앉힌다 —
+받은 값을 안 바꾸므로 같은 입력이면 같은 답이다. **링크가 있는데 굳힌 좌석이 없으면 거절한다**(모듈 혼자 링크를
+앉히는 길은 없다). 모듈 하나짜리 시험은 `link/testSeat.seatedAlone` 이 제품 경로로 앉혀 준다.
 
 ## 이 폴더는 셀을 만들지 않는다
 
