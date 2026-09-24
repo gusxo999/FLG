@@ -68,7 +68,7 @@ function linkFarFaces(side: "from" | "to"): readonly PortFace[] {
  * (`docs/auto-layout/module/module-planning.md` §4.6).
  */
 export function openFaceSeating(
-  input: Pick<ModuleInput, "machine" | "lines" | "inserters" | "fluidTrunk">,
+  input: Pick<ModuleInput, "machine" | "lines" | "inserters" | "fluidTrunk" | "undergroundBelts">,
   count: number,
 ): FaceSeating {
   // ⓪ 유체 면 — 머신이 강제한다. 표는 면을 처음 볼 때 유체 칸을 찍어 차린다

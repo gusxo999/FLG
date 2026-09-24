@@ -136,6 +136,10 @@ export function buildReport(): string {
         + (fl.splits > 0 ? ` · 쪼갬 ${fl.splits}` : '')
         + (fl.seatPickSouth + fl.seatPickFiltered > 0
           ? ` · 행 고르기(S흐름 ${fl.seatPickSouth} · 거름 ${fl.seatPickFiltered})` : '')
+        + (fl.diveOwn + fl.diveYield + fl.diveNoType + fl.diveEnd > 0
+          ? ` · 잠수(도착 ${fl.diveOwn} · 비켜 주기 ${fl.diveYield}`
+            + `${fl.diveNoType > 0 ? ` · **지하벨트 없음 ${fl.diveNoType}**` : ''}`
+            + `${fl.diveEnd > 0 ? ` · 끝 칸에 걸림 ${fl.diveEnd}` : ''})` : '')
         + (fl.endsCoarse > 0 ? ` · **끝 낟알로 잃음 ${fl.endsCoarse}**` : '')
         + (fl.endsDisagree > 0 ? ` · **장부 어긋남 ${fl.endsDisagree}**` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),

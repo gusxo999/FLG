@@ -84,8 +84,11 @@ Step 3(잠수)이 끝난 뒤,
           격자-클러스터 Step 3(기둥 수 C · 내부 열 채널)이 착수되면
 ```
 
-**코드 역참조 — 아직 안 달았다.** 달 자리는 `module/ledger/face.ts` `depthClear`(한 열 구간 불겹침을 칸으로 막는 곳)와
-`module/arith/depth.ts` `planBundles`(부등식). Step 3 착수 때 단다.
+**코드 역참조** — `module/ledger/face.ts` 머리말 §칸의 종류(한 열 구간 불겹침 — `depthClear`)와 `module/arith/depth.ts` `planBundles`
+머리말(부등식). 2026-09-24 Step 3 에서 달았다.
+
+**Step 3 이 끝났다(2026-09-24, 플래그 뒤)** — 얹기의 해금 조건 앞 절반(*"Step 3 이 끝난 뒤"*)이 섰다. 뒤 절반(좌석은 남는데 깊이 예산
+때문에 g=1 줄이 gap 으로 밀리는 입력)은 아직 관측된 적이 없다.
 
 ---
 

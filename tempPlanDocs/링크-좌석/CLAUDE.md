@@ -1,4 +1,4 @@
-> 상태: **진행 중** — Step 0 ✅ · **Step 1 ✅** · **Step 2 ✅**(2026-09-24, 플래그 `AUTO_LAYOUT_SEAT_PICK` 기본 꺼짐) · Step 3 착수
+> 상태: **진행 중** — Step 0 ✅ · **Step 1 ✅** · **Step 2 ✅** · **Step 3 ✅**(2026-09-24, 플래그 `AUTO_LAYOUT_SEAT_PICK` · `AUTO_LAYOUT_LINK_DIVE` 기본 꺼짐) · Step 4 착수
 >
 > Step 1(좌석 창구)만 확정이다. Step 2~4 는 **방향**이다 — 규칙(무엇을 하나)은 사용자와 정했고,
 > 실행 방법(어떻게 하나)은 앞 단계가 끝날 때 다시 적는다.

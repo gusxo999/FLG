@@ -57,9 +57,13 @@ export function renderFace(
   const margin = Math.max(0, opts.margin ?? 1);
   const horizontal = face === 'W' || face === 'E';
 
+  const tunnel = tunnelBodyCells(view);
+  // **터널 몸통**은 놓인 셀이 없어 빈칸으로 보인다 — 그러면 "그 행에 벨트가 끊겼다" 로 읽힌다. 땅속임을 표시한다.
   const at = (x: number, y: number): string => {
     const c = view.cells.get(cellKey(x, y));
-    return c ? abbrev(c.type) : '.';
+    const under = tunnel.has(cellKey(x, y));
+    if (!c) return under ? '~ug~' : '.';
+    return under ? `${abbrev(c.type).slice(0, 4)}~` : abbrev(c.type);
   };
 
   // 깊이 d(1..depth) → 그 면에서의 절대 좌표(면에 수직인 축).
@@ -133,7 +137,33 @@ export function renderFace(
     '',
     '약칭: Assem=조립기 Furn=용광로 Inser/LongI=인서터 Belt/UgBlt=벨트 Pipe/UgPip=파이프',
     '      CHEST/PIPE=무한상자·무한파이프(대문자=외부) chest=일반상자 .=빈 칸',
+    '      ~ug~=지하벨트 몸통(땅속 — 땅 위가 빈 칸) · Inse~ 처럼 끝이 ~ 면 그 칸 밑으로 지하벨트가 지난다',
   ].join('\n');
+}
+
+/**
+ * **지하벨트 몸통 칸** — 입구마다 흐름 방향으로 처음 만난 같은 이름 · 같은 방향의 출구까지, 그 사이 칸.
+ * 도중에 같은 이름의 입구를 먼저 만나면 짝이 없는 것이다(종착). 흐름 분석(`analysis/flow/graph.nextOf`)과 같은 짝짓기다.
+ */
+function tunnelBodyCells(view: LayoutView): Set<string> {
+  const out = new Set<string>();
+  const MAX = 16;
+  for (const c of view.cells.values()) {
+    if (c.type !== EntityType.UndergroundBelt || c.undergroundType !== 'input') continue;
+    const v = dirVector(c.direction);
+    for (let k = 1; k <= MAX; k++) {
+      const n = view.cells.get(cellKey(c.x + v.x * k, c.y + v.y * k));
+      if (!n || n.type !== EntityType.UndergroundBelt || n.name !== c.name || n.direction !== c.direction) continue;
+      if (n.undergroundType === 'output') for (let j = 1; j < k; j++) out.add(cellKey(c.x + v.x * j, c.y + v.y * j));
+      break;
+    }
+  }
+  return out;
+}
+
+/** 16-방향 인코딩(0 N · 4 E · 8 S · 12 W)의 단위 벡터. */
+function dirVector(d: number): { x: number; y: number } {
+  return d === 0 ? { x: 0, y: -1 } : d === 4 ? { x: 1, y: 0 } : d === 8 ? { x: 0, y: 1 } : d === 12 ? { x: -1, y: 0 } : { x: 0, y: 0 };
 }
 
 function range(a: number, b: number): number[] {

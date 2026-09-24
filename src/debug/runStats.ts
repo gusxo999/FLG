@@ -196,6 +196,22 @@ export interface FaceDepthCounters {
   seatPickSouth: number;
   seatPickFiltered: number;
   /**
+   * **잠수** — 막힌 칸을 땅속으로 비켜 간 후보 수(`AUTO_LAYOUT_LINK_DIVE`). 앉은 **후보** 기준이다(받기 전).
+   *
+   * ```
+   * diveOwn     도착한 줄이 남의 포트(못) 밑으로 잠수했다
+   * diveYield   먼저 앉은 줄이 도착한 줄의 포트에게 그 행을 땅속으로 내줬다(비켜 주기)
+   * diveNoType  잠수로 풀릴 막힘이었는데 지하벨트가 없다(안 골랐거나 그 줄의 운반량을 못 감당한다)
+   * diveEnd     잠수로 풀릴 막힘인데 입출구가 끝 칸(포트가 붙는 칸 · 집는 쪽의 종착 칸)에 걸린다 — 문법의 경계
+   * ```
+   *
+   * `diveNoType` 은 **이름표로 안 낸다** — 지하벨트를 안 고른 판은 오늘과 바이트가 같아야 해서다. 경계는 여기서 본다.
+   */
+  diveOwn: number;
+  diveYield: number;
+  diveNoType: number;
+  diveEnd: number;
+  /**
    * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`DepthShortage`).
    *
    * *"깊이 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
@@ -261,7 +277,7 @@ const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
 
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
-  endsCoarse: 0, endsDisagree: 0, seatPickSouth: 0, seatPickFiltered: 0,
+  endsCoarse: 0, endsDisagree: 0, seatPickSouth: 0, seatPickFiltered: 0, diveOwn: 0, diveYield: 0, diveNoType: 0, diveEnd: 0,
   shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
@@ -401,7 +417,7 @@ export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
   // *"안 세었다"* 였다는 뜻이라, 그 수를 관문으로 읽던 글이 거짓을 읽고 있었다.
   for (const k of
     ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips", "splits",
-     "endsCoarse", "endsDisagree", "seatPickSouth", "seatPickFiltered"] as const)
+     "endsCoarse", "endsDisagree", "seatPickSouth", "seatPickFiltered", "diveOwn", "diveYield", "diveNoType", "diveEnd"] as const)
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);

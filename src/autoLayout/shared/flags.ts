@@ -199,3 +199,26 @@ export let AUTO_LAYOUT_SEAT_PICK = false;
 export function setAutoLayoutSeatPick(v: boolean): void {
   AUTO_LAYOUT_SEAT_PICK = v;
 }
+
+/**
+ * AUTO_LAYOUT_LINK_DIVE — **잠수** 스위치(`module/policy/link.diveRelief`).
+ *
+ * `true` 면 옆면(W/E)의 줄이 막힌 칸을 **땅속으로 비켜 간다** — 자르지도 다른 면으로 넘기지도 않고:
+ *
+ * ```
+ * 도착한 줄의 벨트가 남의 포트(못) 위를 지나야 한다   → 도착한 줄이 그 행을 잠수한다
+ * 도착한 줄의 포트가 먼저 깔린 벨트 위에 서야 한다     → 먼저 앉은 줄이 그 행을 땅속으로 내준다(비켜 주기)
+ * ```
+ *
+ * 서는 조건(T1~T4): 지하벨트를 골랐고 그 줄의 운반량을 감당한다 · 몸통이 인서터 행이 아니다 · 입출구가 그 줄의
+ * 구간 안쪽이고 물리 거리가 사거리 안이다 · 종착 입구가 같은 열 앞쪽에서 짝이 되지 않는다(종착이 종류를 바꾼다).
+ * 합류 쌍은 잠수하지 않는다. 규칙은 `docs/auto-layout/module/trunk-blocked.md` §1 · §4.
+ *
+ * **끄거나 지하벨트를 안 고르면 오늘 동작 그대로다** — 기전: 지하 종류가 없으면 제안에 터널도 비켜 주기도 안 생긴다.
+ * 켜는 법은 `flg.flags.linkDive(true)`.
+ */
+export let AUTO_LAYOUT_LINK_DIVE = false;
+
+export function setAutoLayoutLinkDive(v: boolean): void {
+  AUTO_LAYOUT_LINK_DIVE = v;
+}

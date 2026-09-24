@@ -35,6 +35,7 @@ import {
   makeContainerCell,
   makeInserterCell,
   makePipeCell,
+  makeUndergroundBeltCell,
   makeUndergroundPipeCell,
 } from "../shared/cells/builder";
 // 유체 줄 조회는 순수 모듈(`module/fluidPorts`)에 있다 — clusterModule 로 가면 런타임 순환이 된다.
@@ -47,8 +48,19 @@ import { recordFaceDepthStats, recordLaneMerge } from "../../debug/runStats";
 // **틀과 길** — 배정이 청구할 때 부른 도형(`linkShape`)을 모듈 좌표에 얹는 곳이다(work-kinds §7 D1).
 import {
   inputRouteOf, linkFrameOf, machineExtent, outputRouteOf, pipeFrameOf, seatCellsOf, seatsOf, tapAnchorOf,
-  type LinkFrame, type PipeFrame,
+  type LinkFrame, type PipeFrame, type RouteCell,
 } from "./shape/body";
+
+/**
+ * **길 한 칸 → 셀** — 지상 벨트, 또는 잠수 입출구([RouteCell.ug])면 지하벨트. 지하의 방향은 흐름 방향이다
+ * (입구 · 출구 모두 — `shared/cells/path.emitItemPath` 와 같은 규약). 종류는 배정이 고른 것([LinkFacePlan.undergroundName]).
+ */
+function routeCellOf(c: RouteCell, beltName: string, undergroundName: string | undefined, pair: PortPair): PlacedCell {
+  const dir = vectorToDirection(c.v.x, c.v.y);
+  if (!c.ug) return makeBeltCell(c.at, dir, beltName, pair);
+  if (!undergroundName) throw new Error(`잠수 입출구 (${c.at.x},${c.at.y}) 에 지하벨트 종류가 없다 — 배정이 몸통만 싣고 종류를 빠뜨렸다`);
+  return makeUndergroundBeltCell(c.at, dir, c.ug, undergroundName, pair);
+}
 
 
 /**
@@ -359,7 +371,7 @@ export function emitOutputLinks(args: {
     // **티어는 그룹이 든다**(2026-08-23) — 실으려는 양을 정한 곳([determineBeltCount])과
     // 깔 벨트를 고르는 곳이 갈리면 용량이 거짓이 된다. 모르면 기본 벨트로 떨어진다.
     const beltCells: PlacedCell[] = route.path.map((c) =>
-      makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
+      routeCellOf(c, group.beltEntityName ?? input.beltEntityName, plan.undergroundName, portPair),
     );
     // 탭 픽업 = 좌석 면의 안쪽(−fv, 머신에서 집어 belt 로). 팔 종류는 [seatInserterName].
     placeSeatArms("output", frame, chestId, seatInserterName(input, plan.reach), cells, occupancy);
@@ -466,7 +478,7 @@ export function emitInputLinks(args: {
       ? reuse.beltCells
       : route.path.map((c) =>
           // 티어는 그룹이 든다 — [emitOutputLinks] 와 같은 규약(2026-08-23).
-          makeBeltCell(c.at, vectorToDirection(c.v.x, c.v.y), group.beltEntityName ?? input.beltEntityName, portPair),
+          routeCellOf(c, group.beltEntityName ?? input.beltEntityName, plan.undergroundName, portPair),
         );
     // **끝 칸은 물리 벨트당 하나다** — 짝의 둘째 줄(`reuse`)은 첫 줄이 이미 등록했다.
     // 두 번 등록하면 같은 칸을 두 번 판정하고, 종착이면 **지하 입구를 두 번 세운다.**

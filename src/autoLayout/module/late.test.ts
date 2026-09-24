@@ -7,7 +7,8 @@ import type { PlacedCell, PortPair } from "../shared/types";
 import { EntityType } from "../../types/layout";
 import { makeBeltCell } from "../shared/cells/builder";
 import { cellKey } from "../shared/grid";
-import { resolveBeltTermini, slowestUnderground } from "./late";
+import { resolveBeltTermini } from "./late";
+import { slowestUnderground } from "./policy/underground";
 
 // 링크의 자리는 좌석 단계가 정한다 — 모듈 하나짜리 시험은 `seatedAlone` 이 **제품 경로로** 앉혀 준다.
 const generateModule = (input: ModuleInput) => generateSeated(seatedAlone(input));
@@ -105,6 +106,35 @@ describe("세 방향이 다 막히면 — 지하벨트 종착", () => {
 
   it("사거리를 모르는 티어는 후보가 아니다 — 장부에 적을 값이 없다", () => {
     expect(slowestUnderground([{ entityName: "u", throughput: 1, maxDistance: 0 }])).toBeUndefined();
+  });
+
+  // T4 — 종착 입구는 짝이 없어야 한다. 같은 열 앞쪽(흐름 방향) 사거리 안에 같은 종류의 지하(잠수 입출구)가 있으면
+  // 그 출구와 짝이 되어 물건이 샌다 → 그 종류는 건너뛴다(trunk-blocked §4).
+  const diveMouth = (y: number, name: string): PlacedCell => ({
+    x: 5, y, cell: { ...makeBeltCell({ x: 5, y }, 8, name, pair()).cell, entityType: EntityType.UndergroundBelt, undergroundType: "output" },
+  });
+  const withCells = (cells: PlacedCell[]) => {
+    const cell: PlacedCell = makeBeltCell({ x: 5, y: 5 }, 12, "transport-belt", pair());
+    const beltItems = new Map<string, string>([[cellKey(5, 5), "y"], ...Object.entries(blocked)]);
+    const merges: BeltMerge[] = [];
+    resolveBeltTermini({
+      termini: [{ cell, item: "y", flow: { x: 0, y: 1 }, inward: { x: -1, y: 0 }, pair: pair() }],
+      beltItems, undergroundBelts: tiers, merges, cells,
+    });
+    return { cell, merges };
+  };
+
+  it("T4 — 앞쪽 사거리 안에 같은 종류의 잠수 출구가 있으면 **다음 종류**로 세운다", () => {
+    const { cell } = withCells([diveMouth(8, "underground-belt")]); // 3칸 앞 — 느린 쪽 사거리(4) 안
+    expect(cell.cell.entityType).toBe(EntityType.UndergroundBelt);
+    expect(cell.cell.entityName).toBe("fast-underground-belt");
+  });
+
+  it("T4 — 사거리 밖이면 느린 쪽 그대로 · 다 걸리면 흐름 그대로 두고 경고", () => {
+    expect(withCells([diveMouth(10, "underground-belt")]).cell.cell.entityName).toBe("underground-belt"); // 5칸 앞
+    const both = withCells([diveMouth(8, "underground-belt"), diveMouth(9, "fast-underground-belt")]);
+    expect(both.cell.cell.entityType).toBe(EntityType.Belt);
+    expect(both.merges).toHaveLength(1);
   });
 });
 

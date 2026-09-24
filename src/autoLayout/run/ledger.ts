@@ -3,7 +3,7 @@
  *
  * ```
  * fluidNetworksOf       다른 유체 관망이 먹은 칸 — 납품 파이프가 **피할** 곳
- * terminusCorridorsOf   모듈이 세운 지하 종착의 사거리 — 남이 **이미 잡은** 구간
+ * terminusCorridorsOf   모듈이 세운 지하벨트의 구간 — 종착의 사거리 · 잠수의 [입구, 출구] — 남이 **이미 잡은** 구간
  * ```
  *
  * 게임데이터는 안 본다 — 유체 머신과 사거리는 [gamedata](../module/gamedata.ts) 가 옮겨 준 값을 받는다.
@@ -66,13 +66,22 @@ export function fluidBlockedOf(pipeFlowByFluid: ReadonlyMap<string, PipeFlow>): 
 }
 
 /**
- * **모듈이 세운 벨트 종착의 사거리** — 지하벨트 장부에 올린다
+ * **모듈이 세운 지하벨트의 구간** — 지하벨트 장부에 올린다
  * ([resolveBeltTermini](../module/late.ts) 머리말 §사거리).
  *
- * **셀에서 되읽는다**(모듈이 따로 실어 보내지 않는다): 모듈 안에 지하벨트를 놓는 코드는
- * 종착 하나뿐이라 *"모듈 셀 중 지하벨트 입구"* 가 곧 종착이고, 위치·방향·이름은 회전·
- * 평행이동을 이미 거친 **절대 좌표**다. 사거리만 게임데이터에서 붙이면 된다 —
- * 구간을 모듈 안에서 만들면 그 변환을 따로 따라가야 한다.
+ * 모듈 안에 지하벨트가 서는 자리는 둘이다 — **종착**(짝 없는 입구)과 **잠수**(입구 · 출구 짝,
+ * `docs/auto-layout/module/trunk-blocked.md` §4). 입구마다 흐름 방향 사거리 안에서 같은 이름의 지하를 찾는다:
+ *
+ * ```
+ * 처음 만난 것이 같은 방향의 출구   잠수 — [입구, 출구] 만 잡는다
+ * 없거나 입구다                   종착 — 입구에서 사거리 끝까지 잡는다(그 안에 남의 출구가 서면 터널이 뚫린다)
+ * ```
+ *
+ * 예전엔 *"모듈 셀 중 지하벨트 입구가 곧 종착"* 이었다(놓는 코드가 종착 하나뿐이었다). 잠수가 들어오며 그 전제가
+ * 깨졌다 — 그대로 두면 잠수 입구마다 사거리 끝까지 **과잉 예약**된다.
+ *
+ * **셀에서 되읽는다**(모듈이 따로 실어 보내지 않는다): 위치·방향·이름은 회전·평행이동을 이미 거친 **절대 좌표**다.
+ * 사거리만 게임데이터에서 붙이면 된다 — 구간을 모듈 안에서 만들면 그 변환을 따로 따라가야 한다.
  */
 export function terminusCorridorsOf(
   pack: PackResult,
@@ -80,6 +89,10 @@ export function terminusCorridorsOf(
 ): UndergroundCorridor[] {
   const terminusCorridors: UndergroundCorridor[] = [];
   for (const pl of pack.placements) {
+    /** 이 모듈의 지하벨트 칸 — 짝을 찾는다. */
+    const under = new Map<string, (typeof pl.module.cells)[number]>();
+    for (const c of pl.module.cells)
+      if (c.cell.entityType === EntityType.UndergroundBelt) under.set(`${c.x},${c.y}`, c);
     for (const c of pl.module.cells) {
       if (c.cell.entityType !== EntityType.UndergroundBelt) continue;
       if (c.cell.undergroundType !== "input") continue;
@@ -88,10 +101,18 @@ export function terminusCorridorsOf(
       const dist = distanceOf(entityName);
       const v = directionToVector(c.cell.direction);
       if (dist <= 0 || (v.x === 0 && v.y === 0)) continue; // 사거리를 모르면 지어내지 않는다
+      // 잠수의 짝 — 흐름 방향 사거리 안에서 처음 만난 같은 이름의 지하가 같은 방향의 출구면 그것이다
+      let reach = dist;
+      for (let k = 1; k <= dist; k++) {
+        const u = under.get(`${c.x + v.x * k},${c.y + v.y * k}`);
+        if (!u || u.cell.entityName !== entityName) continue;
+        if (u.cell.undergroundType === "output" && u.cell.direction === c.cell.direction) reach = k;
+        break;
+      }
       terminusCorridors.push(
         corridorBetween(
           { x: c.x, y: c.y },
-          { x: c.x + v.x * dist, y: c.y + v.y * dist },
+          { x: c.x + v.x * reach, y: c.y + v.y * reach },
           "belt",
           entityName, // blockGroup = 그 티어 — 다른 티어와는 애초에 안 맺힌다
         ),

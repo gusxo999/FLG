@@ -60,32 +60,25 @@
  * [run/ledger](../run/ledger.ts) 가 **놓인 셀에서 되읽는다** — 사거리는
  * 게임데이터(`max_underground_distance`)에 있고, 모듈은 회전·평행이동을 거쳐 절대 좌표가
  * 되므로 구간을 여기서 만들면 그 변환을 따라가야 한다. 셀에서 되읽으면 위치·방향·이름이
- * 이미 변환된 뒤라 **되읽기가 곧 정답**이다(추정이 아니다 — 모듈 안에 지하벨트를 놓는
- * 코드는 여기뿐이다).
+ * 이미 변환된 뒤라 **되읽기가 곧 정답**이다. 모듈 안의 지하벨트는 둘이다 — 여기 종착과 잠수 입출구(`emit`) —
+ * 되읽기는 입구마다 짝을 찾아 둘을 가른다(`run/ledger.terminusCorridorsOf`).
+ *
+ * ## 종착의 종류 — T4
+ *
+ * 종착은 짝 없는 입구다. 같은 열 앞쪽(흐름 방향) 사거리 안에 **같은 종류의** 잠수 입출구가 있으면 짝이 되어 물건이
+ * 샌다. 그래서 종류는 `module/policy/underground.terminusUnderground` 가 고른다 — 가장 느린 것부터, 걸리는 종류는
+ * 건너뛰고, 다 걸리면 세울 종착이 없는 것과 같다(`docs/auto-layout/module/belt-terminus.md` §4).
  */
 
 import type { SpecUndergroundBelt } from "../shared/gamedata/spec";
+import type { PlacedCell } from "../shared/types";
 import { cellKey, vectorToDirection } from "../shared/grid";
 import { makeUndergroundBeltCell } from "../shared/cells/builder";
+import { EntityType } from "../../types/layout";
 import { recordBeltTerminus } from "../../debug/runStats";
 import type { BeltMerge, BeltTerminus } from "./types/module";
-
-/**
- * **가장 느린 지하벨트** — 종착은 아무것도 나르지 않으므로 빠른 티어를 태울 이유가 없다.
- *
- * 목록의 정렬을 믿지 않는다([inserterForReach] 와 같은 이유) — 거르지 않은 목록을 받았을 때
- * 조용히 비싼 답을 내면, 그 선택이 **어디서 정해졌는지** 를 아무도 못 찾는다.
- */
-export function slowestUnderground(
-  belts: ReadonlyArray<SpecUndergroundBelt> | undefined,
-): SpecUndergroundBelt | undefined {
-  let best: SpecUndergroundBelt | undefined;
-  for (const b of belts ?? []) {
-    if (b.maxDistance <= 0) continue; // 사거리를 모르면 장부에 적을 값이 없다
-    if (!best || b.throughput < best.throughput) best = b;
-  }
-  return best;
-}
+// **종착의 종류는 잠수와 한 자리에서 고른다** — T4(같은 종류가 앞에 있으면 짝이 된다) 때문에 서로를 알아야 한다.
+import { terminusUnderground } from "./policy/underground";
 
 /**
  * 등록된 끝 칸들을 **한 번에** 마무리한다(모듈의 벨트가 전부 깔린 뒤에 부른다).
@@ -99,8 +92,16 @@ export function resolveBeltTermini(o: {
   undergroundBelts?: ReadonlyArray<SpecUndergroundBelt>;
   /** 못 피한 끝 칸이 여기 쌓인다(호출자가 [GeneratedModule] 로 실어 올린다). */
   merges: BeltMerge[];
+  /**
+   * 이 모듈이 놓은 셀 — **잠수 입출구**를 찾는다(T4). 종착 입구 앞쪽 사거리 안에 같은 종류의 지하가 있으면
+   * 그 종류는 안 쓴다 — 짝이 되어 물건이 샌다(`docs/auto-layout/module/trunk-blocked.md` §4).
+   */
+  cells?: readonly PlacedCell[];
 }): void {
-  const terminusBelt = slowestUnderground(o.undergroundBelts);
+  const underground = new Map<string, string>();
+  for (const c of o.cells ?? [])
+    if (c.cell.entityType === EntityType.UndergroundBelt && c.cell.entityName)
+      underground.set(cellKey(c.x, c.y), c.cell.entityName);
   for (const t of o.termini) {
     // 후보 셋 = 네 방향 − 역방향. 순서가 곧 선호다(오늘의 기본값이 맨 앞 → 회귀 0).
     const candidates = [t.inward, { x: -t.inward.x, y: -t.inward.y }, t.flow];
@@ -116,6 +117,13 @@ export function resolveBeltTermini(o: {
       t.cell.cell.direction = dir;
       continue;
     }
+    // T4 — 흐름 방향(입구가 짝을 찾는 쪽) 사거리 안에 같은 종류의 지하가 있나
+    const clash = (u: SpecUndergroundBelt): boolean => {
+      for (let k = 1; k <= u.maxDistance; k++)
+        if (underground.get(cellKey(t.cell.x + t.flow.x * k, t.cell.y + t.flow.y * k)) === u.entityName) return true;
+      return false;
+    };
+    const terminusBelt = terminusUnderground(o.undergroundBelts, clash);
     if (!terminusBelt) {
       // **흐름 그대로 두고 경고한다** — 세울 종착이 없다. 방향을 흐름으로 못박는 이유는
       // 그것이 *"이전 흐름과 같은"* 값이라 그 칸에 물건이 들어오긴 하기 때문이다(규칙 ②).

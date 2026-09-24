@@ -133,7 +133,7 @@ autoLayout/
 │   ├ gamedata/tree.ts           어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
 │   ├ gamedata/picker.ts         어댑터 — 머신 픽커 · 머신 파라미터 조회
 │   ├ policy.ts                  정책 — 받을지 물릴지 · 처방 (**LayoutIssue 를 짓는 곳**)
-│   ├ ledger.ts                  장부 — 유체 관망 · 종착 구간
+│   ├ ledger.ts                  장부 — 유체 관망 · 모듈 지하벨트 구간(종착 · 잠수)
 │   ├ emit.ts                    찍기 — CandidateLeaf(Area · Routing) · 실패 그림
 │   └ *.test.ts                  통합 시험 셋 — 한 관심사가 아니라 **한 번의 실행**을 잰다
 ├ tree/                        무엇을 몇 대 · 트리를 어떻게 앉히나
@@ -143,14 +143,15 @@ autoLayout/
 │   └ build.ts                   조율 — 사슬 열(트리 → 링크 → 좌석 → 모양 → 짝 → 행 채널 → 세로 → 통로 → 가로)
 ├ module/                      한 모듈 안쪽 — 형제를 모른다
 │   ├ types/{line,seat,module}.ts  타입 — 무엇을 나르나 · 어디에 앉나 · 무엇을 받고 내나
-│   ├ arith/                     셈 — link(벨트 한 줄 = 팔 묶음) · trunk · arms · face · depth
+│   ├ arith/                     셈 — link(벨트 한 줄 = 팔 묶음) · trunk · arms · face · depth · dive(터널 몸통)
 │   ├ ledger/{face,seat}.ts      장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
 │   ├ shape/                     도형 — body(머신 좌표 위) · link(순번 축 · **계획과 방출의 단일 출처**) ·
 │   │                                  cluster · transform · ways(내 몸통에 안 막히는 방향)
 │   ├ policy/                    정책 — port(단일 진입점 뼈대) · seat(좌석 창구 · 나머지 줄) · link · trunk
+│   │                                    · underground(지하 종류 — 잠수 · 종착)
 │   ├ build.ts                   조율 — generateModule 뼈대
 │   ├ emit.ts                    찍기 — **이 관심사에서 셀을 만드는 유일한 파일**
-│   ├ late.ts                    늦은 결정 — 흐름의 끝 칸 · 지하 종착
+│   ├ late.ts                    늦은 결정 — 흐름의 끝 칸 · 지하 종착(종류는 policy/underground)
 │   ├ gamedata.ts                어댑터 · 정책 — 유체 상자 칸 · 회전과 면 고르기. factorio 가 이 주소를 부른다
 │   └ inspect.ts                 진단 — 적용된 배치에서 모듈 단위 정보를 유도(UI 셋이 쓴다)
 ├ link/                        모듈과 모듈을 잇는 일

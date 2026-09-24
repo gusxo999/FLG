@@ -38,6 +38,8 @@ import {
   setAutoLayoutLaneMerge,
   setAutoLayoutSeatPick,
   AUTO_LAYOUT_SEAT_PICK,
+  setAutoLayoutLinkDive,
+  AUTO_LAYOUT_LINK_DIVE,
 } from '../autoLayout/shared/flags';
 import type { CandidateLeaf } from '../autoLayout/shared/types';
 import type { CustomDataSpec } from '../factorio/customRecipe';
@@ -321,6 +323,15 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
+  linkDive: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 잠수(막힌 칸을 지하벨트로 비켜 가기 · 먼저 앉은 줄이 비켜 주기). 기본 OFF. '
+      + '끄거나 지하벨트를 안 고르면 오늘 그대로다',
+    fn: (v: boolean) => {
+      setAutoLayoutLinkDive(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
   show: {
     fn: () => ({
       coordDump: AUTO_LAYOUT_COORD_DUMP,
@@ -329,6 +340,7 @@ const flags = defineGroup('flags', {
       linkOppositeFace: AUTO_LAYOUT_LINK_OPPOSITE_FACE,
       linkDirect: AUTO_LAYOUT_LINK_DIRECT,
       seatPick: AUTO_LAYOUT_SEAT_PICK,
+      linkDive: AUTO_LAYOUT_LINK_DIVE,
       entityIds: useUiDebugStore.getState().showEntityDebugInfo,
     }),
   },

@@ -13,7 +13,7 @@
  * > `claimSeats`·`depthClear` 의 계약이 두 파일로 갈린다 — 장부째 옮기는 것이 다음 단계의 몫이다.
  */
 
-import type { SpecInserter } from "../../shared/gamedata/spec";
+import type { SpecInserter, SpecUndergroundBelt } from "../../shared/gamedata/spec";
 import type { PortFace } from "../../shared/types";
 import type { Link, PortSide } from "./line";
 import type { FaceTable, FaceTableView } from "../ledger/face";
@@ -72,6 +72,10 @@ export interface LinkFacePlan {
    * **옛 탭 기하가 이것이었다** — 유산이 아니라 관통의 올바른 기하였고, 아이템 방출을 한
    * 경로로 합치면서(§19-④) 함께 지워졌다.
    *
+   * **잠수를 켜면 "못 건넌다" 가 한 겹 풀린다**(`AUTO_LAYOUT_LINK_DIVE`) — 관통 줄이 인서터가 없는 행을 땅속으로
+   * 내줄 수 있어, 얕은 줄의 옆 포트가 그 위에 선다(`docs/auto-layout/module/trunk-blocked.md` §4.1). 자기 상자를
+   * 가두는 문제는 그대로라(관통의 인서터 행은 못 내준다) 기둥 끝 규칙은 안 바뀐다.
+   *
    * 끝은 면마다 **둘**(N·S)뿐이다. 세 번째 관통은 못 받아 옆으로 물러난다.
    */
   portEnd?: "N" | "S";
@@ -129,6 +133,32 @@ export interface LinkFacePlan {
    * 남의 벨트에 얹으면 청구한 칸이 유령 예약이 되고, 그 줄의 팔은 벨트 없는 칸에 선다(F2).
    */
   sharesBelt?: boolean;
+  /**
+   * **이 줄이 면 좌석표에서 쓰는 주인 번호** — 받기(`commitLinkFace`)가 적는다. 잠수 기록(`FaceTable.dives`)을 찾는 열쇠다.
+   * 먼저 앉은 줄의 몸통은 **나중에** 온 줄이 늘리므로(비켜 주기) 최종값은 장부에 있고, 계획은 이 번호로 찾아간다.
+   */
+  owner?: number;
+  /**
+   * **땅속 행 구간** — 몸통(닫힘). 입구 · 출구는 그 바로 앞뒤 행이다. 행의 축은 들고 있는 쪽이 정한다 —
+   * 계획이면 표의 행(모듈-로컬 순번), [LinkSeats] 면 좌표 `t`([placeLinkSeats] 가 옮긴다).
+   *
+   * 좌석 단계는 이 값을 안 채운다 — 계획이 다 끝난 뒤 장부에서 옮겨 적는다(`module/policy/port.planModulePorts`).
+   * 없거나 비면 오늘과 같은 지면 띠다.
+   */
+  tunnels?: ReadonlyArray<readonly [number, number]>;
+  /** 입출구에 놓을 지하벨트 — [tunnels] 가 있을 때만. */
+  undergroundName?: string;
+}
+
+/**
+ * **잠수의 제안** — 묻기(`tryLinkFace`)가 셌고 받기(`commitLinkFace`)가 그대로 적는다. 창구 안의 사정이라 영수증에는 없다.
+ * (`docs/auto-layout/module/trunk-blocked.md` §1 · §4 — 누가 잠수하나 · 잠수가 서는 조건)
+ */
+export interface DiveOffer {
+  /** 이 줄이 잠수할 수 있으면 그 종류 — 몸통이 없어도 든다(뒤에 온 줄에게 비켜 줄 수 있게). */
+  readonly dive?: SpecUndergroundBelt;
+  /** 비켜 줄 줄(표의 주인) → 그 줄의 새 몸통 전체. */
+  readonly yields?: ReadonlyMap<number, ReadonlyArray<readonly [number, number]>>;
 }
 
 /**
@@ -171,6 +201,11 @@ export interface DepthShortage {
   seatRows?: number[];
   /** 벨트는 지나가는데 **포트 칸**이 막혔다(`(행, 깊이)`). 쪼개면 진출 행이 옮겨간다. */
   blockedPort?: Array<readonly [number, number]>;
+  /**
+   * **잠수로 풀릴 막힘인데 사거리를 넘었다** — 막은 것이 전부 포트(그 밑으로 지나갈 수 있다)였고 인서터 행도 아니었는데,
+   * 입구에서 출구까지가 고른 지하벨트의 사거리보다 길다. 이름표는 `사거리초과`(경계를 화면에).
+   */
+  diveRange?: boolean;
 }
 
 /**
@@ -241,6 +276,8 @@ export interface LinkFaceContext {
    * 미리 센 수를 그대로 썼다(결함 A).
    */
   inserters?: readonly SpecInserter[];
+  /** 고를 수 있는 지하벨트 — 잠수의 종류가 여기서 나온다(`module/policy/underground`). 없으면 잠수하지 않는다. */
+  undergroundBelts?: readonly SpecUndergroundBelt[];
 }
 
 /**
@@ -327,7 +364,7 @@ export type SeatReach = "near" | "far";
  * **제안** — 받기 전의 자리. 인서터 행(`slotIndex`)까지 창구가 고른 것이다. 링크 쪽이 읽는 것은 면 · 깊이 · 끝이다
  * (합류 판정 · 이름표).
  */
-export type SeatOffer = Readonly<Omit<LinkFacePlan, "mergeRole" | "sharesBelt">>;
+export type SeatOffer = Readonly<Omit<LinkFacePlan, "mergeRole" | "sharesBelt">> & DiveOffer;
 
 /**
  * **묻기의 대답.** 자리가 있으면 `offer`. `why` 는 **있든 없든** 온다 — 자리가 난 후보 앞에서 떨어진

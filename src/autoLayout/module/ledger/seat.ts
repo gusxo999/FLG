@@ -22,15 +22,16 @@ import { flowEnd } from "../arith/trunk";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, LinkFaceContext, LinkFacePlan, SeatLedgerView,
+  DepthShortage, DiveOffer, LinkFaceContext, LinkFacePlan, SeatLedgerView,
 } from "../types/seat";
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../shape/link";
 import {
-  claimDepth, claimSeats, copyFaceTable, freeSeatRows, groupsOn, depthClear, makeFaceTable,
-  rowIndex, seatsTaken, takeOwner, type FaceTable,
+  cellAt, claimDepth, claimSeats, copyFaceTable, freeSeatRows, giveRows, groupsOn, depthClear, makeFaceTable,
+  rowIndex, seatsTaken, takeOwner, type FaceCellKind, type FaceTable,
 } from "./face";
 import { LINK_LANE_DEPTH } from "../arith/face";
+import { fixedRowsOf } from "../arith/dive";
 
 /**
  * [commitLinkFace] 전의 배정안. **인서터 행(`slotIndex`)까지 든다** — 행은 정책이 묻기 때 고르고
@@ -39,7 +40,7 @@ import { LINK_LANE_DEPTH } from "../arith/face";
  * (예전엔 *"순번은 확정 시점에야 정해진다"* 며 이 장부가 도장을 찍는 순간 빈 칸을 앞에서부터 집었다.
  *  같은 계산이 구간 재기 · 사유 · 확정 · 합류 네 곳에 있었고, 그래서 행을 고르는 규칙을 바꿀 자리가 없었다.)
  */
-export type LinkFaceCandidate = Omit<LinkFacePlan, "mergeRole" | "sharesBelt">;
+export type LinkFaceCandidate = Omit<LinkFacePlan, "mergeRole" | "sharesBelt"> & DiveOffer;
 
 /**
  * **이 면의 좌석표** — 없으면 만든다.
@@ -66,7 +67,7 @@ export function seatTableOf(ctx: LinkFaceContext, face: PortFace): FaceTable {
  *
  * 좌표가 아니라 **모듈 안 순번**이다([FaceTable] 의 행 번호 그대로).
  */
-function beltRowSpan(t: FaceTable, slotIndex: ReadonlyMap<number, readonly number[]>): readonly [number, number] {
+export function beltRowSpan(t: FaceTable, slotIndex: ReadonlyMap<number, readonly number[]>): readonly [number, number] {
   let lo = Infinity;
   let hi = -Infinity;
   for (const [mi, slots] of slotIndex)
@@ -111,6 +112,55 @@ export function splitByTable(
 }
 
 /**
+ * **gap `g` 의 폭** — 그 gap 을 지나는 가로 벨트가 먹는 줄 수. [gapRowsFromPlans] 와 같은 셈을 장부에서 한다:
+ * 면(위 머신의 S · 아래 머신의 N)마다 가장 깊은 반출 줄(`LINK_LANE_DEPTH + 그룹 수 − 1`)을 더한다.
+ * `extra` 를 주면 그 면에 그룹이 하나 더 앉았다고 보고 잰다([fitOnGap] 이 앉히기 전에 묻는다).
+ */
+export function gapWidthOf(
+  ctx: LinkFaceContext,
+  g: number,
+  extra?: { face: "N" | "S"; mi: number },
+): number {
+  const side = (face: "N" | "S", mi: number): number => {
+    const t = ctx.tables.get(face);
+    const n = (t ? groupsOn(t, mi) : 0) + (extra && extra.face === face && extra.mi === mi ? 1 : 0);
+    return n > 0 ? LINK_LANE_DEPTH + n - 1 : 0;
+  };
+  return side("S", g) + side("N", g + 1);
+}
+
+/**
+ * **터널의 물리 길이** — 입구 행에서 출구 행까지. 표의 행은 머신 사이 gap 을 안 세므로([FaceTable] 머리말)
+ * 몸통이 머신 경계를 건너면 그 gap 폭을 더한다. gap 폭은 배정의 부산물이라 **지금까지 앉은 것**으로 잰다 —
+ * 나중에 벌어지면 [fitOnGap] 이 이 터널을 보고 그 gap 을 안 연다.
+ */
+export function tunnelLength(
+  ctx: LinkFaceContext,
+  entrance: number,
+  exit: number,
+  extra?: { face: "N" | "S"; mi: number },
+): number {
+  const h = Math.max(1, ctx.machine.h);
+  let len = exit - entrance;
+  for (let g = Math.floor(entrance / h); g < Math.floor(exit / h); g++) len += gapWidthOf(ctx, g, extra);
+  return len;
+}
+
+/**
+ * gap 에 그룹이 하나 더 앉으면 **이미 선 터널 중 사거리를 넘는 것이 생기나** — 옆면(W/E)의 잠수 기록을 전부 본다.
+ */
+function breaksTunnel(ctx: LinkFaceContext, extra: { face: "N" | "S"; mi: number }): boolean {
+  for (const face of ["W", "E"] as const) {
+    const t = ctx.tables.get(face);
+    if (!t) continue;
+    for (const rec of t.dives.values())
+      for (const [a, b] of rec.bodies)
+        if (tunnelLength(ctx, a - 1, b + 1, extra) > rec.maxDistance) return true;
+  }
+  return false;
+}
+
+/**
  * **gap(N/S) 면의 자리** — 깊이가 언제나 [LINK_LANE_DEPTH] 라 고를 것이 없고 자리만 묻는다.
  * 장부는 **읽기만** 한다(좌석 수 · 그룹 수). `arms` 는 그 깊이의 팔이다([tryLinkFace] ②).
  */
@@ -143,6 +193,9 @@ export function fitOnGap(
   // 좌석 수가 아니라 **그룹 수**로 세는 이유: 서쪽으로 달리는 줄은 그룹마다 하나씩이지
   // 팔마다 하나가 아니다. 첫 그룹은 서쪽 변에서 시작하므로 내려갈 필요가 없다.
   const nth = groupsOn(gapTable, mi);
+  // **이 gap 이 벌어지면 옆면 터널이 길어진다** — 머신 경계를 건너는 몸통은 gap 폭만큼 물리적으로 길다
+  // ([tunnelLength]). 사거리를 넘기게 되면 이 gap 은 안 연다(터널은 이미 앉은 줄의 것이다 — 자리-3).
+  if (gap !== undefined && breaksTunnel(ctx, { face, mi })) return undefined;
   return {
     face, gap, arms, clusterBeltDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1,
     exitDepth: LINK_LANE_DEPTH + nth,
@@ -179,6 +232,16 @@ export function fitOnFace(
   cand: { clusterBeltDepth: number; arms: Map<number, number>; slotIndex: ReadonlyMap<number, readonly number[]> },
   end: Pick<LinkFaceCandidate, "portEnd" | "exitEnd">,
   why?: DepthShortage[],
+  /**
+   * **잠수가 푼 칸** — 정책이 센 것([diveRelief] — `module/policy/link`). 여기서는 그 칸을 빈 것으로 볼 뿐이다.
+   *
+   * ```
+   * tunnels   이 줄의 몸통 — 그 행의 내 깊이 칸은 안 본다(땅속이다)
+   * freed     비켜 주기로 빌 칸(`${행}|${깊이}`) — 포트 칸 검사에서 빈 것으로 본다
+   * range     잠수로 풀릴 막힘인데 사거리를 넘었다 — 못 앉으면 사유에 싣는다
+   * ```
+   */
+  relief?: { tunnels?: ReadonlyArray<readonly [number, number]>; freed?: ReadonlySet<string>; range?: boolean },
 ): FaceFit | undefined {
   const { clusterBeltDepth, arms, slotIndex } = cand;
   const { portEnd, exitEnd } = end;
@@ -212,23 +275,34 @@ export function fitOnFace(
     return undefined;
   }
   const span = beltRowSpan(table, slotIndex);
-  if (!depthClear(table, clusterBeltDepth, span[0], span[1])) {
+  /** 이 줄이 땅속으로 지나는 행 — 내 깊이 칸을 안 본다. */
+  const under = new Set<number>();
+  for (const [a, b] of relief?.tunnels ?? []) for (let r = a; r <= b; r++) under.add(r);
+  const spanClear = under.size === 0
+    ? depthClear(table, clusterBeltDepth, span[0], span[1])
+    : Array.from({ length: span[1] - span[0] + 1 }, (_, i) => span[0] + i)
+      .every((r) => under.has(r) || depthClear(table, clusterBeltDepth, r, r));
+  if (!spanClear) {
     // **막힌 행이 곧 자름의 경계다.** 수량이 아니라 행을 담는다 — 그리고 사다리가
     // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([resolveSpanBlock]).
     const rows: number[] = [];
     for (let r = span[0]; r <= span[1]; r++) if (!depthClear(table, clusterBeltDepth, r, r)) rows.push(r);
     const seats: number[] = [];
     for (const [mi, slots] of slotIndex) for (const t of slots) seats.push(rowIndex(table, mi, t));
-    why?.push({ face, clusterBeltDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b) });
+    why?.push({
+      face, clusterBeltDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b),
+      ...(relief?.range ? { diveRange: true } : {}),
+    });
     return undefined;
   }
   // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 깊이
   // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
   // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
+  // 비켜 주기로 빌 칸(`relief.freed`)은 빈 것으로 본다 — 그 줄이 그 행을 땅속으로 내준다.
   const claim = splitByTable(portCells({ clusterBeltDepth, portEnd, exitEnd }, span), table);
-  const hitPort = claim.inside.filter(([r, d]) => !depthClear(table, d, r, r));
+  const hitPort = claim.inside.filter(([r, d]) => !depthClear(table, d, r, r) && !relief?.freed?.has(`${r}|${d}`));
   if (hitPort.length > 0) {
-    why?.push({ face, clusterBeltDepth, blockedPort: hitPort });
+    why?.push({ face, clusterBeltDepth, blockedPort: hitPort, ...(relief?.range ? { diveRange: true } : {}) });
     return undefined;
   }
   return { table, span, claim };
@@ -272,6 +346,8 @@ export function commitLinkFace(
   const isGap = cand.face === "N" || cand.face === "S";
   const table = seatTableOf(ctx, cand.face);
   const span = isGap ? undefined : beltRowSpan(table, cand.slotIndex);
+  // **비켜 주기가 먼저다** — 먼저 앉은 줄이 그 행을 땅속으로 내줘야 내 포트가 설 칸이 빈다. 몸통은 묻기가 셌다.
+  for (const [who, bodies] of cand.yields ?? []) giveRows(table, who, bodies);
   const owner = takeOwner(table);
   // 머신 index 오름차순으로 온다([seatRowsOf]) — 방출 순서가 결정적이어야 한다.
   for (const [mi, slots] of cand.slotIndex) claimSeats(table, mi, slots, owner);
@@ -293,27 +369,60 @@ export function commitLinkFace(
       mergeRole: opts?.merged ? "follow" : opts?.mergeLead ? "lead" : undefined,
       rows: span,
       outRow,
+      tunnels: cand.tunnels,
     });
+    /** 이 줄의 인서터 행 — 그 행의 내 벨트는 단단하다(인서터가 닿는다). */
+    const seatRows = new Set<number>();
+    for (const [mi, slots] of cand.slotIndex) for (const s of slots) seatRows.add(rowIndex(table, mi, s));
+    /**
+     * **칸의 종류**([FaceCellKind]) — 잠수할 수 있는 줄(`dive`)만 인서터가 안 닿는 행의 벨트를 `soft` 로 적는다.
+     * 그런 줄만 나중에 비켜 줄 수 있다. 나머지는 전부 단단하다(`belt`) — 오늘 그대로다.
+     */
+    const kindOf = (c: { kind: string; depth: number; t: number }): FaceCellKind => {
+      if (c.kind === "portInserter" || c.kind === "portChest") return "port";
+      if (c.kind !== "belt") return "belt"; // 합류 칸 · 지하 입출구
+      const own = c.depth === cand.clusterBeltDepth && c.t >= span[0] && c.t <= span[1];
+      return cand.dive && own && !seatRows.has(c.t) ? "soft" : "belt";
+    };
     // **청구는 칸의 종류가 가른다** — 벨트는 표에 바로 적고(구간이라 기둥 밖도 표가 든다),
     // 합류 칸·포트는 [splitByTable] 로 표 안/밖을 갈라 밖은 `ctx.outside` 가 든다.
     // 그 비대칭은 오늘의 규약 그대로다 — **도형만 한 곳으로 모으고 청구 정책은 안 건드린다**
     // (건드리면 배치가 바뀐다. 장부를 하나로 접는 것은 `구간-밖-주행` A2 의 일이다).
     const band = ctx.outside.get(cand.face) ?? new Set<string>();
     for (const c of shapeCells(shape)) {
-      if (c.kind === "belt") { claimDepth(table, c.depth, c.t, c.t, owner); continue; }
+      if (c.kind === "belt" || c.kind === "ugIn" || c.kind === "ugOut") {
+        claimDepth(table, c.depth, c.t, c.t, owner, kindOf(c));
+        continue;
+      }
       const o = outsideOf(c.t, table);
       if (o) band.add(outsideKey(o, c.depth));
-      else claimDepth(table, c.depth, c.t, c.t, owner);
+      else claimDepth(table, c.depth, c.t, c.t, owner, kindOf(c));
     }
     ctx.outside.set(cand.face, band);
+    // **몸통 행** — 땅 위엔 내 칸이 없다. 남의 포트(못)가 선 행은 그대로 두고, 빈 행(합친 몸통의 사이)만
+    // `tunnel` 로 적어 열이 여전히 내 것임을 남긴다(남의 벨트가 들어오면 한 열에 두 줄이 된다 — 안 들인다).
+    for (const [a, b] of cand.tunnels ?? [])
+      for (let r = a; r <= b; r++)
+        if (!cellAt(table, r, cand.clusterBeltDepth)) claimDepth(table, cand.clusterBeltDepth, r, r, owner, "tunnel");
+    if (cand.dive) {
+      table.dives.set(owner, {
+        depth: cand.clusterBeltDepth, span, seatRows: [...seatRows].sort((a, b) => a - b),
+        fixedRows: fixedRowsOf(span, end === "S", side),
+        entityName: cand.dive.entityName, maxDistance: cand.dive.maxDistance,
+        bodies: (cand.tunnels ?? []).map(([a, b]) => [a, b] as const),
+      });
+    }
   }
   if (cand.portEnd && !opts?.merged) {
     const set = ctx.ends.get(cand.face) ?? new Set<"N" | "S">();
     set.add(cand.portEnd);
     ctx.ends.set(cand.face, set);
   }
+  // 잠수의 제안(`dive` · `yields`)은 계획에 안 싣는다 — 받기가 적었고, 몸통의 최종값은 장부에 있다([LinkFacePlan.owner]).
+  const { dive: _dive, yields: _yields, ...plan } = cand;
   return {
-    ...cand,
+    ...plan,
+    owner,
     // **역할은 배정이 정하고 방출은 따르기만 한다**(F2). 청구한 도형과 놓는 도형이 한 판정에서 난다.
     mergeRole: opts?.merged ? "follow" : opts?.mergeLead ? "lead" : undefined,
   };
@@ -364,14 +473,14 @@ export function claimSharedSeats(
  * 표는 [tableOf] 가 그 면을 처음 볼 때 만들어진다(유체 칸을 미리 찍어서).
  */
 export function openLinkFaceContext(
-  input: Pick<ModuleInput, "machine" | "inserters">,
+  input: Pick<ModuleInput, "machine" | "inserters" | "undergroundBelts">,
   count: number,
   pipeFaceRows: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>,
 ): LinkFaceContext {
   const faceTables = new Map<PortFace, FaceTable>();
   return {
     machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
-    ends: new Map(), outside: new Map(), inserters: input.inserters,
+    ends: new Map(), outside: new Map(), inserters: input.inserters, undergroundBelts: input.undergroundBelts,
   };
 }
 
@@ -383,12 +492,13 @@ export function openLinkFaceContext(
  */
 export function reopenLinkFaceContext(
   ledger: SeatLedgerView,
-  input: Pick<ModuleInput, "machine" | "inserters">,
+  input: Pick<ModuleInput, "machine" | "inserters" | "undergroundBelts">,
   count: number,
   pipeFaceRows: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>,
 ): LinkFaceContext {
   return {
     machine: input.machine, count, pipeFaces: pipeFaceRows, inserters: input.inserters,
+    undergroundBelts: input.undergroundBelts,
     tables: new Map([...ledger.tables].map(([f, t]) => [f, copyFaceTable(t)] as const)),
     ends: new Map([...ledger.ends].map(([f, set]) => [f, new Set(set)] as const)),
     outside: new Map([...ledger.outside].map(([f, set]) => [f, new Set(set)] as const)),

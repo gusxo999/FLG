@@ -36,6 +36,8 @@ export interface ViewCell {
   name: string | null;
   entityId: string | null;
   direction: number;
+  /** 지하벨트 · 지하파이프면 입구/출구. 단면표가 터널 몸통을 그릴 때 짝을 찾는다. */
+  undergroundType?: 'input' | 'output';
 }
 
 export interface LayoutView {
@@ -82,6 +84,7 @@ export function currentView(): LayoutView | null {
       name: p.cell.entityName,
       entityId: p.cell.entityId,
       direction: p.cell.direction,
+      ...(p.cell.undergroundType ? { undergroundType: p.cell.undergroundType } : {}),
     });
   };
   for (const p of leaf.internal.placed) add(p);

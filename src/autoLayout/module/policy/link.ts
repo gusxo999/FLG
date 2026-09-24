@@ -16,19 +16,22 @@
  * 깊이 목록과 gap 폭은 셈([arith])이, 포트 칸은 도형([portCells])이 답한다(2026-09-14 계획 구조-2축 · 2 Step 3a).
  */
 
-import { inserterForReach } from "../../shared/gamedata/spec";
+import { inserterForReach, type SpecUndergroundBelt } from "../../shared/gamedata/spec";
 import type { PortFace } from "../../shared/types";
-import { armsAt, resolveSpanBlock, spansAllMachines } from "../arith/link";
+import { armsAt, groupRate, resolveSpanBlock, spansAllMachines } from "../arith/link";
 import type { Link } from "../types/line";
 import type { DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan } from "../types/seat";
-import { depthClear, freeSeatRows, rowIndex, seatsTaken, type FaceTable } from "../ledger/face";
-import { AUTO_LAYOUT_SEAT_PICK } from "../../shared/flags";
+import { cellAt, depthClear, freeSeatRows, rowIndex, seatsTaken, type FaceTable } from "../ledger/face";
+import { AUTO_LAYOUT_LINK_DIVE, AUTO_LAYOUT_SEAT_PICK } from "../../shared/flags";
+import { bodyRows, fixedRowsOf, tunnelBodies, tunnelFault, type TunnelBody } from "../arith/dive";
+import { diveUnderground } from "./underground";
 import { flowEnd } from "../arith/trunk";
 import { recordFaceDepthStats } from "../../../debug/runStats";
 import { portCells } from "../shape/link";
 import { clusterBeltDepthsOf, LINK_LANE_DEPTH } from "../arith/face";
 import {
-  claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, seatTableOf, splitByTable, type FaceFit, type LinkFaceCandidate,
+  beltRowSpan, claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, seatTableOf, splitByTable, tunnelLength,
+  type FaceFit, type LinkFaceCandidate,
 } from "../ledger/seat";
 
 /**
@@ -41,6 +44,7 @@ import {
  *   seat-blocked   내 **좌석 칸**이 남에게 먹혔다
  *   span-blocked   좌석은 비었는데 **그 사이를 잇는 구간**이 막혔다
  *   port-blocked   구간은 지나는데 **포트 칸**이 막혔다
+ *   dive-range     잠수로 풀릴 막힘인데 **사거리**를 넘었다(`AUTO_LAYOUT_LINK_DIVE`)
  * ```
  *
  * `seat-blocked` 와 `span-blocked` 는 둘 다 [DepthShortage.blockedRows] 에서 오지만 **기하가
@@ -52,29 +56,32 @@ import {
  * | 교착 | 해소자 | 지금 |
  * |---|---|---|
  * | `span-blocked` | [resolveSpanBlock] → [splitLinkAtRows] | ✅ 사다리 1단 |
- * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 |
+ * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 잠수(비켜 주기)가 푼다 |
+ * | `dive-range` | (없음) | ⛔ 더 긴 지하벨트를 고르는 것이 처방이다(위저드 단계) |
  * | `seat-blocked` | (없음) | ⛔ gap·다이렉트의 몫 |
  * | `seat-budget` | (없음) | ⛔ gap·다이렉트의 몫 |
  *
  * 그래서 이 이름표가 곧 **미완성 기능의 경계**다 — `unrouted-lines` 이슈가 이걸 싣는다
  * (`docs/auto-layout/link/machine-link.md` — *어디까지 작동하나*).
  */
-export type LadderRung = "span-blocked" | "port-blocked" | "seat-blocked" | "seat-budget";
+export type LadderRung = "span-blocked" | "port-blocked" | "dive-range" | "seat-blocked" | "seat-budget";
 
 /** 화면에 나가는 말. 셋이 `막힘` 으로 끝나고 **어디가** 막혔는지만 다르다. */
 const RUNG_LABEL: Record<LadderRung, string> = {
   "span-blocked": "구간막힘",
   "port-blocked": "포트막힘",
+  "dive-range": "사거리초과",
   "seat-blocked": "좌석막힘",
   "seat-budget": "좌석부족",
 };
 
 /** 해소자가 있는 것부터. 후보 여럿이 사유가 갈리면 **풀 수 있는 쪽**이 그 줄을 맡는다. */
 const RUNG_ORDER: readonly LadderRung[] = [
-  "span-blocked", "port-blocked", "seat-blocked", "seat-budget",
+  "span-blocked", "port-blocked", "dive-range", "seat-blocked", "seat-budget",
 ];
 
 function rungOf(w: DepthShortage): LadderRung {
+  if (w.diveRange) return "dive-range";
   if (w.blockedRows?.length && w.seatRows?.length)
     return resolveSpanBlock(w.seatRows, w.blockedRows).length > 0 ? "span-blocked" : "seat-blocked";
   if (w.blockedPort?.length) return "port-blocked";
@@ -129,6 +136,8 @@ export function summarizeRungs(shortages: Map<string, DepthShortage[]>): string 
  * ③ gap    N/S 면이면 그 자리 — 깊이 고정 · 몇 번째 무리인가가 반출 깊이   [fitOnGap]
  * ④ 끝     포트가 기둥 끝에 서나 · 줄이 어느 쪽으로 흐르나(깊이를 안 본다) [endOf]
  * ⑤ 후보   깊이마다 팔 수 — 팔 적은 것 → 얕은 것                          [depthCandidates]
+ * ⑤′ 행    머신마다 몇 번째 좌석에                                        [seatRowsOf]
+ * ⑤″ 잠수  막힌 칸을 땅속으로 비켜 가나 — 도착한 줄 · 먼저 앉은 줄          [diveRelief]
  * ⑥ 자리   좌석 → 구간 → 포트 칸. 못 들면 사유를 남기고 다음 후보          [fitOnFace]
  * ```
  */
@@ -181,24 +190,35 @@ export function tryLinkFace(
   // ⑤ 후보 — 팔 적은 것 → 얕은 것
   const table = seatTableOf(ctx, face);
   const flowToSouth = flowEnd(end) === "S";
+  // ⑤″ 잠수할 수 있는 줄인가 — 합류 쌍은 안 한다(도형이 두 줄에 걸려 있다). 종류는 운반량이 정한다(T1)
+  const diver = AUTO_LAYOUT_LINK_DIVE && group.sharedLineId === undefined;
+  const dive = diver ? diveUnderground(ctx.undergroundBelts, groupRate(group)) : undefined;
   for (const cand of depthCandidates(ctx, group, side, face, preferDepth)) {
     // ⑤′ 인서터 행 — 머신마다 몇 번째 좌석에(결정표 결-4 의 집)
     const d = cand.clusterBeltDepth;
     const slotIndex = seatRowsOf(table, face, cand.arms, side, {
       flowToSouth,
       depth: d,
-      // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다)
+      // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다).
+      // 잠수하면 먼저 앉은 줄이 비켜 줄 수 있는 칸(soft · 몸통)도 빈 것으로 본다 — 정확한 판정은 ⑤″ 가 한다
       portClear: (row) => splitByTable(portCells({ clusterBeltDepth: d, portEnd: end.portEnd, exitEnd: end.exitEnd }, [row, row]), table)
-        .inside.every(([r, dd]) => depthClear(table, dd, r, r)),
+        .inside.every(([r, dd]) => depthClear(table, dd, r, r) || (dive !== undefined && yieldable(table, r, dd))),
     });
+    // ⑤″ 잠수 — 막힌 칸을 땅속으로 비켜 가나(도착한 줄 · 먼저 앉은 줄)
+    const relief = diver ? diveRelief(ctx, table, d, slotIndex, side, end, dive) : undefined;
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
-    const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, end, why);
+    const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, end, why, relief);
     if (!fit) continue;
     recordEndsAudit(ctx, face, cand, fit, end);
     if (AUTO_LAYOUT_SEAT_PICK) recordSeatPick(table, face, cand.arms, side, flowToSouth, slotIndex);
+    if (relief?.tunnels?.length) recordFaceDepthStats({ diveOwn: 1 });
+    if (relief?.yields?.size) recordFaceDepthStats({ diveYield: 1 });
     return {
       face, arms: cand.arms, clusterBeltDepth: cand.clusterBeltDepth, reach: cand.clusterBeltDepth - 1,
       portEnd: end.portEnd, exitEnd: end.exitEnd, slotIndex,
+      ...(dive ? { dive } : {}),
+      ...(relief?.tunnels?.length ? { tunnels: relief.tunnels } : {}),
+      ...(relief?.yields?.size ? { yields: relief.yields } : {}),
     };
   }
   // 이 면의 깊이가 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
@@ -282,6 +302,105 @@ export function seatRowsOf(
     }
     out.set(mi, rows.slice(0, k).sort((a, b) => a - b));
   }
+  return out;
+}
+
+/** 먼저 앉은 줄이 이 칸을 내줄 수 있어 보이나 — 행 고르기의 거름용(정확한 판정은 [diveRelief]). */
+function yieldable(table: FaceTable, row: number, depth: number): boolean {
+  const c = cellAt(table, row, depth);
+  if (!c) return true;
+  if (c.kind === "tunnel") return true;
+  return c.kind === "soft" && typeof c.owner === "number" && table.dives.has(c.owner);
+}
+
+/**
+ * **⑤″ 잠수 — 막힌 칸을 땅속으로 비켜 가나.** 누가 잠수하나 · 잠수가 서나(T1~T4)의 집은 여기 하나다.
+ *
+ * ```
+ * 도착한 줄  내 구간 안 남의 칸이 **전부 포트**(그 밑으로 지나간다)이고 내 인서터 행이 아니면 그 행을 몸통으로.
+ *           남의 벨트(belt · soft · tunnel)는 못 건넌다 — 한 열에 두 줄의 구간이 겹치는 것이다(안 들인다)
+ * 먼저 앉은 줄 내 포트 칸이 그 줄의 soft(인서터가 안 닿는 벨트)면 그 줄이 그 행을 몸통으로 바꾼다 — 자리 · 인서터 · 포트는
+ *           그대로다(비켜 주기 ≠ 양보). 이미 몸통인 칸(tunnel)은 그냥 빈 칸이다
+ * ```
+ *
+ * 몸통은 막힌 행에서 선다([tunnelBodies] — 입출구가 겹치면 합친다). 서는 조건은 [tunnelFault] 가 잰다:
+ * T2 몸통이 인서터 행이 아니다 · T3 입출구가 구간 안쪽 · 물리 거리(gap 폭 포함 — [tunnelLength])가 사거리 안.
+ * 입출구가 끝 칸(포트가 붙는 칸 · 집는 쪽의 종착 칸)에 걸려 못 서면 **센다**(`diveEnd`) — 이름표는 구간막힘 그대로다.
+ * T1(지하 종류)은 부르는 쪽이 `dive` 로 준다. 없으면 잠수하지 않고, 잠수로 풀렸을 막힘이면 **센다**(`diveNoType`) —
+ * 이름표로는 안 낸다(지하벨트를 안 고른 판은 오늘과 바이트가 같아야 한다).
+ * T4(종착 입구가 잠수 출구와 짝이 된다)는 종착이 종류를 고를 때 지킨다(`module/policy/underground`).
+ *
+ * **장부는 안 바꾼다** — 센 몸통을 제안에 싣고, 받기(`commitLinkFace`)가 적는다. 규칙은 `trunk-blocked.md` §1 · §4.
+ */
+function diveRelief(
+  ctx: LinkFaceContext,
+  table: FaceTable,
+  d: number,
+  slotIndex: ReadonlyMap<number, readonly number[]>,
+  side: "from" | "to",
+  end: LinkEnd,
+  dive: SpecUndergroundBelt | undefined,
+): { tunnels?: TunnelBody[]; yields?: Map<number, TunnelBody[]>; freed?: Set<string>; range?: boolean } {
+  const span = beltRowSpan(table, slotIndex);
+  if (!(span[0] <= span[1])) return {};
+  const seatRows = new Set<number>();
+  for (const [mi, slots] of slotIndex) for (const s of slots) seatRows.add(rowIndex(table, mi, s));
+  const lengthOf = (e: number, x: number): number => tunnelLength(ctx, e, x);
+  const out: { tunnels?: TunnelBody[]; yields?: Map<number, TunnelBody[]>; freed?: Set<string>; range?: boolean } = {};
+
+  // ── 도착한 줄 — 구간 안의 못(남의 포트) 밑으로
+  const blocked: number[] = [];
+  let onlyPorts = true;
+  for (let r = span[0]; r <= span[1]; r++) {
+    const c = cellAt(table, r, d);
+    if (!c) continue;
+    blocked.push(r);
+    if (c.kind !== "port" || seatRows.has(r)) onlyPorts = false;
+  }
+  if (blocked.length > 0 && onlyPorts) {
+    if (!dive) recordFaceDepthStats({ diveNoType: 1 });
+    else {
+      const bodies = tunnelBodies(blocked);
+      const fixed = new Set(fixedRowsOf(span, flowEnd(end) === "S", side));
+      const fault = tunnelFault(bodies, span, seatRows, fixed, lengthOf, dive.maxDistance);
+      if (!fault) out.tunnels = bodies;
+      else if (fault === "range") out.range = true;
+      else if (fault === "end") recordFaceDepthStats({ diveEnd: 1 }); // 입출구가 끝 칸에 걸린다 — 문법의 경계
+    }
+  }
+  if (!dive) return out;
+
+  // ── 먼저 앉은 줄 — 내 포트 칸이 그 줄의 인서터가 안 닿는 벨트 위면 그 행을 땅속으로
+  const wants = new Map<number, number[]>();
+  const want = new Map<number, string[]>();
+  const freed = new Set<string>();
+  const port = splitByTable(portCells({ clusterBeltDepth: d, portEnd: end.portEnd, exitEnd: end.exitEnd }, span), table);
+  for (const [r, dd] of port.inside) {
+    const c = cellAt(table, r, dd);
+    if (!c) continue;
+    if (c.kind === "tunnel") { freed.add(`${r}|${dd}`); continue; } // 이미 땅속 — 땅 위가 비었다
+    if (c.kind !== "soft" || typeof c.owner !== "number" || !table.dives.has(c.owner)) continue;
+    wants.set(c.owner, [...(wants.get(c.owner) ?? []), r]);
+    want.set(c.owner, [...(want.get(c.owner) ?? []), `${r}|${dd}`]);
+  }
+  const yields = new Map<number, TunnelBody[]>();
+  for (const [who, rows] of wants) {
+    const rec = table.dives.get(who)!;
+    const bodies = tunnelBodies([...bodyRows(rec.bodies), ...rows]);
+    // 입출구는 그 줄 자신의 칸이라야 한다 — 남의 포트가 이미 그 위에 서 있으면(옛 몸통 위) 입출구가 될 수 없다
+    const mouthsOwn = bodies.every(([a, b]) => [a - 1, b + 1].every((m) => cellAt(table, m, rec.depth)?.owner === who));
+    const fault = mouthsOwn
+      ? tunnelFault(bodies, rec.span, new Set(rec.seatRows), new Set(rec.fixedRows), lengthOf, rec.maxDistance)
+      : "end";
+    if (fault) {
+      if (fault === "range") out.range = true;
+      continue;
+    }
+    yields.set(who, bodies);
+    for (const k of want.get(who)!) freed.add(k);
+  }
+  if (yields.size) out.yields = yields;
+  if (freed.size) out.freed = freed;
   return out;
 }
 

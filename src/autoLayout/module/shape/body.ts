@@ -50,11 +50,16 @@ type Cell = { x: number; y: number };
 /** 모듈-로컬 틀 — 칸 범위(양 끝 포함). */
 export type Extent = { x0: number; y0: number; x1: number; y1: number };
 
-/** 길의 한 칸 — 벨트가 설 자리와 그 칸이 흘려보내는 방향. */
+/** 길의 한 칸 — 벨트가 설 자리와 그 칸이 흘려보내는 방향. 잠수 입출구면 `ug` 가 그 종류다([linkShape] 의 `ugIn` · `ugOut`). */
 export interface RouteCell {
   at: Cell;
   v: Cell;
+  ug?: "input" | "output";
 }
+
+/** 도형 칸의 종류 → 길 칸의 지하 종류. */
+const ugOf = (c: ShapeCell): Pick<RouteCell, "ug"> =>
+  c.kind === "ugIn" ? { ug: "input" } : c.kind === "ugOut" ? { ug: "output" } : {};
 
 /** **기둥 틀** — 머신 전부가 덮는 범위. */
 export function machineExtent(machines: Container[]): Extent {
@@ -201,11 +206,12 @@ export function outputRouteOf(f: LinkFrame, plan: LinkSeats): { path: RouteCell[
     mergeRole: plan.mergeRole,
     rows: allRows,
     outRow: plan.portEnd === "S" ? mExt.y1 + 1 : mExt.y0 - 1,
+    tunnels: plan.tunnels,
   });
   const cellAt = (c: { depth: number; t: number }) => faceCell(mExt, face, c.depth, c.t);
   const path: RouteCell[] = [];
-  const push = (at: Cell, v: Cell): void => {
-    path.push({ at, v });
+  const push = (at: Cell, v: Cell, ug: Pick<RouteCell, "ug"> = {}): void => {
+    path.push({ at, v, ...ug });
   };
   // 흐름은 언제나 **트렁크 끝(t 가 작은 쪽)을 향한다** — W/E 면은 위로, N/S 면은 서쪽으로.
   const beltDirV = isGap ? { x: -1, y: 0 } : { x: 0, y: toSouth ? 1 : -1 };
@@ -223,7 +229,7 @@ export function outputRouteOf(f: LinkFrame, plan: LinkSeats): { path: RouteCell[
     shape.path.forEach((c: ShapeCell, idx: number) => {
       const at = cellAt(c);
       const to = cellAt(shape.path[idx + 1] ?? shape.after);
-      push(at, { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) });
+      push(at, { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) }, ugOf(c));
     });
   } else {
     // ── gap(N/S) — 계획이 장부를 안 드는 자원 모양이라 도형이 여기 남는다 ──────────
@@ -301,6 +307,7 @@ export function inputRouteOf(
     flowToSouth: toSouth,
     rows: allRows,
     outRow: 0, // 집는 쪽엔 합류 도형이 없다 — 안 쓰인다
+    tunnels: plan.tunnels,
   });
   const cellAt = (c: { depth: number; t: number }) => faceCell(geomExt, face, c.depth, c.t);
   /** 흐름의 **끝 칸** index — [resolveBeltTermini] 가 방향을 마무리할 자리. */
@@ -309,9 +316,9 @@ export function inputRouteOf(
     shape.path.forEach((c: ShapeCell, idx: number) => {
       const at = cellAt(c);
       const to = cellAt(shape.path[idx + 1] ?? shape.after);
-      path.push({ at, v: { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) } });
+      path.push({ at, v: { x: Math.sign(to.x - at.x), y: Math.sign(to.y - at.y) }, ...ugOf(c) });
     });
-    farIdx = path.length - 1; // 흐름 순서라 끝 칸이 곧 마지막이다
+    farIdx = path.length - 1; // 흐름 순서라 끝 칸이 곧 마지막이다(입출구는 구간 끝에 안 선다 — 지상 벨트다)
   } else {
     // ── gap(N/S) — 계획이 장부를 안 드는 자원 모양이라 도형이 여기 남는다 ──────────
     // ① **반출** — 포트(동쪽 변)에서 자기 열까지 반출 줄로 달려온다([emitOutputLinks] 의
@@ -453,7 +460,13 @@ export function placeLinkSeats(
       const origin = isGap ? m.origin.x : m.origin.y;
       slots.set(mi, idx.map((i) => origin + i));
     }
-    return { ...plan, slots };
+    if (!plan.tunnels?.length || isGap) return { ...plan, slots };
+    // **몸통도 좌표로** — 표의 행은 머신 사이 gap 을 안 세므로, 입출구(몸통 앞뒤 행)를 좌표로 옮기고 그 **사이 전부**를
+    // 몸통으로 삼는다. 몸통이 머신 경계를 건너면 gap 행까지 땅속이다(길이는 배정이 gap 폭을 더해 쟀다).
+    const h = machines[0].size.h;
+    const tOf = (row: number): number => machines[Math.floor(row / h)].origin.y + (row % h);
+    const tunnels = plan.tunnels.map(([a, b]) => [tOf(a - 1) + 1, tOf(b + 1) - 1] as const);
+    return { ...plan, slots, tunnels };
   });
 }
 

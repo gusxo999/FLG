@@ -83,6 +83,7 @@ export type ModulePortPlannerInput = Pick<
   | "inputLinks"
   | "fluidTrunk"
   | "seatedFaces"
+  | "undergroundBelts"
 >;
 
 /** [planModulePorts] 의 산출물 — **좌표가 하나도 없다.** */
@@ -242,7 +243,15 @@ export function planModulePorts(
   const pipe = pipeLinesOf(input);
   // ④ 나머지 줄 — 깊이 예산이 g 를 정하고, 링크와 같은 배분기로 앉힌다(자식-공급 먼저)
   const restLines = restLinesOf(input, linkedKeys);
-  const restLinks = seatRestLines(st, input, count, restLines);
+  const seatedRest = seatRestLines(st, input, count, restLines);
+  // ⑤′ 몸통 — 먼저 앉은 줄은 **나중에** 온 줄에게 비켜 준다. 그래서 몸통의 최종값은 다 앉힌 지금 장부에 있다
+  const tunnelsOf = (plans: (LinkFacePlan | undefined)[]) => plans.map((p) => withTunnels(st.ctx, p));
+  st.out.plans = tunnelsOf(st.out.plans);
+  st.in.plans = tunnelsOf(st.in.plans);
+  const restLinks: RestSeating = {
+    out: { ...seatedRest.out, plans: tunnelsOf(seatedRest.out.plans) },
+    in: { ...seatedRest.in, plans: tunnelsOf(seatedRest.in.plans) },
+  };
   // ⑤ 못 부은 줄 — 줄이 하나도 안 난 줄과 고칠 위저드 단계
   const unpourable = unpourableOf(input, restLines, restLinks);
   recordPortPlanStats(st, input, count, restLinks);
@@ -265,6 +274,17 @@ export function planModulePorts(
     // 유체가 못 앉으면 나머지 줄도 통째로 실패한다(반만 놓으면 그 머신이 조용히 굶는다).
     rest: restOutcomeOf(input, linkedKeys, pipe),
   };
+}
+
+/**
+ * **몸통을 계획에 옮겨 적는다** — 잠수 기록([DiveRecord] — `FaceTable.dives`)에서 그 줄의 주인 번호로 찾는다.
+ * 몸통이 없으면 계획을 그대로 돌려준다(오늘과 같은 지면 띠). 새 객체로 낸다 — 굳힌 좌석의 계획은 안 바꾼다.
+ */
+function withTunnels(ctx: LinkFaceContext, p: LinkFacePlan | undefined): LinkFacePlan | undefined {
+  if (!p || p.owner === undefined || p.face === "N" || p.face === "S") return p;
+  const rec = ctx.tables.get(p.face)?.dives.get(p.owner);
+  if (!rec || rec.bodies.length === 0) return p;
+  return { ...p, tunnels: rec.bodies.map(([a, b]) => [a, b] as const), undergroundName: rec.entityName };
 }
 
 /**

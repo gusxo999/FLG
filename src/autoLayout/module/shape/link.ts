@@ -32,13 +32,20 @@
  *
  * **청구가 없다는 것은 갈릴 도형이 없다는 뜻이지 다툼이 없다는 뜻이 아니다** — gap 그룹의 포트 두 칸이
  * 어느 장부에도 없어서, 남의 벨트와의 다툼을 방출 안전망이 처음 본다(work-kinds §7 D8).
+ *
+ * ## 잠수 — 몸통 행에는 칸이 없다
+ *
+ * 수집 · 분배 구간에 몸통([LinkShapeInput.tunnels])이 있으면 그 행은 **건너뛰고**, 바로 앞 칸이 지하 입구(`ugIn`),
+ * 바로 뒤 칸이 출구(`ugOut`)다(흐름 순서로). 방향은 여전히 다음 칸과의 차라 입구는 출구를 향한다 — 곧 흐름 방향이다.
+ * 합류 쌍은 잠수하지 않는다(좌석 창구가 안 준다) — 비켜 가는 열 · 합류 칸에는 몸통이 없다.
+ * 규칙은 `docs/auto-layout/module/trunk-blocked.md` §1 · §4.
  */
 
 import { flowEnd } from "../arith/trunk";
 import type { LinkFacePlan } from "../types/seat";
 
 /** 이 칸에 무엇이 서나. 좌석(d1)은 여기 없다 — 배정의 `slotIndex` 가 이미 단일 출처다. */
-export type ShapeKind = "belt" | "merge" | "portInserter" | "portChest";
+export type ShapeKind = "belt" | "merge" | "portInserter" | "portChest" | "ugIn" | "ugOut";
 
 /** 면 위 한 칸 — `t` 의 뜻은 [faceCell] 과 같다(W/E 면이면 행). */
 export interface ShapeCell {
@@ -61,6 +68,8 @@ export interface LinkShapeInput {
   rows: readonly number[];
   /** 기둥 **밖** 첫 행 — 합류가 서는 자리. 합류가 아니면 안 쓴다. */
   outRow: number;
+  /** 땅속 행 구간(닫힘) — 이 행들엔 칸이 없고 앞뒤 칸이 지하 입출구다(머리말 §잠수). 축은 `rows` 와 같다. */
+  tunnels?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface LinkShape {
@@ -97,11 +106,24 @@ export function linkShape(i: LinkShapeInput): LinkShape {
   const out = i.portEnd === "S" ? 1 : -1;
   const belt = (depth: number, t: number): ShapeCell => ({ kind: "belt", depth, t });
   const path: ShapeCell[] = [];
+  /** 몸통 행인가 — 칸이 없다. */
+  const under = (t: number): boolean => (i.tunnels ?? []).some(([a, b]) => t >= a && t <= b);
+  /**
+   * **구간 한 줄** — `from` 에서 `to` 까지 흐름 순서로. 몸통 행은 건너뛰고, 몸통 바로 앞 칸이 입구 · 바로 뒤 칸이 출구다.
+   * 몸통이 없으면 오늘의 지면 띠 그대로다.
+   */
+  const run = (from: number, to: number, step: number): void => {
+    for (let t = from; t !== to + step; t += step) {
+      if (under(t)) continue;
+      const kind: ShapeKind = under(t + step) ? "ugIn" : under(t - step) ? "ugOut" : "belt";
+      path.push({ kind, depth: d, t });
+    }
+  };
 
   if (i.role === "output") {
     // ① **수집** — 자기 좌석 구간을 덮으며 포트 쪽으로 흐른다.
     const step = i.flowToSouth ? 1 : -1;
-    for (let t = farT; t !== topT + step; t += step) path.push(belt(d, t));
+    run(farT, topT, step);
 
     if (i.mergeRole === "follow") {
       // ② **비켜 가기** — 깊이 +1 로 한 칸, +2 를 따라 기둥 밖까지. 마지막에 **얕은 쪽**으로
@@ -128,7 +150,7 @@ export function linkShape(i: LinkShapeInput): LinkShape {
   // 집는 쪽 — 포트에서 받아 좌석 구간에 **나눠 주고**, 먼 끝에서 머신 쪽으로 꺾어 멈춘다.
   // 그 끝 칸의 최종 방향은 [resolveBeltTermini] 가 다시 정할 수 있다(늦은 결정).
   const step = i.flowToSouth ? -1 : 1;
-  for (let t = topT; t !== farT + step; t += step) path.push(belt(d, t));
+  run(topT, farT, step);
   const port = portOf(d, topT, out, i.portEnd !== undefined);
   // 흐름의 끝은 **머신 쪽 이웃 칸**을 향한다 — 벨트를 놓지 않는 가상의 칸이다.
   return { path, after: { kind: "belt", depth: d - 1, t: farT }, port };

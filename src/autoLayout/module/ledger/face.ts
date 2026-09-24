@@ -43,6 +43,24 @@
  * 그래서 복사해서 채워 보고 버릴 수 있다([copyFaceTable]). 트렁크 경로 계획의 배정 3단이
  * 요구하는 것이 그것 하나다(`docs/auto-layout/module/trunk-assignment.md` §15 ㉢) — 장부 셋을 순서대로
  * 밀던 옛 모양으로는 되돌릴 방법이 없었다.
+ *
+ * ## 칸의 종류와 잠수 기록 — 줄이 땅속으로 비켜 갈 때(`AUTO_LAYOUT_LINK_DIVE`)
+ *
+ * 주인만으로는 *"이 칸 밑으로 지나갈 수 있나"* 를 못 답한다. 그래서 칸마다 **종류**를 곁들인다([FaceCellKind]).
+ * 주인이 줄 하나를 뜻하는 것은 그대로이고, 종류는 그 칸이 **땅 위에 무엇을 세우나**다:
+ *
+ * ```
+ * belt    그 줄의 인서터가 닿는 행의 벨트 · 합류 칸 · 지하 입출구       — 못 비킨다
+ * soft    인서터가 안 닿는 행의 자기 벨트                              — 주인이 그 행을 땅속으로 내줄 수 있다
+ * port    포트 인서터 · 상자                                           — 못 비키지만 **그 밑으로는** 지나간다
+ * tunnel  합친 몸통 사이의 행 — 땅 위엔 아무것도 없지만 열은 그 줄의 것이다
+ * ```
+ *
+ * 종류가 없는 칸은 `belt` 로 읽는다(가장 보수적). 잠수를 들이지 않는 판에서는 아무도 종류를 안 읽는다.
+ * **벨트 밑으로는 아무도 안 들어간다** — 한 열에서 두 줄의 구간은 안 겹친다([depthClear] 가 칸으로 막는다). 몸통 위에
+ * 남의 벨트를 들이는 것(얹기)은 `tempPlanDocs/링크-좌석/judgements.md` J-모양문법 의 몫이다.
+ * **잠수 기록**([DiveRecord])은 줄마다 몸통 구간이다 — 먼저 앉은 줄이 **나중에** 비켜 주므로 최종값은 장부에 있다.
+ * 규칙은 `docs/auto-layout/module/trunk-blocked.md` §1 · §4.
  */
 
 /** 칸 하나의 주인. `"pipe"` = 유체 상자가 미리 먹은 좌석, 수 = 그룹 순번. */
@@ -51,6 +69,27 @@ export type FaceCellOwner = number | "pipe";
 /** 좌석 열의 깊이 — 면 바로 바깥 한 칸. 팔은 언제나 여기 앉는다. */
 export const SEAT_DEPTH = 1;
 
+/** 칸이 땅 위에 세우는 것 — 머리말 §칸의 종류. 없으면 `belt` 로 읽는다. */
+export type FaceCellKind = "belt" | "soft" | "port" | "tunnel";
+
+/**
+ * **줄 하나의 잠수 기록** — 잠수할 수 있는 줄만 갖는다(지하 종류를 받은 줄).
+ *
+ * `bodies` 는 땅속 행 구간(닫힘)들이고 입구 · 출구는 그 바로 앞뒤 행이다(흐름 방향은 계획이 안다 — 칸은 같다).
+ * `span` 은 그 줄의 벨트 구간 — 입출구가 구간 **안쪽**에만 설 수 있어서 든다.
+ */
+export interface DiveRecord {
+  readonly depth: number;
+  readonly span: readonly [number, number];
+  /** 그 줄의 인서터 행(모듈-로컬) — 몸통이 될 수 없다(인서터는 몸통에서 못 집는다). */
+  readonly seatRows: readonly number[];
+  /** 입출구가 될 수 없는 행 — 포트가 붙는 끝 · 집는 쪽의 흐름 끝(`module/arith/dive.tunnelFault`). */
+  readonly fixedRows: readonly number[];
+  readonly entityName: string;
+  readonly maxDistance: number;
+  bodies: Array<readonly [number, number]>;
+}
+
 export interface FaceTable {
   /** 머신 하나가 이 면에 가진 길이 방향 칸 수 — W/E 면은 `h`, N/S 면은 `w`. */
   readonly rowsPerMachine: number;
@@ -58,6 +97,10 @@ export interface FaceTable {
   readonly machineCount: number;
   /** `${행}|${깊이}` → 주인. 없으면 빈칸. */
   readonly cells: Map<string, FaceCellOwner>;
+  /** `${행}|${깊이}` → 그 칸의 종류(머리말 §칸의 종류). 없으면 `belt`. */
+  readonly kinds: Map<string, FaceCellKind>;
+  /** 주인 → 잠수 기록. 잠수할 수 있는 줄만 있다. */
+  readonly dives: Map<number, DiveRecord>;
   /** 다음 그룹에게 줄 순번 — 주인을 구분해야 [groupsOn] 을 셀 수 있다. */
   nextOwner: number;
 }
@@ -67,6 +110,8 @@ export interface FaceTableView {
   readonly rowsPerMachine: number;
   readonly machineCount: number;
   readonly cells: ReadonlyMap<string, FaceCellOwner>;
+  readonly kinds: ReadonlyMap<string, FaceCellKind>;
+  readonly dives: ReadonlyMap<number, Readonly<DiveRecord>>;
   readonly nextOwner: number;
 }
 
@@ -90,6 +135,8 @@ export function makeFaceTable(
     rowsPerMachine: Math.max(1, rowsPerMachine),
     machineCount: Math.max(1, machineCount),
     cells: new Map(),
+    kinds: new Map(),
+    dives: new Map(),
     nextOwner: 0,
   };
   for (let mi = 0; mi < t.machineCount; mi++)
@@ -102,7 +149,23 @@ export function makeFaceTable(
 
 /** 표를 통째로 복사한다 — 채워 보고 버리는 시도(백트래킹·사다리)의 전부다. */
 export function copyFaceTable(t: FaceTableView): FaceTable {
-  return { ...t, cells: new Map(t.cells) };
+  return {
+    ...t,
+    cells: new Map(t.cells),
+    kinds: new Map(t.kinds),
+    dives: new Map([...t.dives].map(([o, r]) => [o, { ...r, bodies: [...r.bodies] }] as const)),
+  };
+}
+
+/** 칸 하나 — 주인과 종류. 빈칸이면 `undefined`. 종류가 안 적힌 칸은 `belt` 다(머리말). */
+export function cellAt(
+  t: FaceTableView,
+  row: number,
+  depth: number,
+): { owner: FaceCellOwner; kind: FaceCellKind } | undefined {
+  const owner = t.cells.get(key(row, depth));
+  if (owner === undefined) return undefined;
+  return { owner, kind: t.kinds.get(key(row, depth)) ?? "belt" };
 }
 
 /**
@@ -165,13 +228,64 @@ export function claimSeats(
   for (const s of slots) t.cells.set(key(rowIndex(t, mi, s), SEAT_DEPTH), owner);
 }
 
-/** 깊이 `depth` 의 행 구간 `[lo, hi]` 를 `owner` 에게 준다. */
+/** 깊이 `depth` 의 행 구간 `[lo, hi]` 를 `owner` 에게 준다. 종류를 주면 함께 적는다(없으면 `belt` 로 읽힌다). */
 export function claimDepth(
   t: FaceTable,
   depth: number,
   lo: number,
   hi: number,
   owner: number,
+  kind?: FaceCellKind,
 ): void {
-  for (let r = lo; r <= hi; r++) t.cells.set(key(r, depth), owner);
+  for (let r = lo; r <= hi; r++) {
+    t.cells.set(key(r, depth), owner);
+    if (kind) t.kinds.set(key(r, depth), kind);
+    else t.kinds.delete(key(r, depth));
+  }
+}
+
+/** 칸 하나를 비운다 — 비켜 준 줄의 몸통 행([giveRows]). */
+function releaseCell(t: FaceTable, row: number, depth: number): void {
+  t.cells.delete(key(row, depth));
+  t.kinds.delete(key(row, depth));
+}
+
+/**
+ * **먼저 앉은 줄이 행을 땅속으로 내준다** — 새 몸통 구간 `bodies` 로 바꾸고, 새로 몸통이 된 행의 지면을 비우고,
+ * 입출구 행을 단단하게(`belt`) 적는다. **고르지 않는다** — 몸통은 정책이 셌다(`module/policy/link.diveRelief`).
+ *
+ * **비켜 준 줄의 인서터 · 포트는 안 움직인다** — 비우는 칸이 그 줄의 `soft`(인서터가 안 닿는 벨트)나 이미 `tunnel`
+ * 이거나 남이 쓰는 칸(몸통 위에 선 포트)이 아니면 던진다. 되돌리기가 아니라 지면 청구가 줄어드는 것뿐이다.
+ */
+export function giveRows(t: FaceTable, owner: number, bodies: ReadonlyArray<readonly [number, number]>): void {
+  const rec = t.dives.get(owner);
+  if (!rec) throw new Error(`비켜 주기 — 주인 ${owner} 는 잠수 기록이 없다`);
+  const d = rec.depth;
+  const seat = new Set(rec.seatRows);
+  /** 옛 입출구 — 몸통을 합치면 그 행도 땅속이 된다. */
+  const oldMouths = new Set(rec.bodies.flatMap(([a, b]) => [a - 1, b + 1]));
+  for (const [a, b] of bodies) {
+    for (let r = a; r <= b; r++) {
+      if (seat.has(r)) throw new Error(`비켜 주기 — 행 ${r} 는 주인 ${owner} 의 인서터 행이다(몸통이 될 수 없다)`);
+      const c = cellAt(t, r, d);
+      if (c && c.owner === owner) {
+        if (c.kind !== "soft" && c.kind !== "tunnel" && !oldMouths.has(r))
+          throw new Error(`비켜 주기 — (${r}, d${d}) 는 주인 ${owner} 의 ${c.kind} 칸이다(soft 만 내준다)`);
+        // 땅 위엔 아무것도 없지만 열은 여전히 그 줄의 것이다 — 남의 벨트가 들어오지 않게 tunnel 로 남긴다
+        t.kinds.set(key(r, d), "tunnel");
+      }
+    }
+    for (const m of [a - 1, b + 1]) {
+      const c = cellAt(t, m, d);
+      if (!c || c.owner !== owner) throw new Error(`비켜 주기 — 입출구 (${m}, d${d}) 가 주인 ${owner} 의 칸이 아니다`);
+      t.kinds.set(key(m, d), "belt");
+    }
+  }
+  rec.bodies = bodies.map(([a, b]) => [a, b] as const);
+}
+
+/** 몸통 행 위에 남이 서는 칸을 적는다 — 그 칸의 원래 주인(몸통의 주인)은 지운다. */
+export function claimOverTunnel(t: FaceTable, row: number, depth: number, owner: number, kind: FaceCellKind): void {
+  releaseCell(t, row, depth);
+  claimDepth(t, depth, row, row, owner, kind);
 }
