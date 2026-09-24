@@ -1,24 +1,28 @@
 /**
  * **배정이 `generateModule` 밖에서 산다** — 링크의 자리는 좌석 단계가 정하고 **굳힌 값**으로 넘긴다.
  *
- * 잠그는 것은 둘이다:
+ * 잠그는 것은 셋이다:
  *
  * ```
- * 값으로 넘겨도 답이 같다     planModulePorts(input)  ==  planModulePorts({ ...input, seatedFaces: 굳힌 값 })
- * 받은 값을 안 바꾼다         같은 입력으로 두 번 불러도 같은 답 · 굳힌 장부는 그대로
+ * 받은 값을 안 바꾼다         같은 굳힌 좌석으로 두 번 계획해도 같은 답 · 굳힌 장부는 그대로
+ * 반쪽 배정이 없다            한 링크는 양끝이 다 앉거나 둘 다 안 앉는다(좌석 창구 둘에 묻고 받는다)
+ * 모듈 혼자 앉히는 길이 없다   링크가 있는데 굳힌 좌석이 없으면 거절한다
  * ```
  *
  * **이 단언이 없으면 "동작 무변경" 이 말뿐이다.** 넘기는 것이 쓰다 만 장부였을 때는 받는 쪽이 원본을
  * 더럽히지 않게 사본을 떴다(2026-08-29 — 사본 없이 재사용해 21개 시험이 떨어졌다). 지금은 값이고,
  * 복사는 받는 쪽이 열 때 한 번이다.
+ *
+ * (2026-09-24 까지 이 파일의 첫 묶음은 *"모듈이 혼자 앉힌 답 == 밖에서 받은 답"* 을 잠갔다. 모듈 혼자 앉히는 길이
+ *  없어져 그 비교는 뜻을 잃었다 — 대신 받은 값을 안 바꾼다는 성질을 잠근다.)
  */
 import { describe, it, expect } from "vitest";
-import { moduleFacesOf, planModulePorts } from "./port";
+import { planModulePorts } from "./port";
 import { openFaceSeating } from "./seat";
 import { seatLinkEdge } from "../../link/policy/seat";
+import { seatedAlone } from "../../link/testSeat";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
-import type { ModuleFaces, SeatedFaces } from "../types/seat";
 
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
@@ -54,20 +58,15 @@ const base = (over: Partial<ModuleInput> = {}): ModuleInput => ({
   ...over,
 });
 
-/** 모듈 축으로 앉힌 장부를 **굳힌 값**으로 — 좌석 단계가 창구를 닫을 때 내는 모양과 같다. */
-const seal = (f: ModuleFaces): SeatedFaces => ({
-  out: f.out.plans, in: f.in.plans, outWhy: f.out.shortages, inWhy: f.in.shortages,
-  ledger: { tables: f.ctx.tables, ends: f.ctx.ends, outside: f.ctx.outside },
-  fluid: {
-    pipeFaces: f.pipeFaces, pipeFaceRows: f.ctx.pipeFaces ?? new Map(), isJumpableToClusterPipe: f.isJumpableToClusterPipe,
-  },
-});
-
-/** 계획에서 **비교 가능한 뼈대**만 뽑는다 — Map·객체 신원이 아니라 값으로 본다. */
+/**
+ * 같은 굳힌 좌석으로 **두 번** 계획한다 — 받는 쪽이 값을 복사해 열지 않으면 둘째 계획이 첫째가 앉힌
+ * 나머지 줄을 보고 시작해 답이 갈린다(2026-08-29 에 사본 없이 재사용해 21개 시험이 떨어진 그 모양).
+ */
 const shape = (input: ModuleInput) => {
   const n = Math.max(1, input.count);
-  const p = planModulePorts(input, n);
-  const q = planModulePorts({ ...input, seatedFaces: seal(moduleFacesOf(input, n)) }, n);
+  const seated = seatedAlone(input);
+  const p = planModulePorts(seated, n);
+  const q = planModulePorts(seated, n);
   const dump = (x: ReturnType<typeof planModulePorts>) => ({
     rowGaps: x.rowGaps,
     linkFaceDepths: x.linkFaceDepths,
@@ -85,8 +84,14 @@ const shape = (input: ModuleInput) => {
   return [dump(p), dump(q)] as const;
 };
 
-describe("굳힌 좌석 — 값으로 넘겨도 답이 같다", () => {
-  it("기본 트리 — 두 경로가 같은 계획을 낸다", () => {
+describe("굳힌 좌석 — 두 번 열어도 같은 답(받은 값을 안 바꾼다)", () => {
+  it("링크가 있는데 굳힌 좌석이 없으면 **거절한다** — 모듈 혼자 링크를 앉히는 길은 없다", () => {
+    expect(() => planModulePorts(base(), 3)).toThrow();
+    // 대조군 — 링크가 없으면 굳힌 좌석 없이도 된다
+    expect(() => planModulePorts(base({ outputLinks: [], inputLinks: [] }), 3)).not.toThrow();
+  });
+
+  it("기본 트리 — 두 번 계획해도 같다", () => {
     const [a, b] = shape(base());
     // **초록이 거짓이 아니게** — 둘 다 아무것도 안 앉혔으면 "같다" 는 아무 뜻이 없다.
     expect(a.out.filter(Boolean).length).toBeGreaterThan(0);
@@ -110,9 +115,9 @@ describe("굳힌 좌석 — 값으로 넘겨도 답이 같다", () => {
   });
 
   it("받은 값을 안 바꾼다 — 두 번 불러도 같은 답 · 굳힌 장부는 그대로", () => {
-    const input = base();
+    const input = seatedAlone(base());
     const n = Math.max(1, input.count);
-    const seatedFaces = seal(moduleFacesOf(input, n));
+    const seatedFaces = input.seatedFaces!;
     const cellsOf = () => [...seatedFaces.ledger.tables].map(([f, t]) => [f, [...t.cells]] as const);
     const before = cellsOf();
     const slots = (x: ReturnType<typeof planModulePorts>) =>

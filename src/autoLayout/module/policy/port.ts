@@ -61,7 +61,7 @@ import {
 } from "../arith/face";
 import { openLinkFaceContext, reopenLinkFaceContext } from "../ledger/seat";
 import {
-  restOutcomeOf, seatModuleLinks, seatRestLines, unpourableOf, type RestSeating,
+  restOutcomeOf, seatRestLines, unpourableOf, type RestSeating,
 } from "./seat";
 
 /**
@@ -175,13 +175,14 @@ export interface ModulePortPlan {
  *
  * ```
  * 굳힌 좌석이 있다   좌석 단계가 링크를 양끝에 앉히고 닫은 값 — 그 장부를 **복사해** 연다
- * 없다              링크가 아직 안 앉았다 — 이 모듈 혼자 링크를 앉힌다(모듈 축)
+ * 없다              링크가 없는 모듈이다 — 빈 장부를 연다
  * ```
  *
  * 받은 값은 안 바꾼다. 그래서 `generateModule` 을 같은 입력으로 몇 번 불러도 같은 답이다.
  *
- * (굳힌 좌석이 없을 때의 모듈 축은 **제품이 안 탄다** — `generateModule` 을 부르는 곳이 좌석 단계 뒤 하나뿐이다.
- *  링크를 준 모듈 하나짜리 시험만 여기를 지난다.)
+ * **링크가 있는데 굳힌 좌석이 없으면 거절한다.** 링크의 자리는 양끝이 함께 정하는 것이라 모듈 혼자 정할
+ * 길이 없다 — 예전의 그 길(모듈 축)은 제품이 안 타서 지웠다(2026-09-24). 시험은 `link/testSeat` 이 제품 경로로
+ * 앉혀 준다.
  */
 export function moduleFacesOf(input: ModulePortPlannerInput, count: number): ModuleFaces {
   const seated = input.seatedFaces;
@@ -195,13 +196,14 @@ export function moduleFacesOf(input: ModulePortPlannerInput, count: number): Mod
     ): FaceAllocation => ({ plans: [...plans], deferred: [], shortages: why.map((w) => [...w]) });
     return facesOf(ctx, outLinks, inLinks, allocation(seated.out, seated.outWhy), allocation(seated.in, seated.inWhy), seated.fluid);
   }
+  if (outLinks.length > 0 || inLinks.length > 0)
+    throw new Error("링크가 있는데 굳힌 좌석(seatedFaces)이 없다 — 좌석 단계를 거치지 않은 입력이다");
   // ⓪ 유체 면 — 머신이 강제한다. 면마다 줄 수 · 깊이 상한 · 점프 가능(예산은 거절과 같은 함수)
   const fluid = fluidFacesOf(input);
   // ① 무대 — 면마다 빈 표 · 끝 · 기둥 밖 칸. 표는 면을 처음 볼 때 유체 칸을 찍어 차린다
   const faceCtx = openLinkFaceContext(input, count, fluid.pipeFaceRows);
-  // ② 링크 좌석(모듈 축) — 양쪽 선호 면 먼저, 넘침은 그 뒤(유체 면 → gap)
-  const alone = seatModuleLinks(faceCtx, outLinks, inLinks);
-  return facesOf(faceCtx, outLinks, inLinks, alone.out, alone.in, fluid);
+  const none: FaceAllocation = { plans: [], deferred: [], shortages: [] };
+  return facesOf(faceCtx, outLinks, inLinks, none, { plans: [], deferred: [], shortages: [] }, fluid);
 }
 
 /** [ModuleFaces] 를 엮는다. */

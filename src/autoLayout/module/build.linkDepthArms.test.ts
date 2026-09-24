@@ -17,9 +17,13 @@
  * *머신 하나짜리 줄*(`from` 이 한 머신)에만 건다.
  */
 import { describe, it, expect } from "vitest";
-import { generateModule } from "./build";
+import { generateModule as generateSeated } from "./build";
+import { seatedAlone } from "../link/testSeat";
 import type { Link } from "./types/line";
 import type { GeneratedModule, ModuleInput } from "./types/module";
+
+// 링크의 자리는 좌석 단계가 정한다 — 모듈 하나짜리 시험은 `seatedAlone` 이 **제품 경로로** 앉혀 준다.
+const generateModule = (input: ModuleInput) => generateSeated(seatedAlone(input));
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 

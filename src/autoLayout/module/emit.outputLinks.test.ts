@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { generateModule } from "./build";
+import { generateModule as generateSeated } from "./build";
+import { seatedAlone } from "../link/testSeat";
 import type { Link } from "./types/line";
 import type { GeneratedModule, ModuleInput } from "./types/module";
 import type { Flow } from "../link/arith/flows";
 import { directionToVector } from "../shared/route";
 import { EntityType } from "../../types/layout";
+
+// 링크의 자리는 좌석 단계가 정한다 — 모듈 하나짜리 시험은 `seatedAlone` 이 **제품 경로로** 앉혀 준다.
+const generateModule = (input: ModuleInput) => generateSeated(seatedAlone(input));
 
 /**
  * **한 그룹의 벨트가 다른 그룹의 벨트로 흘러들면 안 된다.**

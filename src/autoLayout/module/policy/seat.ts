@@ -3,13 +3,14 @@
  *
  * ```
  * 좌석 창구  openFaceSeating   링크 쪽이 묻고 받는 곳 — 면 · 깊이 · 끝은 여기서 고른다
- * 모듈 축    seatModuleLinks   링크 — 양쪽 선호 면 먼저, 넘침은 그 뒤
- *            seatRestLines     나머지 줄 — 깊이 예산이 g 를 정하고 자식-공급을 먼저 앉힌다
+ * 나머지 줄  seatRestLines     깊이 예산이 g 를 정하고 자식-공급을 먼저 앉힌다
  *            unpourableOf      줄이 하나도 안 난 줄과 고칠 위저드 단계
  *            restOutcomeOf     유체가 못 앉으면 나머지 줄이 통째로 물러난다
  * ```
  *
  * 한 링크를 양끝에 함께 앉히는 일(합류 · 쪼갬 · 원자성)은 `link/policy/seat` 에 있다 — 양끝의 결정이다.
+ * 모듈이 **혼자** 링크를 앉히는 길(옛 `seatModuleLinks` — 모듈 축)은 없다. 링크의 자리는 양끝이 함께 정한다
+ * (2026-09-24 — 제품이 안 타는 갈래라 지웠다).
  *
  * 한 면 안의 선택(끝 · 깊이 순서)은 [linkPlanner] 가, 자리를 묻고 적는 일은 [ledger] 가 한다.
  * **부르는 순서는 뼈대([planModulePorts]) 하나가 쥔다** — 좌석표는 먼저 앉은 것이 이기므로 그 순서가 곧 답이다.
@@ -21,7 +22,7 @@
 import type { IoLine, Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, FaceAllocation, FaceSeating, LinkFaceContext, LinkFacePlan, ModuleFaces, SeatReceipt,
+  DepthShortage, FaceSeating, LinkFacePlan, ModuleFaces, SeatReceipt,
 } from "../types/seat";
 import { externalLineGroups, readLinkRole } from "../arith/link";
 import { inserterForReach } from "../../shared/gamedata/spec";
@@ -130,30 +131,6 @@ export function openFaceSeating(
 export interface RestSeating {
   out: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
   in: { groups: Link[]; plans: (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
-}
-
-/**
- * **② 링크 좌석(모듈 축)** — 이 모듈의 링크를 직접 앉힌다.
- *
- * 이 단계는 팔 **수**만 본다(좌표 없음). gap 으로 넘어간 그룹은 gap 안에 가로 벨트를 놓고,
- * **gap 폭 = 그 gap 을 지나는 가로 벨트 수**다 — 그 폭이 다시 머신 좌표를 정하므로
- * 좌표보다 면이 먼저다.
- */
-export function seatModuleLinks(
-  faceCtx: LinkFaceContext,
-  outLinks: Link[],
-  inLinks: Link[],
-): { out: FaceAllocation; in: FaceAllocation } {
-  const outFaces = allocateLinkFaces(faceCtx, outLinks, "from", "W");
-  const inFaces = allocateLinkFaces(faceCtx, inLinks, "to", "E");
-  // 넘침은 나중 — 양쪽의 선호 면 수요가 먼저 자리를 잡은 뒤에 남은 gap 을 다툰다.
-  // **선호 면을 다시 넣는 이유**: 그 면이 유체 면이면 위에서 비켜 갔다([tryLinkFace] 의
-  // `allowPipeFace`). 넘침 단계는 유체 면을 허용하므로 여기서 한 번 더 기회를 준다 —
-  // 유체 면에 앉으면 그 면이 넓어지지만 gap 으로 가면 기둥이 벌어진다. **유체 면이 먼저다.**
-  // (반대 옆면은 여전히 안 쓴다 — 벨트가 채널 반대쪽에서 출발해 되돌아올 길이 없다.)
-  spillLinkFacesToGap(faceCtx, outLinks, "from", outFaces, ["W", "S", "N"]);
-  spillLinkFacesToGap(faceCtx, inLinks, "to", inFaces, ["E", "S", "N"]);
-  return { out: outFaces, in: inFaces };
 }
 
 /**

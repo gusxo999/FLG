@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { generateModule } from "./build";
+import { generateModule as generateSeated } from "./build";
+import { seatedAlone } from "../link/testSeat";
 import type { Link } from "./types/line";
 import type { ModuleInput } from "./types/module";
 import { EntityType } from "../../types/layout";
+
+// 링크의 자리는 좌석 단계가 정한다 — 모듈 하나짜리 시험은 `seatedAlone` 이 **제품 경로로** 앉혀 준다.
+const generateModule = (input: ModuleInput) => generateSeated(seatedAlone(input));
 
 // 입력 fan-in 방출 — [emitOutputLinks] 의 거울.
 //

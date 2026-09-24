@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateModule } from "./build";
+import { generateModule as generateSeated } from "./build";
+import { seatedAlone } from "../link/testSeat";
 import type { Link } from "./types/line";
 import type { BeltMerge, BeltTerminus, ModuleInput } from "./types/module";
 import type { PlacedCell, PortPair } from "../shared/types";
@@ -7,6 +8,9 @@ import { EntityType } from "../../types/layout";
 import { makeBeltCell } from "../shared/cells/builder";
 import { cellKey } from "../shared/grid";
 import { resolveBeltTermini, slowestUnderground } from "./late";
+
+// 링크의 자리는 좌석 단계가 정한다 — 모듈 하나짜리 시험은 `seatedAlone` 이 **제품 경로로** 앉혀 준다.
+const generateModule = (input: ModuleInput) => generateSeated(seatedAlone(input));
 
 // 벨트 흐름의 **끝 칸** — 방향은 아무래도 좋지만 **남의 품목과 합류해선 안 된다.**
 // 규칙과 근거는 [module/late.ts] 머리말.
