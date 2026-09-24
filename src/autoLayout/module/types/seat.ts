@@ -323,8 +323,11 @@ export interface LinkNeed {
  */
 export type SeatReach = "near" | "far";
 
-/** **제안** — 받기 전의 자리. 링크 쪽이 읽는 것은 면 · 깊이 · 끝이다(합류 판정 · 이름표). */
-export type SeatOffer = Readonly<Omit<LinkFacePlan, "slotIndex" | "mergeRole" | "sharesBelt">>;
+/**
+ * **제안** — 받기 전의 자리. 인서터 행(`slotIndex`)까지 창구가 고른 것이다. 링크 쪽이 읽는 것은 면 · 깊이 · 끝이다
+ * (합류 판정 · 이름표).
+ */
+export type SeatOffer = Readonly<Omit<LinkFacePlan, "mergeRole" | "sharesBelt">>;
 
 /**
  * **묻기의 대답.** 자리가 있으면 `offer`. `why` 는 **있든 없든** 온다 — 자리가 난 후보 앞에서 떨어진

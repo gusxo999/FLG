@@ -30,8 +30,8 @@ import { determineBeltCount } from "../../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
 import type { PortFace } from "../../shared/types";
 import { planBundles } from "../arith/depth";
-import { allocateLinkFaces, tryLinkFace, spillLinkFacesToGap } from "./link";
-import { commitLinkFace, openLinkFaceContext, seatOnSharedBelt } from "../ledger/seat";
+import { allocateLinkFaces, seatOnSharedBelt, tryLinkFace, spillLinkFacesToGap } from "./link";
+import { commitLinkFace, openLinkFaceContext } from "../ledger/seat";
 import { clusterBeltDepthsOf, fluidFacesOf } from "../arith/face";
 
 // ─────────────────────────────────────────────────────────────────────────────

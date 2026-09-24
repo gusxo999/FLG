@@ -15,9 +15,9 @@
  * > 무대를 차리고 베끼는 둘은 `module/policy/port.ts` 에서 왔다(Step 3b).
  */
 
-import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
+import { faceSeatArms } from "../../shared/gamedata/spec";
 import type { PortFace } from "../../shared/types";
-import { armsAt, machinesOn } from "../arith/link";
+import { machinesOn } from "../arith/link";
 import { flowEnd } from "../arith/trunk";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
@@ -27,13 +27,19 @@ import type {
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../shape/link";
 import {
-  claimDepth, claimSeats, copyFaceTable, freeSeatRows, groupsOn, depthClear, makeFaceTable,
+  claimDepth, claimSeats, copyFaceTable, groupsOn, depthClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceTable,
 } from "./face";
 import { LINK_LANE_DEPTH } from "../arith/face";
 
-/** [commitLinkFace] 전의 배정안 — 순번(`slotIndex`)은 확정 시점에야 정해진다. */
-export type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex" | "mergeRole" | "sharesBelt">;
+/**
+ * [commitLinkFace] 전의 배정안. **인서터 행(`slotIndex`)까지 든다** — 행은 정책이 묻기 때 고르고
+ * ([seatRowsOf] — `module/policy/link`), 여기서는 받은 행을 검사하고 적기만 한다.
+ *
+ * (예전엔 *"순번은 확정 시점에야 정해진다"* 며 이 장부가 도장을 찍는 순간 빈 칸을 앞에서부터 집었다.
+ *  같은 계산이 구간 재기 · 사유 · 확정 · 합류 네 곳에 있었고, 그래서 행을 고르는 규칙을 바꿀 자리가 없었다.)
+ */
+export type LinkFaceCandidate = Omit<LinkFacePlan, "mergeRole" | "sharesBelt">;
 
 /**
  * **이 면의 좌석표** — 없으면 만든다.
@@ -41,7 +47,7 @@ export type LinkFaceCandidate = Omit<LinkFacePlan, "slotIndex" | "mergeRole" | "
  * 면마다 표가 따로인 이유는 **행의 뜻이 다르기 때문**이다: W/E 면의 행은 머신 세로 칸(`h`),
  * N/S 면의 행은 가로 칸(`w`) 이다. 유체 상자는 W/E 에만 붙으므로 N/S 표는 언제나 비어서 시작한다.
  */
-function tableOf(ctx: LinkFaceContext, face: PortFace): FaceTable {
+export function seatTableOf(ctx: LinkFaceContext, face: PortFace): FaceTable {
   const found = ctx.tables.get(face);
   if (found) return found;
   const isGap = face === "N" || face === "S";
@@ -56,31 +62,18 @@ function tableOf(ctx: LinkFaceContext, face: PortFace): FaceTable {
 
 /**
  * 이 그룹의 벨트가 면에서 먹을 **행 범위** — 연속이라 `[최소, 최대]` 하나로 족하다.
+ * 받은 인서터 행([LinkFacePlan.slotIndex])의 셈이다 — 행을 고르는 것은 정책이다.
  *
  * 좌표가 아니라 **모듈 안 순번**이다([FaceTable] 의 행 번호 그대로).
- *
- * **표를 읽으므로 칸을 차지하기 전에** 불러야 한다([commitLinkFace] 가 맨 앞에서 부른다).
- *
- * 옛 코드는 `used`(논리 칸 수)에 `skipFluidRows` 를 씌워 실제 행을 구했다. 표에서는
- * **빈 좌석을 앞에서부터 집으면** 그 사상이 저절로 나오므로([freeSeatRows]) 되사상이 없다 —
- * `emitTapInserting.remapRow` 와 같은 산술을 두 곳이 갖던 자리가 하나 없어졌다.
  */
-function beltRowSpan(
-  ctx: LinkFaceContext,
-  face: PortFace,
-  arms: Map<number, number>,
-): readonly [number, number] {
-  const t = tableOf(ctx, face);
+function beltRowSpan(t: FaceTable, slotIndex: ReadonlyMap<number, readonly number[]>): readonly [number, number] {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const [mi, k] of arms) {
-    const free = freeSeatRows(t, mi);
-    if (free.length === 0) continue;
-    const first = free[0];
-    const last = free[Math.min(k, free.length) - 1];
-    lo = Math.min(lo, rowIndex(t, mi, first));
-    hi = Math.max(hi, rowIndex(t, mi, last));
-  }
+  for (const [mi, slots] of slotIndex)
+    for (const s of slots) {
+      lo = Math.min(lo, rowIndex(t, mi, s));
+      hi = Math.max(hi, rowIndex(t, mi, s));
+    }
   return [lo, hi];
 }
 
@@ -127,7 +120,7 @@ export function fitOnGap(
   side: "from" | "to",
   face: "N" | "S",
   arms: Map<number, number>,
-): LinkFaceCandidate | undefined {
+): Omit<LinkFaceCandidate, "slotIndex"> | undefined {
   const { machine, count } = ctx;
   // **gap(가로) 벨트는 아직 머신 하나만 맡는다.** 가로 줄 하나가 위·아래 두 대를 먹이는 것은
   // 별개 능력이고(좌석이 gap 양쪽에 하나씩 앉아야 한다), 그 전엔 조용히 겹치는 대신
@@ -140,7 +133,7 @@ export function fitOnGap(
   // 범위는 `moduleExtent`(머신 ∪ 모든 셀)라 배치가 이 셀들을 이미 셈에 넣는다.
   const g = face === "S" ? mi : mi - 1;
   const gap = g >= 0 && g < count - 1 ? g : undefined;
-  const gapTable = tableOf(ctx, face);
+  const gapTable = seatTableOf(ctx, face);
   const base = seatsTaken(gapTable, mi);
   // 좌석 수는 [faceSeatArms] 가 낸다(붓기·배정이 같은 자를 쓴다). gap 면(N/S)의 길이 방향
   // 칸은 `machine.w` 이고, 파이프는 W/E 에만 붙으므로 여기 유체 행은 언제나 0이다.
@@ -183,18 +176,18 @@ export interface FaceFit {
 export function fitOnFace(
   ctx: LinkFaceContext,
   face: PortFace,
-  cand: { clusterBeltDepth: number; arms: Map<number, number> },
+  cand: { clusterBeltDepth: number; arms: Map<number, number>; slotIndex: ReadonlyMap<number, readonly number[]> },
   end: Pick<LinkFaceCandidate, "portEnd" | "exitEnd">,
   why?: DepthShortage[],
 ): FaceFit | undefined {
-  const { clusterBeltDepth, arms } = cand;
+  const { clusterBeltDepth, arms, slotIndex } = cand;
   const { portEnd, exitEnd } = end;
   // 점프 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
   // (`planClusterPorts.seatRowsOf` 의 `base − fluidRows` 와 같은 셈이다.)
   // **자는 [faceSeatArms] 하나다** — 붓기([edgeLinkGroups])가 같은 함수를 `fluidRows = 0` 으로
   // 부른다. 이쪽은 면이 정해진 뒤라 실제 유체 행 수를 안다. 그 차이가 곧 붓기의 낙관이고,
   // 이제 주석이 아니라 **인자**로 드러난다.
-  const table = tableOf(ctx, face);
+  const table = seatTableOf(ctx, face);
   const seatRows = faceSeatArms(ctx.machine.h, ctx.pipeFaces?.get(face)?.rows.length ?? 0);
   let need = 0;
   let seatsFit = true;
@@ -206,15 +199,14 @@ export function fitOnFace(
     why?.push({ face, clusterBeltDepth, seats: { need, budget: seatRows } });
     return undefined; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
   }
-  const span = beltRowSpan(ctx, face, arms);
+  const span = beltRowSpan(table, slotIndex);
   if (!depthClear(table, clusterBeltDepth, span[0], span[1])) {
     // **막힌 행이 곧 자름의 경계다.** 수량이 아니라 행을 담는다 — 그리고 사다리가
     // *"쪼개면 앉나"* 를 물으려면 **내 좌석 행**도 있어야 한다([resolveSpanBlock]).
     const rows: number[] = [];
     for (let r = span[0]; r <= span[1]; r++) if (!depthClear(table, clusterBeltDepth, r, r)) rows.push(r);
     const seats: number[] = [];
-    for (const [mi, k] of arms)
-      for (const t of freeSeatRows(table, mi).slice(0, k)) seats.push(rowIndex(table, mi, t));
+    for (const [mi, slots] of slotIndex) for (const t of slots) seats.push(rowIndex(table, mi, t));
     why?.push({ face, clusterBeltDepth, blockedRows: rows, seatRows: seats.sort((a, b) => a - b) });
     return undefined;
   }
@@ -233,9 +225,9 @@ export function fitOnFace(
 /**
  * [tryLinkFace] 가 낸 배정을 **표에 적는다** — 좌석 칸과 (gap 이 아니면) 벨트 칸.
  *
- * **여기서 순번([LinkFacePlan.slotIndex])도 함께 낸다.** 칸을 차지하기 직전에 고른 빈 칸이
- * 곧 "이 그룹이 몇 번째 칸을 쓰나" 이므로, 확정과 순번은 **같은 순간의 같은 사실**이다.
- * 나눠 두면 나중 단계가 같은 누적을 다시 세야 한다(옛 `placeLedger`).
+ * **인서터 행([LinkFacePlan.slotIndex])은 받은 그대로 적는다** — 행을 고르는 것은 정책([seatRowsOf])이다.
+ * 같은 줄의 묻기와 받기 사이에 이 장부에 다른 기록이 끼어들지 않으므로(좌석 창구의 받기는 묻기 바로 뒤다)
+ * 묻기 때 고른 행이 여기서도 비어 있다.
  *
  * 예전엔 장부 둘(`used`·`faceGroups`)을 따로 밀고 셋째(`lanes`)에 구간을 얹었다. 지금은
  * **주인을 적는 일 한 번**이고, 옛 두 수는 그 주인들을 세면 나온다([seatsTaken]·[groupsOn]).
@@ -266,26 +258,11 @@ export function commitLinkFace(
   },
 ): LinkFacePlan {
   const isGap = cand.face === "N" || cand.face === "S";
-  const table = tableOf(ctx, cand.face);
-  // **칸을 차지하기 전에** 잰다 — [beltRowSpan] 이 빈 칸을 읽어 시작 행을 안다.
-  const span = isGap ? undefined : beltRowSpan(ctx, cand.face, cand.arms);
-  // gap 면의 좌석은 **포트 쪽부터** 채운다 — 출력 포트는 서쪽, 입력 포트는 동쪽이다.
-  // (W/E 면은 나가는 쪽이 면과 수직이라 이 순서와 무관하다 — 늘 위→아래.)
-  const fromEast = isGap && side === "to";
+  const table = seatTableOf(ctx, cand.face);
+  const span = isGap ? undefined : beltRowSpan(table, cand.slotIndex);
   const owner = takeOwner(table);
-  const slotIndex = new Map<number, number[]>();
-  // 머신 index 오름차순 — 방출 순서가 결정적이어야 한다.
-  for (const [mi, k] of [...cand.arms].sort((a, b) => a[0] - b[0])) {
-    // W/E 는 빈 칸을 앞에서부터(유체 칸은 이미 차 있어 저절로 건너뛴다),
-    // gap 은 **동쪽 끝에서부터** — 막힌 면의 [[ParallelBelt]]가 "포트에 가까운 그룹이 얕은 줄"
-    // 이라야 성립하고, 입력의 포트는 동쪽이기 때문이다.
-    const base = seatsTaken(table, mi);
-    const slots = fromEast
-      ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
-      : freeSeatRows(table, mi).slice(0, k);
-    claimSeats(table, mi, slots, owner);
-    slotIndex.set(mi, slots);
-  }
+  // 머신 index 오름차순으로 온다([seatRowsOf]) — 방출 순서가 결정적이어야 한다.
+  for (const [mi, slots] of cand.slotIndex) claimSeats(table, mi, slots, owner);
   // 벨트·합류·포트 칸 — **도형은 [linkShape] 한 곳에서 온다**(2026-09-12 D1). 방출기가
   // 부르는 그 함수이고, 여기서는 **순번 축**으로 부를 뿐이다(방출은 좌표 축).
   //
@@ -324,7 +301,7 @@ export function commitLinkFace(
     ctx.ends.set(cand.face, set);
   }
   return {
-    ...cand, slotIndex,
+    ...cand,
     // **역할은 배정이 정하고 방출은 따르기만 한다**(F2). 청구한 도형과 놓는 도형이 한 판정에서 난다.
     mergeRole: opts?.merged ? "follow" : opts?.mergeLead ? "lead" : undefined,
   };
@@ -352,33 +329,20 @@ export function commitLinkFace(
  * **깊이·면·팔 종류를 고르지 않는다** — 첫 줄이 정한 것을 그대로 받는다. 고르는 순간 두 줄이
  * 다른 벨트에 앉고, 그러면 합류한 벨트가 먹일 곳이 없어진다.
  *
- * `undefined` = **좌석이 모자라다.** 그때 호출자는 짝을 풀고 오늘처럼 각자 앉힌다 —
- * 반쪽만 공유된 상태를 남기지 않는다.
+ * 이 장부 함수는 **적기만** 한다 — 팔 수 · 인서터 행을 고르고 좌석이 모자란지 보는 것은 정책
+ * ([seatOnSharedBelt] — `module/policy/link`)이다.
  */
-export function seatOnSharedBelt(
+export function claimSharedSeats(
   ctx: LinkFaceContext,
-  group: Link,
-  side: "from" | "to",
   shared: LinkFacePlan,
-): LinkFacePlan | undefined {
-  if (shared.face === "N" || shared.face === "S") return undefined; // gap 은 폭이 자원이라 다르다
-  const table = tableOf(ctx, shared.face);
-  const inserter = inserterForReach(ctx.inserters ?? [], shared.reach);
-  if (!inserter) return undefined;
-  const arms = armsAt(group, side, inserter);
-  if (arms.size === 0) return undefined;
-
-  // **좌석이 되는지 먼저 다 확인하고** 나서 청구한다 — 반쯤 앉히면 되돌릴 길이 없다.
-  const want = new Map<number, number[]>();
-  for (const [mi, k] of [...arms].sort((a, b) => a[0] - b[0])) {
-    const slots = freeSeatRows(table, mi).slice(0, k);
-    if (slots.length < k) return undefined;
-    want.set(mi, slots);
-  }
+  arms: Map<number, number>,
+  want: ReadonlyMap<number, number[]>,
+): LinkFacePlan {
+  const table = seatTableOf(ctx, shared.face);
   const owner = takeOwner(table);
   for (const [mi, slots] of want) claimSeats(table, mi, slots, owner);
   // 벨트·포트 칸·기둥 끝은 **안 청구한다** — 첫 줄의 것을 그대로 쓴다.
-  return { ...shared, arms, slotIndex: want, mergeRole: undefined, sharesBelt: true };
+  return { ...shared, arms, slotIndex: new Map(want), mergeRole: undefined, sharesBelt: true };
 }
 
 /**

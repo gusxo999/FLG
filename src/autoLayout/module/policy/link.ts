@@ -21,11 +21,12 @@ import type { PortFace } from "../../shared/types";
 import { armsAt, resolveSpanBlock, spansAllMachines } from "../arith/link";
 import type { Link } from "../types/line";
 import type { DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan } from "../types/seat";
+import { freeSeatRows, seatsTaken, type FaceTable } from "../ledger/face";
 import { recordFaceDepthStats } from "../../../debug/runStats";
 import { portCells } from "../shape/link";
 import { clusterBeltDepthsOf, LINK_LANE_DEPTH } from "../arith/face";
 import {
-  commitLinkFace, fitOnFace, fitOnGap, splitByTable, type FaceFit, type LinkFaceCandidate,
+  claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, seatTableOf, splitByTable, type FaceFit, type LinkFaceCandidate,
 } from "../ledger/seat";
 
 /**
@@ -169,22 +170,84 @@ export function tryLinkFace(
   const gapArms = armsAt(group, side, inserterForReach(ctx.inserters ?? [], LINK_LANE_DEPTH - 1));
   for (const mi of gapArms.keys()) if (mi < 0 || mi >= ctx.count) return undefined;
   // ③ gap — 자원의 모양이 다르다(열 · 반출 깊이). 고를 깊이가 없어 자리만 묻는다
-  if (face === "N" || face === "S") return fitOnGap(ctx, group, side, face, gapArms);
+  if (face === "N" || face === "S") {
+    const onGap = fitOnGap(ctx, group, side, face, gapArms);
+    return onGap && { ...onGap, slotIndex: seatRowsOf(seatTableOf(ctx, face), face, gapArms, side) };
+  }
   // ④ 끝 — 관통(또는 합류 쌍)이면 기둥 끝 포트. 깊이를 안 본다
   const end = endOf(ctx, group, side, face, forceEnd, preferEnd);
   // ⑤ 후보 — 팔 적은 것 → 얕은 것
+  const table = seatTableOf(ctx, face);
   for (const cand of depthCandidates(ctx, group, side, face, preferDepth)) {
+    // ⑤′ 인서터 행 — 머신마다 몇 번째 좌석에(결정표 결-4 의 집)
+    const slotIndex = seatRowsOf(table, face, cand.arms, side);
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
-    const fit = fitOnFace(ctx, face, cand, end, why);
+    const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, end, why);
     if (!fit) continue;
     recordEndsAudit(ctx, face, cand, fit, end);
     return {
       face, arms: cand.arms, clusterBeltDepth: cand.clusterBeltDepth, reach: cand.clusterBeltDepth - 1,
-      portEnd: end.portEnd, exitEnd: end.exitEnd,
+      portEnd: end.portEnd, exitEnd: end.exitEnd, slotIndex,
     };
   }
   // 이 면의 깊이가 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;
+}
+
+/**
+ * **⑤′ 인서터 행 — 머신마다 몇 번째 좌석에 앉나.** 이 결정의 집은 여기 하나다.
+ *
+ * 예전엔 장부가 도장을 찍는 순간 빈 칸을 앞에서부터 집었고, 같은 계산이 구간 재기 · 못 앉은 이유 ·
+ * 확정 · 합류 네 곳에 있었다. 장부 머리말은 *"고르지 않는다"* 인데 행을 고르는 일이 장부에 숨어 있었다.
+ *
+ * 오늘의 규칙:
+ *
+ * ```
+ * 옆면(W/E)            빈 좌석을 앞에서부터 k 개(유체 칸은 이미 차 있어 저절로 건너뛴다)
+ * gap(N/S)의 집는 쪽   **동쪽 끝(포트 쪽)부터** — 막힌 면의 ParallelBelt 는 "포트에 가까운 그룹이
+ *                     얕은 줄" 이라야 성립하고, 입력의 포트는 동쪽이다
+ * ```
+ *
+ * 머신 index 오름차순으로 낸다 — 방출 순서가 결정적이어야 한다. 좌석이 모자라면 k 개보다 적게 낸다
+ * (모자란지는 부르는 쪽이 본다 — [fitOnFace] 의 좌석 수 검사 · [seatOnSharedBelt]).
+ */
+export function seatRowsOf(
+  table: FaceTable,
+  face: PortFace,
+  arms: ReadonlyMap<number, number>,
+  side: "from" | "to",
+): Map<number, number[]> {
+  const fromEast = (face === "N" || face === "S") && side === "to";
+  const out = new Map<number, number[]>();
+  for (const [mi, k] of [...arms].sort((a, b) => a[0] - b[0])) {
+    const base = seatsTaken(table, mi);
+    out.set(mi, fromEast
+      ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
+      : freeSeatRows(table, mi).slice(0, k));
+  }
+  return out;
+}
+
+/**
+ * **짝의 둘째 줄(집는 쪽)을 첫 줄의 벨트에 얹는다** — 레인 공유. 팔은 첫 줄의 팔 종류로 세고, 행은 [seatRowsOf] 가 고른다.
+ * 좌석이 모자라면 `undefined` — 호출자는 짝을 풀고 각자 앉힌다(반쪽만 공유된 상태를 남기지 않는다).
+ * 도형 · 청구의 이유는 [claimSharedSeats] 머리말.
+ */
+export function seatOnSharedBelt(
+  ctx: LinkFaceContext,
+  group: Link,
+  side: "from" | "to",
+  shared: LinkFacePlan,
+): LinkFacePlan | undefined {
+  if (shared.face === "N" || shared.face === "S") return undefined; // gap 은 폭이 자원이라 다르다
+  const inserter = inserterForReach(ctx.inserters ?? [], shared.reach);
+  if (!inserter) return undefined;
+  const arms = armsAt(group, side, inserter);
+  if (arms.size === 0) return undefined;
+  // **좌석이 되는지 먼저 다 확인하고** 나서 청구한다 — 반쯤 앉히면 되돌릴 길이 없다.
+  const want = seatRowsOf(seatTableOf(ctx, shared.face), shared.face, arms, side);
+  for (const [mi, k] of arms) if ((want.get(mi)?.length ?? 0) < k) return undefined;
+  return claimSharedSeats(ctx, shared, arms, want);
 }
 
 /**

@@ -27,7 +27,7 @@ function partnerStub(): FaceSeating {
   return {
     rowsPerMachine: 1,
     ask: (_line, side) => ({
-      offer: { face: side === "from" ? "W" : "E", clusterBeltDepth: 2, reach: 1, arms: new Map() },
+      offer: { face: side === "from" ? "W" : "E", clusterBeltDepth: 2, reach: 1, arms: new Map(), slotIndex: new Map() },
       why: [],
     }),
     take: (offer) => receipt(offer.face === "W" ? "W" : "E"),
