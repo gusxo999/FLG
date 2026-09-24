@@ -56,7 +56,7 @@ import {
  * | 교착 | 해소자 | 지금 |
  * |---|---|---|
  * | `span-blocked` | [resolveSpanBlock] → [splitLinkAtRows] | ✅ 사다리 1단 |
- * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 잠수(비켜 주기)가 푼다 |
+ * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 잠수(비켜 주기)가 푼다. 남의 **포트**면 아직 없다(`tempPlanDocs/링크-좌석/judgements.md` J-포트막힘) |
  * | `dive-range` | (없음) | ⛔ 더 긴 지하벨트를 고르는 것이 처방이다(위저드 단계) |
  * | `seat-blocked` | (없음) | ⛔ gap·다이렉트의 몫 |
  * | `seat-budget` | (없음) | ⛔ gap·다이렉트의 몫 |
