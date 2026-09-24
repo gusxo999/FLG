@@ -40,6 +40,8 @@ import {
   AUTO_LAYOUT_SEAT_PICK,
   setAutoLayoutLinkDive,
   AUTO_LAYOUT_LINK_DIVE,
+  setAutoLayoutLinkOrder,
+  AUTO_LAYOUT_LINK_ORDER,
 } from '../autoLayout/shared/flags';
 import type { CandidateLeaf } from '../autoLayout/shared/types';
 import type { CustomDataSpec } from '../factorio/customRecipe';
@@ -332,6 +334,15 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
+  linkOrder: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 링크 줄의 앉는 순서(트리의 모든 간선을 모아 합류 쌍 → 부모 쪽 방문 수). 기본 OFF. '
+      + '끄면 간선마다 오늘 순서 그대로다',
+    fn: (v: boolean) => {
+      setAutoLayoutLinkOrder(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
   show: {
     fn: () => ({
       coordDump: AUTO_LAYOUT_COORD_DUMP,
@@ -341,6 +352,7 @@ const flags = defineGroup('flags', {
       linkDirect: AUTO_LAYOUT_LINK_DIRECT,
       seatPick: AUTO_LAYOUT_SEAT_PICK,
       linkDive: AUTO_LAYOUT_LINK_DIVE,
+      linkOrder: AUTO_LAYOUT_LINK_ORDER,
       entityIds: useUiDebugStore.getState().showEntityDebugInfo,
     }),
   },

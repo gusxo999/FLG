@@ -1,7 +1,7 @@
-> 상태: **진행 중** — Step 0 ✅ · **Step 1 ✅** · **Step 2 ✅** · **Step 3 ✅**(2026-09-24, 플래그 `AUTO_LAYOUT_SEAT_PICK` · `AUTO_LAYOUT_LINK_DIVE` 기본 꺼짐) · Step 4 착수
+> 상태: **Step 0~4 끝남**(2026-09-24) — 새 규칙 셋이 **플래그 뒤**에 있다(`AUTO_LAYOUT_SEAT_PICK` · `AUTO_LAYOUT_LINK_DIVE` ·
+> `AUTO_LAYOUT_LINK_ORDER`, 전부 기본 꺼짐). **남은 것은 사용자 결정 셋**(아래 「사용자 결정이 남은 것」)과 계획을 닫는 일이다.
 >
-> Step 1(좌석 창구)만 확정이다. Step 2~4 는 **방향**이다 — 규칙(무엇을 하나)은 사용자와 정했고,
-> 실행 방법(어떻게 하나)은 앞 단계가 끝날 때 다시 적는다.
+> 각 단계의 결과 · 계획과 달라진 것은 계획서 §8 의 결과 블록에 있다.
 >
 > **결정표가 Step 1 설계를 한 번 고쳤다**(2026-09-24): 좌석 창구의 묻기가 면을 받지 않는다(`near` · `far`) — [결정표](결정표.md) §5.
 
@@ -57,18 +57,20 @@
 - `tempPlanDocs/격자-클러스터/격자-클러스터.md` **§4 Step 1** — gap 출구의 잠수(D8). 이 계획과 부품을 나눠 쓴다
 - `tempPlanDocs/자리-배정/조사-순서.md` **§1 · §2** — 먼저 온 줄이 어디를 먹나 · 순서 규칙의 근거
 
-**코드 — 호출 사슬 순서대로**
+**코드 — 호출 사슬 순서대로**(2026-09-24 Step 4 뒤)
 
-- `tree/build.ts` — `seatTree`(루프 셋) · `generateModules`(사본을 주는 자리)
-- `module/policy/seat.ts` — `seatLinkEdge` · `spillPair` · `pairsOf` · `seatRestLines`
-- `module/policy/link.ts` — `tryLinkFace`(①~⑥) · `endOf` · `depthCandidates`
-- `module/ledger/seat.ts` — `fitOnFace` · `commitLinkFace` · `seatOnSharedBelt` · `openLinkFaceContext` · `cloneLinkFaceStage`
-- `module/ledger/face.ts` — `FaceTable` · `freeSeatRows` · `depthClear`
-- `module/types/seat.ts` — `LinkFacePlan` · `LinkFaceContext` · `LinkFaceStage`
-- `module/policy/port.ts` — `planLinkFaces`(`mode`) · `planModulePorts`(`stage?`)
-- `module/shape/link.ts` — `linkShape`(청구 · 검사 · 방출이 함께 부르는 도형)
-- `link/policy/delivery.ts:314` — 깊이 목록만 쓰려고 반쪽 무대를 여는 자리
-- `module/late.ts` · `run/ledger.ts` `terminusCorridorsOf` — 모듈 지하벨트의 방출과 되읽기
+- `tree/build.ts` — `seatTree`(창구를 열고 · 간선을 모아 앉히고 · 닫아 굳힌다) · `generateModules`
+- `link/policy/seat.ts` — `seatLinkEdge` · `openEdge` · `edgeUnits` · `seatUnit` · `byConstraint` · `seatInOrder` · `remedyOf` · `spillPair`
+- `module/policy/seat.ts` — `openFaceSeating`(좌석 창구 — `ask` · `take` · `takeShared` · `close`) · `seatRestLines`
+- `module/policy/link.ts` — `tryLinkFace`(①~⑥) · `seatRowsOf`(⑤′ 행) · `diveRelief`(⑤″ 잠수) · `endOf` · `depthCandidates`
+- `module/policy/underground.ts` — 지하 종류(잠수 · 종착의 T4)
+- `module/ledger/seat.ts` — `fitOnFace` · `fitOnGap` · `commitLinkFace` · `claimSharedSeats` · `tunnelLength` · `reopenLinkFaceContext`
+- `module/ledger/face.ts` — `FaceTable`(칸의 종류 · 잠수 기록) · `giveRows`(비켜 주기) · `depthClear`
+- `module/arith/dive.ts` — 터널 몸통의 셈(`tunnelBodies` · `tunnelFault`)
+- `module/types/seat.ts` — `LinkFacePlan`(`owner` · `tunnels`) · `FaceSeating` · `SeatedFaces` · `ModuleFaces`
+- `module/policy/port.ts` — `moduleFacesOf`(굳힌 좌석을 다시 연다) · `planModulePorts`(끝에서 몸통을 계획에 옮겨 적는다)
+- `module/shape/link.ts` — `linkShape`(청구 · 검사 · 방출이 함께 부르는 도형 — 입출구 칸)
+- `module/emit.ts` · `module/late.ts` · `run/ledger.ts` `terminusCorridorsOf` — 지하벨트의 방출 · 종착 · 되읽기
 
 ## 하지 않는 것
 
@@ -102,7 +104,7 @@ spillPair = 양쪽 독립 첫 성공      부모 쪽 시도는 자식 쪽 선택
                                 다만 recordEndsAudit 는 성공 **횟수**를 세므로, 부모 쪽이 전부 실패한 경우에만 계수가 줄 수 있다
 넘침 목록이 갈라져 있다           OPPOSITE_FACE 를 켜면 링크는 선호 면 재시도가, 나머지 줄은 반대 면이 먼저다(결정표 결-1).
                                 기본 경로에는 영향이 없다 — 그 플래그의 주인은 부분-링크 J14 다
-기준선 (2026-09-24)             타입 0 · 65파일 818테스트 · 기존 실패 2(trunkPipe 유체 면)
+기준선 (2026-09-24)             착수 때 타입 0 · 65파일 818테스트 → Step 4 뒤 69파일 846테스트 · 기존 실패 2(trunkPipe 유체 면)
 ```
 
 ## 다른 계획과의 관계
@@ -120,10 +122,9 @@ spillPair = 양쪽 독립 첫 성공      부모 쪽 시도는 자식 쪽 선택
 
 | 무엇 | 기본값(안 정하면) |
 |---|---|
-| **Step 1 착수 승인** | 착수하지 않는다 |
+| **플래그 기본값** — 자리 고르기 · 잠수 · 순서 규칙을 켤까(각각) | 셋 다 꺼 둔다 — 오늘 배치 그대로. 근거 수치는 계획서 Step 2 · 3 · 4 결과 블록 |
+| **순서 규칙의 열쇠 순서** — *합류 쌍 → 방문 수*(계획대로 · 지금 코드) 인가 *방문 수 → 합류 쌍* 인가 | 지금 코드 그대로(쌍 먼저). 실측 비교는 계획서 Step 4 결과 블록 |
 | **`자리-배정` 폴더를 흡수하고 지운다**(아래 「승인 시 할 일」 1) | 그대로 둔다 — 두 계획이 같은 물음을 들고 있게 된다 |
-
-기본값이 있어 **안 정해도 되는 것**: 1e 에서 시험을 제품 경로로 옮기는 방식(계획서 Step 1) · 플래그 기본값을 켤지(각 단계 관문에서 그때 묻는다).
 
 ## 승인 시 할 일
 

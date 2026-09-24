@@ -192,6 +192,17 @@ export function byConstraint(a: SeatUnit, b: SeatUnit): number {
 }
 
 /**
+ * **여러 간선의 단위를 한 줄로 세워 앉힌다** — 순서 규칙([byConstraint]). 부르는 쪽이 간선을 모아 준다
+ * (`tree/build.seatTree` — 트리의 모든 간선, DFS 전위). 정렬은 **안정**이라 같은 단위끼리는 오늘 순서(간선 순서 ·
+ * 간선 안 순서)가 남는다. 결과는 간선마다 [edgeResult] 로 읽는다 — 적는 순서는 간선 순서 그대로다.
+ */
+export function seatInOrder(edges: readonly EdgeSeating[]): void {
+  const units = edges.flatMap((edge) => edgeUnits(edge).map((unit) => ({ edge, unit })));
+  units.sort((a, b) => byConstraint(a.unit, b.unit));
+  for (const { edge, unit } of units) seatUnit(edge, unit);
+}
+
+/**
  * **단위 하나를 양끝에 앉힌다** — 원자성 · 합류 · 수단 순서([remedyOf]). 쪼개진 토막은 그 자리에서 이어 앉는다.
  */
 export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {

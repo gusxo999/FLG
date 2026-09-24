@@ -222,3 +222,28 @@ export let AUTO_LAYOUT_LINK_DIVE = false;
 export function setAutoLayoutLinkDive(v: boolean): void {
   AUTO_LAYOUT_LINK_DIVE = v;
 }
+
+/**
+ * AUTO_LAYOUT_LINK_ORDER — **링크 줄의 앉는 순서** 스위치(`link/policy/seat.byConstraint` · `tree/build.seatTree`).
+ *
+ * `false`(기본) 면 오늘 순서 그대로다 — 간선마다(트리 DFS 전위) 그 간선의 줄을 합류 쌍 → 도착 순으로 앉힌다.
+ * `true` 면 **트리의 모든 간선**에서 단위(줄 하나 · 합류 쌍)를 모아 한 줄로 세운다:
+ *
+ * ```
+ * ① 합류 쌍 먼저        대안이 없다
+ * ② 부모 쪽 방문 수     큰 것 먼저 — 그 줄이 부모 기둥에서 지나는 머신 수(자유도가 낮다)
+ * ③ 같으면 오늘 순서    간선 DFS 전위 · 간선 안 순서
+ * ```
+ *
+ * 범위가 요점이다 — 한 부모 벽에 오는 **서로 다른 간선**의 줄이 함께 줄을 선다. 간선 안에서만 세우면 먼저 온 간선의
+ * 짧은 줄이 뒤 간선의 관통 줄 깊이에 못을 박는 일이 그대로 남는다. 앉히는 순서와 적는 순서는 다르다 — 결과는
+ * 간선 순서로 적는다(방출이 index 로 짝을 찾는다).
+ *
+ * **끄면 오늘 동작 그대로다** — 기전: 꺼짐이면 옛 간선 루프(`seatLinkEdge`)를 부른다. 비교 함수를 0 으로 두는 것으로는
+ * 안 된다 — 합류 쌍 열쇠가 간선을 넘어 다른 간선의 줄보다 앞당겨지기 때문이다. 켜는 법은 `flg.flags.linkOrder(true)`.
+ */
+export let AUTO_LAYOUT_LINK_ORDER = false;
+
+export function setAutoLayoutLinkOrder(v: boolean): void {
+  AUTO_LAYOUT_LINK_ORDER = v;
+}

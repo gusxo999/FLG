@@ -23,7 +23,7 @@ tags: [auto-layout, placement, module]
 |---|---|---|
 | §1 자원(좌석 · 깊이) | ✅ `FaceTable` · `faceSeatArms` · `clusterBeltDepthsOf` | |
 | §2 수요(`k` · `g` · `c`) | ✅ `g` 가 **줄마다** 선다 — `1<g<N` 이 실제로 나온다 | `bundleCap` = `min(N, ⌊벨트 ÷ per⌋)`, `planBundles` 가 깊이로 더 깎는다 (2026-09-02) |
-| §3 배정 여섯 단계 | ⚠️ 그룹이 **도착 순**으로 앉는다 — 자유도(관통이냐)를 안 본다 | `allocateLinkFaces` 의 `groups.forEach`. 한 그룹 **안**의 깊이 후보만 팔 수로 정렬한다 |
+| §3 배정 여섯 단계 | ⚠️ 그룹이 **도착 순**으로 앉는다 — 자유도(관통이냐)를 안 본다 | `allocateLinkFaces` 의 `groups.forEach`. 한 그룹 **안**의 깊이 후보만 팔 수로 정렬한다. 링크 줄은 순서 규칙이 **플래그 뒤**에 섰다(`AUTO_LAYOUT_LINK_ORDER` — [[module-planning]] §4.6) |
 | §3 ③ 행(자리-1 · 2) | ⚠️ **플래그 뒤**(`AUTO_LAYOUT_SEAT_PICK`, 기본 꺼짐) — 끄면 빈 좌석을 앞에서부터 `k` 개 | 고르는 곳은 정책 한 곳(`module/policy/link.seatRowsOf`)이다. 장부는 받은 행을 적기만 한다 |
 | §4 상한(좌석) | ✅ 머신마다 증분 확인 | |
 | §4.1·§4.2 상한(깊이 — `g` 가 들어간다) | ✅ `planBundles` | 붓기 **앞에서** 줄마다 `g` 를 낸다 |

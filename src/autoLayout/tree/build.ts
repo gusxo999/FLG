@@ -42,12 +42,12 @@ import type { Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../module/types/module";
 import type { DepthShortage, FaceSeating, SeatReceipt } from "../module/types/seat";
 import { openFaceSeating } from "../module/policy/seat";
-import { seatLinkEdge } from "../link/policy/seat";
+import { edgeResult, openEdge, seatInOrder, seatLinkEdge, type EdgeSeatResult, type EdgeSeating } from "../link/policy/seat";
 import { faceDepthsOf } from "../module/arith/face";
 import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";
 import { summarizeBeltForms } from "../module/arith/link";
 import { laneCapOfTier } from "../shared/arith/belt";
-import { AUTO_LAYOUT_LINK_LADDER } from "../shared/flags";
+import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LINK_ORDER } from "../shared/flags";
 import type { Orientation } from "../module/shape/transform";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
 // 트리 관심사 — 좌표 없이 트리가 답하는 것 · 그 순서를 좌표로 옮기는 것.
@@ -133,7 +133,9 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
  * ([seatLinkEdge] — `link/policy/seat`). 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 —
  * 밖에서 `linkCache` 를 고치고 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
  *
- * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
+ * **순서**는 `docs/auto-layout/module/module-planning.md` §4.6 *"그룹 도착 순서"* 가 든다 — 기본은 `specs`(트리 DFS
+ * pre-order)를 간선마다 그대로 쓰고, `AUTO_LAYOUT_LINK_ORDER` 를 켜면 **모든 간선의 단위를 모아** 순서 규칙대로 세운다
+ * ([seatInOrder] — 합류 쌍 → 부모 쪽 방문 수 → 오늘 순서). 적는 순서는 어느 쪽이든 간선 순서다.
  *
  * 끝나면 창구를 **닫아 값으로 굳힌다**(`SeatedFaces`) — `generateModule` 은 그 값에서 자기 장부를 다시 연다.
  * 모듈의 장부는 이 함수 밖으로 안 나간다. `linkCache` 는 제자리에서 최종본으로 갈아 끼운다(쪼개졌으면 토막).
@@ -168,6 +170,17 @@ function seatTree(
     inOf.set(s.id, { links: [], seats: [], why: [] });
   }
 
+  /** 간선 하나의 결과를 적는다 — **간선 순서로**(`in` 은 자식 순서대로 이어 붙는다). */
+  const record = (s: NodeSpec & { parentId: string }, r: EdgeSeatResult): void => {
+    laddered += r.splits;
+    linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
+    const o = outOf.get(s.id)!;
+    o.links.push(...r.groups); o.seats.push(...r.fromSeats); o.why.push(...r.fromWhy);
+    const i = inOf.get(s.parentId)!;
+    i.links.push(...r.groups); i.seats.push(...r.toSeats); i.why.push(...r.toWhy);
+  };
+  /** 앉힐 간선 — DFS 전위. 창구가 없거나 그룹이 없으면 뺀다. */
+  const edges: Array<{ s: NodeSpec & { parentId: string }; child: FaceSeating; parent: FaceSeating; groups: Link[] }> = [];
   for (const s of specs) {
     if (!s.parentId) continue;
     const groups = linkCache.get(s.id);
@@ -175,13 +188,16 @@ function seatTree(
     const child = desks.get(s.id);
     const parent = desks.get(s.parentId);
     if (!child || !parent) continue;
-    const r = seatLinkEdge(child, parent, groups, { split: AUTO_LAYOUT_LINK_LADDER });
-    laddered += r.splits;
-    linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
-    const o = outOf.get(s.id)!;
-    o.links.push(...r.groups); o.seats.push(...r.fromSeats); o.why.push(...r.fromWhy);
-    const i = inOf.get(s.parentId)!;
-    i.links.push(...r.groups); i.seats.push(...r.toSeats); i.why.push(...r.toWhy);
+    edges.push({ s: s as NodeSpec & { parentId: string }, child, parent, groups });
+  }
+  if (AUTO_LAYOUT_LINK_ORDER) {
+    // **순서 규칙** — 모든 간선의 단위를 모아 한 줄로 세운다. 앉히는 순서와 적는 순서가 다르다
+    const open: EdgeSeating[] = edges.map((e) => openEdge(e.child, e.parent, e.groups, { split: AUTO_LAYOUT_LINK_LADDER }));
+    seatInOrder(open);
+    edges.forEach((e, k) => record(e.s, edgeResult(open[k])));
+  } else {
+    // 오늘 순서 — 간선마다 차례로
+    for (const e of edges) record(e.s, seatLinkEdge(e.child, e.parent, e.groups, { split: AUTO_LAYOUT_LINK_LADDER }));
   }
 
   recordLinkNeed(specs, firstInputs, outOf, inOf);
@@ -203,7 +219,7 @@ function seatTree(
       seatedFaces,
     });
   }
-  // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
+  // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙([seatInOrder])의 과녁이다.
   if (laddered > 0) recordFaceDepthStats({ splits: laddered });
   return inputs;
 }
