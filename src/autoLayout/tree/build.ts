@@ -42,7 +42,7 @@ import type { Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../module/types/module";
 import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
 import { planLinkFaces } from "../module/policy/port";
-import { seatLinkEdge } from "../module/policy/seat";
+import { seatLinkEdge } from "../link/policy/seat";
 import { cloneLinkFaceStage } from "../module/ledger/seat";
 import { clusterBeltDepthsOf } from "../module/arith/face";
 import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";

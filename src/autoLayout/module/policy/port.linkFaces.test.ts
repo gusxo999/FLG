@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { planLinkFaces, planModulePorts } from "./port";
-import { seatLinkEdge } from "./seat";
+import { seatLinkEdge } from "../../link/policy/seat";
 import { tryLinkFace } from "./link";
 import { commitLinkFace } from "../ledger/seat";
 import type { Link } from "../types/line";
