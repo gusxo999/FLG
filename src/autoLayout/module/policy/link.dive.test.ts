@@ -22,7 +22,8 @@ import { EntityType } from "../../../types/layout";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 
-afterEach(() => setAutoLayoutLinkDive(false));
+// 기본값은 켜짐이다(2026-09-24 사용자) — 시험마다 기본으로 되돌리고, 대조군은 스스로 끈다
+afterEach(() => setAutoLayoutLinkDive(true));
 
 const UG = { entityName: "underground-belt", throughput: 15, maxDistance: 5 };
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
@@ -72,6 +73,7 @@ describe("도착한 줄 — 못 밑으로 두 번 잠수한다", () => {
   };
 
   it("대조군 — 끄면 d3 의 못에 막혀 못 앉는다(구간막힘)", () => {
+    setAutoLayoutLinkDive(false);
     const a = seatSpanning();
     expect(a.offer).toBeUndefined();
     expect(a.why.some((w) => w.clusterBeltDepth === 3 && w.blockedRows?.includes(3) && w.blockedRows?.includes(6))).toBe(true);
@@ -126,6 +128,7 @@ describe("먼저 앉은 줄 — 옆 포트에게 그 행을 땅속으로 내준�
   };
 
   it("대조군 — 끄면 짧은 줄의 포트가 관통 벨트에 막혀 못 앉는다", () => {
+    setAutoLayoutLinkDive(false);
     const { bPlan, a } = scene();
     expect(bPlan.clusterBeltDepth).toBe(3);
     expect(a()).toBeUndefined();

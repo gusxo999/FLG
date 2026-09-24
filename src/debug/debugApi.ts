@@ -318,8 +318,8 @@ const flags = defineGroup('flags', {
   },
   seatPick: {
     usage: '(true|false)',
-    desc: '화면에 버튼이 없는 플래그 — 인서터 행 고르기(포트 쪽 끝부터 · 막힌 행 거르기). 기본 OFF. '
-      + '끄면 오늘 규칙(앞에서부터) 그대로다',
+    desc: '화면에 버튼이 없는 플래그 — 인서터 행 고르기(포트 쪽 끝부터 · 막힌 행 거르기). 기본 ON. '
+      + '끄면 옛 규칙(앞에서부터)이다',
     fn: (v: boolean) => {
       setAutoLayoutSeatPick(v);
       return v ? 'ON' : 'OFF';
@@ -327,8 +327,8 @@ const flags = defineGroup('flags', {
   },
   linkDive: {
     usage: '(true|false)',
-    desc: '화면에 버튼이 없는 플래그 — 잠수(막힌 칸을 지하벨트로 비켜 가기 · 먼저 앉은 줄이 비켜 주기). 기본 OFF. '
-      + '끄거나 지하벨트를 안 고르면 오늘 그대로다',
+    desc: '화면에 버튼이 없는 플래그 — 잠수(막힌 칸을 지하벨트로 비켜 가기 · 먼저 앉은 줄이 비켜 주기). 기본 ON. '
+      + '끄거나 지하벨트를 안 고르면 옛 동작이다',
     fn: (v: boolean) => {
       setAutoLayoutLinkDive(v);
       return v ? 'ON' : 'OFF';
@@ -336,8 +336,8 @@ const flags = defineGroup('flags', {
   },
   linkOrder: {
     usage: '(true|false)',
-    desc: '화면에 버튼이 없는 플래그 — 링크 줄의 앉는 순서(트리의 모든 간선을 모아 합류 쌍 → 부모 쪽 방문 수). 기본 OFF. '
-      + '끄면 간선마다 오늘 순서 그대로다',
+    desc: '화면에 버튼이 없는 플래그 — 링크 줄의 앉는 순서(트리의 모든 간선을 모아 부모 쪽 방문 수 → 합류 쌍). 기본 ON. '
+      + '끄면 간선마다 옛 순서다',
     fn: (v: boolean) => {
       setAutoLayoutLinkOrder(v);
       return v ? 'ON' : 'OFF';

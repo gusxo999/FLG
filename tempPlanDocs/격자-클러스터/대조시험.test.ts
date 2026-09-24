@@ -1,7 +1,8 @@
 // **전 파이프라인 대조 시험** — 32 픽스처를 `runLayeredWizard` 로 돌려 결과 전체(issue 순서 · Area · Routing ·
 // 실패 그림 · runStats)를 직렬화한다. 이동·분할이 배치를 안 바꿨나(바이트 비교), 안전망이 몇 번 발동하나(`netTrips`)를 잰다.
 // **src 에 커밋하지 않는다** — 쓸 때만 src/autoLayout/zzStepDump.test.ts 로 복사해 돌리고 지운다.
-//   STEP_DUMP=<출력.json> [STEP_FLAGS=ladder|opposite|direct|nomerge|seatpick|dive|order] npx vitest run src/autoLayout/zzStepDump.test.ts
+//   STEP_DUMP=<출력.json> [STEP_FLAGS=ladder|opposite|direct|nomerge|legacy|noseatpick|nodive|noorder] npx vitest run src/autoLayout/zzStepDump.test.ts
+// 링크-좌석의 플래그 셋(자리 고르기 · 잠수 · 순서)은 2026-09-24 부터 **기본 켜짐**이다 — `legacy` 가 셋을 다 끈 옛 판이다.
 // 플래그 다섯(없음 · ladder · opposite · direct · nomerge)을 다 돌려야 사다리 · 반대 면 · 다이렉트 갈래를 밟는다.
 // STEP_DUMP 가 없으면 아무것도 안 쓴다. 방출기에 임시 계측을 끼울 때는 `globalThis.__case` 로 픽스처 이름을 읽는다.
 // 내력: 구조-2축 계획 2·3 의 게이트였다(2026-09-14 ~ 16). 2026-09-23 D8(이 계획 Step 1)의 관문으로 여기 옮겼다.
@@ -179,6 +180,10 @@ it('step2 전 파이프라인 덤프', async () => {
   if (flags.includes('seatpick')) setters.setAutoLayoutSeatPick?.(true);
   if (flags.includes('dive')) setters.setAutoLayoutLinkDive?.(true);
   if (flags.includes('order')) setters.setAutoLayoutLinkOrder?.(true);
+  // 기본 켜짐(2026-09-24) 이후 — 끄는 쪽. `legacy` = 셋 다 끈 옛 판
+  if (flags.includes('legacy') || flags.includes('noseatpick')) setters.setAutoLayoutSeatPick?.(false);
+  if (flags.includes('legacy') || flags.includes('nodive')) setters.setAutoLayoutLinkDive?.(false);
+  if (flags.includes('legacy') || flags.includes('noorder')) setters.setAutoLayoutLinkOrder?.(false);
   useGameDataStore.getState().setGameData(DATA);
   const dump: Record<string, unknown> = {};
   const coverage: string[] = [];

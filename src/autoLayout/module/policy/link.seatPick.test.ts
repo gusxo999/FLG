@@ -19,12 +19,14 @@ import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type { DepthShortage } from "../types/seat";
 
-afterEach(() => setAutoLayoutSeatPick(false));
+// 기본값은 켜짐이다(2026-09-24 사용자) — 시험마다 기본으로 되돌리고, 대조군은 스스로 끈다
+afterEach(() => setAutoLayoutSeatPick(true));
 
 const one = (k: number) => new Map([[0, k]]);
 
 describe("seatRowsOf — 끄면 오늘 규칙 그대로", () => {
   it("흐름이 S 여도 · 깊이 칸이 막혀도 앞에서 k 개", () => {
+    setAutoLayoutSeatPick(false);
     const t = makeFaceTable(3, 1);
     claimDepth(t, 2, 0, 0, 9); // (행 0, d2) 에 남의 칸
     expect(seatRowsOf(t, "W", one(1), "from", { flowToSouth: true, depth: 2 })).toEqual(new Map([[0, [0]]]));
@@ -101,6 +103,7 @@ describe("tryLinkFace — 첫 좌석의 깊이 칸이 막히면", () => {
   };
 
   it("대조군 — 끄면 행 0 에 앉고 d2 가 막혀 긴팔(d3)로 내려간다", () => {
+    setAutoLayoutSeatPick(false);
     expect(seat()).toEqual({ depth: 3, rows: [[0, [0]]] });
   });
 
@@ -137,6 +140,7 @@ describe("좌석 창구 — S 끝 기둥 포트가 기둥 밖으로 나간다", 
   };
 
   it("대조군 — 끄면 머신마다 윗줄(칸 1)에 앉아 끝 행이 4 — 포트 첫 칸(행 5)이 기둥 안쪽이다", () => {
+    setAutoLayoutSeatPick(false);
     expect(seatB()).toEqual([[0, [1]], [1, [1]]]);
   });
 

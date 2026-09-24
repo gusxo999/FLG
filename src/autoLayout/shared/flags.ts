@@ -176,8 +176,8 @@ export function setAutoLayoutLinkDirect(v: boolean): void {
 /**
  * AUTO_LAYOUT_SEAT_PICK — **인서터 행 고르기** 스위치(`module/policy/link.seatRowsOf`).
  *
- * `false`(기본) 면 오늘 규칙 그대로다 — 옆면(W/E)은 빈 좌석을 **앞에서부터** k 개.
- * `true` 면 옆면에서 규칙 둘이 선다(스도쿠 원리 — 뒤에 올 줄의 자리를 가장 적게 뺏는 행):
+ * `true`(기본) 면 옆면에서 규칙 둘이 선다(스도쿠 원리 — 뒤에 올 줄의 자리를 가장 적게 뺏는 행).
+ * `false` 면 옛 규칙이다 — 옆면(W/E)은 빈 좌석을 **앞에서부터** k 개.
  *
  * ```
  * 자리-1  포트 쪽 끝부터 붙여 앉는다    흐름 끝이 S 면 아래부터. 기둥 끝 포트가 기둥 **밖**으로 나가
@@ -190,11 +190,14 @@ export function setAutoLayoutLinkDirect(v: boolean): void {
  *
  * 이미 앉은 줄의 인서터는 옮기지 않는다(자리-3) — 옮기면 그것을 보고 비켜 간 줄의 판단이 틀어진다.
  *
- * **끄면 오늘 동작 그대로다** — 기전: 꺼짐이면 `seatRowsOf` 가 옛 규칙(앞에서 k 개)을 낸다.
- * 켠 대조의 차이는 원인 둘(흐름이 S · 첫 좌석의 깊이 칸이 막혔다) 중 하나로 설명돼야 한다.
- * 켜는 법은 `flg.flags.seatPick(true)`.
+ * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*, 잠수 · 순서 규칙과 함께). 대조(합성 32 픽스처)에서 이슈가 는
+ * 픽스처는 없었고 성공한 배치의 질도 그대로였다. **다만 `AUTO_LAYOUT_LINK_DIRECT` 실험 판에서는 되던 배치 둘이 깨진다** —
+ * 한 머신짜리 줄이 포트 쪽 끝(흐름 S 면 아래 행)에 앉아 여러 머신을 잇는 줄의 **머신 사이 통로**를 막는다
+ * (`tempPlanDocs/링크-좌석/judgements.md` J-통로).
+ *
+ * **끄면 옛 동작 그대로다** — 기전: 꺼짐이면 `seatRowsOf` 가 옛 규칙(앞에서 k 개)을 낸다. 끄는 법은 `flg.flags.seatPick(false)`.
  */
-export let AUTO_LAYOUT_SEAT_PICK = false;
+export let AUTO_LAYOUT_SEAT_PICK = true;
 
 export function setAutoLayoutSeatPick(v: boolean): void {
   AUTO_LAYOUT_SEAT_PICK = v;
@@ -214,10 +217,11 @@ export function setAutoLayoutSeatPick(v: boolean): void {
  * 구간 안쪽이고 물리 거리가 사거리 안이다 · 종착 입구가 같은 열 앞쪽에서 짝이 되지 않는다(종착이 종류를 바꾼다).
  * 합류 쌍은 잠수하지 않는다. 규칙은 `docs/auto-layout/module/trunk-blocked.md` §1 · §4.
  *
- * **끄거나 지하벨트를 안 고르면 오늘 동작 그대로다** — 기전: 지하 종류가 없으면 제안에 터널도 비켜 주기도 안 생긴다.
- * 켜는 법은 `flg.flags.linkDive(true)`.
+ * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*).
+ * **끄거나 지하벨트를 안 고르면 옛 동작 그대로다** — 기전: 지하 종류가 없으면 제안에 터널도 비켜 주기도 안 생긴다.
+ * 끄는 법은 `flg.flags.linkDive(false)`.
  */
-export let AUTO_LAYOUT_LINK_DIVE = false;
+export let AUTO_LAYOUT_LINK_DIVE = true;
 
 export function setAutoLayoutLinkDive(v: boolean): void {
   AUTO_LAYOUT_LINK_DIVE = v;
@@ -226,8 +230,8 @@ export function setAutoLayoutLinkDive(v: boolean): void {
 /**
  * AUTO_LAYOUT_LINK_ORDER — **링크 줄의 앉는 순서** 스위치(`link/policy/seat.byConstraint` · `tree/build.seatTree`).
  *
- * `false`(기본) 면 오늘 순서 그대로다 — 간선마다(트리 DFS 전위) 그 간선의 줄을 합류 쌍 → 도착 순으로 앉힌다.
- * `true` 면 **트리의 모든 간선**에서 단위(줄 하나 · 합류 쌍)를 모아 한 줄로 세운다:
+ * `true`(기본) 면 **트리의 모든 간선**에서 단위(줄 하나 · 합류 쌍)를 모아 한 줄로 세운다.
+ * `false` 면 옛 순서다 — 간선마다(트리 DFS 전위) 그 간선의 줄을 합류 쌍 → 도착 순으로 앉힌다:
  *
  * ```
  * ① 부모 쪽 방문 수     큰 것 먼저 — 그 줄이 부모 기둥에서 지나는 머신 수(자유도가 낮다)
@@ -239,10 +243,11 @@ export function setAutoLayoutLinkDive(v: boolean): void {
  * 짧은 줄이 뒤 간선의 관통 줄 깊이에 못을 박는 일이 그대로 남는다. 앉히는 순서와 적는 순서는 다르다 — 결과는
  * 간선 순서로 적는다(방출이 index 로 짝을 찾는다).
  *
- * **끄면 오늘 동작 그대로다** — 기전: 꺼짐이면 옛 간선 루프(`seatLinkEdge`)를 부른다. 비교 함수를 0 으로 두는 것으로는
- * 안 된다 — 합류 쌍 열쇠가 간선을 넘어 다른 간선의 줄보다 앞당겨지기 때문이다. 켜는 법은 `flg.flags.linkOrder(true)`.
+ * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*).
+ * **끄면 옛 동작 그대로다** — 기전: 꺼짐이면 옛 간선 루프(`seatLinkEdge`)를 부른다. 비교 함수를 0 으로 두는 것으로는
+ * 안 된다 — 합류 쌍 열쇠가 간선을 넘어 다른 간선의 줄보다 앞당겨지기 때문이다. 끄는 법은 `flg.flags.linkOrder(false)`.
  */
-export let AUTO_LAYOUT_LINK_ORDER = false;
+export let AUTO_LAYOUT_LINK_ORDER = true;
 
 export function setAutoLayoutLinkOrder(v: boolean): void {
   AUTO_LAYOUT_LINK_ORDER = v;

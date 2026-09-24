@@ -134,8 +134,8 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
  * 밖에서 `linkCache` 를 고치고 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
  *
  * **순서**는 `docs/auto-layout/module/module-planning.md` §4.6 *"그룹 도착 순서"* 가 든다 — 기본은 `specs`(트리 DFS
- * pre-order)를 간선마다 그대로 쓰고, `AUTO_LAYOUT_LINK_ORDER` 를 켜면 **모든 간선의 단위를 모아** 순서 규칙대로 세운다
- * ([seatInOrder] — 합류 쌍 → 부모 쪽 방문 수 → 오늘 순서). 적는 순서는 어느 쪽이든 간선 순서다.
+ * pre-order)를 간선마다 그대로 쓰는 옛 순서가 있고, `AUTO_LAYOUT_LINK_ORDER`(기본 켜짐)면 **모든 간선의 단위를 모아** 순서
+ * 규칙대로 세운다([seatInOrder] — 부모 쪽 방문 수 → 합류 쌍 → 오늘 순서). 적는 순서는 어느 쪽이든 간선 순서다.
  *
  * 끝나면 창구를 **닫아 값으로 굳힌다**(`SeatedFaces`) — `generateModule` 은 그 값에서 자기 장부를 다시 연다.
  * 모듈의 장부는 이 함수 밖으로 안 나간다. `linkCache` 는 제자리에서 최종본으로 갈아 끼운다(쪼개졌으면 토막).
