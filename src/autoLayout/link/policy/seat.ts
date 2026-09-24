@@ -4,10 +4,14 @@
  * ```
  * 합류     pairsOf        어느 줄이 이끄나 · 포트 끝 · 짝을 풀까
  * 쪼갬     cutRows        막힌 행 중 쪼개면 실제로 앉는 경계
- * 원자성   seatLinkEdge   양끝이 다 되면 확정 · 한쪽이라도 안 되면 둘 다 미배정
+ * 원자성   seatUnit       양끝이 다 되면 확정 · 한쪽이라도 안 되면 둘 다 미배정
  * 순서     remedyOf       선호 면에 양끝이 다 못 앉았을 때 무엇부터(쪼개기 → 다른 면 → 포기)
+ *          byConstraint   단위(줄 하나 · 합류 쌍) 사이 — 합류 쌍 → 부모 쪽 방문 수 → 오늘 순서
  * 넘침     spillPair      양쪽 창구에 먼 자리(far)를 묻는다
  * ```
+ *
+ * **간선은 단위로 나뉜다**([openEdge] · [edgeUnits] · [seatUnit]) — 한 간선의 단위들을 차례로 앉히면 [seatLinkEdge] 이고,
+ * 트리의 **모든** 간선의 단위를 모아 한 줄로 세우면 순서 규칙이다(`tree/build.seatTree` — `AUTO_LAYOUT_LINK_ORDER`).
  *
  * **모듈의 장부는 쥐지 않는다.** 두 모듈의 좌석 창구([FaceSeating])에 묻고(`ask`) 받을(`take`) 뿐이다 —
  * 면 · 깊이 · 끝 · 인서터 행은 창구가 고른다. 한 링크의 양끝은 서로의 자리를 안 보기 때문이다
@@ -81,17 +85,70 @@ export function seatLinkEdge(
   toOffsetGroups: readonly Link[],
   opts: { split: boolean },
 ): EdgeSeatResult {
-  const groups: Link[] = [];
-  const fromSeats: (SeatReceipt | undefined)[] = [];
-  const toSeats: (SeatReceipt | undefined)[] = [];
-  const fromWhy: DepthShortage[][] = [];
-  const toWhy: DepthShortage[][] = [];
-  let splits = 0;
+  const edge = openEdge(fromDesk, toDesk, toOffsetGroups, opts);
+  for (const u of edgeUnits(edge)) seatUnit(edge, u);
+  return edgeResult(edge);
+}
 
-  // **쪼갬 예산** — 못은 깊이 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
-  // 예산 없이 두면 잘못된 판정 하나가 무한 루프가 된다. 그룹당 넷이면 넉넉하다.
-  let budget = toOffsetGroups.length * 4;
+/**
+ * **앉히는 단위** — 줄 하나, 또는 합류 쌍(이끄는 줄 + 따르는 줄 — 붙어서 앉는다). 쪼개진 토막은 단위 안에서
+ * 바로 이어 앉는다(되돌리기가 없다).
+ */
+export interface SeatUnit {
+  readonly lines: readonly Link[];
+  /** 합류 쌍인가 — 순서 열쇠 ①. */
+  readonly pair: boolean;
+}
 
+/**
+ * **간선 하나의 앉히기 상태** — 두 창구 · 합류 쌍 · 쪼갬 예산 · 결과. 단위를 몇 번에 나눠 앉혀도(다른 간선의 단위가
+ * 사이에 끼어도) 같은 상태를 이어 쓴다. 결과([edgeResult])는 **앉힌 순서**로 쌓인다 — 한 간선의 양끝(자식의 나가는 줄 ·
+ * 부모의 들어오는 줄)이 같은 목록을 쓰므로 방출이 index 로 짝을 찾는다.
+ */
+export interface EdgeSeating {
+  readonly fromDesk: FaceSeating;
+  readonly toDesk: FaceSeating;
+  readonly groups: readonly Link[];
+  readonly split: boolean;
+  readonly mergePairs: Map<string, { lead: Link; follow: Link; end: "N" | "S" }>;
+  /** 집는 쪽 — 둘째 줄이 얹힐 벨트(첫 줄의 영수증). */
+  readonly sharedTo: Map<string, SeatReceipt>;
+  /** 싣는 쪽 — 둘째 줄이 나란히 앉을 자리(첫 줄의 영수증). */
+  readonly sharedFrom: Map<string, SeatReceipt>;
+  budget: number;
+  readonly out: EdgeSeatResult;
+}
+
+/** 간선을 연다 — 아직 아무것도 안 앉힌다. */
+export function openEdge(
+  fromDesk: FaceSeating,
+  toDesk: FaceSeating,
+  toOffsetGroups: readonly Link[],
+  opts: { split: boolean },
+): EdgeSeating {
+  return {
+    fromDesk, toDesk, groups: toOffsetGroups, split: opts.split,
+    mergePairs: pairsOf(toOffsetGroups),
+    sharedTo: new Map(), sharedFrom: new Map(),
+    // **쪼갬 예산** — 못은 깊이 수만큼에서 멈추므로(`machine-link.md`) 유한하지만,
+    // 예산 없이 두면 잘못된 판정 하나가 무한 루프가 된다. 그룹당 넷이면 넉넉하다.
+    budget: toOffsetGroups.length * 4,
+    out: { groups: [], fromSeats: [], toSeats: [], fromWhy: [], toWhy: [], splits: 0 },
+  };
+}
+
+/** 간선의 결과 — 앉힌 순서. **`groups` 가 그 간선의 최종본**이다(쪼개졌으면 토막). */
+export function edgeResult(edge: EdgeSeating): EdgeSeatResult {
+  return edge.out;
+}
+
+/**
+ * **간선의 단위들 — 간선 안의 오늘 순서로.**
+ *
+ * 순서 — **제약이 센 것부터**(스도쿠 원칙). 아래 표의 ②가 이 목록이 넣는 자리다.
+ */
+export function edgeUnits(edge: EdgeSeating): SeatUnit[] {
+  const { mergePairs, groups } = edge;
   // ── 배정 순서 — **제약이 센 것부터**(스도쿠 원칙) ──────────────────────────────
   //
   // 좌석 창구가 유체 면에 쓰는(⓪) 그 원칙이다. 순위는 **대안이 있느냐**로 갈린다:
@@ -106,30 +163,55 @@ export function seatLinkEdge(
   // **이 순서면 「양보하나 포기하나」를 따로 판단할 필요가 없다.** 합류가 먼저 앉고, 그래도
   // 자리가 없으면 그건 모듈에 **진짜로** 자리가 없는 것이라 정직하게 포기하면 된다 —
   // 남이 뺏은 것이 아니다. (2026-09-04 사장님과 정한 기준.)
-  const mergePairs = pairsOf(toOffsetGroups);
-  const queue: Link[] = [
-    ...[...mergePairs.values()].flatMap((p) => [p.lead, p.follow]),
-    ...toOffsetGroups.filter((g) => !(g.sharedLineId && mergePairs.has(g.sharedLineId))),
+  return [
+    ...[...mergePairs.values()].map((p): SeatUnit => ({ lines: [p.lead, p.follow], pair: true })),
+    ...groups
+      .filter((g) => !(g.sharedLineId && mergePairs.has(g.sharedLineId)))
+      .map((g): SeatUnit => ({ lines: [g], pair: false })),
   ];
+}
+
+/**
+ * **순서 규칙** — 단위 사이의 비교. 결정표 결-10 의 집이다.
+ *
+ * ```
+ * ① 합류 쌍 먼저        대안이 없다(기둥 끝 + 비켜 가는 열 — [edgeUnits] 의 표)
+ * ② 부모 쪽 방문 수     큰 것 먼저. 그 줄이 부모 기둥에서 지나는 머신 수(`Link.to` 의 크기) — 자유도가 낮다
+ * ③ 같으면 오늘 순서    부르는 쪽이 안정 정렬로 지킨다(간선 DFS 전위 · 간선 안 순서)
+ * ```
+ *
+ * **방문 수는 부모 쪽만 본다** — 자식 쪽 끝은 언제나 자식 머신 한 대에서 출발하므로
+ * (`docs/auto-layout/link/machine-link.md`) 순서를 가르는 것은 부모 쪽뿐이다. 자유도가 낮은 줄을 먼저 앉히면
+ * 못이 애초에 안 생긴다 — 먼저 온 짧은 줄의 포트가 뒤에 올 관통 줄의 깊이에 못을 박는 일이 없어진다
+ * (`docs/auto-layout/module/module-planning.md` §4.6 — 그룹 도착 순서).
+ */
+export function byConstraint(a: SeatUnit, b: SeatUnit): number {
+  if (a.pair !== b.pair) return a.pair ? -1 : 1;
+  const visits = (u: SeatUnit): number => Math.max(...u.lines.map((g) => g.to.size));
+  return visits(b) - visits(a);
+}
+
+/**
+ * **단위 하나를 양끝에 앉힌다** — 원자성 · 합류 · 수단 순서([remedyOf]). 쪼개진 토막은 그 자리에서 이어 앉는다.
+ */
+export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
+  const { fromDesk, toDesk, mergePairs, sharedTo, sharedFrom, out } = edge;
+  const queue: Link[] = [...unit.lines];
 
   const keep = (g: Link, fs?: SeatReceipt, ts?: SeatReceipt, fw: DepthShortage[] = [], tw: DepthShortage[] = []) => {
-    groups.push(g); fromSeats.push(fs); toSeats.push(ts); fromWhy.push(fw); toWhy.push(tw);
+    out.groups.push(g); out.fromSeats.push(fs); out.toSeats.push(ts); out.fromWhy.push(fw); out.toWhy.push(tw);
   };
 
-  /**
-   * **레인 공유 — 양끝이 서로 다르게 다뤄진다.**
-   *
-   * ```
-   * 싣는 쪽(from)   벨트 **둘**  — 팔이 각자 먼 레인에 떨궈야 두 레인이 찬다.
-   *                 다만 **같은 끝 · 인접 깊이**라야 기둥 끝 바깥 한 행에서 만난다
-   * 집는 쪽(to)     벨트 **하나** — 합류한 벨트가 벽의 한 칸으로 들어온다
-   * ```
-   *
-   * 그래서 장부도 둘이다: `sharedFrom` 은 *"둘째 줄이 나란히 앉을 자리"* 를 재고,
-   * `sharedTo` 는 *"둘째 줄이 얹힐 벨트"* 를 든다. 둘 다 **영수증**이다 — 자리 자체는 창구 안에 있다.
-   */
-  const sharedTo = new Map<string, SeatReceipt>();
-  const sharedFrom = new Map<string, SeatReceipt>();
+  // **레인 공유 — 양끝이 서로 다르게 다뤄진다.**
+  //
+  // ```
+  // 싣는 쪽(from)   벨트 **둘**  — 팔이 각자 먼 레인에 떨궈야 두 레인이 찬다.
+  //                 다만 **같은 끝 · 인접 깊이**라야 기둥 끝 바깥 한 행에서 만난다
+  // 집는 쪽(to)     벨트 **하나** — 합류한 벨트가 벽의 한 칸으로 들어온다
+  // ```
+  //
+  // 그래서 장부도 둘이다([EdgeSeating]): `sharedFrom` 은 *"둘째 줄이 나란히 앉을 자리"* 를 재고,
+  // `sharedTo` 는 *"둘째 줄이 얹힐 벨트"* 를 든다. 둘 다 **영수증**이다 — 자리 자체는 창구 안에 있다.
 
   while (queue.length > 0) {
     const g = queue.shift()!;
@@ -219,17 +301,16 @@ export function seatLinkEdge(
     }
 
     // 선호 면에 양끝이 다 못 앉았다 — **수단 사이의 순서**([remedyOf])를 따른다.
-    const r = remedyOf(g, { candFrom, candTo, fw, tw }, fromDesk, toDesk, opts.split && budget > 0);
+    const r = remedyOf(g, { candFrom, candTo, fw, tw }, fromDesk, toDesk, edge.split && edge.budget > 0);
     if (r.kind === "split") {
-      budget -= r.parts.length;
-      splits += r.parts.length - 1;
+      edge.budget -= r.parts.length;
+      out.splits += r.parts.length - 1;
       queue.unshift(...r.parts); // 토막을 **앞에** 넣어 이어서 앉힌다 — 되돌리기가 없다
       continue;
     }
     if (r.kind === "spilled") { keep(g, r.from, r.to); continue; }
     keep(g, undefined, undefined, fw, tw); // 정직하게 자리 없음
   }
-  return { groups, fromSeats, toSeats, fromWhy, toWhy, splits };
 }
 
 /** [remedyOf] 의 답 — 무엇을 했나. */
