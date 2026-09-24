@@ -21,7 +21,9 @@ import type { PortFace } from "../../shared/types";
 import { armsAt, resolveSpanBlock, spansAllMachines } from "../arith/link";
 import type { Link } from "../types/line";
 import type { DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan } from "../types/seat";
-import { freeSeatRows, seatsTaken, type FaceTable } from "../ledger/face";
+import { depthClear, freeSeatRows, rowIndex, seatsTaken, type FaceTable } from "../ledger/face";
+import { AUTO_LAYOUT_SEAT_PICK } from "../../shared/flags";
+import { flowEnd } from "../arith/trunk";
 import { recordFaceDepthStats } from "../../../debug/runStats";
 import { portCells } from "../shape/link";
 import { clusterBeltDepthsOf, LINK_LANE_DEPTH } from "../arith/face";
@@ -178,13 +180,22 @@ export function tryLinkFace(
   const end = endOf(ctx, group, side, face, forceEnd, preferEnd);
   // ⑤ 후보 — 팔 적은 것 → 얕은 것
   const table = seatTableOf(ctx, face);
+  const flowToSouth = flowEnd(end) === "S";
   for (const cand of depthCandidates(ctx, group, side, face, preferDepth)) {
     // ⑤′ 인서터 행 — 머신마다 몇 번째 좌석에(결정표 결-4 의 집)
-    const slotIndex = seatRowsOf(table, face, cand.arms, side);
+    const d = cand.clusterBeltDepth;
+    const slotIndex = seatRowsOf(table, face, cand.arms, side, {
+      flowToSouth,
+      depth: d,
+      // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다)
+      portClear: (row) => splitByTable(portCells({ clusterBeltDepth: d, portEnd: end.portEnd, exitEnd: end.exitEnd }, [row, row]), table)
+        .inside.every(([r, dd]) => depthClear(table, dd, r, r)),
+    });
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
     const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, end, why);
     if (!fit) continue;
     recordEndsAudit(ctx, face, cand, fit, end);
+    if (AUTO_LAYOUT_SEAT_PICK) recordSeatPick(table, face, cand.arms, side, flowToSouth, slotIndex);
     return {
       face, arms: cand.arms, clusterBeltDepth: cand.clusterBeltDepth, reach: cand.clusterBeltDepth - 1,
       portEnd: end.portEnd, exitEnd: end.exitEnd, slotIndex,
@@ -208,24 +219,89 @@ export function tryLinkFace(
  *                     얕은 줄" 이라야 성립하고, 입력의 포트는 동쪽이다
  * ```
  *
- * 머신 index 오름차순으로 낸다 — 방출 순서가 결정적이어야 한다. 좌석이 모자라면 k 개보다 적게 낸다
- * (모자란지는 부르는 쪽이 본다 — [fitOnFace] 의 좌석 수 검사 · [seatOnSharedBelt]).
+ * 머신 index 오름차순으로 낸다 — 방출 순서가 결정적이어야 한다. 한 머신 안의 행도 오름차순이다.
+ * 좌석이 모자라면 k 개보다 적게 낸다(모자란지는 부르는 쪽이 본다 — [fitOnFace] · [seatOnSharedBelt]).
+ *
+ * ## 플래그를 켜면(`AUTO_LAYOUT_SEAT_PICK`) — 옆면(W/E)에서 규칙 둘
+ *
+ * ```
+ * 자리-1  포트 쪽 끝부터 붙여 앉는다        흐름 끝이 S 면 아래부터
+ * 자리-2  쓸 수 없는 행은 고르기 전에 거른다  내 깊이 칸에 남의 칸이 있는 행 · 끝 머신에서 포트 칸이 막히는 행
+ * ```
+ *
+ * **스도쿠 원리의 둘째 물음이다** — *"남의 후보를 가장 적게 지우는 숫자"*. 포트 쪽으로 붙이면 빈 좌석이
+ * 머신마다 반대쪽 끝에 한 덩어리로 남고, 기둥 끝 포트는 기둥 **밖**으로 나가 표의 칸을 안 먹는다.
+ * 첫째 물음(누가 먼저)은 순서 규칙이, 셋째(확정한 숫자는 지우지 않는다)는 *"앉은 줄의 인서터는 안 옮긴다"* 가 맡는다.
+ * 규칙과 근거(옛 TR3 를 거둔 이유 포함)는 `trunk-assignment.md` §3 ③.
+ *
+ * `pick` 이 없으면(합류 둘째 줄이 첫 줄의 벨트에 얹을 때) 거르지 않는다 — 그 칸의 주인이 첫 줄이다.
  */
 export function seatRowsOf(
   table: FaceTable,
   face: PortFace,
   arms: ReadonlyMap<number, number>,
   side: "from" | "to",
+  pick?: {
+    /** 흐름이 향하는 끝이 S 인가 — 포트가 서는 쪽이다(자리-1). */
+    flowToSouth: boolean;
+    /** 내 벨트가 앉을 깊이 — 이 깊이 칸이 남의 것인 행은 거른다(자리-2). 없으면 안 거른다. */
+    depth?: number;
+    /** 그 행이 포트 쪽 끝 행이 되면 설 포트 칸이 비었나(자리-2). 없으면 안 본다. */
+    portClear?: (row: number) => boolean;
+  },
 ): Map<number, number[]> {
-  const fromEast = (face === "N" || face === "S") && side === "to";
+  const isGap = face === "N" || face === "S";
+  const fromEast = isGap && side === "to";
+  const ruled = AUTO_LAYOUT_SEAT_PICK && !isGap && pick !== undefined;
+  const sorted = [...arms].sort((a, b) => a[0] - b[0]);
+  /** 포트가 서는 머신 — 흐름이 향하는 끝의 머신. */
+  const portMi = ruled && sorted.length > 0 ? sorted[pick!.flowToSouth ? sorted.length - 1 : 0][0] : undefined;
   const out = new Map<number, number[]>();
-  for (const [mi, k] of [...arms].sort((a, b) => a[0] - b[0])) {
-    const base = seatsTaken(table, mi);
-    out.set(mi, fromEast
-      ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
-      : freeSeatRows(table, mi).slice(0, k));
+  for (const [mi, k] of sorted) {
+    if (!ruled) {
+      const base = seatsTaken(table, mi);
+      out.set(mi, fromEast
+        ? Array.from({ length: k }, (_, j) => table.rowsPerMachine - 1 - base - (k - 1 - j))
+        : freeSeatRows(table, mi).slice(0, k));
+      continue;
+    }
+    const p = pick!;
+    const free = freeSeatRows(table, mi);
+    // 자리-1 — 포트 쪽 끝부터
+    let rows = p.flowToSouth ? [...free].reverse() : free;
+    // 자리-2 — 내 깊이 칸이 남의 것인 행은 거른다
+    if (p.depth !== undefined) {
+      const d = p.depth;
+      rows = rows.filter((s) => depthClear(table, d, rowIndex(table, mi, s), rowIndex(table, mi, s)));
+    }
+    // 자리-2 — 끝 머신에서는 포트 칸이 막히는 행을 포트 쪽 끝 행으로 쓰지 않는다
+    // (그보다 포트 쪽에 있는 행은 쓰면 그 행이 끝 행이 되므로 함께 건너뛴다)
+    if (mi === portMi && p.portClear) {
+      const at = rows.findIndex((s) => p.portClear!(rowIndex(table, mi, s)));
+      rows = at < 0 ? [] : rows.slice(at);
+    }
+    out.set(mi, rows.slice(0, k).sort((a, b) => a - b));
   }
   return out;
+}
+
+/**
+ * **행 고르기가 오늘 규칙과 다른 행을 골랐나** — 원인 둘로 가른다. **관측만 한다.**
+ * 오늘 규칙(앞에서 k 개)과 같으면 안 센다. 자리-1 만 쓴 답과 같으면 흐름 탓, 아니면 거름 탓이다.
+ */
+function recordSeatPick(
+  table: FaceTable,
+  face: PortFace,
+  arms: ReadonlyMap<number, number>,
+  side: "from" | "to",
+  flowToSouth: boolean,
+  chosen: ReadonlyMap<number, readonly number[]>,
+): void {
+  const key = (m: ReadonlyMap<number, readonly number[]>) => JSON.stringify([...m]);
+  const now = key(chosen);
+  if (now === key(seatRowsOf(table, face, arms, side))) return;
+  const southOnly = key(seatRowsOf(table, face, arms, side, { flowToSouth }));
+  recordFaceDepthStats(now === southOnly ? { seatPickSouth: 1 } : { seatPickFiltered: 1 });
 }
 
 /**
@@ -245,7 +321,10 @@ export function seatOnSharedBelt(
   const arms = armsAt(group, side, inserter);
   if (arms.size === 0) return undefined;
   // **좌석이 되는지 먼저 다 확인하고** 나서 청구한다 — 반쯤 앉히면 되돌릴 길이 없다.
-  const want = seatRowsOf(seatTableOf(ctx, shared.face), shared.face, arms, side);
+  // 첫 줄과 같은 끝으로 붙인다(자리-1). 거르지는 않는다 — 그 깊이 칸의 주인이 첫 줄이다.
+  const want = seatRowsOf(seatTableOf(ctx, shared.face), shared.face, arms, side, {
+    flowToSouth: flowEnd(shared) === "S",
+  });
   for (const [mi, k] of arms) if ((want.get(mi)?.length ?? 0) < k) return undefined;
   return claimSharedSeats(ctx, shared, arms, want);
 }

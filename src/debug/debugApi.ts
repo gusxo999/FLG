@@ -36,6 +36,8 @@ import {
   setAutoLayoutCoordDump,
   setAutoLayoutPerimeterPass,
   setAutoLayoutLaneMerge,
+  setAutoLayoutSeatPick,
+  AUTO_LAYOUT_SEAT_PICK,
 } from '../autoLayout/shared/flags';
 import type { CandidateLeaf } from '../autoLayout/shared/types';
 import type { CustomDataSpec } from '../factorio/customRecipe';
@@ -310,6 +312,15 @@ const flags = defineGroup('flags', {
       return v ? 'ON' : 'OFF';
     },
   },
+  seatPick: {
+    usage: '(true|false)',
+    desc: '화면에 버튼이 없는 플래그 — 인서터 행 고르기(포트 쪽 끝부터 · 막힌 행 거르기). 기본 OFF. '
+      + '끄면 오늘 규칙(앞에서부터) 그대로다',
+    fn: (v: boolean) => {
+      setAutoLayoutSeatPick(v);
+      return v ? 'ON' : 'OFF';
+    },
+  },
   show: {
     fn: () => ({
       coordDump: AUTO_LAYOUT_COORD_DUMP,
@@ -317,6 +328,7 @@ const flags = defineGroup('flags', {
       linkLadder: AUTO_LAYOUT_LINK_LADDER,
       linkOppositeFace: AUTO_LAYOUT_LINK_OPPOSITE_FACE,
       linkDirect: AUTO_LAYOUT_LINK_DIRECT,
+      seatPick: AUTO_LAYOUT_SEAT_PICK,
       entityIds: useUiDebugStore.getState().showEntityDebugInfo,
     }),
   },

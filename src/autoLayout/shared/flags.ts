@@ -172,3 +172,30 @@ export let AUTO_LAYOUT_LINK_DIRECT = false;
 export function setAutoLayoutLinkDirect(v: boolean): void {
   AUTO_LAYOUT_LINK_DIRECT = v;
 }
+
+/**
+ * AUTO_LAYOUT_SEAT_PICK — **인서터 행 고르기** 스위치(`module/policy/link.seatRowsOf`).
+ *
+ * `false`(기본) 면 오늘 규칙 그대로다 — 옆면(W/E)은 빈 좌석을 **앞에서부터** k 개.
+ * `true` 면 옆면에서 규칙 둘이 선다(스도쿠 원리 — 뒤에 올 줄의 자리를 가장 적게 뺏는 행):
+ *
+ * ```
+ * 자리-1  포트 쪽 끝부터 붙여 앉는다    흐름 끝이 S 면 아래부터. 기둥 끝 포트가 기둥 **밖**으로 나가
+ *                                      표의 칸을 안 먹는다. gap 면은 이미 이 규칙이다
+ * 자리-2  쓸 수 없는 행은 고르기 전에 거른다
+ *                                      그 행의 내 깊이 칸에 남의 칸이 있으면 · 끝 머신에서 그 행에 설
+ *                                      포트 칸이 막혔으면 건너뛴다. 같은 깊이의 다른 행이 다음 깊이보다
+ *                                      먼저다 — 다음 깊이는 대개 팔이 길어 좌석을 더 먹는다
+ * ```
+ *
+ * 이미 앉은 줄의 인서터는 옮기지 않는다(자리-3) — 옮기면 그것을 보고 비켜 간 줄의 판단이 틀어진다.
+ *
+ * **끄면 오늘 동작 그대로다** — 기전: 꺼짐이면 `seatRowsOf` 가 옛 규칙(앞에서 k 개)을 낸다.
+ * 켠 대조의 차이는 원인 둘(흐름이 S · 첫 좌석의 깊이 칸이 막혔다) 중 하나로 설명돼야 한다.
+ * 켜는 법은 `flg.flags.seatPick(true)`.
+ */
+export let AUTO_LAYOUT_SEAT_PICK = false;
+
+export function setAutoLayoutSeatPick(v: boolean): void {
+  AUTO_LAYOUT_SEAT_PICK = v;
+}

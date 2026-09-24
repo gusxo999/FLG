@@ -183,6 +183,19 @@ export interface FaceDepthCounters {
    */
   splits: number;
   /**
+   * **인서터 행 고르기가 오늘 규칙과 다른 행을 고른 후보 수** — 원인 둘로 가른다(`AUTO_LAYOUT_SEAT_PICK`).
+   *
+   * ```
+   * seatPickSouth     흐름 끝이 S 라 아래부터 붙였다(자리-1)
+   * seatPickFiltered  쓸 수 없는 행을 걸렀다(자리-2 — 내 깊이 칸이 남의 것 · 끝 머신의 포트 칸이 막힘)
+   * ```
+   *
+   * 앉은 **후보** 기준이다(받기 전) — 모수는 `assignments`. 플래그를 켠 대조에서 배치가 달라졌는데 이 둘이
+   * 0 이면 규칙 밖의 차이다(결함).
+   */
+  seatPickSouth: number;
+  seatPickFiltered: number;
+  /**
    * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`DepthShortage`).
    *
    * *"깊이 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
@@ -248,7 +261,7 @@ const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
 
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
-  endsCoarse: 0, endsDisagree: 0,
+  endsCoarse: 0, endsDisagree: 0, seatPickSouth: 0, seatPickFiltered: 0,
   shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
@@ -388,7 +401,7 @@ export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
   // *"안 세었다"* 였다는 뜻이라, 그 수를 관문으로 읽던 글이 거짓을 읽고 있었다.
   for (const k of
     ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips", "splits",
-     "endsCoarse", "endsDisagree"] as const)
+     "endsCoarse", "endsDisagree", "seatPickSouth", "seatPickFiltered"] as const)
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);

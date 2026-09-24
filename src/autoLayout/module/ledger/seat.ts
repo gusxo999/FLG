@@ -27,7 +27,7 @@ import type {
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../shape/link";
 import {
-  claimDepth, claimSeats, copyFaceTable, groupsOn, depthClear, makeFaceTable,
+  claimDepth, claimSeats, copyFaceTable, freeSeatRows, groupsOn, depthClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceTable,
 } from "./face";
 import { LINK_LANE_DEPTH } from "../arith/face";
@@ -198,6 +198,18 @@ export function fitOnFace(
   if (!seatsFit) {
     why?.push({ face, clusterBeltDepth, seats: { need, budget: seatRows } });
     return undefined; // 이 팔로는 좌석이 모자란다 — 다음 후보가 더 쌀 수 있다
+  }
+  // **좌석 수는 되는데 받은 행이 모자라다** — 정책이 쓸 수 없는 행을 걸렀다(자리-2). 그 머신에서
+  // 빈 좌석인데 안 받은 행이 곧 막힌 좌석이다(좌석막힘). 걸러 내지 않는 규칙에서는 일어나지 않는다.
+  const blockedSeats: number[] = [];
+  for (const [mi, k] of arms) {
+    const got = slotIndex.get(mi) ?? [];
+    if (got.length >= k) continue;
+    for (const s of freeSeatRows(table, mi)) if (!got.includes(s)) blockedSeats.push(rowIndex(table, mi, s));
+  }
+  if (blockedSeats.length > 0) {
+    why?.push({ face, clusterBeltDepth, blockedRows: blockedSeats.sort((a, b) => a - b), seatRows: [] });
+    return undefined;
   }
   const span = beltRowSpan(table, slotIndex);
   if (!depthClear(table, clusterBeltDepth, span[0], span[1])) {

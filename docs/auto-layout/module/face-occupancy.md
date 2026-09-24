@@ -69,7 +69,7 @@ tags: [auto-layout, placement, module]
 흔한 오해부터 지운다 — *"first-fit 이라 이력에 달렸다"* 는 **틀렸다.**
 
 ```ts
-// commitLinkFace
+// seatRowsOf — 행을 고르는 곳(2026-09-24 에 장부의 commitLinkFace 에서 정책으로 옮겼다)
 const base  = seatsTaken(table, mi);                          // gap(N/S) — 동쪽 끝에서
 const slots = fromEast ? [rowsPerMachine − 1 − base − …]
                        : freeSeatRows(table, mi).slice(0, k); // W/E — 앞에서
@@ -85,6 +85,11 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 ```
 
 **장부가 산술이 못 하는 일을 하고 있지 않다.** 표는 *답을 만들지* 않고 *답을 적을* 뿐이다.
+
+> **접두합은 `AUTO_LAYOUT_SEAT_PICK` 을 끈 판의 성질이다.** 켜면 흐름이 S 로 향하는 줄은 아래 끝부터 앉고(자리-1),
+> 내 깊이 칸이 남의 것인 행은 건너뛴다(자리-2 — [[trunk-assignment]] §3 ③). 그러면 빈 칸은 뒤쪽 꼬리가 아니라
+> **머신마다 가운데 한 덩어리**(양 끝에서 먹혀 들어온다)가 되고, 거른 행이 있으면 구멍도 생긴다 — 위 식은 성립하지 않는다.
+> 그래도 **답을 만드는 곳은 여전히 장부 밖**(정책 `seatRowsOf`)이고 장부는 적기만 한다.
 
 ## 3. 그럼 무엇이 모자란가 — **고리 하나**
 
