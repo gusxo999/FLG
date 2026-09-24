@@ -1,5 +1,5 @@
 /**
- * **순서 규칙** — 트리의 모든 간선에서 단위를 모아 합류 쌍 → 부모 쪽 방문 수 → 오늘 순서로 세운다
+ * **순서 규칙** — 트리의 모든 간선에서 단위를 모아 부모 쪽 방문 수 → 합류 쌍 → 오늘 순서로 세운다
  * (`byConstraint` · `seatInOrder`, 결정표 결-10). 범위가 요점이다 — 한 부모 벽에 오는 **서로 다른 간선**의 줄이 함께 선다.
  *
  * 사례: 부모 하나(머신 3대)에 자식 둘. DFS 앞 간선이 부모 머신 하나만 먹이는 짧은 줄, 뒤 간선이 세 대를 다 먹이는 관통 줄.
@@ -35,10 +35,11 @@ const scene = () => {
 };
 
 describe("순서 비교", () => {
-  it("합류 쌍이 먼저, 그다음 부모 쪽 방문 수가 큰 것", () => {
+  it("부모 쪽 방문 수가 큰 것이 먼저, 같으면 합류 쌍이 먼저", () => {
     const u = (n: number, pair = false) => ({ lines: [line("x", "x", [...Array(n).keys()])], pair });
-    expect(byConstraint(u(1, true), u(3))).toBeLessThan(0);
+    expect(byConstraint(u(3), u(1, true))).toBeLessThan(0); // 방문 수 4·3 인 관통 줄이 방문 수 1 인 쌍보다 먼저다
     expect(byConstraint(u(3), u(1))).toBeLessThan(0);
+    expect(byConstraint(u(2, true), u(2))).toBeLessThan(0);
     expect(byConstraint(u(2), u(2))).toBe(0); // 같으면 부르는 쪽의 안정 정렬이 오늘 순서를 지킨다
   });
 });

@@ -6,7 +6,7 @@
  * 쪼갬     cutRows        막힌 행 중 쪼개면 실제로 앉는 경계
  * 원자성   seatUnit       양끝이 다 되면 확정 · 한쪽이라도 안 되면 둘 다 미배정
  * 순서     remedyOf       선호 면에 양끝이 다 못 앉았을 때 무엇부터(쪼개기 → 다른 면 → 포기)
- *          byConstraint   단위(줄 하나 · 합류 쌍) 사이 — 합류 쌍 → 부모 쪽 방문 수 → 오늘 순서
+ *          byConstraint   단위(줄 하나 · 합류 쌍) 사이 — 부모 쪽 방문 수 → 합류 쌍 → 오늘 순서
  * 넘침     spillPair      양쪽 창구에 먼 자리(far)를 묻는다
  * ```
  *
@@ -175,10 +175,14 @@ export function edgeUnits(edge: EdgeSeating): SeatUnit[] {
  * **순서 규칙** — 단위 사이의 비교. 결정표 결-10 의 집이다.
  *
  * ```
- * ① 합류 쌍 먼저        대안이 없다(기둥 끝 + 비켜 가는 열 — [edgeUnits] 의 표)
- * ② 부모 쪽 방문 수     큰 것 먼저. 그 줄이 부모 기둥에서 지나는 머신 수(`Link.to` 의 크기) — 자유도가 낮다
+ * ① 부모 쪽 방문 수     큰 것 먼저. 그 줄이 부모 기둥에서 지나는 머신 수(`Link.to` 의 크기) — 자유도가 낮다
+ * ② 같으면 합류 쌍 먼저  기둥 끝 + 비켜 가는 열이라야 도형이 선다([edgeUnits] 의 표)
  * ③ 같으면 오늘 순서    부르는 쪽이 안정 정렬로 지킨다(간선 DFS 전위 · 간선 안 순서)
  * ```
+ *
+ * **방문 수가 합류 쌍보다 먼저다**(2026-09-24 사용자). 간선 안에서는 쌍이 먼저였지만(오늘 순서), 간선을 넘으면
+ * 쌍의 명분(*"대안이 없다"*)이 약하다 — 쌍은 도형이 안 서면 짝을 풀고 따로 앉을 수 있지만, 관통 줄은 다른 면
+ * (gap)으로도 못 간다. 쌍을 앞세우면 방문 수 1 인 쌍이 방문 수 4 인 관통 줄의 깊이를 먼저 먹었다(대조 실측).
  *
  * **방문 수는 부모 쪽만 본다** — 자식 쪽 끝은 언제나 자식 머신 한 대에서 출발하므로
  * (`docs/auto-layout/link/machine-link.md`) 순서를 가르는 것은 부모 쪽뿐이다. 자유도가 낮은 줄을 먼저 앉히면
@@ -186,9 +190,10 @@ export function edgeUnits(edge: EdgeSeating): SeatUnit[] {
  * (`docs/auto-layout/module/module-planning.md` §4.6 — 그룹 도착 순서).
  */
 export function byConstraint(a: SeatUnit, b: SeatUnit): number {
-  if (a.pair !== b.pair) return a.pair ? -1 : 1;
   const visits = (u: SeatUnit): number => Math.max(...u.lines.map((g) => g.to.size));
-  return visits(b) - visits(a);
+  if (visits(a) !== visits(b)) return visits(b) - visits(a);
+  if (a.pair !== b.pair) return a.pair ? -1 : 1;
+  return 0;
 }
 
 /**
