@@ -22,7 +22,7 @@ import { flowEnd } from "../arith/trunk";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage,
+  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage, SeatLedgerView,
 } from "../types/seat";
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../shape/link";
@@ -396,6 +396,26 @@ export function openLinkFaceContext(
   return {
     machine: input.machine, count, tables: faceTables, pipeFaces: pipeFaceRows,
     ends: new Map(), outside: new Map(), inserters: input.inserters,
+  };
+}
+
+/**
+ * **굳힌 장부에서 무대를 다시 연다** — 좌석표 · 끝 · 기둥 밖 칸을 **복사해** 자기 것으로 삼는다.
+ *
+ * 받은 값은 안 바꾼다. `generateModule` 은 입력의 순수 함수라야 하고(같은 입력이면 같은 답), 굳힌 좌석은 그 입력의 일부다.
+ * 복사가 여기 하나뿐이다 — 예전에는 넘기는 쪽(`cloneLinkFaceStage`)이 *"받는 쪽이 원본을 더럽히지 않게"* 복사했다.
+ */
+export function reopenLinkFaceContext(
+  ledger: SeatLedgerView,
+  input: Pick<ModuleInput, "machine" | "inserters">,
+  count: number,
+  pipeFaceRows: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>,
+): LinkFaceContext {
+  return {
+    machine: input.machine, count, pipeFaces: pipeFaceRows, inserters: input.inserters,
+    tables: new Map([...ledger.tables].map(([f, t]) => [f, copyFaceTable(t)] as const)),
+    ends: new Map([...ledger.ends].map(([f, set]) => [f, new Set(set)] as const)),
+    outside: new Map([...ledger.outside].map(([f, set]) => [f, new Set(set)] as const)),
   };
 }
 

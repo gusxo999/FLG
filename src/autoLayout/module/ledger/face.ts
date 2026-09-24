@@ -62,6 +62,14 @@ export interface FaceTable {
   nextOwner: number;
 }
 
+/** 읽기 전용으로 본 표 — 굳힌 좌석(`SeatedFaces`)이 든다. 다시 쓰려면 [copyFaceTable] 로 복사한다. */
+export interface FaceTableView {
+  readonly rowsPerMachine: number;
+  readonly machineCount: number;
+  readonly cells: ReadonlyMap<string, FaceCellOwner>;
+  readonly nextOwner: number;
+}
+
 const key = (row: number, depth: number): string => `${row}|${depth}`;
 
 /** 머신 `mi` 의 `slot` 번째 칸이 표에서 몇 행인가. */
@@ -93,7 +101,7 @@ export function makeFaceTable(
 }
 
 /** 표를 통째로 복사한다 — 채워 보고 버리는 시도(백트래킹·사다리)의 전부다. */
-export function copyFaceTable(t: FaceTable): FaceTable {
+export function copyFaceTable(t: FaceTableView): FaceTable {
   return { ...t, cells: new Map(t.cells) };
 }
 

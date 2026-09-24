@@ -19,7 +19,7 @@
 import type { IoLine, Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage,
+  DepthShortage, FaceAllocation, FaceSeating, LinkFaceContext, LinkFacePlan, LinkFaceStage, SeatReceipt,
 } from "../types/seat";
 import { externalLineGroups, readLinkRole, resolveSpanBlock, splitLinkAtRows } from "../arith/link";
 import { recordLaneUnshare } from "../../../debug/runStats";
@@ -29,8 +29,101 @@ import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
 import type { PortFace } from "../../shared/types";
 import { planBundles } from "../arith/depth";
 import { allocateLinkFaces, tryLinkFace, spillLinkFacesToGap } from "./link";
-import { commitLinkFace, seatOnSharedBelt } from "../ledger/seat";
-import { clusterBeltDepthsOf } from "../arith/face";
+import { commitLinkFace, openLinkFaceContext, seatOnSharedBelt } from "../ledger/seat";
+import { clusterBeltDepthsOf, fluidFacesOf } from "../arith/face";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 좌석 창구 — 링크 쪽에 내주는 계약의 구현
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 링크의 선호 면 — 부모가 서쪽이라 출력은 W, 입력은 E. */
+const LINK_NEAR: Record<"from" | "to", PortFace> = { from: "W", to: "E" };
+
+/**
+ * **링크의 넘침 순서** — 선호 면이 안 되면 다른 면을 본다. 선호 면이 다시 들어 있는 것은 그 면이 유체 면이면
+ * near 가 비켜 갔기 때문이다(`allowPipeFace`).
+ *
+ * **반대 옆면은 gap 앞에 온다** — gap 은 기둥을 벌려 모듈을 키우지만(`gapRowsFromPlans`) 반대 면은 안 키운다.
+ * **끄면 오늘 동작 그대로다** — `false` 면 반대 면을 후보로 한 번도 안 물어본다.
+ *
+ * 이 분기가 **켜졌는데 납품이 깨지면** `tempPlanDocs/부분-링크/judgements.md` **J14** 를 본다 — 그 대가를 재는 것이
+ * 이 플래그의 존재 이유다(2026-08-05 실측: 자매 경로에서 W 로 밀린 자식-공급 입력의 납품 1건이 실패했다).
+ *
+ * > 나머지 줄의 넘침([seatRestLines])은 **반대 면을 선호 면 재시도보다 먼저** 본다. 이 목록은 그 반대다 —
+ * > 한 결정(넘침 순서)이 두 곳에 산다. 합치는 일은 그 순서를 **정하는** 일이라 J14 의 몫이다.
+ */
+function linkFarFaces(side: "from" | "to"): readonly PortFace[] {
+  const both = AUTO_LAYOUT_LINK_OPPOSITE_FACE;
+  if (side === "from") return both ? ["W", "E", "S", "N"] : ["W", "S", "N"];
+  return both ? ["E", "W", "S", "N"] : ["E", "S", "N"];
+}
+
+/**
+ * **좌석 창구를 연다** — 모듈 하나의 면. 좌석 단계(`tree/build.seatTree`)가 모듈마다 하나 연다.
+ *
+ * 장부(좌석표 · 기둥 끝 · 기둥 밖 칸)는 **이 안에만** 있다. 링크 쪽은 묻고(`ask`) 받고(`take`) 닫을 뿐이다.
+ * 면 · 깊이 · 끝 · 인서터 행은 여기서 고른다 — 한 링크의 양끝은 서로의 자리를 안 보기 때문이다
+ * (`docs/auto-layout/module/module-planning.md` §4.6).
+ */
+export function openFaceSeating(
+  input: Pick<ModuleInput, "machine" | "lines" | "inserters" | "fluidTrunk">,
+  count: number,
+): FaceSeating {
+  // ⓪ 유체 면 — 머신이 강제한다. 표는 면을 처음 볼 때 유체 칸을 찍어 차린다
+  const fluid = fluidFacesOf(input);
+  const ctx = openLinkFaceContext(input, count, fluid.pipeFaceRows);
+  /** 받은 자리 — 영수증 번호 → 계획. 링크 쪽은 번호만 쥔다. */
+  const plans: LinkFacePlan[] = [];
+  let closed = false;
+  const live = (): void => {
+    if (closed) throw new Error("좌석 창구가 닫혔다 — 닫은 뒤에는 묻지도 받지도 못한다");
+  };
+  const receipt = (p: LinkFacePlan): SeatReceipt => {
+    plans.push(p);
+    return { id: plans.length - 1, face: p.face, clusterBeltDepth: p.clusterBeltDepth, portEnd: p.portEnd, exitEnd: p.exitEnd };
+  };
+  return {
+    rowsPerMachine: ctx.machine.h,
+    ask(line, side, reach, need) {
+      live();
+      if (reach === "near") {
+        const why: DepthShortage[] = [];
+        const offer = tryLinkFace(
+          ctx, line, side, LINK_NEAR[side], false, why, need?.forceEnd, need?.preferEnd, need?.preferDepth,
+        );
+        return { offer, why };
+      }
+      for (const face of linkFarFaces(side)) {
+        const offer = tryLinkFace(ctx, line, side, face, true);
+        if (offer) return { offer, why: [] };
+      }
+      return { why: [] };
+    },
+    take(offer, side, o) {
+      live();
+      return receipt(commitLinkFace(ctx, offer, side, o));
+    },
+    takeShared(line, side, lead) {
+      live();
+      const p = seatOnSharedBelt(ctx, line, side, plans[lead.id]);
+      return p && receipt(p);
+    },
+    close(order) {
+      live();
+      closed = true;
+      const planOf = (r: SeatReceipt | undefined): LinkFacePlan | undefined => (r ? plans[r.id] : undefined);
+      return {
+        out: order.out.seats.map(planOf),
+        in: order.in.seats.map(planOf),
+        outWhy: order.out.why,
+        inWhy: order.in.why,
+        // 복사하지 않는다 — 창구가 닫혀 더는 아무도 안 쓴다. 다시 여는 쪽이 복사한다([reopenLinkFaceContext]).
+        ledger: { tables: ctx.tables, ends: ctx.ends, outside: ctx.outside },
+        fluid,
+      };
+    },
+  };
+}
 
 /** 나머지 줄의 좌석 — [ModulePortPlan.restLinks] 의 모양. 그룹은 여기서 만든 것이라 함께 들고 나간다. */
 export interface RestSeating {

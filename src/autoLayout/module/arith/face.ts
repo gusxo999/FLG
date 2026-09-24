@@ -32,7 +32,7 @@ export const LINK_LANE_DEPTH = 2;
  * **장부를 안 읽는다** — `ctx.inserters` 와 `ctx.pipeFaces` 만 본다. 그래서 배정이 끝난 뒤
  * 다시 불러도 같은 답이고, `planModulePorts` 의 사후 계측이 그 성질에 기대고 있다.
  */
-export function clusterBeltDepthsOf(ctx: LinkFaceContext, face: PortFace): number[] {
+export function clusterBeltDepthsOf(ctx: Pick<LinkFaceContext, "inserters" | "pipeFaces">, face: PortFace): number[] {
   const reaches = [...new Set((ctx.inserters ?? []).map((i) => i.reach))]
     .filter((r) => Number.isFinite(r) && r >= 1)
     .sort((a, b) => a - b);
@@ -40,6 +40,17 @@ export function clusterBeltDepthsOf(ctx: LinkFaceContext, face: PortFace): numbe
   // **파이프가 먼저다** — 유체 면의 깊이는 지하파이프가 넘을 수 있는 데까지다.
   const cap = ctx.pipeFaces?.get(face)?.depthCap ?? Infinity;
   return all.filter((d) => d <= cap);
+}
+
+/**
+ * **입력만으로 면의 깊이 목록** — 좌석 창구를 열지 않고 묻는다. [clusterBeltDepthsOf] 가 장부를 안 읽으므로
+ * 인서터와 유체 면(깊이 상한)만 있으면 같은 답이 난다. 링크 단계(`link/policy/delivery`)와 관측이 쓴다.
+ */
+export function faceDepthsOf(
+  input: Pick<ModuleInput, "machine" | "lines" | "inserters" | "fluidTrunk">,
+  face: PortFace,
+): number[] {
+  return clusterBeltDepthsOf({ inserters: input.inserters, pipeFaces: fluidFacesOf(input).pipeFaceRows }, face);
 }
 
 /**

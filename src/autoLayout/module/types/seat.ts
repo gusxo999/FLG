@@ -15,7 +15,7 @@
 import type { SpecInserter } from "../../shared/gamedata/spec";
 import type { PortFace } from "../../shared/types";
 import type { Link, PortSide } from "./line";
-import type { FaceTable } from "../ledger/face";
+import type { FaceTable, FaceTableView } from "../ledger/face";
 
 export interface LinkFacePlan {
   /** W/E = 머신 옆면(세로 벨트) · N/S = gap(가로 벨트). */
@@ -274,4 +274,129 @@ export interface LinkFaceStage {
   in: FaceAllocation;
   pipeFaces: { side: PortSide; fluidRows: number; depthCap: number }[];
   isJumpableToClusterPipe: (side: PortSide) => boolean;
+}
+
+/**
+ * **⓪ 유체 면의 답** — 머신 `fluid_boxes` 가 강제하는 면 · 유체 상자 행 · 깊이 상한 · 점프 여부([fluidFacesOf]).
+ * 입력만의 함수다. 좌석 창구가 한 번 세고 굳힌 좌석에 실어 보낸다 — 같은 사실을 두 곳이 세지 않게(R3).
+ */
+export interface FluidFaces {
+  readonly pipeFaces: { side: PortSide; fluidRows: number; depthCap: number }[];
+  readonly pipeFaceRows: ReadonlyMap<PortFace, { rows: readonly number[]; depthCap: number }>;
+  readonly isJumpableToClusterPipe: (side: PortSide) => boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 좌석 창구 — 모듈이 링크 쪽에 내주는 계약
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 링크가 면에 앉는 일은 두 종류다. **양끝이 합의해야 하는 것**(합류 · 쪼갬 · 원자성 · 수단 사이의 순서)은
+// 링크 쪽이 정하고, **한 모듈 안에서 끝나는 것**(면 · 깊이 · 끝 · 인서터 행)은 모듈이 정한다. 경계가 이 계약이다 —
+// 장부(좌석표)는 창구 **안**에 있고, 밖으로 나가는 것은 대답(제안 · 막힘 · 영수증)과 굳힌 값뿐이다.
+//
+// 면이 모듈의 결정인 근거: 한 링크의 자식 쪽 자리와 부모 쪽 자리는 서로를 안 본다
+// (docs/auto-layout/module/module-planning.md §4.6 — *"무엇을 안 보고: 짝(부모·자식)이 어디 있나"*).
+
+/**
+ * **링크 쪽이 거는 제약** — 합류 쌍의 기하. 창구가 고르는 것이 아니라 **받는** 것이다
+ * (합류는 양끝의 도형이 다 서야 성립하므로 링크의 결정이다).
+ */
+export interface LinkNeed {
+  /** 기둥 끝 포트를 강제한다 — 합류 칸이 설 자리가 기둥 끝뿐이다. */
+  readonly forceEnd?: boolean;
+  /** 이 끝을 먼저 본다 — 합류 쌍의 포트 끝. */
+  readonly preferEnd?: "N" | "S";
+  /** 이 깊이를 먼저 본다 — 따르는 줄이 이끄는 줄의 깊이를 물려받는다. */
+  readonly preferDepth?: number;
+}
+
+/**
+ * **어디를 묻나.** 면은 창구가 고른다 — 링크 쪽은 가까운 자리와 먼 자리 중 어느 것을 원하는지만 말한다.
+ *
+ * ```
+ * near  역할이 정한 선호 면(출력 W · 입력 E)에서 창구 안 수단을 다 써 본 자리
+ * far   창구의 넘침 순서에서 처음 되는 자리 — 물을 때만 계산한다
+ * ```
+ *
+ * 둘을 가르는 이유: 막혔을 때 **쪼개기가 다른 면보다 먼저**이고(링크의 결정), 쪼개기는 선호 면의 막힌 행으로 자른다.
+ */
+export type SeatReach = "near" | "far";
+
+/** **제안** — 받기 전의 자리. 링크 쪽이 읽는 것은 면 · 깊이 · 끝이다(합류 판정 · 이름표). */
+export type SeatOffer = Readonly<Omit<LinkFacePlan, "slotIndex" | "mergeRole" | "sharesBelt">>;
+
+/**
+ * **묻기의 대답.** 자리가 있으면 `offer`. `why` 는 **있든 없든** 온다 — 자리가 난 후보 앞에서 떨어진
+ * 후보들의 이유이기도 하다(못 앉은 줄의 사유 · 쪼갬의 경계가 여기서 온다).
+ */
+export interface SeatAnswer {
+  readonly offer?: SeatOffer;
+  readonly why: DepthShortage[];
+}
+
+/**
+ * **영수증** — 받은 자리. 면 · 깊이 · 끝과 창구 안 번호뿐이다. 인서터 행 · 도형은 창구 안의 사정이라 안 싣는다 —
+ * 그래서 창구가 제 자리를 나중에 다듬어도(비켜 주기) 링크 쪽이 쥔 것은 낡지 않는다.
+ */
+export interface SeatReceipt {
+  readonly id: number;
+  readonly face: PortFace;
+  readonly clusterBeltDepth: number;
+  readonly portEnd?: "N" | "S";
+  readonly exitEnd?: "N" | "S";
+}
+
+/** 창구를 닫을 때 한쪽(나가는 줄 · 들어오는 줄)의 순서 — `ModuleInput.outputLinks` · `inputLinks` 와 같은 순서다. */
+export interface SeatOrderSide {
+  readonly seats: readonly (SeatReceipt | undefined)[];
+  readonly why: readonly DepthShortage[][];
+}
+
+/**
+ * **좌석 창구** — 한 모듈의 면. 좌석 단계가 모듈마다 하나 열고, 끝나면 닫아 [SeatedFaces] 로 굳힌다.
+ *
+ * 묻기는 장부를 안 바꾼다(**원자성의 전제** — 링크 쪽은 양끝에 다 물어본 뒤에 받는다). 받기만 적는다.
+ */
+export interface FaceSeating {
+  /** 이 창구의 옆면 행 단위(머신 하나의 칸 수). 막힘의 `blockedRows` 는 이 단위의 순번이다 — 쪼갬이 읽는다. */
+  readonly rowsPerMachine: number;
+  ask(line: Link, side: "from" | "to", reach: SeatReach, need?: LinkNeed): SeatAnswer;
+  /**
+   * 받기 — `offer` 는 이 창구가 낸 제안이다. 링크 쪽이 고쳐서 넘기는 것은 **합류 쌍의 끝** 하나뿐이다
+   * (따르는 줄은 이끄는 줄과 같은 끝으로 나가야 한 행에서 만난다 — 링크의 결정).
+   */
+  take(
+    offer: SeatOffer,
+    side: "from" | "to",
+    o?: { merged?: Record<string, never>; mergeLead?: boolean },
+  ): SeatReceipt;
+  /** 합류의 둘째 줄(집는 쪽) — 첫 줄 영수증의 벨트에 좌석만 얹는다. 좌석이 모자라면 `undefined`. */
+  takeShared(line: Link, side: "from" | "to", lead: SeatReceipt): SeatReceipt | undefined;
+  /** 닫기 — 준 순서로 계획을 늘어놓고 값으로 굳힌다. 이 뒤로는 묻지도 받지도 못한다. */
+  close(order: { out: SeatOrderSide; in: SeatOrderSide }): SeatedFaces;
+}
+
+/** 굳힌 장부 — 좌석표 · 기둥 끝 · 기둥 밖 칸. 읽기 전용. 다시 여는 쪽이 복사해 자기 장부로 삼는다. */
+export interface SeatLedgerView {
+  readonly tables: ReadonlyMap<PortFace, FaceTableView>;
+  readonly ends: ReadonlyMap<PortFace, ReadonlySet<"N" | "S">>;
+  readonly outside: ReadonlyMap<PortFace, ReadonlySet<string>>;
+}
+
+/**
+ * **굳힌 좌석** — 좌석 단계가 끝난 창구의 값. `generateModule` 이 받는다(`ModuleInput.seatedFaces`).
+ *
+ * 전부 읽기 전용이다. `generateModule` 은 입력을 바꾸지 않는다 — 이 값에서 **자기** 장부를 복사해 열고
+ * 거기에 나머지 줄을 앉힌다.
+ */
+export interface SeatedFaces {
+  /** `ModuleInput.outputLinks` 와 같은 순서. 못 앉은 줄은 `undefined`. */
+  readonly out: readonly (Readonly<LinkFacePlan> | undefined)[];
+  /** `ModuleInput.inputLinks` 와 같은 순서. */
+  readonly in: readonly (Readonly<LinkFacePlan> | undefined)[];
+  /** 못 앉은 이유 — 선호 면(near)의 것. `out` 과 같은 순서. */
+  readonly outWhy: readonly (readonly DepthShortage[])[];
+  readonly inWhy: readonly (readonly DepthShortage[])[];
+  readonly ledger: SeatLedgerView;
+  readonly fluid: FluidFaces;
 }
