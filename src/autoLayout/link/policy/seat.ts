@@ -5,22 +5,23 @@
  * 합류     pairsOf        어느 줄이 이끄나 · 포트 끝 · 짝을 풀까
  * 쪼갬     cutRows        막힌 행 중 쪼개면 실제로 앉는 경계
  * 원자성   seatLinkEdge   양끝이 다 되면 확정 · 한쪽이라도 안 되면 둘 다 미배정
- * 넘침     spillPair      선호 면이 안 되면 양끝 함께 다른 면
+ * 순서     remedyOf       선호 면에 양끝이 다 못 앉았을 때 무엇부터(쪼개기 → 다른 면 → 포기)
+ * 넘침     spillPair      양쪽 창구에 먼 자리(far)를 묻는다
  * ```
+ *
+ * **모듈의 장부는 쥐지 않는다.** 두 모듈의 좌석 창구([FaceSeating])에 묻고(`ask`) 받을(`take`) 뿐이다 —
+ * 면 · 깊이 · 끝 · 인서터 행은 창구가 고른다. 한 링크의 양끝은 서로의 자리를 안 보기 때문이다
+ * (`docs/auto-layout/module/module-planning.md` §4.6 — *"무엇을 안 보고: 짝(부모·자식)이 어디 있나"*).
  *
  * > **내력.** `module/policy/seat.ts` 에 있다가 2026-09-24 여기로 왔다(계획 링크-좌석 · 1b). 두 모듈에 걸친
  * > 결정이라 관심사가 `link/` 다(`docs/auto-layout/common/code-folders.md` — *"두 모듈의 식별자를 안다"*).
- * > 본문은 옮기기만 했다.
+ * > 본문은 옮기기만 했고, 같은 날 1d 에서 장부 대신 좌석 창구를 쥐게 됐다.
  */
 
 import type { Link } from "../../module/types/line";
-import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../../module/types/seat";
-import type { PortFace } from "../../shared/types";
+import type { DepthShortage, FaceSeating, SeatOffer, SeatReceipt } from "../../module/types/seat";
 import { resolveSpanBlock, splitLinkAtRows } from "../../module/arith/link";
 import { recordLaneUnshare } from "../../../debug/runStats";
-import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
-import { tryLinkFace } from "../../module/policy/link";
-import { commitLinkFace, seatOnSharedBelt } from "../../module/ledger/seat";
 
 /**
  * **합류 쌍을 골라 이끄는 줄과 포트 끝을 정한다** — 앉히기 **전에**, 수만으로.
@@ -75,14 +76,14 @@ function pairsOf(groups: readonly Link[]): Map<string, { lead: Link; follow: Lin
  * @param toOffsetGroups 이 간선의 그룹들. **반환값의 `groups` 가 최종본**이다(쪼개졌으면 토막).
  */
 export function seatLinkEdge(
-  fromSeat: LinkFaceStage,
-  toSeat: LinkFaceStage,
+  fromDesk: FaceSeating,
+  toDesk: FaceSeating,
   toOffsetGroups: readonly Link[],
   opts: { split: boolean },
 ): EdgeSeatResult {
   const groups: Link[] = [];
-  const fromPlans: (LinkFacePlan | undefined)[] = [];
-  const toPlans: (LinkFacePlan | undefined)[] = [];
+  const fromSeats: (SeatReceipt | undefined)[] = [];
+  const toSeats: (SeatReceipt | undefined)[] = [];
   const fromWhy: DepthShortage[][] = [];
   const toWhy: DepthShortage[][] = [];
   let splits = 0;
@@ -93,7 +94,7 @@ export function seatLinkEdge(
 
   // ── 배정 순서 — **제약이 센 것부터**(스도쿠 원칙) ──────────────────────────────
   //
-  // `planLinkFaces` ⓪ 이 유체 면에 쓰는 그 원칙이다. 순위는 **대안이 있느냐**로 갈린다:
+  // 좌석 창구가 유체 면에 쓰는(⓪) 그 원칙이다. 순위는 **대안이 있느냐**로 갈린다:
   //
   // ```
   // ① 유체 면    머신이 정한다. 협상 불가                    (여기 오기 전에 끝났다)
@@ -111,8 +112,8 @@ export function seatLinkEdge(
     ...toOffsetGroups.filter((g) => !(g.sharedLineId && mergePairs.has(g.sharedLineId))),
   ];
 
-  const keep = (g: Link, fp?: LinkFacePlan, tp?: LinkFacePlan, fw: DepthShortage[] = [], tw: DepthShortage[] = []) => {
-    groups.push(g); fromPlans.push(fp); toPlans.push(tp); fromWhy.push(fw); toWhy.push(tw);
+  const keep = (g: Link, fs?: SeatReceipt, ts?: SeatReceipt, fw: DepthShortage[] = [], tw: DepthShortage[] = []) => {
+    groups.push(g); fromSeats.push(fs); toSeats.push(ts); fromWhy.push(fw); toWhy.push(tw);
   };
 
   /**
@@ -125,16 +126,14 @@ export function seatLinkEdge(
    * ```
    *
    * 그래서 장부도 둘이다: `sharedFrom` 은 *"둘째 줄이 나란히 앉을 자리"* 를 재고,
-   * `sharedTo` 는 *"둘째 줄이 얹힐 벨트"* 를 든다.
+   * `sharedTo` 는 *"둘째 줄이 얹힐 벨트"* 를 든다. 둘 다 **영수증**이다 — 자리 자체는 창구 안에 있다.
    */
-  const sharedTo = new Map<string, LinkFacePlan>();
-  const sharedFrom = new Map<string, LinkFacePlan>();
+  const sharedTo = new Map<string, SeatReceipt>();
+  const sharedFrom = new Map<string, SeatReceipt>();
 
   while (queue.length > 0) {
     const g = queue.shift()!;
-    const fw: DepthShortage[] = [];
-    const tw: DepthShortage[] = [];
-    // **놓기 전에 둘 다 물어본다** — `tryLinkFace` 는 장부를 안 건드린다(원자성의 전제다).
+    // **놓기 전에 둘 다 물어본다** — 묻기는 장부를 안 건드린다(원자성의 전제다). 면은 창구가 고른다(near = 선호 면).
     // 합류 쌍은 **양쪽 줄 다** 기둥 끝 포트로 앉힌다(따르는 줄은 포트를 안 갖지만, 같은 끝·
     // 같은 `topT` 규약을 써야 방출이 합류 칸을 계산할 수 있다).
     const pair = g.sharedLineId !== undefined ? mergePairs.get(g.sharedLineId) : undefined;
@@ -142,15 +141,18 @@ export function seatLinkEdge(
     // **이끄는 줄이 이미 앉았으면 그 면·깊이를 물려받는다** — 배정 순서가 쌍을 붙여 놓았으므로
     // 따르는 줄 차례엔 반드시 있다(없으면 이끄는 줄이 도형을 못 세운 것이라 짝도 아니다).
     const fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
-    let candFrom = tryLinkFace(
-      fromSeat.ctx, g, "from", "W", false, fw, inPair, pair?.end, fromPartner?.clusterBeltDepth,
-    );
+    const nearFrom = fromDesk.ask(g, "from", "near", {
+      forceEnd: inPair, preferEnd: pair?.end, preferDepth: fromPartner?.clusterBeltDepth,
+    });
+    const fw = nearFrom.why;
+    let candFrom: SeatOffer | undefined = nearFrom.offer;
 
     // **싣는 쪽 — 짝의 둘째 줄은 첫 줄과 같은 끝을 써야 한다.**
     //
     // 출구 합류는 기둥 끝 **바깥 한 행**에서 일어난다(`emitOutputLinks`). 두 줄이 서로 다른
-    // 끝으로 나가면 그 행에서 만날 수가 없다. 그런데 기둥 끝 장부(`ctx.ends`)는 기본적으로
+    // 끝으로 나가면 그 행에서 만날 수가 없다. 그런데 기둥 끝 장부는 기본적으로
     // **반대 끝**을 준다(먼저 앉은 줄이 N 을 잡으면 다음은 S) — 그래서 여기서 덮어쓴다.
+    // 링크 쪽이 제안을 고쳐 넘기는 **유일한** 자리다(합류는 양끝의 결정이다).
     //
     // 깊이가 **인접**하지 않거나 면이 다르면 그 도형이 안 선다 → **짝을 푼다.**
     // (배정 단계라 아직 풀 수 있다 — 납품이 하나로 접히는 것은 이 뒤다.)
@@ -192,9 +194,9 @@ export function seatLinkEdge(
     // **집는 쪽 — 짝의 둘째 줄은 자리를 안 고른다.** 첫 줄이 잡은 벨트에 좌석만 얹는다.
     const partner = g.sharedLineId !== undefined ? sharedTo.get(g.sharedLineId) : undefined;
     if (candFrom && partner) {
-      const onShared = seatOnSharedBelt(toSeat.ctx, g, "to", partner);
+      const onShared = toDesk.takeShared(g, "to", partner);
       if (onShared) {
-        keep(g, commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: !merged && leadNow() }), onShared);
+        keep(g, fromDesk.take(candFrom, "from", { merged, mergeLead: !merged && leadNow() }), onShared);
         continue;
       }
       // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
@@ -202,41 +204,80 @@ export function seatLinkEdge(
       recordLaneUnshare("seats");
     }
 
-    const candTo = tryLinkFace(toSeat.ctx, g, "to", "E", false, tw);
+    const nearTo = toDesk.ask(g, "to", "near");
+    const tw = nearTo.why;
+    const candTo = nearTo.offer;
     if (candFrom && candTo) {
-      const toPlan = commitLinkFace(toSeat.ctx, candTo, "to");
-      const fromPlan = commitLinkFace(fromSeat.ctx, candFrom, "from", { merged, mergeLead: !merged && leadNow() });
+      const toSeat = toDesk.take(candTo, "to");
+      const fromSeat = fromDesk.take(candFrom, "from", { merged, mergeLead: !merged && leadNow() });
       if (g.sharedLineId !== undefined && !sharedTo.has(g.sharedLineId)) {
-        sharedTo.set(g.sharedLineId, toPlan); // 첫 줄 — 다음 줄이 이 벨트에 얹힌다
-        sharedFrom.set(g.sharedLineId, fromPlan); // 〃 — 다음 줄이 이 옆에 나란히 앉는다
+        sharedTo.set(g.sharedLineId, toSeat); // 첫 줄 — 다음 줄이 이 벨트에 얹힌다
+        sharedFrom.set(g.sharedLineId, fromSeat); // 〃 — 다음 줄이 이 옆에 나란히 앉는다
       }
-      keep(g, fromPlan, toPlan);
+      keep(g, fromSeat, toSeat);
       continue;
     }
 
-    // **구간막힘이면 그 자리에서 쪼갠다**(Step 3). 막힌 쪽에서 자른다 — 자름의 경계는
-    // 그 쪽 모듈의 행이므로 `rowsPerMachine` 도 그 쪽 것이다.
-    if (opts.split && budget > 0) {
-      const cut = !candTo
-        ? { side: "to" as const, rows: cutRows(tw), h: toSeat.ctx.machine.h }
-        : { side: "from" as const, rows: cutRows(fw), h: fromSeat.ctx.machine.h };
-      if (cut.rows.length > 0) {
-        const parts = splitLinkAtRows(g, cut.side, cut.rows, cut.h);
-        if (parts.length > 1) {
-          budget -= parts.length;
-          splits += parts.length - 1;
-          queue.unshift(...parts); // 토막을 **앞에** 넣어 이어서 앉힌다 — 되돌리기가 없다
-          continue;
-        }
-      }
+    // 선호 면에 양끝이 다 못 앉았다 — **수단 사이의 순서**([remedyOf])를 따른다.
+    const r = remedyOf(g, { candFrom, candTo, fw, tw }, fromDesk, toDesk, opts.split && budget > 0);
+    if (r.kind === "split") {
+      budget -= r.parts.length;
+      splits += r.parts.length - 1;
+      queue.unshift(...r.parts); // 토막을 **앞에** 넣어 이어서 앉힌다 — 되돌리기가 없다
+      continue;
     }
-
-    // 넘침 — 선호 면이 빈손이면 다른 면을, 역시 **양끝 함께**.
-    const spilled = spillPair(fromSeat, toSeat, g);
-    if (spilled) { keep(g, spilled.from, spilled.to); continue; }
+    if (r.kind === "spilled") { keep(g, r.from, r.to); continue; }
     keep(g, undefined, undefined, fw, tw); // 정직하게 자리 없음
   }
-  return { groups, fromPlans, toPlans, fromWhy, toWhy, splits };
+  return { groups, fromSeats, toSeats, fromWhy, toWhy, splits };
+}
+
+/** [remedyOf] 의 답 — 무엇을 했나. */
+type Remedy =
+  | { kind: "split"; parts: Link[] }
+  | { kind: "spilled"; from: SeatReceipt; to: SeatReceipt }
+  | { kind: "none" };
+
+/**
+ * **수단 사이의 순서** — 한 줄이 선호 면(near)에 양끝 다 못 앉았을 때 무엇부터 해 보나.
+ *
+ * ```
+ * ① 쪼갠다     막힌 쪽 near 의 막힌 행 중 쪼개면 실제로 앉는 경계로 — 쪼개기를 켰을 때만
+ * ② 다른 면    양쪽 창구에 먼 자리(far)를 묻고, 둘 다 되면 둘 다 받는다
+ * ③ 포기       사유는 near 의 것 — *"원래 앉고 싶던 면"* 의 이유다
+ * ```
+ *
+ * **쪼개기가 다른 면보다 먼저인 이유** — 대가가 작다. 쪼개기의 대가는 포트 하나이고 모듈 크기는 그대로다
+ * (`docs/auto-layout/module/trunk-blocked.md` §3 (가) *"대가: 포트 +1 … 모듈 크기 변화 0"*). 다른 면 중 gap 은
+ * 모듈을 세로로 벌린다(`gapRowsFromPlans`). 그리고 쪼개기는 그룹 목록을 바꾸는 **양끝의** 수단이라 링크 쪽만 쓸 수
+ * 있다 — 그래서 이 순서를 링크 쪽이 쥔다. 창구 안의 수단(깊이 · 끝 · 인서터 행)은 near 가 이미 다 써 봤다.
+ *
+ * 쪼갤 쪽은 **막힌 쪽**이다 — 자름의 경계는 그 쪽 모듈의 행이므로 행 단위도 그 쪽 창구의 것이다.
+ */
+function remedyOf(
+  g: Link,
+  near: {
+    candFrom?: SeatOffer; candTo?: SeatOffer; fw: readonly DepthShortage[]; tw: readonly DepthShortage[];
+  },
+  fromDesk: FaceSeating,
+  toDesk: FaceSeating,
+  canSplit: boolean,
+): Remedy {
+  // ① 쪼갠다 — 구간막힘이면 그 자리에서
+  if (canSplit) {
+    const cut = !near.candTo
+      ? { side: "to" as const, rows: cutRows(near.tw), h: toDesk.rowsPerMachine }
+      : { side: "from" as const, rows: cutRows(near.fw), h: fromDesk.rowsPerMachine };
+    if (cut.rows.length > 0) {
+      const parts = splitLinkAtRows(g, cut.side, cut.rows, cut.h);
+      if (parts.length > 1) return { kind: "split", parts };
+    }
+  }
+  // ② 다른 면 — 역시 **양끝 함께**
+  const spilled = spillPair(fromDesk, toDesk, g);
+  if (spilled) return { kind: "spilled", from: spilled.from, to: spilled.to };
+  // ③ 포기
+  return { kind: "none" };
 }
 
 /** 후보들 중 **쪼개면 실제로 앉는** 첫 경계. 없으면 빈 배열([resolveSpanBlock]). */
@@ -250,48 +291,32 @@ function cutRows(why: readonly DepthShortage[]): number[] {
 }
 
 /**
- * 넘침 — 선호 면이 안 되면 다른 면을 본다. 면 순서는 옛 축과 같다
- * (출력 `["W","S","N"]` · 입력 `["E","S","N"]`) — 선호 면이 다시 들어 있는 것은 그 면이
- * 유체 면이면 1단계가 비켜 갔기 때문이다(`allowPipeFace`).
+ * **넘침** — 양쪽 창구에 먼 자리(far)를 묻는다. 면 순서는 창구 안에 있다(`module/policy/seat` 의 넘침 순서).
+ *
+ * 예전엔 여기서 자식 면 × 부모 면을 이중 루프로 돌며 첫 성공을 썼다. 부모 쪽 시도가 자식 쪽 선택을 인자로
+ * 받지 않으므로 그 답은 **양쪽이 각자 처음 되는 면을 고른 것과 같다** — 그래서 면 순서를 창구로 옮겨도 자리가
+ * 안 바뀐다. 달라지는 것은 부모 쪽에 되는 면이 하나도 없을 때 자식 쪽을 **여러 번** 묻던 호출 횟수뿐이다
+ * (관측 계수기 `endsCoarse` · `endsDisagree` 가 그 횟수를 센다).
  */
 function spillPair(
-  fromSeat: LinkFaceStage,
-  toSeat: LinkFaceStage,
+  fromDesk: FaceSeating,
+  toDesk: FaceSeating,
   g: Link,
-): { from: LinkFacePlan; to: LinkFacePlan } | undefined {
-  // **반대 옆면은 gap 앞에 온다** — gap 은 기둥을 벌려 모듈을 키우지만(`gapRowsFromPlans`)
-  // 반대 면은 안 키운다. 그 순서는 자매 경로가 자기 줄에 이미 쓰는 것과 같다
-  // ([seatRestLines]: `["E","W","S","N"]` · `["W","E","S","N"]`).
-  //
-  // **끄면 오늘 동작 그대로다** — 기전: `false` 면 배열이 옛 상수와 글자 그대로 같아,
-  // 반대 면을 후보로 **한 번도 안 물어본다**([tryLinkFace] 호출 자체가 안 생긴다).
-  //
-  // 이 분기가 **켜졌는데 납품이 깨지면** `tempPlanDocs/부분-링크/judgements.md` **J14** 를
-  // 본다 — 그 대가를 재는 것이 이 플래그의 존재 이유다(2026-08-05 실측: 자매 경로에서
-  // W 로 밀린 자식-공급 입력의 납품 1건이 실패했다).
-  const both = AUTO_LAYOUT_LINK_OPPOSITE_FACE;
-  const OUT: readonly PortFace[] = both ? ["W", "E", "S", "N"] : ["W", "S", "N"];
-  const IN: readonly PortFace[] = both ? ["E", "W", "S", "N"] : ["E", "S", "N"];
-  for (const ff of OUT) {
-    const candFrom = tryLinkFace(fromSeat.ctx, g, "from", ff, true);
-    if (!candFrom) continue;
-    for (const tf of IN) {
-      const candTo = tryLinkFace(toSeat.ctx, g, "to", tf, true);
-      if (!candTo) continue;
-      return {
-        from: commitLinkFace(fromSeat.ctx, candFrom, "from"),
-        to: commitLinkFace(toSeat.ctx, candTo, "to"),
-      };
-    }
-  }
-  return undefined;
+): { from: SeatReceipt; to: SeatReceipt } | undefined {
+  const f = fromDesk.ask(g, "from", "far");
+  if (!f.offer) return undefined;
+  const t = toDesk.ask(g, "to", "far");
+  if (!t.offer) return undefined;
+  return { from: fromDesk.take(f.offer, "from"), to: toDesk.take(t.offer, "to") };
 }
 
 /** [seatLinkEdge] 의 산출 — **`groups` 가 그 간선의 최종본**이다(쪼개졌으면 토막). */
 export interface EdgeSeatResult {
   groups: Link[];
-  fromPlans: (LinkFacePlan | undefined)[];
-  toPlans: (LinkFacePlan | undefined)[];
+  /** 자식 쪽 영수증 — `groups` 와 같은 순서. 못 앉은 줄은 `undefined`. */
+  fromSeats: (SeatReceipt | undefined)[];
+  /** 부모 쪽 영수증. */
+  toSeats: (SeatReceipt | undefined)[];
   fromWhy: DepthShortage[][];
   toWhy: DepthShortage[][];
   /** 쪼갠 횟수(진단). */

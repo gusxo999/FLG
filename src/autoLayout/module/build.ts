@@ -70,10 +70,11 @@ export function generateModule(input: ModuleInput): GeneratedModule {
   const prefix = input.idPrefix ?? "mod";
   const count = Math.max(1, input.count);
   // ① 계획 — **머신을 놓기 전에 전부 끝난다.**
-  // 자리를 정하는 일은 여기 한 번뿐이다([planModulePorts]). 좌표가 없어야 이 순서가 성립한다:
+  // 링크의 자리는 좌석 단계가 이미 정했다(`input.seatedFaces`) — 여기서는 그 값에서 장부를 다시 열어
+  // 나머지 줄 · 유체 줄의 자리를 정한다([planModulePorts]). 좌표가 없어야 이 순서가 성립한다:
   // gap 으로 넘어간 링크는 gap 안에 가로 벨트를 놓고, **gap 폭 = 그 gap 을 지나는 가로 벨트
   // 수**인데, 그 폭이 다시 머신 좌표를 정하기 때문이다(닭과 달걀을 푸는 지점).
-  const plan = planModulePorts(input, count, input.linkFaceStage);
+  const plan = planModulePorts(input, count);
   // ② 몸통 — 머신 좌표 · 틀 · ring. gap 폭은 계획이 준 값이다
   const body = layoutModule(input, count, plan.rowGaps, prefix);
   // ③ 장부 — 점유는 머신 발자국에서 시작하고, 방출기가 차례로 채운다

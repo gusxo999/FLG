@@ -1,24 +1,24 @@
 /**
- * **배정이 `generateModule` 밖에서 산다**.
+ * **배정이 `generateModule` 밖에서 산다** — 링크의 자리는 좌석 단계가 정하고 **굳힌 값**으로 넘긴다.
  *
- * 잠그는 것은 하나다: **밖에서 돌린 배정을 넣어도 답이 같다.**
+ * 잠그는 것은 둘이다:
  *
  * ```
- * planModulePorts(input, count)                              ← 자기가 돌린다(옛 경로)
- * planModulePorts(input, count, planLinkFaces(input, count))  ← 밖에서 받는다(modulePacking.seatTree)
+ * 값으로 넘겨도 답이 같다     planModulePorts(input)  ==  planModulePorts({ ...input, seatedFaces: 굳힌 값 })
+ * 받은 값을 안 바꾼다         같은 입력으로 두 번 불러도 같은 답 · 굳힌 장부는 그대로
  * ```
  *
- * **이 단언이 없으면 "동작 무변경" 이 말뿐이다.** 앞으로 Step 2(루프 축을 간선으로)가
- * 배정을 진짜로 다르게 돌릴 텐데, 그때 *"무엇이 바뀌어서 답이 달라졌나"* 를 가르려면
- * **바뀌기 전이 같았다는 사실**이 잠겨 있어야 한다.
+ * **이 단언이 없으면 "동작 무변경" 이 말뿐이다.** 넘기는 것이 쓰다 만 장부였을 때는 받는 쪽이 원본을
+ * 더럽히지 않게 사본을 떴다(2026-08-29 — 사본 없이 재사용해 21개 시험이 떨어졌다). 지금은 값이고,
+ * 복사는 받는 쪽이 열 때 한 번이다.
  */
 import { describe, it, expect } from "vitest";
-import { planLinkFaces, planModulePorts } from "./port";
+import { moduleFacesOf, planModulePorts } from "./port";
+import { openFaceSeating } from "./seat";
 import { seatLinkEdge } from "../../link/policy/seat";
-import { tryLinkFace } from "./link";
-import { commitLinkFace } from "../ledger/seat";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
+import type { ModuleFaces, SeatedFaces } from "../types/seat";
 
 
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
@@ -54,10 +54,20 @@ const base = (over: Partial<ModuleInput> = {}): ModuleInput => ({
   ...over,
 });
 
+/** 모듈 축으로 앉힌 장부를 **굳힌 값**으로 — 좌석 단계가 창구를 닫을 때 내는 모양과 같다. */
+const seal = (f: ModuleFaces): SeatedFaces => ({
+  out: f.out.plans, in: f.in.plans, outWhy: f.out.shortages, inWhy: f.in.shortages,
+  ledger: { tables: f.ctx.tables, ends: f.ctx.ends, outside: f.ctx.outside },
+  fluid: {
+    pipeFaces: f.pipeFaces, pipeFaceRows: f.ctx.pipeFaces ?? new Map(), isJumpableToClusterPipe: f.isJumpableToClusterPipe,
+  },
+});
+
 /** 계획에서 **비교 가능한 뼈대**만 뽑는다 — Map·객체 신원이 아니라 값으로 본다. */
 const shape = (input: ModuleInput) => {
-  const p = planModulePorts(input, Math.max(1, input.count));
-  const q = planModulePorts(input, Math.max(1, input.count), planLinkFaces(input, Math.max(1, input.count)));
+  const n = Math.max(1, input.count);
+  const p = planModulePorts(input, n);
+  const q = planModulePorts({ ...input, seatedFaces: seal(moduleFacesOf(input, n)) }, n);
   const dump = (x: ReturnType<typeof planModulePorts>) => ({
     rowGaps: x.rowGaps,
     linkFaceDepths: x.linkFaceDepths,
@@ -75,7 +85,7 @@ const shape = (input: ModuleInput) => {
   return [dump(p), dump(q)] as const;
 };
 
-describe("planLinkFaces — 밖에서 돌린 배정을 받아도 답이 같다", () => {
+describe("굳힌 좌석 — 값으로 넘겨도 답이 같다", () => {
   it("기본 트리 — 두 경로가 같은 계획을 낸다", () => {
     const [a, b] = shape(base());
     // **초록이 거짓이 아니게** — 둘 다 아무것도 안 앉혔으면 "같다" 는 아무 뜻이 없다.
@@ -97,6 +107,22 @@ describe("planLinkFaces — 밖에서 돌린 배정을 받아도 답이 같다",
       supplyCapacity: { lineRates: new Map([["input:iron", 2], ["input:copper", 2], ["output:gear", 12]]) },
     }));
     expect(b).toEqual(a);
+  });
+
+  it("받은 값을 안 바꾼다 — 두 번 불러도 같은 답 · 굳힌 장부는 그대로", () => {
+    const input = base();
+    const n = Math.max(1, input.count);
+    const seatedFaces = seal(moduleFacesOf(input, n));
+    const cellsOf = () => [...seatedFaces.ledger.tables].map(([f, t]) => [f, [...t.cells]] as const);
+    const before = cellsOf();
+    const slots = (x: ReturnType<typeof planModulePorts>) =>
+      x.restLinks?.in.plans.map((p) => p && [...p.slotIndex]);
+    const once = planModulePorts({ ...input, seatedFaces }, n);
+    const twice = planModulePorts({ ...input, seatedFaces }, n);
+    // **대조군** — 나머지 줄이 실제로 그 장부에 앉았어야 "안 바뀌었다" 가 뜻을 갖는다.
+    expect(once.restLinks?.in.plans.filter(Boolean).length).toBeGreaterThan(0);
+    expect(slots(twice)).toEqual(slots(once));
+    expect(cellsOf()).toEqual(before);
   });
 
   it("유체 면이 끼어도 같다 — ⓪ 가 ①보다 먼저라는 순서가 유지된다", () => {
@@ -135,24 +161,30 @@ describe("seatLinkEdge — 반쪽 배정이 없다", () => {
   });
 
   it("부모가 못 앉으면 **자식도 안 앉는다**", () => {
-    const c = planLinkFaces(child, 1, "open");
-    const p = planLinkFaces(parent, 1, "open");
+    const c = openFaceSeating(child, 1);
+    const p = openFaceSeating(parent, 1);
     const r = seatLinkEdge(c, p, child.outputLinks!, { split: false });
     // 대조군 — 자식만 따로 물으면 **앉을 수 있다**(그래야 이 단언이 뜻을 갖는다).
-    expect(tryLinkFace(planLinkFaces(child, 1, "open").ctx, child.outputLinks![0], "from", "W")).toBeTruthy();
-    expect(tryLinkFace(planLinkFaces(parent, 1, "open").ctx, parent.inputLinks![0], "to", "E")).toBeUndefined();
+    expect(openFaceSeating(child, 1).ask(child.outputLinks![0], "from", "near").offer).toBeTruthy();
+    expect(openFaceSeating(parent, 1).ask(parent.inputLinks![0], "to", "near").offer).toBeUndefined();
     // 그런데 간선으로 물으면 **둘 다** 비어 있다.
-    expect(r.fromPlans[0]).toBeUndefined();
-    expect(r.toPlans[0]).toBeUndefined();
+    expect(r.fromSeats[0]).toBeUndefined();
+    expect(r.toSeats[0]).toBeUndefined();
   });
 
   it("양끝이 다 되면 **둘 다** 앉는다", () => {
     const small = link("gear", [0], [0], 1);
-    const c = planLinkFaces(base({ count: 1, outputLinks: [small], inputLinks: [] }), 1, "open");
-    const p = planLinkFaces(base({ count: 1, outputLinks: [], inputLinks: [small] }), 1, "open");
+    const c = openFaceSeating(base({ count: 1, outputLinks: [small], inputLinks: [] }), 1);
+    const p = openFaceSeating(base({ count: 1, outputLinks: [], inputLinks: [small] }), 1);
     const r = seatLinkEdge(c, p, [small], { split: false });
-    expect(r.fromPlans[0]).toBeDefined();
-    expect(r.toPlans[0]).toBeDefined();
+    expect(r.fromSeats[0]).toBeDefined();
+    expect(r.toSeats[0]).toBeDefined();
+  });
+
+  it("닫은 창구에는 더 못 묻는다 — 굳힌 뒤 장부가 새로 바뀌는 길이 없다", () => {
+    const desk = openFaceSeating(child, 1);
+    desk.close({ out: { seats: [], why: [] }, in: { seats: [], why: [] } });
+    expect(() => desk.ask(child.outputLinks![0], "from", "near")).toThrow();
   });
 });
 
@@ -170,10 +202,8 @@ describe("portEnd — 선호가 있으면 그것부터", () => {
     ...(end ? { end } : {}),
   });
 
-  const seat = (g: Link) => {
-    const st = planLinkFaces(base({ count: 3, outputLinks: [g], inputLinks: [] }), 3, "open");
-    return tryLinkFace(st.ctx, g, "from", "W");
-  };
+  const seat = (g: Link) =>
+    openFaceSeating(base({ count: 3, outputLinks: [g], inputLinks: [] }), 3).ask(g, "from", "near").offer;
 
   it("대조군 — 선호가 없으면 **N** 이 먼저다(오늘 동작)", () => {
     expect(seat(spanning())?.portEnd).toBe("N");
@@ -190,10 +220,10 @@ describe("portEnd — 선호가 있으면 그것부터", () => {
   it("선호한 끝이 이미 찼으면 **반대쪽**으로 물러난다", () => {
     const a = spanning({ from: "S", to: "N" });
     const b = spanning({ from: "S", to: "N" });
-    const st = planLinkFaces(base({ count: 3, outputLinks: [a, b], inputLinks: [] }), 3, "open");
-    const first = tryLinkFace(st.ctx, a, "from", "W");
+    const desk = openFaceSeating(base({ count: 3, outputLinks: [a, b], inputLinks: [] }), 3);
+    const first = desk.ask(a, "from", "near").offer;
     expect(first?.portEnd).toBe("S");
-    commitLinkFace(st.ctx, first!, "from");
-    expect(tryLinkFace(st.ctx, b, "from", "W")?.portEnd).toBe("N");
+    desk.take(first!, "from");
+    expect(desk.ask(b, "from", "near").offer?.portEnd).toBe("N");
   });
 });

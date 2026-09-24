@@ -1,6 +1,7 @@
 /**
  * **어디에 앉나** — 줄 하나가 모듈의 **어느 면 · 어느 깊이 · 어느 좌석**에 앉았나([LinkFacePlan]),
- * 못 앉았으면 **왜**인가([DepthShortage]), 그리고 한 모듈의 배정이 공유하는 무대([LinkFaceStage]).
+ * 못 앉았으면 **왜**인가([DepthShortage]), 링크 쪽에 내주는 좌석 창구([FaceSeating])와 그 굳힌 값([SeatedFaces]),
+ * 그리고 모듈 안에서 나머지 줄을 앉히는 작업 상태([ModuleFaces]).
  *
  * 좌표는 없다 — 전부 **모듈 안 순번**이다. 좌표를 입히는 것은 방출의 덧셈 한 줄이다.
  *
@@ -255,18 +256,18 @@ export interface FaceAllocation {
 }
 
 /**
- * **① 링크 면 배정의 산출** — [planLinkFaces] 가 내고 [planModulePorts] 가 받는다.
+ * **모듈 안의 면 장부** — [planModulePorts] 가 쥐고 나머지 줄을 앉히는 작업 상태. **모듈 밖으로 안 나간다.**
  *
- * 이 번들이 있는 이유는 하나다 — **배정을 `generateModule` 밖에서 돌리기 위해**
- * 배정이 방출 안에 갇혀 있으면
- * 그 결과를 보려고 방출까지 해야 하고, 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다
- * — 그게 되먹임 A·B 의 뿌리다.
+ * 굳힌 좌석(`ModuleInput.seatedFaces`)에서 복사해 열거나, 링크가 없으면 새로 연다. 링크의 계획(`out` · `in`)은
+ * 좌석 단계가 이미 정한 것을 그대로 받고, 나머지 줄이 같은 장부(`ctx`)에 이어 앉는다.
  *
- * `pipeFaces`·`pipeFaceRows` 까지 담는 것은 ⓪ 가 ① 뿐 아니라 ③도 먹이기 때문이다 —
+ * `pipeFaces` 까지 담는 것은 ⓪ 가 링크뿐 아니라 유체 줄도 먹이기 때문이다 —
  * 둘로 나누어 각자 유도하면 **같은 사실을 두 곳이 세게 된다**(R3).
+ *
+ * > 예전 이름은 `LinkFaceStage` 였고 **모듈 사이로 넘어다녔다** — 좌석 단계가 반쯤 채운 무대를 만들고, 나중에 필드를
+ * > 덮어쓰고, 넘길 때 사본을 떴다. 지금은 넘어가는 것이 굳힌 값(`SeatedFaces`)이고 이 상태는 모듈 안에서만 산다.
  */
-export interface LinkFaceStage {
-  tables: Map<PortFace, FaceTable>;
+export interface ModuleFaces {
   ctx: LinkFaceContext;
   outLinks: Link[];
   inLinks: Link[];

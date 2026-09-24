@@ -40,11 +40,10 @@ import type { NodeSpec, PackConfig, PackResult } from "./types/pack";
 import { generateModule } from "../module/build";
 import type { Link } from "../module/types/line";
 import type { GeneratedModule, ModuleInput } from "../module/types/module";
-import type { DepthShortage, LinkFacePlan, LinkFaceStage } from "../module/types/seat";
-import { planLinkFaces } from "../module/policy/port";
+import type { DepthShortage, FaceSeating, SeatReceipt } from "../module/types/seat";
+import { openFaceSeating } from "../module/policy/seat";
 import { seatLinkEdge } from "../link/policy/seat";
-import { cloneLinkFaceStage } from "../module/ledger/seat";
-import { clusterBeltDepthsOf } from "../module/arith/face";
+import { faceDepthsOf } from "../module/arith/face";
 import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";
 import { summarizeBeltForms } from "../module/arith/link";
 import { laneCapOfTier } from "../shared/arith/belt";
@@ -79,9 +78,9 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   // ① 링크 — 간선마다 무엇을 몇 줄로 · 어느 끝으로. 끝이 여기서 서야 생성이 한 번이다
   const links = edgeLinksOf(tree, specs, config);
   // ② 좌석 — 링크가 양끝 모듈의 어느 면·깊이에. 쪼개졌으면 토막이 최종본이다
-  const seated = seatTree(specs, tree, links, config);
+  const inputs = seatTree(specs, tree, links, config);
   // ③ 모양 — 모듈마다 한 번 생성. 높이와 모듈-로컬 포트가 선다
-  const oriented = generateModules(specs, seated);
+  const oriented = generateModules(specs, inputs);
   recordLinkForms(tree, links, config);
   // ④ 짝 — 누가 누구에게 · 행 채널을 지날 끝. 좌표 없음
   const pairing = pairDeliveries(specs, tree, oriented, links.productOf);
@@ -130,75 +129,83 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
 /**
  * **② 좌석 — 간선 단위 배정**.
  *
- * 모듈마다 무대(좌석표)를 차린 뒤, **간선마다** 그 간선의 그룹을 **양끝에 함께** 앉힌다.
- * 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 — 밖에서 `linkCache` 를 고치고
- * 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
+ * 모듈마다 **좌석 창구**를 열고, **간선마다** 그 간선의 그룹을 양끝 창구에 함께 앉힌다
+ * ([seatLinkEdge] — `link/policy/seat`). 못이 있으면 **그 자리에서** 쪼개고 토막을 이어서 앉힌다 —
+ * 밖에서 `linkCache` 를 고치고 트리를 **다시 만들던** 옛 사다리(되먹임 B)가 여기로 접혔다.
  *
  * 순서는 `specs`(트리 DFS pre-order)를 그대로 쓴다 — **순서를 고르는 것은 Step 6 의 일**이다.
  *
- * 트리 전체 배정. **`linkCache` 를 제자리에서 최종본으로 갈아 끼우고**(쪼개졌으면 토막),
- * 그에 맞춘 무대와 `ModuleInput` 을 돌려준다. **방출은 안 한다.**
+ * 끝나면 창구를 **닫아 값으로 굳힌다**(`SeatedFaces`) — `generateModule` 은 그 값에서 자기 장부를 다시 연다.
+ * 모듈의 장부는 이 함수 밖으로 안 나간다. `linkCache` 는 제자리에서 최종본으로 갈아 끼운다(쪼개졌으면 토막).
+ * **방출은 안 한다.**
  */
 function seatTree(
   specs: readonly NodeSpec[],
   tree: TreeIndex,
   links: EdgeLinks,
   config: PackConfig,
-): { stages: Map<string, LinkFaceStage>; inputs: Map<string, ModuleInput> } {
+): Map<string, ModuleInput> {
   const { linkCache } = links;
   /** 배정이 낸 쪼갬 수 — 진단용(옛 `laddered`). */
   let laddered = 0;
-  const stages = new Map<string, LinkFaceStage>();
-  for (const s of specs)
-    stages.set(s.id, planLinkFaces(moduleInputOf(tree, config, links, s), Math.max(1, s.count), "open"));
-
-  // 모듈마다 최종 링크 목록·계획을 모은다. `in` 은 자식 순서대로 이어 붙는다
-  // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
-  const outOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
-  const inOf = new Map<string, { links: Link[]; plans: (LinkFacePlan | undefined)[]; why: DepthShortage[][] }>();
+  // 모듈마다 창구를 연다. 쪼개기 **전의** 입력으로 연다 — 창구가 보는 것(머신 · 줄 · 인서터 · 유체)은
+  // 링크 목록과 무관하다. 링크는 창구에 묻는 쪽이 들고 온다.
+  const firstInputs = new Map<string, ModuleInput>();
+  const desks = new Map<string, FaceSeating>();
   for (const s of specs) {
-    outOf.set(s.id, { links: [], plans: [], why: [] });
-    inOf.set(s.id, { links: [], plans: [], why: [] });
+    const input = moduleInputOf(tree, config, links, s);
+    firstInputs.set(s.id, input);
+    desks.set(s.id, openFaceSeating(input, Math.max(1, s.count)));
+  }
+
+  // 모듈마다 최종 링크 목록 · 영수증을 모은다. `in` 은 자식 순서대로 이어 붙는다
+  // (`inputLinksOf` 와 같은 순서라야 방출이 짝을 찾는다).
+  type Side = { links: Link[]; seats: (SeatReceipt | undefined)[]; why: DepthShortage[][] };
+  const outOf = new Map<string, Side>();
+  const inOf = new Map<string, Side>();
+  for (const s of specs) {
+    outOf.set(s.id, { links: [], seats: [], why: [] });
+    inOf.set(s.id, { links: [], seats: [], why: [] });
   }
 
   for (const s of specs) {
     if (!s.parentId) continue;
     const groups = linkCache.get(s.id);
     if (!groups?.length) continue;
-    const child = stages.get(s.id);
-    const parent = stages.get(s.parentId);
+    const child = desks.get(s.id);
+    const parent = desks.get(s.parentId);
     if (!child || !parent) continue;
     const r = seatLinkEdge(child, parent, groups, { split: AUTO_LAYOUT_LINK_LADDER });
     laddered += r.splits;
     linkCache.set(s.id, r.groups); // **최종본** — 쪼개졌으면 토막이 들어 있다
     const o = outOf.get(s.id)!;
-    o.links.push(...r.groups); o.plans.push(...r.fromPlans); o.why.push(...r.fromWhy);
+    o.links.push(...r.groups); o.seats.push(...r.fromSeats); o.why.push(...r.fromWhy);
     const i = inOf.get(s.parentId)!;
-    i.links.push(...r.groups); i.plans.push(...r.toPlans); i.why.push(...r.toWhy);
+    i.links.push(...r.groups); i.seats.push(...r.toSeats); i.why.push(...r.toWhy);
   }
 
-  recordLinkNeed(specs, stages, outOf, inOf);
+  recordLinkNeed(specs, firstInputs, outOf, inOf);
 
-  // 무대의 링크 목록·배정을 최종본으로 갈아 끼운다 — `generateModule` 이 보는
-  // `input.outputLinks` 와 **같은 배열**이어야 방출이 index 로 짝을 찾는다.
+  // 창구를 닫아 **값으로 굳힌다** — `generateModule` 이 보는 `input.outputLinks` 와 **같은 순서**여야
+  // 방출이 index 로 짝을 찾는다.
   const inputs = new Map<string, ModuleInput>();
   for (const s of specs) {
-    const st = stages.get(s.id)!;
     const o = outOf.get(s.id)!;
     const i = inOf.get(s.id)!;
-    st.outLinks = o.links;
-    st.inLinks = i.links;
-    st.out = { plans: o.plans, deferred: [], shortages: o.why };
-    st.in = { plans: i.plans, deferred: [], shortages: i.why };
+    const seatedFaces = desks.get(s.id)!.close({
+      out: { seats: o.seats, why: o.why },
+      in: { seats: i.seats, why: i.why },
+    });
     inputs.set(s.id, {
       ...moduleInputOf(tree, config, links, s),
       outputLinks: o.links.length ? o.links : undefined,
       inputLinks: i.links.length ? i.links : undefined,
+      seatedFaces,
     });
   }
   // 쪼갬은 **0이 목표다** — 못이 안 생겼다는 뜻이고, 그게 순서 규칙(Step 6)의 과녁이다.
   if (laddered > 0) recordFaceDepthStats({ splits: laddered });
-  return { stages, inputs };
+  return inputs;
 }
 
 /**
@@ -208,23 +215,24 @@ function seatTree(
  * 수)를 **둘 다 아는 유일한 자리**다. 판정 자체는 앉혀 본 결과를 안 보므로(입력만
  * 본다) 성공한 배치만 세는 편향이 없다 — `tempPlanDocs/부분-링크/` §4 Step 1.
  *
- * 면은 **선호**로 읽는다: 출력은 W, 입력은 E([allocateLinkFaces] 의 기본 면).
- * 링크는 반대 면으로 못 넘어가므로(`spillPair`) 그 선호가 곧 그 줄이 앉을 면이다.
+ * 면은 **선호**로 읽는다: 출력은 W, 입력은 E(좌석 창구의 선호 면).
+ * 링크는 반대 면으로 못 넘어가므로(넘침 순서) 그 선호가 곧 그 줄이 앉을 면이다.
  */
 function recordLinkNeed(
   specs: readonly NodeSpec[],
-  stages: ReadonlyMap<string, LinkFaceStage>,
+  inputs: ReadonlyMap<string, ModuleInput>,
   outOf: ReadonlyMap<string, { links: Link[] }>,
   inOf: ReadonlyMap<string, { links: Link[] }>,
 ): void {
   const needTally: Partial<Record<LinkDepthNeed, number>> = {};
   const needWho: string[] = [];
   for (const s of specs) {
-    const st = stages.get(s.id)!;
+    const input = inputs.get(s.id)!;
     const items = (ls: readonly Link[]): number => new Set(ls.map((l) => l.item)).size;
     const L = (f: "W" | "E"): number =>
       items(f === "W" ? outOf.get(s.id)!.links : inOf.get(s.id)!.links);
-    const R = (f: "W" | "E"): number => clusterBeltDepthsOf(st.ctx, f).length;
+    // **깊이는 장부를 안 읽는다** — 창구를 열지 않고 입력만으로 센다([faceDepthsOf]).
+    const R = (f: "W" | "E"): number => faceDepthsOf(input, f).length;
     const need = linkDepthNeed({ linesOf: L, depthsOf: R });
     needTally[need] = (needTally[need] ?? 0) + 1;
     // **넘친 것만 이름을 남긴다** — `L/R` 까지 실어야 *왜* 넘쳤는지가 한 줄에서 읽힌다.
@@ -256,22 +264,17 @@ const IDENTITY: Orientation = { rotation: 0, reflect: false };
  * (옛 `4) 2차 생성` 은 **사라졌다** — 끝 선호가 `P0` 에서 확정되므로 1차가 곧 최종이다.
  *  `generateModule` 은 이제 트리마다 **한 번**만 돈다 = **되먹임 0**.
  *  그래서 *"1차가 센 형태는 버린다"* 던 계측 초기화도 필요 없다 — 잰 것이 곧 깔린 것이다.
+ *
+ * **사본을 건네지 않는다.** 좌석은 굳힌 값(`ModuleInput.seatedFaces`)이고 `generateModule` 은 그 값에서 자기 장부를
+ * 복사해 연다 — 입력을 안 바꾸므로 같은 입력으로 몇 번을 불러도 같은 답이다. (예전엔 여기서 무대의 사본을 만들어
+ * 넘겼다 — 2026-08-29 에 사본 없이 재사용해 21개 시험이 *"인서터 수 ≠ 줄 수"* 로 떨어진 뒤의 방어였다.)
  */
 function generateModules(
   specs: readonly NodeSpec[],
-  seated: { stages: ReadonlyMap<string, LinkFaceStage>; inputs: ReadonlyMap<string, ModuleInput> },
+  inputs: ReadonlyMap<string, ModuleInput>,
 ): Map<string, { module: GeneratedModule; orientation: Orientation }> {
-  const stagesRef = seated.stages;
-  const inputsRef = seated.inputs;
-  const gen = (s: NodeSpec): GeneratedModule => {
-    const base = inputsRef.get(s.id)!;
-    // **사본을 준다** — ③′(기계별 포트)가 이 표에 이어서 앉으므로, 원본을 주면
-    // 두 번째 `gen` 이 ①+③′ 이 앉은 표를 보고 시작한다([cloneLinkFaceStage]).
-    const st = stagesRef.get(s.id);
-    return generateModule({ ...base, linkFaceStage: st && cloneLinkFaceStage(st) });
-  };
   const oriented = new Map<string, { module: GeneratedModule; orientation: Orientation }>();
-  for (const s of specs) oriented.set(s.id, { module: gen(s), orientation: IDENTITY });
+  for (const s of specs) oriented.set(s.id, { module: generateModule(inputs.get(s.id)!), orientation: IDENTITY });
   return oriented;
 }
 

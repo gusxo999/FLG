@@ -13,7 +13,7 @@
 import type { PortFace } from "../../shared/types";
 import type { IoLine, PlannedLine, PortSide } from "../types/line";
 import type { ModuleInput } from "../types/module";
-import type { DepthShortage, LinkFaceContext, LinkFacePlan, LinkFaceStage } from "../types/seat";
+import type { DepthShortage, LinkFaceContext, LinkFacePlan, ModuleFaces } from "../types/seat";
 import {
   clusterBeltDepthCap, fluidJumpBlocker, fluidJumpBudgetOf, fluidLineOf, fluidLinesOnSide,
 } from "./trunk";
@@ -203,7 +203,7 @@ export function fluidFacesOf(input: Pick<ModuleInput, "machine" | "lines" | "ins
  *     사라진다(자식 direct + 부모 tap → 포트 모양이 어긋나 납품 경로가 샌다 — 2026-07-19 실측).
  *  ② ③이 이미 링크가 찜한 자리를 또 배정해 셀이 겹친다.
  */
-export function linkedKeysOf(st: Pick<LinkFaceStage, "outLinks" | "inLinks">): Set<string> {
+export function linkedKeysOf(st: Pick<ModuleFaces, "outLinks" | "inLinks">): Set<string> {
   const { outLinks, inLinks } = st;
   const linkedKeys = new Set([
     ...outLinks.map((g) => `output:${g.item}`),
@@ -259,7 +259,7 @@ export function restLinesOf(input: Pick<ModuleInput, "lines">, linkedKeys: Reado
  * **⑥ 사다리로 올려 보낼 사유** — 신원이 있는(= 간선인) 줄만. 쪼갬은 양끝이 함께라야 한다.
  */
 export function depthShortagesOf(
-  st: Pick<LinkFaceStage, "outLinks" | "inLinks" | "out" | "in">,
+  st: Pick<ModuleFaces, "outLinks" | "inLinks" | "out" | "in">,
 ): Map<string, DepthShortage[]> {
   const { outLinks, inLinks } = st;
   const outFaces = st.out;

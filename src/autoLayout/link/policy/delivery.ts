@@ -56,8 +56,7 @@ import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT
 import { recordLaneShareStats } from "../../../debug/runStats";
 import { cellKey, faceVector } from "../../shared/grid";
 import { dijkstraWithJumps } from "../../shared/route";
-import { planLinkFaces } from "../../module/policy/port";
-import { clusterBeltDepthsOf } from "../../module/arith/face";
+import { faceDepthsOf } from "../../module/arith/face";
 import { linkDepthNeed } from "../../module/arith/depth";
 import { edgeLinkGroups } from "./edge";
 import { finishChain, finishFluidChain } from "../emit";
@@ -310,11 +309,11 @@ export function repourOverflowing(
       const L_E = inItemsOf.get(p.id)?.size ?? 0;
       if (L_E === 0) continue;
       const outItem = p.parentId ? productOf.get(p.id) : undefined;
-      // **깊이는 장부를 안 읽는다**([clusterBeltDepthsOf] 머리말) — `"open"` 무대면 족하다.
-      const probe = planLinkFaces(moduleInputOf(tree, config, links, p), Math.max(1, p.count), "open");
+      // **깊이는 장부를 안 읽는다** — 좌석 창구를 열지 않고 입력만으로 센다([faceDepthsOf]).
+      const input = moduleInputOf(tree, config, links, p);
       const need = linkDepthNeed({
         linesOf: (f) => (f === "W" ? (outItem ? 1 : 0) : L_E),
-        depthsOf: (f) => clusterBeltDepthsOf(probe.ctx, f).length,
+        depthsOf: (f) => faceDepthsOf(input, f).length,
       });
       if (need === "free") continue;
       // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 값이다.

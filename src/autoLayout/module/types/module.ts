@@ -13,7 +13,7 @@ import type {
 } from "../../shared/types";
 import type { FluidTrunkInput } from "../gamedata";
 import type { IoLine, Link, PlannedLine, PortSide, SupplyCapacity } from "./line";
-import type { DepthShortage, LinkFaceStage } from "./seat";
+import type { DepthShortage, SeatedFaces } from "./seat";
 import type { PipeFlowPipe } from "../../shared/pipeFlow";
 
 export interface ModuleInput {
@@ -47,13 +47,16 @@ export interface ModuleInput {
    */
   lineEnds?: Map<string, "min" | "max">;
   /**
-   * **밖에서 이미 끝난 링크 면 배정**(`modulePacking.seatTree`). 없으면 [planModulePorts] 가 직접 돌린다.
+   * **굳힌 좌석** — 좌석 단계(`tree/build.seatTree`)가 링크를 양끝에 앉히고 닫은 창구의 값.
+   * `outputLinks` · `inputLinks` 와 같은 순서의 계획과 그때의 장부를 **읽기 전용**으로 든다.
+   *
+   * `generateModule` 은 이 값에서 자기 장부를 **복사해** 열고 나머지 줄을 앉힌다 — 입력을 안 바꾸므로 같은 입력이면
+   * 같은 답이다. 없으면 링크가 아직 안 앉은 것이다(링크 없는 모듈 · 모듈 하나짜리 시험).
    *
    * 배정이 `generateModule` **안에 갇혀 있으면** 그 결과를 보려고 방출까지 해야 하고,
-   * 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다 — 그게 되먹임 둘의 뿌리였다
-   * 이 필드가 그 문을 열어 둔다.
+   * 고치려면 밖에서 입력을 고쳐 **다시 만들어야** 한다 — 그게 되먹임 둘의 뿌리였다.
    */
-  linkFaceStage?: LinkFaceStage;
+  seatedFaces?: SeatedFaces;
   /**
    * 노출된 끝면(N/S, 선호 순서) — count=1 완화. external 입력이 W-spill 전에 이 면의
    * 깊이를 쓴다(planner E→N/S→W). 노출 판정(열의 끝 + 전역 마진 방향)은 packModuleTree

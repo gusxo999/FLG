@@ -1,5 +1,5 @@
 /**
- * **링크 면 배정의 장부** — 면마다 좌석표 · 기둥 끝 · 기둥 밖 칸. 차리고([openLinkFaceContext] · [cloneLinkFaceStage])
+ * **링크 면 배정의 장부** — 면마다 좌석표 · 기둥 끝 · 기둥 밖 칸. 차리고([openLinkFaceContext] · [reopenLinkFaceContext])
  * 묻고([fitOnGap] · [fitOnFace]) 적는다([commitLinkFace] · [seatOnSharedBelt]).
  *
  * **고르지 않는다.** 어느 면 · 어느 끝 · 어느 깊이를 먼저 볼지는 정책([linkPlanner])이 정하고,
@@ -22,7 +22,7 @@ import { flowEnd } from "../arith/trunk";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan, LinkFaceStage, SeatLedgerView,
+  DepthShortage, LinkFaceContext, LinkFacePlan, SeatLedgerView,
 } from "../types/seat";
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
 import { linkShape, portCells, shapeCells } from "../shape/link";
@@ -416,37 +416,5 @@ export function reopenLinkFaceContext(
     tables: new Map([...ledger.tables].map(([f, t]) => [f, copyFaceTable(t)] as const)),
     ends: new Map([...ledger.ends].map(([f, set]) => [f, new Set(set)] as const)),
     outside: new Map([...ledger.outside].map(([f, set]) => [f, new Set(set)] as const)),
-  };
-}
-
-/** 아직 아무도 안 앉은 배정 — 간선 축([seatLinkEdge])이 자리를 잡기 전의 모양. */
-export const emptyAllocation = (n: number): FaceAllocation => ({
-  plans: Array.from({ length: n }, () => undefined),
-  deferred: [],
-  shortages: Array.from({ length: n }, () => []),
-});
-
-/**
- * **무대의 사본** — `gen` 이 여러 번 돌 때 **꼭 필요하다.**
- *
- * 배정(①)은 `modulePacking.seatTree` 에서 한 번 끝나지만, `planModulePorts` 의 ③′(기계별 포트)가 **같은
- * 좌석표에 이어서 앉는다.** 그래서 무대를 그대로 재사용하면 두 번째 `gen` 이
- * **①이 아니라 ①+③′ 이 앉은 표**를 보고 시작해 자리가 조용히 줄어든다.
- *
- * 2026-08-29 에 실제로 그렇게 깨졌다 — 21개 테스트가 *"인서터 수 ≠ 줄 수"* 로 떨어졌다.
- * [FaceTable] 이 값인 것([copyFaceTable])이 이 사본을 싸게 만든다.
- *
- * `out`/`in` 의 [LinkFacePlan] 은 확정된 결과라 **참조로 나눠 쓴다**(아무도 안 고친다).
- */
-export function cloneLinkFaceStage(stage: LinkFaceStage): LinkFaceStage {
-  const tables = new Map([...stage.tables].map(([f, t]) => [f, copyFaceTable(t)] as const));
-  const ends = new Map([...stage.ctx.ends].map(([f, set]) => [f, new Set(set)] as const));
-  const outside = new Map([...stage.ctx.outside].map(([f, set]) => [f, new Set(set)] as const));
-  return {
-    ...stage,
-    tables,
-    ctx: { ...stage.ctx, tables, ends, outside },
-    out: { ...stage.out, plans: [...stage.out.plans], deferred: [...stage.out.deferred] },
-    in: { ...stage.in, plans: [...stage.in.plans], deferred: [...stage.in.deferred] },
   };
 }

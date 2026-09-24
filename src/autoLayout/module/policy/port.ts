@@ -47,7 +47,9 @@
 
 import type { PlannedLine, PortSide, IoLine } from "../types/line";
 import type { ModuleInput } from "../types/module";
-import type { DepthShortage, LinkFaceStage, LinkFacePlan, LinkFaceContext, FaceAllocation } from "../types/seat";
+import type {
+  DepthShortage, FaceAllocation, FluidFaces, LinkFaceContext, LinkFacePlan, ModuleFaces, SeatedFaces,
+} from "../types/seat";
 import { summarizeBeltForms } from "../arith/link";
 import { recordBeltFormStats, recordFaceDepthStats } from "../../../debug/runStats";
 import { inserterForReach } from "../../shared/gamedata/spec";
@@ -57,7 +59,7 @@ import {
   clusterBeltDepthsOf, depthShortagesOf, fluidFacesOf, gapExitSidesFromPlans, gapRowsFromPlans,
   linkedKeysOf, linkFaceDepths, pipeLinesOf, restLinesOf,
 } from "../arith/face";
-import { emptyAllocation, openLinkFaceContext } from "../ledger/seat";
+import { openLinkFaceContext, reopenLinkFaceContext } from "../ledger/seat";
 import {
   restOutcomeOf, seatModuleLinks, seatRestLines, unpourableOf, type RestSeating,
 } from "./seat";
@@ -78,6 +80,7 @@ export type ModulePortPlannerInput = Pick<
   | "outputLinks"
   | "inputLinks"
   | "fluidTrunk"
+  | "seatedFaces"
 >;
 
 /** [planModulePorts] 의 산출물 — **좌표가 하나도 없다.** */
@@ -168,66 +171,67 @@ export interface ModulePortPlan {
 }
 
 /**
- * **⓪ 유체 면 + ① 링크 면 배정** — 좌표도 방출도 안 본다.
+ * **① 이 모듈의 면 장부를 연다** — 좌표도 방출도 안 본다.
  *
- * `generateModule` 밖(`modulePacking.seatTree`)에서 불러도 같은 답을 낸다 — 입력이
- * 전부 스펙과 링크이고, 그 둘은 링크 단계(`link/policy.edgeLinksOf`)에서 이미 확정되어 있다.
+ * ```
+ * 굳힌 좌석이 있다   좌석 단계가 링크를 양끝에 앉히고 닫은 값 — 그 장부를 **복사해** 연다
+ * 없다              링크가 아직 안 앉았다 — 이 모듈 혼자 링크를 앉힌다(모듈 축)
+ * ```
+ *
+ * 받은 값은 안 바꾼다. 그래서 `generateModule` 을 같은 입력으로 몇 번 불러도 같은 답이다.
+ *
+ * (굳힌 좌석이 없을 때의 모듈 축은 **제품이 안 탄다** — `generateModule` 을 부르는 곳이 좌석 단계 뒤 하나뿐이다.
+ *  링크를 준 모듈 하나짜리 시험만 여기를 지난다.)
  */
-export function planLinkFaces(
-  input: ModulePortPlannerInput,
-  count: number,
-  /**
-   * `"seat"`(기본) — 모듈 축으로 이 모듈의 링크를 직접 앉힌다(옛 경로·단독 호출·테스트).
-   * `"open"` — **표만 차려 돌려준다.** 자리는 [seatLinkEdge] 가 **간선마다 양끝을 함께**
-   * 잡는다(Step 2) — 그래야 한 링크가 반쪽만 앉는 일이 없다.
-   */
-  mode: "seat" | "open" = "seat",
-): LinkFaceStage {
+export function moduleFacesOf(input: ModulePortPlannerInput, count: number): ModuleFaces {
+  const seated = input.seatedFaces;
+  const outLinks = input.outputLinks ?? [];
+  const inLinks = input.inputLinks ?? [];
+  if (seated) {
+    const ctx = reopenLinkFaceContext(seated.ledger, input, count, seated.fluid.pipeFaceRows);
+    const allocation = (
+      plans: SeatedFaces["out"],
+      why: SeatedFaces["outWhy"],
+    ): FaceAllocation => ({ plans: [...plans], deferred: [], shortages: why.map((w) => [...w]) });
+    return facesOf(ctx, outLinks, inLinks, allocation(seated.out, seated.outWhy), allocation(seated.in, seated.inWhy), seated.fluid);
+  }
   // ⓪ 유체 면 — 머신이 강제한다. 면마다 줄 수 · 깊이 상한 · 점프 가능(예산은 거절과 같은 함수)
   const fluid = fluidFacesOf(input);
   // ① 무대 — 면마다 빈 표 · 끝 · 기둥 밖 칸. 표는 면을 처음 볼 때 유체 칸을 찍어 차린다
   const faceCtx = openLinkFaceContext(input, count, fluid.pipeFaceRows);
-  const outLinks = input.outputLinks ?? [];
-  const inLinks = input.inputLinks ?? [];
-  if (mode === "open") {
-    return stageOf(faceCtx, outLinks, inLinks, emptyAllocation(outLinks.length), emptyAllocation(inLinks.length), fluid);
-  }
-  // ② 링크 좌석 — 양쪽 선호 면 먼저, 넘침은 그 뒤(유체 면 → gap)
-  const seated = seatModuleLinks(faceCtx, outLinks, inLinks);
-  return stageOf(faceCtx, outLinks, inLinks, seated.out, seated.in, fluid);
+  // ② 링크 좌석(모듈 축) — 양쪽 선호 면 먼저, 넘침은 그 뒤(유체 면 → gap)
+  const alone = seatModuleLinks(faceCtx, outLinks, inLinks);
+  return facesOf(faceCtx, outLinks, inLinks, alone.out, alone.in, fluid);
 }
 
-/** [LinkFaceStage] 를 엮는다 — `tables` 는 무대(`ctx.tables`)와 **같은 Map** 이다. */
-function stageOf(
+/** [ModuleFaces] 를 엮는다. */
+function facesOf(
   ctx: LinkFaceContext,
-  outLinks: LinkFaceStage["outLinks"],
-  inLinks: LinkFaceStage["inLinks"],
+  outLinks: ModuleFaces["outLinks"],
+  inLinks: ModuleFaces["inLinks"],
   out: FaceAllocation,
   inn: FaceAllocation,
-  fluid: Pick<LinkFaceStage, "pipeFaces" | "isJumpableToClusterPipe">,
-): LinkFaceStage {
+  fluid: Pick<FluidFaces, "pipeFaces" | "isJumpableToClusterPipe">,
+): ModuleFaces {
   return {
-    tables: ctx.tables, ctx, outLinks, inLinks,
+    ctx, outLinks, inLinks,
     out, in: inn, pipeFaces: fluid.pipeFaces, isJumpableToClusterPipe: fluid.isJumpableToClusterPipe,
   };
 }
 
 /**
- * 모듈 하나의 포트 계획 — 한 모듈의 포트 자리를 전부 배정한다. ⓪①②는 [planLinkFaces] 가 이미 끝낸 것을 **받는다.**
+ * 모듈 하나의 포트 계획 — 한 모듈의 포트 자리를 전부 배정한다. 링크의 자리는 좌석 단계가 이미 정했고
+ * ([ModuleInput.seatedFaces]) 여기서는 **받는다.**
  *
  * `count` 는 호출자가 정규화한 머신 대수
  * (`layoutCluster` 가 만드는 머신 수와 **같아야** 한다 — 배정이 없는 머신을 가리키면 안 된다).
- *
- * `stage` 를 안 주면 여기서 직접 돌린다 — 그랬면 옆 경로(모듈 안에서 배정)가 생기는 게
- * 아니라 **같은 함수를 같은 인자로** 부를 뿐이라 답이 같다(테스트·단독 호출용).
  */
 export function planModulePorts(
   input: ModulePortPlannerInput,
   count: number,
-  stage?: LinkFaceStage,
 ): ModulePortPlan {
-  // ① 무대 — 간선 축 배정(packModuleTree 의 좌석 단계)이 이미 앉혔으면 그것을 받는다
-  const st = stage ?? planLinkFaces(input, count);
+  // ① 장부 — 굳힌 좌석에서 복사해 연다(링크의 자리는 이미 정해져 있다)
+  const st = moduleFacesOf(input, count);
   // ② 링크 몫 — 링크가 맡은 줄은 자기 기하를 갖는다. 나머지 줄 배정에서 뺀다
   const linkedKeys = linkedKeysOf(st);
   // ③ 유체 줄 — 면은 머신이 정한다
@@ -271,7 +275,7 @@ export function planModulePorts(
  * (관측만 — 계산·분기·반환값은 안 바뀐다. `runStats` 머리말의 규약.)
  */
 function recordPortPlanStats(
-  st: LinkFaceStage,
+  st: ModuleFaces,
   input: Pick<ModuleInput, "inserters" | "belts">,
   count: number,
   restLinks: RestSeating,

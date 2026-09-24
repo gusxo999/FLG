@@ -21,7 +21,7 @@
 import type { IoLine, Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type {
-  DepthShortage, FaceAllocation, FaceSeating, LinkFaceContext, LinkFacePlan, LinkFaceStage, SeatReceipt,
+  DepthShortage, FaceAllocation, FaceSeating, LinkFaceContext, LinkFacePlan, ModuleFaces, SeatReceipt,
 } from "../types/seat";
 import { externalLineGroups, readLinkRole } from "../arith/link";
 import { inserterForReach } from "../../shared/gamedata/spec";
@@ -195,7 +195,7 @@ export function seatModuleLinks(
  * 지도 A 와 함께 삭제됐다 — `g` 를 정하는 곳은 [planBundles] **하나**다.
  */
 export function seatRestLines(
-  st: LinkFaceStage,
+  st: ModuleFaces,
   input: Pick<ModuleInput, "machine" | "inserters" | "nsExposure" | "supplyCapacity" | "belts">,
   count: number,
   restLines: IoLine[],
