@@ -63,7 +63,10 @@ gamedata 어댑터 (prototype·게임데이터 해석)
 
 **오늘 위반은 하나다** — `shared/pipeFlow` 가 `module/gamedata.fluidPortSlots` 를 런타임으로
 부른다. 그 함수는 prototype 해석(**어댑터**)이라 `shared/gamedata/` 소속이고, `module/gamedata.ts`
-를 어댑터와 정책으로 가르면 사라진다. 검사를 eslint 로 옮기는 일은 구조-2축 계획 4 다.
+를 어댑터와 정책으로 가르면 사라진다.
+
+**이 규칙은 도구로 강제하지 않는다**(2026-09-23 사용자 — eslint 로 옮기던 구조-2축 계획 4 를 취소했다).
+검사는 아래 *「두 축이 실제로 지켜지는가」* 의 `rg` 다섯 줄이고, 어기는 줄이 생기면 그 표에 **알고 둔 자리**로 적는다.
 
 ## 축이 늘어도 **경로는 안 는다** — 판정 기준 하나
 
@@ -106,6 +109,15 @@ gamedata 어댑터 (prototype·게임데이터 해석)
 주체는 **`run/build/` 의 뼈대 둘**이고, 관심사 폴더는 그 뼈대가 순서대로 부르는 단계다.
 저장소에 남은 탐색은 **하나**(`shared/route.dijkstraWithJumps` — 납품 사다리의 탐색 칸)뿐이다.
 
+## 정직하게 잃는 것 — 트리는 실행 순서를 말하지 않는다
+
+폴더를 먼저 보는 사람에게는 실제 손해다. 완화는 하나 — **실행은 `run/` 한 곳에서 시작하고, `run/build/` 의
+뼈대가 단계를 순서대로 부른다.** 시간 축(무엇이 언제 태어나나)은 [[pipeline-lifecycle]] 이 든다.
+
+폴더에 번호를 붙여 순서를 드러내는 안은 **기각했다(구조-2축, 2026-09-12). 거짓말이 되기 때문이다** —
+`module` 과 `link` 는 얽혀 돈다. 링크 하나를 앉히려면 두 모듈의 장부를 함께 봐야 해서 `seatLinkEdge`
+(`module/policy/seat`)가 **링크 축으로 돌면서 모듈 장부를 쓴다.** 번호는 이 사실을 감춘다.
+
 ## 현재 트리
 
 ```
@@ -137,7 +149,7 @@ autoLayout/
 │   ├ gamedata.ts                어댑터 · 정책 — 유체 상자 칸 · 회전과 면 고르기. factorio 가 이 주소를 부른다
 │   └ inspect.ts                 진단 — 적용된 배치에서 모듈 단위 정보를 유도(UI 셋이 쓴다)
 ├ link/                        모듈과 모듈을 잇는 일
-│   ├ tree/types/recipe.ts                   타입 — DeliveryConfig · DeliveryRoute · DeliveryResult
+│   ├ types.ts                   타입 — DeliveryConfig · DeliveryRoute · DeliveryResult
 │   ├ arith/{pair,flows}.ts      셈 — 포트 짝짓기 · 어느 기계 쌍을 몇 벨트로(import 0)
 │   ├ ledger.ts                  장부 — 전 모듈 점유 · 계획 체인의 예약 · 깐 칸과 corridor · 뗄 것
 │   ├ shape.ts                   도형 — 탐색 경계 · 뗄 칸 · 좌석 이음 · 계획 체인 · 연속성
@@ -145,18 +157,18 @@ autoLayout/
 │   ├ emit.ts                    찍기 — 체인 → 벨트 · 파이프 셀
 │   └ build.ts                   조율 — 한 납품씩 부르고 신원을 찍는 18줄 뼈대
 ├ channel/                     통로 — 여러 연결이 나눠 쓰는 자원
-│   ├ tree/types/recipe.ts                   타입 — DeliveryInput · ExportInput · ChannelGeometryPlan
+│   ├ types.ts                   타입 — DeliveryInput · ExportInput · ChannelGeometryPlan
 │   ├ ledger/                    장부 — tracks(세로) · row(행) · assign(신원·순서) · geometry(배정·지하·폭·점프)
 │   ├ shape.ts                   도형 — 경로 모양 · 계단꼴 · 충돌 · materializeChannelGeometry
 │   └ policy.ts                  정책 — 진출 변 · 실패 비용 순 · 유체 폴백 사유
 ├ perimeter/                   전역 외곽
-│   ├ tree/types/recipe.ts                   타입 — ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan
+│   ├ types.ts                   타입 — ExitPortInput · ExitContext · LayoutGrid · PerimeterExitPlan
 │   ├ ledger.ts                  장부 — 직진 등록(그은 선)
 │   ├ shape/                     도형 — qualify(출구 자격) · rays(광선) · router(포트 → 바깥 변) · exits(입력 준비)
 │   ├ policy.ts                  정책 — 선호 순서 · 자유도 적은 상자 먼저 · 강등 · 강행
 │   └ late.ts                    늦은 결정 — 살아남은 상자를 전역 외곽으로 이사
 └ shared/                      관심사가 없는 것 — 위를 모른다
-    ├ tree/types/recipe.ts · issue.ts        Container · Port · PlacedCell · Area · LayoutIssue
+    ├ types.ts · issue.ts        Container · Port · PlacedCell · Area · LayoutIssue
     ├ grid.ts                    격자 위의 셈 — 아무것도 놓지 않는다
     ├ frames.ts                  레이아웃 좌표 → 그리드 좌표의 문(unifyLeaf)
     ├ arith/{belt,inserter}.ts   처리량
@@ -175,15 +187,15 @@ autoLayout/
 ## 두 축이 실제로 지켜지는가 — 기계적으로 확인할 수 있다
 
 ```powershell
-# ① 찍기는 이름이 말한다. 셀 생성자를 부르는 파일은 다섯이고 **넷이 emit/cells** 다.
-rg -l "makeContainerCell|makeInserterCell|makeBeltCell|makePipeCell" src/autoLayout -g '!*.test.ts'
-#   → module/emit · link/emit · shared/cells/{builder,path} · perimeter/late ⚠
+# ① 찍기는 이름이 말한다. 셀 생성자를 부르는 파일은 넷이고 **셋이 emit/cells** 다.
+rg -l "make(Container|Inserter|Belt|Pipe)Cell\(" src/autoLayout -g '*.ts' -g '!*.test.ts'
+#   → module/emit · shared/cells/{builder,path} · perimeter/late ⚠   (link/emit 은 shared/cells/path 에 위임한다)
 
 # ② module 은 형제를 모른다 — 0 이어야 한다.
-rg "\.\./(\.\./)*(link|channel|perimeter)/" src/autoLayout/module -g '!*.test.ts'
+rg "from ['\"](\.\./)+(link|channel|perimeter)/" src/autoLayout/module -g '!*.test.ts'
 
 # ③ shared 는 위를 모른다 — 오늘 **한 줄**(pipeFlow → module/gamedata)만 나와야 한다.
-rg -n "\.\./(\.\./)*(module|link|channel|perimeter|run|tree)/" src/autoLayout/shared -g '!*.test.ts'
+rg -n "from ['\"](\.\./)+(module|link|channel|perimeter|run|tree)/" src/autoLayout/shared -g '!*.test.ts'
 
 # ④ link/arith/flows 는 순수 배정기다 — import 가 하나도 없어야 한다.
 rg "^import" src/autoLayout/link/arith/flows.ts
@@ -192,7 +204,9 @@ rg "^import" src/autoLayout/link/arith/flows.ts
 rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → run/build/layered 하나
 ```
 
-2026-09-16 기준 다섯 다 통과한다. ①의 `perimeter/late` 와 ③의 한 줄이 **알고 둔 두 자리**다 —
+2026-09-23 기준 다섯 다 통과한다. **도구가 강제하지 않으니 이 다섯 줄이 검사의 전부다**(위 import 규칙 절).
+①②③은 `from '…'` 과 호출 괄호만 센다 — 2026-09-23 까지는 주석 속 링크와 `CLAUDE.md` 까지 걸려
+①에 `link/emit`(주석뿐)이 끼어 있었다. ①의 `perimeter/late` 와 ③의 한 줄이 **알고 둔 두 자리**다 —
 전자는 늦은 결정이 곧 이사(셀을 옮겨 놓는 일)라 이름이 `emit` 이 아니고, 후자는 `module/gamedata`
 의 어댑터 부분이 아직 안 갈린 결과다.
 
@@ -253,7 +267,7 @@ npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0�
 npx vitest run
 ```
 
-기준선: **타입 에러 0 · 62파일 784테스트**(기존 실패 2건 — trunkPipe 유체 면).
+기준선: **타입 에러 0 · 65파일 818테스트**(기존 실패 2건 — trunkPipe 유체 면 · 2026-09-23).
 
 > **테스트 통과가 "그 코드가 실행됐다"는 뜻은 아니다.** 배치를 바꾸는 변경은 좌표 덤프로
 > 전후를 비교하고, **바꾼 분기가 실제로 불렸는지**를 먼저 확인한다(2026-08-02: 448개가

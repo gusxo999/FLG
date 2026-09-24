@@ -1,9 +1,10 @@
-// **전 파이프라인 대조 시험 — 계획 구조-2축 · 2 (Step 2 · 3). 계획 폴더에만 산다(src 에 커밋하지 않는다).**
-// 쓰는 법: src/autoLayout/zzStepDump.test.ts 로 복사해 돌리고 **지운다**(계획서 §4.3 검증).
+// **전 파이프라인 대조 시험** — 32 픽스처를 `runLayeredWizard` 로 돌려 결과 전체(issue 순서 · Area · Routing ·
+// 실패 그림 · runStats)를 직렬화한다. 이동·분할이 배치를 안 바꿨나(바이트 비교), 안전망이 몇 번 발동하나(`netTrips`)를 잰다.
+// **src 에 커밋하지 않는다** — 쓸 때만 src/autoLayout/zzStepDump.test.ts 로 복사해 돌리고 지운다.
 //   STEP_DUMP=<출력.json> [STEP_FLAGS=ladder|opposite|direct|nomerge] npx vitest run src/autoLayout/zzStepDump.test.ts
-// runLayeredWizard 를 합성 게임데이터로 돌려 결과 전체(issue 순서 · Area · Routing · 실패 그림 · runStats)를 직렬화한다.
-// STEP_DUMP 가 없으면 아무것도 안 쓴다 — 전체 시험에 섞여 돌아도 무해하다. 32 픽스처.
-// import 는 계획 2 동안 경로가 안 바뀌는 것뿐이다(store 재수출 · layeredWizard · runStats · containerModel · debugFlags).
+// 플래그 다섯(없음 · ladder · opposite · direct · nomerge)을 다 돌려야 사다리 · 반대 면 · 다이렉트 갈래를 밟는다.
+// STEP_DUMP 가 없으면 아무것도 안 쓴다. 방출기에 임시 계측을 끼울 때는 `globalThis.__case` 로 픽스처 이름을 읽는다.
+// 내력: 구조-2축 계획 2·3 의 게이트였다(2026-09-14 ~ 16). 2026-09-23 D8(이 계획 Step 1)의 관문으로 여기 옮겼다.
 import { it, vi } from 'vitest';
 import fs from 'fs';
 import { useGameDataStore, type Entity, type GameData, type Recipe } from '../UI/store/gameDataStore';
@@ -150,6 +151,7 @@ it('step2 전 파이프라인 덤프', async () => {
   console.log = () => {}; console.warn = () => {}; console.info = () => {};
   try {
     for (const [name, input] of CASES) {
+      (globalThis as unknown as { __case?: string }).__case = name; // 임시 계측이 픽스처를 찍는 자리
       const res = await runLayeredWizard(input);
       const stats = readRunStats();
       dump[name] = { res, stats };

@@ -1,13 +1,14 @@
 # shared/ — 관심사가 없는 것
 
 **여기 있는 것은 위를 모른다.** `module` · `link` · `channel` · `perimeter` · `tree` · `run` 중
-어느 것도 import 하지 않는 것이 이 폴더의 정의다(계획 4 가 eslint 로 집행한다).
+어느 것도 import 하지 않는 것이 이 폴더의 정의다. 도구로 강제하지 않는다(2026-09-23 — 검사는
+[code-folders](../../../docs/auto-layout/common/code-folders.md) 의 `rg` ③).
 
 ```
-tree/types/recipe.ts    Container · Port · PlacedCell · Area        issue.ts   LayoutIssue
+types.ts    Container · Port · PlacedCell · Area                    issue.ts   LayoutIssue
 grid.ts     격자 위의 셈 — 아무것도 놓지 않는다          frames.ts  레이아웃 좌표 → 그리드 좌표의 문
 arith/      벨트 · 인서터 처리량                        cells/     찍기 — builder · path · place
-gamedata/   어댑터 — BuildSpec · 머신 픽커              flags.ts   디버그 플래그
+gamedata/   어댑터 — BuildSpec                          flags.ts   디버그 플래그
 route.ts ⚠  탐색                                        pipeFlow.ts ⚠ 파이프 합류 가드
 ```
 
@@ -21,7 +22,7 @@ route.ts ⚠  탐색                                        pipeFlow.ts ⚠ 파�
 **`pipeFlow.ts` 는 이 폴더의 유일한 위반이다.** `module/gamedata.fluidPortSlots` 를 런타임으로
 부른다. 고치는 길은 이미 적혀 있다 — 그 함수는 prototype 해석(**어댑터**)이라 `shared/gamedata/`
 소속이고, `module/gamedata.ts` 를 어댑터와 정책으로 가르면 이 줄은 `shared → shared` 가 된다
-(구조-2축 §3). **`pipeFlow` 를 `module/` 로 옮겨서 푸는 것이 아니다** — 유체 가드를 보는 곳이
+([code-folders](../../../docs/auto-layout/common/code-folders.md) §자리를 정한 근거). **`pipeFlow` 를 `module/` 로 옮겨서 푸는 것이 아니다** — 유체 가드를 보는 곳이
 모듈 · 납품 · 반출 셋이다.
 
 ## 찍기가 왜 여기 있나
