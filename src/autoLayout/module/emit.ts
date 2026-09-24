@@ -359,7 +359,8 @@ export function emitOutputLinks(args: {
     // (`usedIn` 이 상자 id 로 짝짓기를 세므로 — [pushLinkPortEnd] 의 `reuse` 주석).
     const { portPair, seatCell, chestAt } = followed ?? made;
     const chest = made.chest;
-    // ⓕ 검사 — 길 · 포트 칸이 비었나. 발동하면 그 "구성상"이 틀린 것이다(오늘 gap 포트에서 발동한다 — work-kinds §7 D8)
+    // ⓕ 검사 — 길 · 포트 칸이 비었나. 발동하면 그 "구성상"이 틀린 것이다. gap 포트가 옆면 벨트를 만나던 자리(D8)는
+    // 출구 잠수가 닫았다(`trunk-blocked.md` §4.2) — 남은 발동은 합류 이끄는 줄이다(work-kinds §7 D9)
     const blocked = route.path.some((c) => occupancy.has(cellKey(c.at.x, c.at.y)));
     if (blocked || (!followed && (occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다
@@ -379,7 +380,7 @@ export function emitOutputLinks(args: {
     pushLinkPortEnd({
       role: "output", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
       line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
-      tapAnchor: tapAnchorOf("output", frame, trunkStart),
+      tapAnchor: tapAnchorOf(trunkStart),
       clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: outputPorts, beltItems,
       // 벨트는 **자기 것**이라 늘 놓는다(싣는 쪽은 벨트가 둘이다). 포트만 나눠 쓴다.
@@ -491,7 +492,7 @@ export function emitInputLinks(args: {
     pushLinkPortEnd({
       role: "input", seatCell, chestAt, chest, portPair, portFace, pfv, beltCells,
       line, linkId: group.id, rate: groupRate(group), beltEntityName: group.beltEntityName,
-      tapAnchor: tapAnchorOf("input", frame, beltTop),
+      tapAnchor: tapAnchorOf(beltTop),
       clusterBeltDepth, reach: plan.reach, inserterEntityName: input.inserterEntityName, lineEnds: input.lineEnds,
       cells, chests, occupancy, ports: inputPorts, beltItems,
       reuseBelt: reuse !== undefined, reusePort: reuse !== undefined,

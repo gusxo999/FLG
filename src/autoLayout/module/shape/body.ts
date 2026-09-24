@@ -19,7 +19,8 @@
  *
  * [linkShape] 는 순번 축이라 계획(청구 · 검사)과 방출이 **같은 함수**를 부른다. 여기는 **머신 원점을 안다** —
  * 그래서 모듈 안에서는 방출만 부른다. W/E 면의 길은 `linkShape` 의 답을 면 좌표로 얹을 뿐이고, gap(N/S) 면의 길은 계획이
- * 청구하지 않는 모양이라 여기서 짓는다(그 포트 칸이 어느 장부에도 없다 — work-kinds §7 D8).
+ * 청구하지 않는 모양이라 여기서 짓는다. 그 포트가 옆면과 다투는 자리는 장부 대신 확정 배정에서 유도한 **출구 잠수**가 푼다
+ * ([gapExitDive] — `trunk-blocked.md` §4.2).
  *
  * **예외는 포트의 경계 기하 둘**(`portGeometry` · `seatIsBeltFeeder`)이다 — 놓인 포트를 받아 모듈 **밖**의 납품
  * (`planner/link`)과 반출(`execution/modulePerimeterPass`)이 부른다. 그래도 답하는 것은 모듈이 자기 포트에 대해서다
@@ -161,24 +162,15 @@ export function linkFrameOf(
  * **포트의 machine-side 끝점**(`tapAnchor`) — 납품/반출 라우팅이 여기서 출발하고, 포트 계약이
  * `anchor − 2·faceVector` 를 요구한다([modulePacking] ⑥B). `end` 는 포트가 붙는 칸(싣는 쪽 트렁크 끝 · 집는 쪽 벨트 머리).
  *
- * gap(N/S) 그룹은 벨트가 가로로 달려 **변에서 꺾이므로** 그 꺾이는 칸(= 포트가 선 변 쪽 머신 가장자리)이
- * 끝점이다. W/E 그룹은 벨트가 세로라 끝점이 **벨트 칸 자체**(d`clusterBeltDepth`)다 — 예전엔 둘 다
- * 머신 가장자리를 썼는데, 그러면 W/E 포트의 끝점이 머신 발자국 **안**으로 들어가 반출
- * 재배치가 통째로 실패한다(2026-08-17 실측 — skip 3). 옛 탭 경로가 이 줄들을 맡던 동안엔
- * 안 드러났다.
+ * **끝점은 포트가 붙는 칸 그 자체다** — W/E 그룹은 벨트 칸(d`clusterBeltDepth`), gap 그룹은 변에서 꺾이는 칸이거나
+ * 출구 잠수의 입출구(옆면 바깥 — [gapExitDive])다. 예전엔 W/E 도 머신 가장자리를 썼는데, 그러면 포트의 끝점이 머신
+ * 발자국 **안**으로 들어가 반출 재배치가 통째로 실패했다(2026-08-17 실측 — skip 3).
  *
- * 두 역할의 식을 그대로 둔다 — 싣는 쪽은 *"E 면이면 동쪽 끝"*, 집는 쪽은 *"W 면이면 서쪽 끝"* 으로 적혀 있었다.
+ * (gap 은 2026-09-25 까지 *"포트가 선 변 쪽 머신 가장자리"* 를 따로 셌다. 잠수가 없으면 그 칸이 곧 `end` 였고, 잠수하면
+ * 포트가 옆면 바깥으로 물러나 둘이 갈렸다 — `trunk-blocked.md` §4.2.)
  */
-export function tapAnchorOf(role: "output" | "input", f: LinkFrame, end: Cell): Cell {
-  const { isGap, portFace, m0 } = f;
-  if (role === "output") {
-    return isGap
-      ? { x: portFace === "E" ? m0.origin.x + m0.size.w - 1 : m0.origin.x, y: end.y }
-      : { ...end };
-  }
-  return isGap
-    ? { x: portFace === "W" ? m0.origin.x : m0.origin.x + m0.size.w - 1, y: end.y }
-    : { ...end };
+export function tapAnchorOf(end: Cell): Cell {
+  return { ...end };
 }
 
 /** 좌석(d1) 칸 — 좌석 행마다 하나. */
@@ -196,7 +188,7 @@ export function outputRouteOf(f: LinkFrame, plan: LinkSeats): { path: RouteCell[
   const { face, isGap, fv, m0, rows: allRows, ext: mExt, pfv, clusterBeltDepth, exitDepth, toSouth, topT } = f;
   /**
    * **이 배정의 도형** — 계획이 청구할 때 부른 그 함수다([linkShape] · work-kinds §7 D1).
-   * gap 은 없다 — 계획이 그 칸을 청구하지 않아 아래 else 가 여기서 짓는다(포트 칸이 어느 장부에도 없다 · work-kinds §7 D8).
+   * gap 은 없다 — 계획이 그 칸을 청구하지 않아 아래 else 가 여기서 짓는다(옆면과의 교차는 출구 잠수가 푼다 — ④).
    */
   const shape = isGap ? undefined : linkShape({
     role: "output",
@@ -255,10 +247,45 @@ export function outputRouteOf(f: LinkFrame, plan: LinkSeats): { path: RouteCell[
   // 맨 서쪽(자기 줄로 내려온 뒤 서쪽 변에 닿는 칸).
   // **포트가 붙는 칸은 도형의 끝이다** — 싣는 쪽은 흐름이 포트로 모이므로 마지막 칸이다
   // (합류 이끄는 줄이면 그게 곧 합류 칸이다). gap 은 서쪽 변에서 꺾이는 칸.
-  const trunkStart = shape
+  const edge = shape
     ? cellAt(shape.path[shape.path.length - 1])
     : { x: m0.origin.x, y: faceCell(mExt, face, exitDepth, topT).y };
-  return { path, trunkStart };
+  // ④ gap **출구 잠수** — 옆면이 gap 행을 지나면 그 밑으로 간다([gapExitDive]). 포트는 출구에 붙는다
+  const dive = isGap ? gapExitDive(edge, pfv, plan.exitDive) : undefined;
+  if (dive) {
+    push(dive.near, pfv, { ug: "input" });
+    push(dive.far, pfv, { ug: "output" });
+  }
+  return { path, trunkStart: dive ? dive.far : edge };
+}
+
+/**
+ * **gap 출구의 잠수** — 입출구 두 칸(`docs/auto-layout/module/trunk-blocked.md` §4.2).
+ *
+ * gap 벨트는 기둥의 옆 변 칸(`edge` — 싣는 쪽이면 흐름이 끝나는 칸, 집는 쪽이면 시작하는 칸)에서 포트로 나간다. 그 변의
+ * 옆면 d2 부터는 여러 머신을 맡은 세로 벨트가 gap 행까지 지난다. 그래서 **옆면 d1 에서 땅속으로 들어가 건너는 가장 깊은
+ * 깊이(`exitDive`) 바로 바깥에서 나온다** — 포트는 그 바깥이다. `pfv` 는 포트 쪽(바깥) 방향이다.
+ *
+ * ```
+ *  싣는 쪽(W)   [포트상자][포트인서터][출구 d+1] ← ~땅속~ ← [입구 d1][기둥 변 칸 ←──── gap 벨트
+ *  집는 쪽(E)   gap 벨트 ←──── [기둥 변 칸][출구 d1] ← ~땅속~ ← [입구 d+1][포트인서터][포트상자]
+ * ```
+ *
+ * 입출구가 기둥 **밖**(옆면 d1 · d+1)이라 gap 벨트 자기 칸은 하나도 안 바뀐다 — 좌석 인서터가 지하벨트에 놓을 일이 없고,
+ * 집는 쪽 흐름의 끝 칸(늦은 결정)도 그대로다. 옆면 d1 은 gap 행에 좌석이 없고, d+1 · 포트 두 칸은 건너는 것보다 깊어 비었다.
+ * [ClusterPipe] 는 이 포트 상자(d+3)를 셈에 넣어 그보다 바깥으로 물러난다(`arith/face.linkFaceDepths`).
+ *
+ * 답은 기둥에 가까운 칸(`near` — 옆면 d1)과 먼 칸(`far` — d`exitDive + 1`)이다. 흐름이 정하는 입출구는 부르는 쪽이 붙인다
+ * (싣는 쪽은 near 가 입구, 집는 쪽은 far 가 입구). `exitDive` 가 없으면 `undefined` — 오늘 도형 그대로다(포트 인서터 d1 · 상자 d2).
+ */
+export function gapExitDive(
+  edge: Cell,
+  pfv: Cell,
+  exitDive: number | undefined,
+): { near: Cell; far: Cell } | undefined {
+  if (exitDive === undefined) return undefined;
+  const at = (d: number): Cell => ({ x: edge.x + pfv.x * d, y: edge.y + pfv.y * d });
+  return { near: at(1), far: at(exitDive + 1) };
 }
 
 /**
@@ -275,7 +302,7 @@ export function inputRouteOf(
   f: LinkFrame,
   plan: LinkSeats,
 ): { path: RouteCell[]; farIdx: number; flow: Cell; trunkEnd: Cell; beltTop: Cell } {
-  const { face, isGap, m0, rows: allRows, ext: geomExt, clusterBeltDepth, exitDepth, toSouth, topT, inward } = f;
+  const { face, isGap, m0, rows: allRows, ext: geomExt, clusterBeltDepth, exitDepth, toSouth, topT, inward, pfv } = f;
   // gap 벨트는 머신 **동쪽 끝까지** 뻗어야 포트가 클러스터 밖에 선다. 자기 줄로 내려가는 그룹은
   // 그 구간을 **반출 줄**에서 달리고 자기 열에서 올라오므로, 여기선 자기 좌석 끝까지만.
   const ownEast = Math.max(...allRows);
@@ -312,6 +339,8 @@ export function inputRouteOf(
   const cellAt = (c: { depth: number; t: number }) => faceCell(geomExt, face, c.depth, c.t);
   /** 흐름의 **끝 칸** index — [resolveBeltTermini] 가 방향을 마무리할 자리. */
   let farIdx = -1;
+  /** gap 출구의 잠수 — 포트에서 받아 옆면 밑으로 기둥 변 칸까지([gapExitDive]). 없으면 오늘 도형이다. */
+  const dive = isGap ? gapExitDive(trunkEndOf(clusterBeltDepth), pfv, plan.exitDive) : undefined;
   if (shape) {
     shape.path.forEach((c: ShapeCell, idx: number) => {
       const at = cellAt(c);
@@ -321,6 +350,8 @@ export function inputRouteOf(
     farIdx = path.length - 1; // 흐름 순서라 끝 칸이 곧 마지막이다(입출구는 구간 끝에 안 선다 — 지상 벨트다)
   } else {
     // ── gap(N/S) — 계획이 장부를 안 드는 자원 모양이라 도형이 여기 남는다 ──────────
+    // ⓪ **출구 잠수** — 옆면이 gap 행을 지나면 포트에서 받은 물건이 그 밑으로 들어온다. 흐름 순서라 맨 앞이다
+    if (dive) path.push({ at: dive.far, v: beltDirV, ug: "input" }, { at: dive.near, v: beltDirV, ug: "output" });
     // ① **반출** — 포트(동쪽 변)에서 자기 열까지 반출 줄로 달려온다([emitOutputLinks] 의
     // 거울, 흐름만 반대다). 내려갈 필요 없는 첫 그룹은 이 구간이 없다.
     if (exitDepth > clusterBeltDepth)
@@ -337,7 +368,8 @@ export function inputRouteOf(
       path.push({ at: faceCell(geomExt, face, clusterBeltDepth, t), v: t === topT ? inward : beltDirV });
     }
   }
-  const trunkEnd = trunkEndOf(clusterBeltDepth);
+  // 잠수하면 포트는 입구(먼 칸)에 붙는다
+  const trunkEnd = dive ? dive.far : trunkEndOf(clusterBeltDepth);
   return { path, farIdx, flow: beltDirV, trunkEnd, beltTop: shape ? cellAt(shape.path[0]) : trunkEnd };
 }
 

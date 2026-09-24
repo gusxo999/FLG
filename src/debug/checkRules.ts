@@ -210,10 +210,26 @@ function checkReach(view: LayoutView): Violation[] {
       // 채워져 있어야 하는 것은 **상자에서 수집 줄까지**다 — 그게 트렁크이고, 끊기면
       // 물건이 못 나간다. 그 아래(d1 ~ 수집 줄 사이)는 팔이 넘어간다.
       const beltDepth = p.meta?.clusterBeltDepth;
+      // **지하벨트 짝 사이는 땅속이다 — 비어도 끊긴 것이 아니다**(2026-09-25). gap 출구는 옆면의 세로 벨트를 지하로 건너
+      // 포트에 닿는다(`trunk-blocked.md` §4.2 — `module/shape/body.gapExitDive`). 이 줄 위에 지하벨트 입구 · 출구가 함께 있으면
+      // 둘 사이의 칸은 트렁크가 땅속으로 지나는 칸이라 채워져 있을 필요가 없다.
+      // 짝은 이 줄을 따라 누운 것만 — 방향이 줄과 나란하고(W/E 포트면 동·서, N/S 면 남·북 — 16방향 인코딩) 서로 같다.
+      // 포트 칸(`p` — 라우팅이 머신에 닿는 끝점 `tapAnchor`)도 본다 — 잠수하면 먼 입출구가 곧 그 칸이다.
+      const along = face === 'W' || face === 'E' ? [4, 12] : [0, 8];
+      const mouths = [...between, { x: p.x, y: p.y }]
+        .map((c) => view.cells.get(cellKey(c.x, c.y)))
+        .filter((v): v is NonNullable<typeof v> => v?.type === EntityType.UndergroundBelt && along.includes(v.direction));
+      const kinds = new Set(mouths.map((v) => v.undergroundType));
+      const tunnel = mouths.length === 2 && kinds.has('input') && kinds.has('output')
+        && mouths[0].direction === mouths[1].direction
+        ? (c: { x: number; y: number }) =>
+          depthOf(box, face, c) > Math.min(...mouths.map((m) => depthOf(box, face, m)))
+          && depthOf(box, face, c) < Math.max(...mouths.map((m) => depthOf(box, face, m)))
+        : () => false;
       const need =
-        beltDepth === undefined
+        (beltDepth === undefined
           ? between
-          : between.filter((c) => depthOf(box, face, c) >= beltDepth);
+          : between.filter((c) => depthOf(box, face, c) >= beltDepth)).filter((c) => !tunnel(c));
       const empty = need.filter((c) => !view.cells.has(cellKey(c.x, c.y)));
       if (empty.length > 0) {
         out.push({
@@ -238,10 +254,16 @@ function checkReach(view: LayoutView): Violation[] {
       // 그래서 여기서 인서터를 요구하면 **멀쩡한 기둥 끝 포트를 전부 위반으로 찍는다**
       // (2026-09-04 실측 4~6건이 전부 그것이었다). 채워졌나(위)는 트렁크가 끊겼는지를
       // 재므로 **모든 포트에 그대로 묻고**, 팔의 유무만 정렬된 포트로 좁힌다.
-      const aligned =
-        face === "W" || face === "E"
-          ? p.y >= box.y && p.y < box.y + box.h
-          : p.x >= box.x && p.x < box.x + box.w;
+      //
+      // **나란하다는 것은 머신 한 대의 행/열 위라는 뜻이다 — 머신 블록이 아니다**(2026-09-25). gap 포트는 두 머신 **사이**
+      // 행에 서고(블록 안이지만 머신 행이 아니다), 그 줄의 팔은 기둥 끝 포트처럼 **수직 방향**(머신의 S/N 면 좌석)에 앉는다.
+      // 납품이 상자를 벨트로 바꾸면 포트 인서터도 벨트가 되므로(`module/shape/body.seatIsBeltFeeder`) 그 줄엔 인서터가 하나도
+      // 없는 것이 정상이다 — 블록으로 재면 그것을 위반으로 찍는다(2026-09-25 실측: gap 포트 넷 · 유체 모듈의 gap 포트 둘).
+      const aligned = view.containers.some((m) =>
+        m.kind === 'machine' && m.id.replace(/-m\d+$/, '') === mod.key
+        && (face === "W" || face === "E"
+          ? p.y >= m.origin.y && p.y < m.origin.y + m.size.h
+          : p.x >= m.origin.x && p.x < m.origin.x + m.size.w));
       if (!aligned) continue;
       const hasInserter = between.some((c) => {
         const cell = view.cells.get(cellKey(c.x, c.y));

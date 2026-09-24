@@ -17,7 +17,7 @@ import type { DeliveryResult } from "../link/types";
 import type { PerimeterPassResult } from "../perimeter/late";
 import type { BuildSpec } from "../shared/gamedata/spec";
 import type { RecipeTreeNode } from "../tree/types/recipe";
-import { summarizeRungs } from "../module/policy/link";
+import { rungFixStep, summarizeRungs } from "../module/policy/link";
 import { chooseFluidTrunkPlan } from "../module/gamedata";
 import { fluidJumpBlocker, fluidJumpBudgetOf } from "../module/arith/trunk";
 import { pipeFlowConflict, type PipeFlow } from "../shared/pipeFlow";
@@ -205,9 +205,10 @@ export function judgePack(pack: PackResult): LayoutIssue[] {
         // **다른 물음의 답**이라 화면이 없는 원인을 가리켰다.
         : "부고도 못 놓았다 — 방출에서 자리가 없었다";
     // **처방은 사실에서 나온다.** 사다리 기록이 있으면 자리가 모자란 것이고, 그 지렛대는
-    // 언제나 인서터다 — 빠른 팔은 팔 **개수**를 줄여 좌석을 아끼고, 긴팔은 면의 **깊이
+    // 대개 인서터다 — 빠른 팔은 팔 **개수**를 줄여 좌석을 아끼고, 긴팔은 면의 **깊이
     // 개수**(= 서로 다른 reach 수)를 늘린다. 셋 다(좌석·구간·포트) 같은 손잡이로 풀린다.
-    const fixStep = rungs ? ("inserter" as const) : pourFix;
+    // 지하벨트가 없거나 사거리가 모자라 막혔으면 벨트 단계다(지하벨트를 고른다 — [rungFixStep]).
+    const fixStep = rungs ? rungFixStep(pl.module.depthShortages!) : pourFix;
     const scope: IssueScope = "모듈";
     const carrier = pl.module.unroutedLines.some((l) => l.kind === 'pipe')
       ? ('fluid' as const)

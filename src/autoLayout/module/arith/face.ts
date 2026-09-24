@@ -14,8 +14,10 @@ import type { PortFace } from "../../shared/types";
 import type { IoLine, PlannedLine, PortSide } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type { DepthShortage, LinkFaceContext, LinkFacePlan, ModuleFaces } from "../types/seat";
+// **도형의 단일 출처** — 옆면 줄이 gap 행을 지나는지는 그 줄이 청구한 도형에서 읽는다(work-kinds §7 D1).
+import { linkShape, shapeCells } from "../shape/link";
 import {
-  clusterBeltDepthCap, fluidJumpBlocker, fluidJumpBudgetOf, fluidLineOf, fluidLinesOnSide,
+  clusterBeltDepthCap, flowEnd, fluidJumpBlocker, fluidJumpBudgetOf, fluidLineOf, fluidLinesOnSide,
 } from "./trunk";
 
 /**
@@ -80,7 +82,7 @@ export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined
 
 /**
  * **gap 벨트가 어느 옆면으로 빠져나가나** — 그 면의 좌석 줄(d1)과 그 바깥 줄(d2)을 포트 끝
- * (인서터·상자)이 먹는다는 뜻이다.
+ * (인서터·상자)이 먹는다는 뜻이다. 출구가 잠수하면([LinkFacePlan.exitDive]) d1 은 지하벨트 입출구가 먹는다 — 같은 칸이다.
  *
  * 왜 이 값이 필요한가 — **트렁크 파이프와 자리를 다투기 때문이다.** 점프하지 않는 파이프는
  * 좌석 줄을 기둥 전체로 훑는데(`emitTrunkPipe` 의 d1 직선), gap 벨트의 포트 끝이 그 줄의 gap
@@ -111,6 +113,71 @@ export function gapExitSidesFromPlans(
 }
 
 /**
+ * **gap 출구의 교차 — 옆면이 gap 행을 지나는 깊이**(`trunk-blocked.md` §4.2).
+ *
+ * gap 벨트는 기둥의 옆 변으로 나가 포트가 된다(싣는 쪽 W · 집는 쪽 E — [gapExitSidesFromPlans]). 그런데 그 변에는 여러 머신을
+ * 맡은 옆면 줄이 **gap 행까지 지나며** 달린다. 면 좌석표에는 gap 행이 없어(`ledger/face` — *"머신 사이 gap 을 안 세지만"*)
+ * 그 교차를 아무 장부도 몰랐고, 방출 안전망이 뒤늦게 gap 줄을 버렸다. 그것이 D8 이다.
+ *
+ * **확정 배정에서 유도한다** — 옆면 줄의 도형([linkShape], 표의 행 축)에서 **이웃한 두 칸이 머신 g 의 끝 행과 g+1 의
+ * 첫 행**이면 그 사이 gap 행을 땅 위로 지난다. 몸통(`tunnels`)으로 건너는 줄은 두 칸이 이웃하지 않으므로 저절로 빠진다
+ * (gap 행이 땅속이다). 역할은 가리지 않는다 — 면마다 표가 한 장이고 싣는 쪽 · 집는 쪽이 함께 앉는다. 나머지 줄도 센다.
+ * 그래서 **앉는 순서와 무관한 답**이다(gap 좌석이 먼저 서고 옆면 줄이 나중에 와도 같다).
+ *
+ * 반환: `${면}:${gap}` → 그 gap 에서 그 면을 땅 위로 지나는 **가장 깊은 깊이**. 지나는 것이 없으면 키가 없다.
+ * 벨트를 공유한 줄(`sharesBelt`)은 자기 칸이 없어 안 센다 — 첫 줄의 도형이 이미 셌다.
+ */
+export function sideCrossingsFromPlans(
+  rowsPerMachine: number,
+  count: number,
+  lists: ReadonlyArray<{ role: "output" | "input"; plans: readonly (LinkFacePlan | undefined)[] }>,
+): Map<string, number> {
+  const h = Math.max(1, rowsPerMachine);
+  const out = new Map<string, number>();
+  for (const { role, plans } of lists)
+    for (const p of plans) {
+      if (!p || p.face === "N" || p.face === "S" || p.sharesBelt) continue;
+      const rows = [...p.slotIndex].flatMap(([mi, slots]) => slots.map((s) => mi * h + s));
+      if (rows.length === 0) continue;
+      const flowToSouth = flowEnd(p) === "S";
+      // 청구([commitLinkFace])와 **같은 입력**으로 부른다 — 표의 행 축 · 기둥 밖 첫 행 · 최종 몸통
+      const shape = linkShape({
+        role, clusterBeltDepth: p.clusterBeltDepth, portEnd: p.portEnd, flowToSouth, mergeRole: p.mergeRole,
+        rows: [Math.min(...rows), Math.max(...rows)], outRow: flowToSouth ? h * count : -1, tunnels: p.tunnels,
+      });
+      const cells = shapeCells(shape);
+      for (let i = 1; i < cells.length; i++) {
+        const [a, b] = [cells[i - 1], cells[i]];
+        if (a.depth !== b.depth || Math.abs(a.t - b.t) !== 1) continue;
+        const lo = Math.min(a.t, b.t);
+        // 머신 g 의 끝 행(lo)과 g+1 의 첫 행 — 그 사이가 gap g 다. 기둥 밖(lo < 0 · 끝 머신 뒤)은 gap 이 아니다
+        if ((lo + 1) % h !== 0 || lo < 0 || lo + 1 >= h * count) continue;
+        const key = `${p.face}:${(lo + 1) / h - 1}`;
+        out.set(key, Math.max(out.get(key) ?? 0, a.depth));
+      }
+    }
+  return out;
+}
+
+/**
+ * **gap 출구가 옆면에서 건널 수 있는 가장 깊은 깊이 — 입력만으로 아는 상한.** 출구의 잠수 자격이 이 값을 본다
+ * (`module/policy/link.tryLinkFace` ③′ — `trunk-blocked.md` §4.2).
+ *
+ * 옆면 칸이 gap 행을 지나는 깊이는 줄의 벨트 깊이([clusterBeltDepthsOf])이고, 그 면에 합류 쌍이 앉을 수 있으면(`merges`)
+ * 따르는 줄의 비켜 가는 열(깊이 +2 — `shape/link` 의 `follow`)까지다. 배정을 안 읽는다 — gap 좌석이 먼저 서고 옆면 줄이 나중에 와도
+ * 그 줄은 이 안에 선다. 깊이가 하나도 없는 면(유체 면의 `depthCap`)에는 줄이 못 앉으므로 0 이다.
+ */
+export function sideCrossBound(
+  ctx: Pick<LinkFaceContext, "inserters" | "pipeFaces">,
+  face: PortFace,
+  merges: boolean,
+): number {
+  const depths = clusterBeltDepthsOf(ctx, face);
+  if (depths.length === 0) return 0;
+  return Math.max(...depths) + (merges ? 2 : 0);
+}
+
+/**
  * **링크·다이렉트가 옆면(W/E)에서 먹는 가장 깊은 칸** — [ClusterPipe] 가 그보다 바깥으로
  * 물러나야 하는 기준이다([buildTrunkContext] 의 `beltMaxOn`).
  *
@@ -119,13 +186,16 @@ export function gapExitSidesFromPlans(
  * 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다** — 2026-08-05 의 gap 벨트 사고와
  * 같은 종류다([gapExitSidesFromPlans]).
  *
- * **gap(N/S) 스필은 세지 않는다.** 그 포트 끝은 옆면의 d1·d2 에 앉는데 [ClusterPipe] 는
- * 최소 d3 이라 부딪히지 않는다. 그리고 *"그 면의 좌석 줄을 먹는다"* 는 사실은
- * [gapExitSidesFromPlans] 가 이미 따로 전한다(점프 조건 ④) — 여기서 또 세면 답은 안 바뀌고
- * 폭만 넓어진다.
+ * **gap(N/S) 스필은 잠수할 때만 센다.** 잠수하지 않는 출구의 포트 끝은 옆면의 d1·d2 에 앉는데 [ClusterPipe] 는
+ * 최소 d3 이라 부딪히지 않는다. 그리고 *"그 면의 좌석 줄을 먹는다"* 는 사실은 [gapExitSidesFromPlans] 가 이미 따로
+ * 전한다(점프 조건 ④) — 여기서 또 세면 답은 안 바뀌고 폭만 넓어진다. **잠수하는 출구**([LinkFacePlan.exitDive])는
+ * 포트 상자가 출구 옆면 d`exitDive + 3` 까지 나간다 — 합류 쌍의 비켜 가는 열(깊이 +2)을 건너면 그 옆면 줄들의 포트 끝보다
+ * 깊어서 [ClusterPipe] 와 부딪힐 수 있다(`trunk-blocked.md` §4.2). 그래서 그 깊이를 출구 옆면(`gapExits` — 싣는 쪽 W ·
+ * 집는 쪽 E)에 센다.
  */
 export function linkFaceDepths(
   lists: readonly (LinkFacePlan | undefined)[][],
+  gapExits?: Partial<Record<"W" | "E", readonly (LinkFacePlan | undefined)[][]>>,
 ): Partial<Record<PortFace, number>> {
   const by: Partial<Record<PortFace, number>> = {};
   for (const list of lists)
@@ -133,6 +203,10 @@ export function linkFaceDepths(
       if (!p || p.face === "N" || p.face === "S") continue;
       by[p.face] = Math.max(by[p.face] ?? 0, p.clusterBeltDepth + 2);
     }
+  for (const face of ["W", "E"] as const)
+    for (const list of gapExits?.[face] ?? [])
+      for (const p of list)
+        if (p?.exitDive !== undefined) by[face] = Math.max(by[face] ?? 0, p.exitDive + 3);
   return by;
 }
 
@@ -256,10 +330,18 @@ export function restLinesOf(input: Pick<ModuleInput, "lines">, linkedKeys: Reado
 }
 
 /**
- * **⑥ 사다리로 올려 보낼 사유** — 신원이 있는(= 간선인) 줄만. 쪼갬은 양끝이 함께라야 한다.
+ * **⑥ 못 앉은 줄의 사유** — 화면의 이름표(`summarizeRungs`)가 읽는다. 링크 줄은 신원(`linkId`)으로, 나머지 줄은
+ * `rest:${역할}:${순번}:${품목}` 으로 담는다(나머지 줄은 신원이 없다).
+ *
+ * 나머지 줄은 2026-09-25 부터 담는다(`trunk-blocked.md` §4.2) — 그 전엔 신원이 없어 빠졌고, 좌석에서 못 앉은 나머지 줄이
+ * 화면에 *"방출에서 자리가 없었다"* 로 떴다. gap 출구가 지하벨트 없이 거절되는 줄이 생기면서 그 사유가 화면까지 가야 했다.
  */
 export function depthShortagesOf(
   st: Pick<ModuleFaces, "outLinks" | "inLinks" | "out" | "in">,
+  rest?: {
+    out: { groups: readonly { item: string }[]; plans: readonly (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
+    in: { groups: readonly { item: string }[]; plans: readonly (LinkFacePlan | undefined)[]; shortages: DepthShortage[][] };
+  },
 ): Map<string, DepthShortage[]> {
   const { outLinks, inLinks } = st;
   const outFaces = st.out;
@@ -273,5 +355,11 @@ export function depthShortagesOf(
       depthShortages.set(id, w);
     });
   }
+  for (const [role, side] of [["output", rest?.out], ["input", rest?.in]] as const)
+    side?.plans.forEach((p, i) => {
+      const w = side.shortages[i];
+      if (p || !w?.length) return;
+      depthShortages.set(`rest:${role}:${i}:${side.groups[i]?.item ?? "?"}`, w);
+    });
   return depthShortages;
 }

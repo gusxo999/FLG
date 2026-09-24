@@ -203,7 +203,18 @@ const linkedBase = {
   inserters: [{ entityName: "inserter", reach: 1, throughput: 2.4 }, { entityName: "long-handed-inserter", reach: 2, throughput: 1.2 }],
   beltEntityName: "transport-belt",
   belts: [{ entityName: "transport-belt", throughput: 15 }],
+  // **gap 출구는 지하벨트가 있어야 앉는다**(`trunk-blocked.md` §4.2) — 출구가 옆면의 세로 벨트를 건너야 할 수 있어서다
+  undergroundBelts: [{ entityName: "underground-belt", throughput: 15, maxDistance: 5 }],
 };
+
+/**
+ * **운반량을 붙인다** — gap 출구의 지하벨트는 그 줄의 운반량을 감당해야 하므로(이름은 저울과 함께 온다) 운반량을 모르는
+ * 줄은 gap 으로 못 간다. 아래 gap 시험들은 줄마다 팔 하나에 2/s(reach 1 팔 2.4/s 안 — 팔 수가 그대로다)를 싣는다.
+ */
+const rated = (l: Link): Link => ({
+  ...l,
+  carries: [{ from: [...l.from.keys()][0], to: [...l.to.keys()][0], rate: 2 * [...l.from.values()][0] }],
+});
 
 describe("거대 출력 — W면이 차면 gap 으로 넘어간다", () => {
   // 머신 0 에서 팔 5개(그룹 3 + 그룹 2). W면 좌석은 h=3 뿐 → 둘째 그룹은 아래 gap 으로.
@@ -213,7 +224,7 @@ describe("거대 출력 — W면이 차면 gap 으로 넘어간다", () => {
     outputLinks: [
       { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
       { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) },
-    ],
+    ].map(rated),
   } as ModuleInput);
 
   it("두 그룹 다 살아남는다 (넘친 쪽을 버리지 않는다)", () => {
@@ -264,8 +275,8 @@ describe("넘침은 남의 선호 면을 먼저 먹지 않는다", () => {
     outputLinks: [
       { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
       { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과분
-    ],
-    inputLinks: [{ item: "iron", from: new Map([[9, 3]]), to: new Map([[0, 3]]) }],
+    ].map(rated),
+    inputLinks: [{ item: "iron", from: new Map([[9, 3]]), to: new Map([[0, 3]]) }].map(rated),
   } as ModuleInput);
 
   it("입력은 선호 면(E)을 그대로 얻는다", () => {
@@ -298,7 +309,7 @@ describe("gap 은 필요한 자리만, 필요한 만큼만 벌어진다", () => 
       { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과 → gap0
       { item: "gear", from: new Map([[1, 2]]), to: new Map([[1, 2]]) },
       { item: "gear", from: new Map([[2, 2]]), to: new Map([[2, 2]]) },
-    ],
+    ].map(rated),
   } as ModuleInput);
 
   const gapOf = (i: number) => {
@@ -357,7 +368,7 @@ describe("ParallelBelt(막힌 면) — 한 면에 벨트 여러 줄, 합류 없�
       { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) }, // W 를 채움
       { item: "gear", from: new Map([[0, 1]]), to: new Map([[1, 1]]) }, // → gap 1번째
       { item: "gear", from: new Map([[0, 1]]), to: new Map([[1, 1]]) }, // → gap 2번째
-    ],
+    ].map(rated),
   } as ModuleInput);
 
   it("셋 다 살아남는다 — 예전엔 면당 한 줄이라 셋째가 unrouted 였다", () => {
@@ -408,7 +419,7 @@ describe("gap 그룹의 벨트는 gap 안에 있다", () => {
     outputLinks: [
       { item: "gear", from: new Map([[0, 3]]), to: new Map([[0, 3]]) },
       { item: "gear", from: new Map([[0, 2]]), to: new Map([[1, 2]]) }, // W 초과 → gap
-    ],
+    ].map(rated),
   } as ModuleInput);
 
   it("넘친 그룹의 벨트 칸이 두 머신 사이 빈 gap 안에 든다", () => {

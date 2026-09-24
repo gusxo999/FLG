@@ -3,6 +3,7 @@
  *
  * ```
  * diveUnderground      잠수 — 줄이 땅속으로 비켜 갈 때. 그 줄의 운반량을 감당하는 가장 느린 것
+ * exitUnderground      gap 출구 — 옆면을 건너야 앉는 줄. 감당하고 사거리가 닿는 것 중 가장 느린 것
  * terminusUnderground  종착 — 흐름의 끝 칸이 세 방향 다 막혔을 때. 가장 느린 것 중 T4 에 안 걸리는 것
  * ```
  *
@@ -52,6 +53,34 @@ export function diveUnderground(
     if (!best || b.throughput < best.throughput) best = b;
   }
   return best;
+}
+
+/**
+ * **gap 출구의 잠수에 쓸 지하벨트** — 그 줄의 운반량을 감당하고 사거리가 `span`(입구에서 출구까지) 이상인 것 중 가장 느린 것
+ * (`trunk-blocked.md` §4.2). 못 고르면 까닭을 낸다:
+ *
+ * ```
+ * none    운반량을 감당하는 것이 없다 — 안 골랐거나 운반량을 모른다(이름은 저울과 함께 온다)
+ * range   감당하는 것은 있는데 사거리가 모자라다
+ * ```
+ *
+ * **옆면 잠수([diveUnderground])와 달리 닿는 것을 고른다** — 옆면 잠수는 막힌 칸을 비켜 가는 기회라 못 닿으면 안 하면
+ * 그만이지만, gap 출구는 옆면을 건너야 앉을 수 있다. 그래서 가장 느린 것이 못 닿으면 사거리가 긴(빠른) 것으로 간다.
+ */
+export function exitUnderground(
+  belts: ReadonlyArray<SpecUndergroundBelt> | undefined,
+  rate: number | undefined,
+  span: number,
+): SpecUndergroundBelt | "none" | "range" {
+  if (rate === undefined) return "none";
+  const carrying = (belts ?? []).filter((b) => usable(b) && b.throughput >= rate);
+  if (carrying.length === 0) return "none";
+  let best: SpecUndergroundBelt | undefined;
+  for (const b of carrying) {
+    if (b.maxDistance < span) continue;
+    if (!best || b.throughput < best.throughput) best = b;
+  }
+  return best ?? "range";
 }
 
 /**

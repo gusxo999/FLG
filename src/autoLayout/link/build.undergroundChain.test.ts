@@ -38,7 +38,12 @@ const config: PackConfig = {
   belts: [{ entityName: "transport-belt", throughput: 40 }], // 줄 하나가 20
   // 예약 장부를 켠다 — 안 켜면 납품 경로가 전부 dijkstra 로 나서 이 버그가 안 드러난다.
   reservePerimeterExits: true,
-  beltMaxUndergroundDistance: 4,
+  // **모듈도 같은 지하벨트를 고른다** — gap 출구는 옆면의 세로 벨트를 건너야 할 수 있어 지하벨트가 있어야 앉는다
+  // (`trunk-blocked.md` §4.2). 없으면 머신 사이 gap 이 안 열려 모듈 모양이 달라지고, 이 시험의 전제(지하 횡단)가 흔들린다.
+  // 사거리는 납품과 모듈이 **같은 값**이라야 한 종류다 — 바닐라 `underground-belt` 의 5(2026-09-25 전엔 납품만 4 였다.
+  // 모듈의 gap 출구 자격은 옆면 깊이 3 + 합류 열 2 = 5 를 보므로 4 면 싣는 쪽 gap 이 안 열린다).
+  beltMaxUndergroundDistance: 5,
+  undergroundBelts: [{ entityName: "underground-belt", throughput: 40, maxDistance: 5 }],
 };
 
 /** 지하 횡단이 실제로 계획되는 형상 — 부모 3 / 자식 2, 총 60/60. */
@@ -63,7 +68,7 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
   const delivery = routeDeliveryRoutes(p, {
     beltEntityName: "transport-belt",
     undergroundBeltEntityName: "underground-belt",
-    beltMaxUndergroundDistance: 4,
+    beltMaxUndergroundDistance: 5,
   });
 
   it("이 형상이 실제로 지하 횡단을 계획한다 (전제 확인)", () => {

@@ -247,6 +247,54 @@ describe('checkLayout — 결함을 하나씩', () => {
     expect(checkLayout(v).filter((x) => x.rule === 'R-도달')).toEqual([]);
   });
 
+  /**
+   * gap 포트의 출구 잠수(`trunk-blocked.md` §4.2) — 머신 두 대(y5·y10) 사이 gap 행 y=9. gap 벨트가 서쪽 변에서 옆면 d1 로 들어가
+   * 땅속으로 d4 까지 가고(그 사이 d3 을 옆면 세로 벨트가 지난다), 포트는 그 바깥이다. 라우팅의 머신 쪽 끝점은 출구(d4)다.
+   *
+   * ```
+   *   x |   4     5     6     7     8     9  | 10
+   *     | CHEST Inser  ⊏    Belt   .     ⊐   | gap 벨트 ←    ← y=9 (머신 사이)
+   *     |  d6    d5    d4    d3    d2    d1  |
+   * ```
+   */
+  const gapDive = (outlet: EntityType): LayoutView => {
+    const ms = [machine('n0-gear-m0', 10, 5), machine('n0-gear-m1', 10, 10)];
+    const machineCells: PlacedCell[] = [];
+    for (const m of ms)
+      for (let dy = 0; dy < 3; dy++)
+        for (let dx = 0; dx < 3; dx++) machineCells.push(at(10 + dx, m.origin.y + dy, EntityType.Assembler, m.id));
+    const ug = (x: number, type: 'input' | 'output'): PlacedCell => ({
+      x, y: 9, cell: { ...cell(EntityType.UndergroundBelt, 'r0'), direction: 12, undergroundType: type },
+    });
+    const route: PlacedCell[] = [
+      at(10, 9, EntityType.Belt, 'r0'),
+      ug(9, 'input'), // d1
+      outlet === EntityType.UndergroundBelt ? ug(6, 'output') : at(6, 9, outlet, 'r0'), // d4
+      at(5, 9, EntityType.Inserter, 'r0'), // 포트 인서터
+    ];
+    const r = routing('r0', ['chest-0', 4, 9], ['n0-gear-m0', 6, 9], route);
+    const v = viewOf(
+      area('internal', ms, [...machineCells, ...route, at(7, 9, EntityType.Belt, 'side')]),
+      area('external', [chest('chest-0', 4, 9)], [at(4, 9, EntityType.InfinityChest, 'chest-0')]),
+      [{ ...r, toPortMeta: { item: 'gear', side: 'W', clusterBeltDepth: 2 } }],
+    );
+    for (const p of route) {
+      const c = v.cells.get(cellKey(p.x, p.y));
+      if (c && p.cell.undergroundType) c.undergroundType = p.cell.undergroundType;
+    }
+    return v;
+  };
+
+  it('R-도달: gap 포트의 **지하벨트 짝 사이는 비어도** 안 잡는다 · 머신 사이 행이라 인서터를 요구하지 않는다', () => {
+    expect(checkLayout(gapDive(EntityType.UndergroundBelt)).filter((x) => x.rule === 'R-도달')).toEqual([]);
+  });
+
+  it('R-도달: 짝이 없으면(출구가 평범한 벨트) 그 빈 칸을 잡는다 (대조군)', () => {
+    const hits = checkLayout(gapDive(EntityType.Belt)).filter((x) => x.rule === 'R-도달');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].cells).toEqual([{ x: 8, y: 9 }]);
+  });
+
   it('R-겹침: 한 칸을 다른 엔티티가 덮으면 잡는다', () => {
     const v = cleanLayout();
     v.leaf.internal.placed.push(at(8, 6, EntityType.Inserter, '다른아이디'));

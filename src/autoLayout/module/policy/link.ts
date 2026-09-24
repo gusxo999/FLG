@@ -22,13 +22,15 @@ import { armsAt, groupRate, resolveSpanBlock, spansAllMachines } from "../arith/
 import type { Link } from "../types/line";
 import type { DepthShortage, FaceAllocation, LinkFaceContext, LinkFacePlan } from "../types/seat";
 import { cellAt, depthClear, freeSeatRows, rowIndex, seatsTaken, type FaceTable } from "../ledger/face";
-import { AUTO_LAYOUT_LINK_DIVE, AUTO_LAYOUT_SEAT_PICK } from "../../shared/flags";
+import {
+  AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIVE, AUTO_LAYOUT_LINK_OPPOSITE_FACE, AUTO_LAYOUT_SEAT_PICK,
+} from "../../shared/flags";
 import { bodyRows, fixedRowsOf, tunnelBodies, tunnelFault, type TunnelBody } from "../arith/dive";
-import { diveUnderground } from "./underground";
+import { diveUnderground, exitUnderground } from "./underground";
 import { flowEnd } from "../arith/trunk";
 import { recordFaceDepthStats } from "../../../debug/runStats";
 import { portCells } from "../shape/link";
-import { clusterBeltDepthsOf, LINK_LANE_DEPTH } from "../arith/face";
+import { clusterBeltDepthsOf, LINK_LANE_DEPTH, sideCrossBound } from "../arith/face";
 import {
   beltRowSpan, claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, seatTableOf, splitByTable, tunnelLength,
   type FaceFit, type LinkFaceCandidate,
@@ -44,7 +46,8 @@ import {
  *   seat-blocked   내 **좌석 칸**이 남에게 먹혔다
  *   span-blocked   좌석은 비었는데 **그 사이를 잇는 구간**이 막혔다
  *   port-blocked   구간은 지나는데 **포트 칸**이 막혔다
- *   dive-range     잠수로 풀릴 막힘인데 **사거리**를 넘었다(`AUTO_LAYOUT_LINK_DIVE`)
+ *   dive-range     잠수로 풀릴 막힘인데 **사거리**를 넘었다(`AUTO_LAYOUT_LINK_DIVE`) · gap 출구를 건널 지하벨트의 사거리가 모자라다
+ *   no-underground gap 출구가 옆면을 건널 **지하벨트가 없다**(안 골랐다 · 그 줄의 운반량을 못 감당한다)
  * ```
  *
  * `seat-blocked` 와 `span-blocked` 는 둘 다 [DepthShortage.blockedRows] 에서 오지만 **기하가
@@ -58,30 +61,38 @@ import {
  * | `span-blocked` | [resolveSpanBlock] → [splitLinkAtRows] | ✅ 사다리 1단 |
  * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 잠수(비켜 주기)가 푼다. 남의 **포트**면 아직 없다(`tempPlanDocs/링크-좌석/judgements.md` J-포트막힘) |
  * | `dive-range` | (없음) | ⛔ 더 긴 지하벨트를 고르는 것이 처방이다(위저드 단계) |
+ * | `no-underground` | (없음) | ⛔ 지하벨트를 고르는 것이 처방이다(위저드 벨트 단계) |
  * | `seat-blocked` | (없음) | ⛔ gap·다이렉트의 몫 |
  * | `seat-budget` | (없음) | ⛔ gap·다이렉트의 몫 |
  *
  * 그래서 이 이름표가 곧 **미완성 기능의 경계**다 — `unrouted-lines` 이슈가 이걸 싣는다
  * (`docs/auto-layout/link/machine-link.md` — *어디까지 작동하나*).
  */
-export type LadderRung = "span-blocked" | "port-blocked" | "dive-range" | "seat-blocked" | "seat-budget";
+export type LadderRung =
+  | "span-blocked" | "port-blocked" | "dive-range" | "no-underground" | "seat-blocked" | "seat-budget";
 
 /** 화면에 나가는 말. 셋이 `막힘` 으로 끝나고 **어디가** 막혔는지만 다르다. */
 const RUNG_LABEL: Record<LadderRung, string> = {
   "span-blocked": "구간막힘",
   "port-blocked": "포트막힘",
   "dive-range": "사거리초과",
+  "no-underground": "지하벨트없음",
   "seat-blocked": "좌석막힘",
   "seat-budget": "좌석부족",
 };
 
-/** 해소자가 있는 것부터. 후보 여럿이 사유가 갈리면 **풀 수 있는 쪽**이 그 줄을 맡는다. */
+/**
+ * 해소자가 있는 것부터. 후보 여럿이 사유가 갈리면 **풀 수 있는 쪽**이 그 줄을 맡는다.
+ * `지하벨트없음` 은 사다리 다음이다 — 선호 면이 막혀 gap 으로 갔다가 출구에서 거절된 줄은 위저드에서 지하벨트를 고르면
+ * 앉는다(해소자가 사용자다). 그 줄이 기둥 끝에서 포트막힘을 함께 냈어도 고칠 곳은 지하벨트다.
+ */
 const RUNG_ORDER: readonly LadderRung[] = [
-  "span-blocked", "port-blocked", "dive-range", "seat-blocked", "seat-budget",
+  "span-blocked", "no-underground", "port-blocked", "dive-range", "seat-blocked", "seat-budget",
 ];
 
 function rungOf(w: DepthShortage): LadderRung {
-  if (w.diveRange) return "dive-range";
+  if (w.exitUnderground === "none") return "no-underground";
+  if (w.diveRange || w.exitUnderground === "range") return "dive-range";
   if (w.blockedRows?.length && w.seatRows?.length)
     return resolveSpanBlock(w.seatRows, w.blockedRows).length > 0 ? "span-blocked" : "seat-blocked";
   if (w.blockedPort?.length) return "port-blocked";
@@ -115,6 +126,21 @@ export function summarizeRungs(shortages: Map<string, DepthShortage[]>): string 
 }
 
 /**
+ * **그 이름표를 풀 위저드 단계** — 모듈에서 가장 앞선 이름표([RUNG_ORDER])의 처방. 지하벨트 둘(`사거리초과` · `지하벨트없음`)은
+ * 벨트 단계(지하벨트를 고른다), 나머지는 인서터 단계다(빠른 팔은 팔 개수를 줄이고 긴팔은 깊이 수를 늘린다 — `run/policy`).
+ */
+export function rungFixStep(shortages: Map<string, DepthShortage[]>): "belt" | "inserter" | undefined {
+  const seen = new Set<LadderRung>();
+  for (const ws of shortages.values()) {
+    const r = rungOfLine(ws);
+    if (r) seen.add(r);
+  }
+  const top = RUNG_ORDER.find((r) => seen.has(r));
+  if (!top) return undefined;
+  return top === "dive-range" || top === "no-underground" ? "belt" : "inserter";
+}
+
+/**
  * 그룹 하나를 이 면에 앉혀 본다 — **장부는 안 건드린다**(확정은 호출자가 한다).
  * 그룹이 여러 머신을 관통하면(입력 트렁크) **전부** 들어가야 성공이다 — 벨트 하나를 반만
  * 옮길 수는 없다.
@@ -134,6 +160,7 @@ export function summarizeRungs(shortages: Map<string, DepthShortage[]>): string 
  * ① 면     이 면이 받나 — 유체 면은 더 싼 면이 있을 때만 비켜 간다       [avoidsPipeFace]
  * ② 팔     gap 깊이의 팔이 없는 머신을 가리키나
  * ③ gap    N/S 면이면 그 자리 — 깊이 고정 · 몇 번째 무리인가가 반출 깊이   [fitOnGap]
+ * ③′ 출구  옆면을 건널 지하벨트가 있나(없으면 거절하고 사유를 남긴다)      [exitUndergroundOf]
  * ④ 끝     포트가 기둥 끝에 서나 · 줄이 어느 쪽으로 흐르나(깊이를 안 본다) [endOf]
  * ⑤ 후보   깊이마다 팔 수 — 팔 적은 것 → 얕은 것                          [depthCandidates]
  * ⑤′ 행    머신마다 몇 번째 좌석에                                        [seatRowsOf]
@@ -182,8 +209,19 @@ export function tryLinkFace(
   for (const mi of gapArms.keys()) if (mi < 0 || mi >= ctx.count) return undefined;
   // ③ gap — 자원의 모양이 다르다(열 · 반출 깊이). 고를 깊이가 없어 자리만 묻는다
   if (face === "N" || face === "S") {
-    const onGap = fitOnGap(ctx, group, side, face, gapArms);
-    return onGap && { ...onGap, slotIndex: seatRowsOf(seatTableOf(ctx, face), face, gapArms, side) };
+    const onGap = fitOnGap(ctx, group, side, face, gapArms, why);
+    if (!onGap) return undefined;
+    // ③′ 출구 — 옆면을 건널 지하벨트가 있어야 앉는다
+    const exit = exitUndergroundOf(ctx, group, side, onGap.gap);
+    if (exit === "none" || exit === "range") {
+      why?.push({ face, clusterBeltDepth: LINK_LANE_DEPTH, exitUnderground: exit });
+      recordFaceDepthStats({ exitRefused: 1 });
+      return undefined;
+    }
+    return {
+      ...onGap, slotIndex: seatRowsOf(seatTableOf(ctx, face), face, gapArms, side),
+      ...(exit ? { undergroundName: exit.entityName } : {}),
+    };
   }
   // ④ 끝 — 관통(또는 합류 쌍)이면 기둥 끝 포트. 깊이를 안 본다
   const end = endOf(ctx, group, side, face, forceEnd, preferEnd);
@@ -306,6 +344,36 @@ export function seatRowsOf(
     out.set(mi, rows.slice(0, k).sort((a, b) => a - b));
   }
   return out;
+}
+
+/**
+ * **③′ gap 출구의 잠수 자격** — 출구가 옆면을 건너야 할 수 있으면 그 사거리까지 닿는 지하벨트를 여기서 고른다.
+ *
+ * gap 벨트는 기둥의 옆 변(싣는 쪽 W · 집는 쪽 E)으로 나가는데, 그 변을 여러 머신을 맡은 옆면 줄이 gap 행까지 지나며 달린다.
+ * **gap 줄이 잠수한다** — 먼저 앉은 줄의 도형을 뒤에 온 줄이 바꾸지 않고, 교차를 만든 쪽이 값을 치른다(`trunk-blocked.md` §4.2).
+ * 누가 실제로 건너는지는 옆면 줄이 **나중에** 올 수 있어 지금 모른다 — 그래서 자격은 **입력만으로 아는 상한**
+ * ([sideCrossBound])으로 보고, 실제 잠수 길이는 다 앉힌 뒤 확정 배정에서 유도한다(`arith/face.sideCrossingsFromPlans`).
+ * 잠수는 옆면 d1 에서 상한 바로 바깥까지다 — 사거리는 상한 이상이어야 한다.
+ *
+ * ```
+ * undefined   잠수가 필요 없다 — 기둥 끝(이웃 머신이 없다)이거나 그 옆면에 줄이 못 앉는다(상한 0)
+ * 종류        이 종류로 앉는다(`LinkFacePlan.undergroundName`)
+ * none/range  못 앉는다 — 사유를 남긴다([DepthShortage.exitUnderground])
+ * ```
+ */
+function exitUndergroundOf(
+  ctx: LinkFaceContext,
+  group: Link,
+  side: "from" | "to",
+  gap: number | undefined,
+): SpecUndergroundBelt | "none" | "range" | undefined {
+  if (gap === undefined) return undefined;
+  const exitFace = side === "from" ? "W" : "E";
+  // 따르는 줄(깊이 +2 로 비켜 가는 열)은 링크의 **싣는 쪽** 줄이다 — 선호 면 W, 반대 면을 열었을 때만 E 에도 앉는다
+  const merges = AUTO_LAYOUT_LANE_MERGE && (exitFace === "W" || AUTO_LAYOUT_LINK_OPPOSITE_FACE);
+  const reach = sideCrossBound(ctx, exitFace, merges);
+  if (reach === 0) return undefined;
+  return exitUnderground(ctx.undergroundBelts, groupRate(group), reach);
 }
 
 /** 먼저 앉은 줄이 이 칸을 내줄 수 있어 보이나 — 행 고르기의 거름용(정확한 판정은 [diveRelief]). */
@@ -653,7 +721,9 @@ export function spillLinkFacesToGap(
     for (const face of faces) {
       // **여기서만 유체 면이 열린다.** 선호 단계가 비켜 간 면을 마지막 수단으로 다시 본다
       // ([tryLinkFace] 의 `allowPipeFace`) — 그래서 `faces` 에 선호 면이 다시 들어 있어도 된다.
-      const cand = tryLinkFace(ctx, groups[i], side, face, true);
+      // 사유는 gap 출구의 거절(지하벨트 없음 · 기둥 끝 포트 칸)만 선호 면의 사유 뒤에 잇는다 — 옆면 후보의 사유는 선호 면 것이 맡는다.
+      const why = face === "N" || face === "S" ? out.shortages[i] : undefined;
+      const cand = tryLinkFace(ctx, groups[i], side, face, true, why);
       if (!cand) continue;
       out.plans[i] = commitLinkFace(ctx, cand, side);
       break;

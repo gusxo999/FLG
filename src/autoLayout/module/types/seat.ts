@@ -146,8 +146,20 @@ export interface LinkFacePlan {
    * 없거나 비면 오늘과 같은 지면 띠다.
    */
   tunnels?: ReadonlyArray<readonly [number, number]>;
-  /** 입출구에 놓을 지하벨트 — [tunnels] 가 있을 때만. */
+  /**
+   * 입출구에 놓을 지하벨트. 옆면(W/E)이면 [tunnels] 가 있을 때만 있다. **gap(N/S)이면 좌석 때 고른 종류**다 — 출구가
+   * 옆면을 건너야 할 수 있는 줄은 그 자격으로 종류를 받고 앉는다(`module/policy/link.tryLinkFace` ③′). 쓰는 것은 [exitDive] 가 있을 때뿐이다.
+   */
   undergroundName?: string;
+  /**
+   * **gap 출구의 잠수 — gap 전용.** 출구 옆면을 땅 위로 지나는 가장 깊은 깊이(`arith/face.sideCrossingsFromPlans`).
+   * 있으면 출구가 옆면 d1 에서 d`exitDive + 1` 까지 땅속으로 가고, 포트는 그 바깥에 선다(`shape/body` 의 gap 길).
+   * 없으면 오늘 도형 그대로다(포트 인서터 d1 · 상자 d2).
+   *
+   * 좌석 단계는 이 값을 안 채운다 — 옆면 줄이 gap 좌석보다 **나중에** 올 수 있어서, 다 앉힌 뒤 확정 배정에서 유도한다
+   * (`module/policy/port.planModulePorts`). `docs/auto-layout/module/trunk-blocked.md` §4.2.
+   */
+  exitDive?: number;
 }
 
 /**
@@ -199,13 +211,26 @@ export interface DepthShortage {
    * 그 판정은 이 목록과 [blockedRows] 두 개만 있으면 끝난다.
    */
   seatRows?: number[];
-  /** 벨트는 지나가는데 **포트 칸**이 막혔다(`(행, 깊이)`). 쪼개면 진출 행이 옮겨간다. */
+  /**
+   * 벨트는 지나가는데 **포트 칸**이 막혔다(`(행, 깊이)`). 쪼개면 진출 행이 옮겨간다.
+   * 기둥 끝 gap 출구가 거절되면 그 출구 옆면의 기둥 밖 칸이다(행이 표 밖 — `ledger/seat.fitOnGap`).
+   */
   blockedPort?: Array<readonly [number, number]>;
   /**
    * **잠수로 풀릴 막힘인데 사거리를 넘었다** — 막은 것이 전부 포트(그 밑으로 지나갈 수 있다)였고 인서터 행도 아니었는데,
    * 입구에서 출구까지가 고른 지하벨트의 사거리보다 길다. 이름표는 `사거리초과`(경계를 화면에).
    */
   diveRange?: boolean;
+  /**
+   * **gap 출구를 거절했다 — 옆면을 건널 지하벨트가 없다.** 출구는 옆면의 세로 벨트를 건너야 할 수 있어서, 건널 수 있는
+   * 가장 깊은 깊이까지 닿는 지하벨트가 있어야 앉는다(`module/policy/link.tryLinkFace` ③′).
+   *
+   * ```
+   * none    그 줄의 운반량을 감당하는 지하벨트가 없다(안 골랐다 · 운반량을 모른다)   이름표 `지하벨트없음`
+   * range   감당하는 것은 있는데 사거리가 모자라다                              이름표 `사거리초과`
+   * ```
+   */
+  exitUnderground?: "none" | "range";
 }
 
 /**

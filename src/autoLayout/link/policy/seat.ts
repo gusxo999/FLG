@@ -325,7 +325,7 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
       continue;
     }
     if (r.kind === "spilled") { keep(g, r.from, r.to); continue; }
-    keep(g, undefined, undefined, fw, tw); // 정직하게 자리 없음
+    keep(g, undefined, undefined, [...fw, ...r.fw], [...tw, ...r.tw]); // 정직하게 자리 없음
   }
 }
 
@@ -333,7 +333,8 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
 type Remedy =
   | { kind: "split"; parts: Link[] }
   | { kind: "spilled"; from: SeatReceipt; to: SeatReceipt }
-  | { kind: "none" };
+  /** 포기 — 먼 자리의 사유(gap 출구의 거절)를 든다. 선호 면의 사유 뒤에 잇는다. */
+  | { kind: "none"; fw: readonly DepthShortage[]; tw: readonly DepthShortage[] };
 
 /**
  * **수단 사이의 순서** — 한 줄이 선호 면(near)에 양끝 다 못 앉았을 때 무엇부터 해 보나.
@@ -341,7 +342,8 @@ type Remedy =
  * ```
  * ① 쪼갠다     막힌 쪽 near 의 막힌 행 중 쪼개면 실제로 앉는 경계로 — 쪼개기를 켰을 때만
  * ② 다른 면    양쪽 창구에 먼 자리(far)를 묻고, 둘 다 되면 둘 다 받는다
- * ③ 포기       사유는 near 의 것 — *"원래 앉고 싶던 면"* 의 이유다
+ * ③ 포기       사유는 near 의 것 — *"원래 앉고 싶던 면"* 의 이유다. 먼 자리에서 gap 출구가 거절됐으면 그 사유를 뒤에 잇는다
+ *              (지하벨트가 없어 못 건넜다 — 고칠 곳이 위저드라 화면까지 가야 한다. `trunk-blocked.md` §4.2)
  * ```
  *
  * **쪼개기가 다른 면보다 먼저인 이유** — 대가가 작다. 쪼개기의 대가는 포트 하나이고 모듈 크기는 그대로다
@@ -372,9 +374,9 @@ function remedyOf(
   }
   // ② 다른 면 — 역시 **양끝 함께**
   const spilled = spillPair(fromDesk, toDesk, g);
-  if (spilled) return { kind: "spilled", from: spilled.from, to: spilled.to };
+  if ("from" in spilled) return { kind: "spilled", from: spilled.from, to: spilled.to };
   // ③ 포기
-  return { kind: "none" };
+  return { kind: "none", fw: spilled.fw, tw: spilled.tw };
 }
 
 /** 후보들 중 **쪼개면 실제로 앉는** 첫 경계. 없으면 빈 배열([resolveSpanBlock]). */
@@ -394,16 +396,19 @@ function cutRows(why: readonly DepthShortage[]): number[] {
  * 받지 않으므로 그 답은 **양쪽이 각자 처음 되는 면을 고른 것과 같다** — 그래서 면 순서를 창구로 옮겨도 자리가
  * 안 바뀐다. 달라지는 것은 부모 쪽에 되는 면이 하나도 없을 때 자식 쪽을 **여러 번** 묻던 호출 횟수뿐이다
  * (관측 계수기 `endsCoarse` · `endsDisagree` 가 그 횟수를 센다).
+ *
+ * 못 앉으면 먼 자리의 사유를 낸다 — 창구는 gap 출구의 거절만 싣는다(`FaceSeating.ask` 의 far). 자식 쪽이 안 되면 부모 쪽은
+ * 안 물으므로 그 사유는 없다.
  */
 function spillPair(
   fromDesk: FaceSeating,
   toDesk: FaceSeating,
   g: Link,
-): { from: SeatReceipt; to: SeatReceipt } | undefined {
+): { from: SeatReceipt; to: SeatReceipt } | { fw: readonly DepthShortage[]; tw: readonly DepthShortage[] } {
   const f = fromDesk.ask(g, "from", "far");
-  if (!f.offer) return undefined;
+  if (!f.offer) return { fw: f.why, tw: [] };
   const t = toDesk.ask(g, "to", "far");
-  if (!t.offer) return undefined;
+  if (!t.offer) return { fw: [], tw: t.why };
   return { from: fromDesk.take(f.offer, "from"), to: toDesk.take(t.offer, "to") };
 }
 

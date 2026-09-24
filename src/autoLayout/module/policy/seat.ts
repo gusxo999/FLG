@@ -95,11 +95,14 @@ export function openFaceSeating(
         );
         return { offer, why };
       }
+      // 먼 자리의 사유는 **gap 출구의 거절**만 모은다(지하벨트 없음 · 기둥 끝 포트 칸) — 옆면 후보의 사유는 선호 면(near)의
+      // 것이 이름표를 맡는다(사다리는 원래 앉고 싶던 면의 못으로 자른다). gap 은 거절 말고는 사유를 안 남긴다.
+      const why: DepthShortage[] = [];
       for (const face of linkFarFaces(side)) {
-        const offer = tryLinkFace(ctx, line, side, face, true);
+        const offer = tryLinkFace(ctx, line, side, face, true, face === "N" || face === "S" ? why : undefined);
         if (offer) return { offer, why: [] };
       }
-      return { why: [] };
+      return { why };
     },
     take(offer, side, o) {
       live();

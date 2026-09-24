@@ -493,28 +493,43 @@ describe("공급 모델 통합 — 기계별 포트", () => {
     expect(fluid[0].chest.kind).toBe("infinity-pipe");
   });
 
+  /** 3×3 머신 두 대에 일곱 줄 — W/E 좌석(머신당 3+3 = 6줄)을 하나 넘긴다. */
+  const sevenLines = (undergroundBelts?: ModuleInput["undergroundBelts"]) => scaled({
+    machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
+    count: 2,
+    lines: [
+      line("a", "input"), line("b", "input"), line("c", "input"),
+      line("d", "input"), line("e", "input"), line("f", "input"),
+      line("out", "output"),
+    ],
+    inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
+    beltEntityName: "transport-belt",
+    belts: [{ entityName: "transport-belt", throughput: 30 }],
+    undergroundBelts,
+  });
+
   it("W/E 가 다 차면 **위/아래로 넘어가고** 그만큼 기계 사이가 벌어진다", () => {
     // 3×3 머신의 W/E 좌석은 머신당 3+3 = 6줄. 7줄을 주면 하나가 갈 곳이 없다 —
     // 예전엔 여기서 그 줄이 그냥 못 놓였고, 이제 gap 으로 간다.
-    const mod = generateModule(scaled({
-      machine: { entityName: "assembling-machine-3", w: 3, h: 3 },
-      count: 2,
-      lines: [
-        line("a", "input"), line("b", "input"), line("c", "input"),
-        line("d", "input"), line("e", "input"), line("f", "input"),
-        line("out", "output"),
-      ],
-      inserterEntityName: "inserter",
-      inserters: [{ entityName: "inserter", reach: 1, throughput: 0 }],
-      beltEntityName: "transport-belt",
-      belts: [{ entityName: "transport-belt", throughput: 30 }],
-    }));
+    // **지하벨트를 고른 입력이다** — gap 출구는 옆면의 세로 벨트를 건너야 할 수 있어 지하벨트가 있어야 앉는다(`trunk-blocked.md` §4.2).
+    const mod = generateModule(sevenLines([{ entityName: "underground-belt", throughput: 30, maxDistance: 5 }]));
     expect(mod.unroutedLines).toHaveLength(0);
     // 일곱 줄 × 머신 2대 = 포트 14개. 하나도 안 잃었다.
     expect(mod.inputPorts.length + mod.outputPorts.length).toBe(14);
     // 기둥이 벌어졌다 — gap 폭은 우리가 고른 값이 아니라 배정의 부산물이다.
     const [m0, m1] = mod.machines;
     expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBeGreaterThan(0);
+  });
+
+  it("대조 — 지하벨트가 없으면 머신 사이 gap 은 안 열고, 넘친 줄은 기둥 끝(이웃이 없는 면)으로 간다", () => {
+    // 머신 사이 gap 의 출구는 옆면의 세로 벨트를 건너야 할 수 있다 — 건널 지하벨트가 없으면 거절한다(사유 `지하벨트없음`).
+    // 기둥 끝(맨 위 N · 맨 아래 S)은 출구가 기둥 밖이라 건널 것이 없어 그대로 앉는다.
+    const mod = generateModule(sevenLines());
+    expect(mod.unroutedLines).toHaveLength(0);
+    expect(mod.inputPorts.length + mod.outputPorts.length).toBe(14);
+    const [m0, m1] = mod.machines;
+    expect(m1.origin.y - (m0.origin.y + m0.size.h)).toBe(0);
   });
 
   // ── 안 쓰는 유체 상자 칸 (2026-08-05 브라우저 실측) ────────────────────────────

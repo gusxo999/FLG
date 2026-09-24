@@ -140,6 +140,8 @@ export function buildReport(): string {
           ? ` · 잠수(도착 ${fl.diveOwn} · 비켜 주기 ${fl.diveYield}`
             + `${fl.diveNoType > 0 ? ` · **지하벨트 없음 ${fl.diveNoType}**` : ''}`
             + `${fl.diveEnd > 0 ? ` · 끝 칸에 걸림 ${fl.diveEnd}` : ''})` : '')
+        + (fl.gapExits + fl.exitRefused > 0
+          ? ` · gap 출구(잠수 ${fl.exitDives}/${fl.gapExits}${fl.exitRefused > 0 ? ` · **거절 ${fl.exitRefused}**` : ''})` : '')
         + (fl.endsCoarse > 0 ? ` · **끝 낟알로 잃음 ${fl.endsCoarse}**` : '')
         + (fl.endsDisagree > 0 ? ` · **장부 어긋남 ${fl.endsDisagree}**` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),

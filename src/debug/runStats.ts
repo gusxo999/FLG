@@ -212,6 +212,20 @@ export interface FaceDepthCounters {
   diveNoType: number;
   diveEnd: number;
   /**
+   * **gap 출구** — `docs/auto-layout/module/trunk-blocked.md` §4.2(work-kinds §7 D8 을 닫았다).
+   *
+   * ```
+   * gapExits     앉은 gap 줄 중 출구가 이웃 머신 사이(진짜 gap)로 나가는 수 — 분모
+   * exitDives    그중 옆면을 건너 잠수한 수(`LinkFacePlan.exitDive`)
+   * exitRefused  옆면을 건널 지하벨트가 없어 gap 출구를 거절한 **후보** 수 — 이름표 `지하벨트없음` · `사거리초과`
+   * ```
+   *
+   * 앞의 둘은 다 앉힌 뒤 계획에서 센다(`module/policy/port`), 셋째는 묻기 때 센다(`module/policy/link.tryLinkFace` ③′).
+   */
+  gapExits: number;
+  exitDives: number;
+  exitRefused: number;
+  /**
    * **못 앉은 줄의 사유** — 사다리가 읽을 것을 사람도 읽게 찍는다(`DepthShortage`).
    *
    * *"깊이 부족"* 이 아니라 **막힌 행**이 담긴다. 그 행이 곧 자름의 경계이기 때문이다
@@ -278,6 +292,7 @@ const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
 const freshFaceDepths = (): FaceDepthCounters => ({
   assignments: 0, multiDepthFace: 0, deepBelt: 0, deepBeltOtherArm: 0, netTrips: 0, splits: 0,
   endsCoarse: 0, endsDisagree: 0, seatPickSouth: 0, seatPickFiltered: 0, diveOwn: 0, diveYield: 0, diveNoType: 0, diveEnd: 0,
+  gapExits: 0, exitDives: 0, exitRefused: 0,
   shortages: [], linkNeed: freshLinkNeed(), linkNeedWho: [],
 });
 
@@ -417,7 +432,8 @@ export function recordFaceDepthStats(c: Partial<FaceDepthCounters>): void {
   // *"안 세었다"* 였다는 뜻이라, 그 수를 관문으로 읽던 글이 거짓을 읽고 있었다.
   for (const k of
     ["assignments", "multiDepthFace", "deepBelt", "deepBeltOtherArm", "netTrips", "splits",
-     "endsCoarse", "endsDisagree", "seatPickSouth", "seatPickFiltered", "diveOwn", "diveYield", "diveNoType", "diveEnd"] as const)
+     "endsCoarse", "endsDisagree", "seatPickSouth", "seatPickFiltered", "diveOwn", "diveYield", "diveNoType", "diveEnd",
+     "gapExits", "exitDives", "exitRefused"] as const)
     cur[k] += c[k] ?? 0;
   // 사유는 더하는 게 아니라 잇는다. 트리가 크면 폭주하므로 앞의 것 몇 줄만 든다.
   if (c.shortages?.length) cur.shortages = [...cur.shortages, ...c.shortages].slice(0, 12);

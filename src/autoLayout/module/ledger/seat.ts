@@ -161,8 +161,30 @@ function breaksTunnel(ctx: LinkFaceContext, extra: { face: "N" | "S"; mi: number
 }
 
 /**
+ * **기둥 끝 gap 출구의 포트 두 칸** — 기둥 밖 칸 장부(`ctx.outside`)의 열쇠(`trunk-blocked.md` §4.2).
+ *
+ * 맨 위 머신의 N · 맨 아래 머신의 S 는 이웃이 없어 출구 행이 기둥 **밖**이다. 포트(인서터 d1 · 상자 d2)는 출구 옆면
+ * (싣는 쪽 W · 집는 쪽 E)의 기둥 밖 칸에 선다 — 그 면의 기둥 끝 포트 · 합류 칸과 **같은 주소**다(`끝:오프셋:깊이`).
+ * 그래서 두 줄의 다툼을 장부 하나가 본다. 진짜 gap 의 출구는 표에 gap 행이 없어 여기 못 오르고, 잠수가 푼다
+ * (`arith/face.sideCrossingsFromPlans`).
+ */
+function columnEndExit(
+  ctx: LinkFaceContext,
+  side: "from" | "to",
+  face: "N" | "S",
+  exitDepth: number,
+): { exitFace: PortFace; keys: string[]; cells: Array<readonly [number, number]> } {
+  const exitFace: PortFace = side === "from" ? "W" : "E";
+  const o = { end: face, offset: exitDepth - 1 };
+  // 옆면 표의 행 축(머신 h 칸 × 대수) — 기둥 밖이라 표 밖의 행이다
+  const row = face === "N" ? -exitDepth : ctx.machine.h * ctx.count - 1 + exitDepth;
+  return { exitFace, keys: [1, 2].map((d) => outsideKey(o, d)), cells: [[row, 1], [row, 2]] };
+}
+
+/**
  * **gap(N/S) 면의 자리** — 깊이가 언제나 [LINK_LANE_DEPTH] 라 고를 것이 없고 자리만 묻는다.
- * 장부는 **읽기만** 한다(좌석 수 · 그룹 수). `arms` 는 그 깊이의 팔이다([tryLinkFace] ②).
+ * 장부는 **읽기만** 한다(좌석 수 · 그룹 수 · 기둥 끝이면 포트 두 칸). `arms` 는 그 깊이의 팔이다([tryLinkFace] ②).
+ * 기둥 끝 출구의 포트 칸이 남의 것이면 사유(`blockedPort`)를 `why` 에 남긴다 — 나머지 거절은 사유가 없다(오늘 그대로).
  */
 export function fitOnGap(
   ctx: LinkFaceContext,
@@ -170,6 +192,7 @@ export function fitOnGap(
   side: "from" | "to",
   face: "N" | "S",
   arms: Map<number, number>,
+  why?: DepthShortage[],
 ): Omit<LinkFaceCandidate, "slotIndex"> | undefined {
   const { machine, count } = ctx;
   // **gap(가로) 벨트는 아직 머신 하나만 맡는다.** 가로 줄 하나가 위·아래 두 대를 먹이는 것은
@@ -196,9 +219,19 @@ export function fitOnGap(
   // **이 gap 이 벌어지면 옆면 터널이 길어진다** — 머신 경계를 건너는 몸통은 gap 폭만큼 물리적으로 길다
   // ([tunnelLength]). 사거리를 넘기게 되면 이 gap 은 안 연다(터널은 이미 앉은 줄의 것이다 — 자리-3).
   if (gap !== undefined && breaksTunnel(ctx, { face, mi })) return undefined;
+  const exitDepth = LINK_LANE_DEPTH + nth;
+  // **기둥 끝이면 포트 두 칸이 기둥 밖 칸 장부에 있다** — 그 면의 기둥 끝 포트가 먼저 앉았으면 그 자리다
+  if (gap === undefined) {
+    const exit = columnEndExit(ctx, side, face, exitDepth);
+    const band = ctx.outside.get(exit.exitFace);
+    const hit = exit.cells.filter((_, i) => band?.has(exit.keys[i]));
+    if (hit.length > 0) {
+      why?.push({ face, clusterBeltDepth: LINK_LANE_DEPTH, blockedPort: hit });
+      return undefined;
+    }
+  }
   return {
-    face, gap, arms, clusterBeltDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1,
-    exitDepth: LINK_LANE_DEPTH + nth,
+    face, gap, arms, clusterBeltDepth: LINK_LANE_DEPTH, reach: LINK_LANE_DEPTH - 1, exitDepth,
   };
 }
 
@@ -346,6 +379,13 @@ export function commitLinkFace(
   const isGap = cand.face === "N" || cand.face === "S";
   const table = seatTableOf(ctx, cand.face);
   const span = isGap ? undefined : beltRowSpan(table, cand.slotIndex);
+  // **기둥 끝 gap 출구는 포트 두 칸을 기둥 밖 칸 장부에 적는다**([columnEndExit]) — 뒤에 온 옆면 줄의 기둥 끝 포트가 그 칸을 보게
+  if (isGap && cand.gap === undefined && cand.exitDepth !== undefined) {
+    const exit = columnEndExit(ctx, side, cand.face as "N" | "S", cand.exitDepth);
+    const band = ctx.outside.get(exit.exitFace) ?? new Set<string>();
+    for (const k of exit.keys) band.add(k);
+    ctx.outside.set(exit.exitFace, band);
+  }
   // **비켜 주기가 먼저다** — 먼저 앉은 줄이 그 행을 땅속으로 내줘야 내 포트가 설 칸이 빈다. 몸통은 묻기가 셌다.
   for (const [who, bodies] of cand.yields ?? []) giveRows(table, who, bodies);
   const owner = takeOwner(table);

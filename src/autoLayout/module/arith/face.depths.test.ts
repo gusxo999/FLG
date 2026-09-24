@@ -35,6 +35,14 @@ describe("linkFaceDepths — 링크가 옆면에서 먹는 가장 깊은 칸", (
   it("**gap(N/S) 스필은 안 센다** — 그 포트 끝은 옆면 d1·d2 라 ClusterPipe(최소 d3)와 안 다툰다", () => {
     // 그 면이 좌석 줄을 먹는다는 사실은 [gapExitSidesFromPlans] 가 따로 전한다(점프 조건 ④).
     expect(linkFaceDepths([[plan("S", 2, 3), plan("N", 2)]])).toEqual({});
+    expect(linkFaceDepths([[plan("S", 2, 3)]], { W: [[plan("S", 2, 3)]] })).toEqual({});
+  });
+
+  it("**잠수하는 gap 출구는 센다** — 포트 상자가 출구 옆면 d`exitDive + 3` 까지 나간다(`trunk-blocked.md` §4.2)", () => {
+    // 옆면 d4(합류의 비켜 가는 열)를 건너면 상자는 d7 — 그 면 줄들의 포트 끝(d4)보다 깊다
+    const dived = { ...plan("S", 2), exitDive: 4 };
+    expect(linkFaceDepths([[plan("W", 2), dived]], { W: [[dived]] })).toEqual({ W: 7 });
+    expect(linkFaceDepths([[dived]], { E: [[dived]] })).toEqual({ E: 7 }); // 집는 쪽이면 E
   });
 
   it("못 앉은 그룹(undefined)은 건너뛴다", () => {

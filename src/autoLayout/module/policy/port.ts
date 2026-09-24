@@ -59,7 +59,7 @@ import { laneCapOfTier } from "../../shared/arith/belt";
 import type { PortFace } from "../../shared/types";
 import {
   clusterBeltDepthsOf, depthShortagesOf, fluidFacesOf, gapExitSidesFromPlans, gapRowsFromPlans,
-  linkedKeysOf, linkFaceDepths, pipeLinesOf, restLinesOf,
+  linkedKeysOf, linkFaceDepths, pipeLinesOf, restLinesOf, sideCrossingsFromPlans,
 } from "../arith/face";
 import { openLinkFaceContext, reopenLinkFaceContext } from "../ledger/seat";
 import {
@@ -160,15 +160,10 @@ export interface ModulePortPlan {
    */
   unpourableFix?: Map<string, "belt" | "inserter">;
   /**
-   * **못 앉은 내부 링크의 사유** — `linkId` → 후보마다의 [DepthShortage].
+   * **못 앉은 줄의 사유** — 링크는 `linkId`, 나머지 줄은 `rest:…` → 후보마다의 [DepthShortage]([depthShortagesOf]).
    *
-   * 사다리 1단(구간 쪼개기)의 입력이다. `blockedRows` 가 곧 **자름의 경계**이고, 쪼개는 일은
-   * 여기서 못 한다 — 링크는 **간선**이라 자식·부모가 같은 객체를 봐야 하고([pairDeliveryPorts]
-   * 가 `linkId` 로 짝짓는다) 그 객체를 쥔 것은 `modulePacking.linkCache` 다. 그래서 이 계층은
-   * **사유만 올려 보낸다.**
-   *
-   * 외부 줄(원료·완제품)은 신원이 없어 여기 안 담긴다 — 그쪽은 짝이 교환 가능이라 쪼갬이
-   * 국지적이고, 별개 단계다.
+   * 읽는 곳은 화면의 이름표 하나다(`run/policy` 의 `summarizeRungs`). 쪼갬(사다리 1단)은 좌석 단계가 양끝의 사유를 직접
+   * 들고 한다(`link/policy/seat`) — 여기서 올려 보낸 것으로 쪼개지 않는다.
    */
   depthShortages: Map<string, DepthShortage[]>;
 }
@@ -254,6 +249,17 @@ export function planModulePorts(
     out: { ...seatedRest.out, plans: tunnelsOf(seatedRest.out.plans) },
     in: { ...seatedRest.in, plans: tunnelsOf(seatedRest.in.plans) },
   };
+  // ⑤″ gap 출구 — 옆면 줄이 gap 좌석보다 나중에 올 수 있어서, 누가 gap 행을 지나는지는 다 앉힌 지금 안다
+  const crossings = sideCrossingsFromPlans(input.machine.h, count, [
+    { role: "output", plans: [...st.out.plans, ...restLinks.out.plans] },
+    { role: "input", plans: [...st.in.plans, ...restLinks.in.plans] },
+  ]);
+  const exitsOf = (plans: (LinkFacePlan | undefined)[], role: "output" | "input") =>
+    plans.map((p) => withExitDive(p, role, crossings, input.undergroundBelts));
+  st.out.plans = exitsOf(st.out.plans, "output");
+  st.in.plans = exitsOf(st.in.plans, "input");
+  restLinks.out.plans = exitsOf(restLinks.out.plans, "output");
+  restLinks.in.plans = exitsOf(restLinks.in.plans, "input");
   // ⑤ 못 부은 줄 — 줄이 하나도 안 난 줄과 고칠 위저드 단계
   const unpourable = unpourableOf(input, restLines, restLinks);
   recordPortPlanStats(st, input, count, restLinks);
@@ -267,9 +273,9 @@ export function planModulePorts(
     pipePlanned: pipe.planned,
     isJumpableToClusterPipe: st.isJumpableToClusterPipe,
     gapExitSides: gapExitSidesFromPlans(faces.out, faces.in),
-    linkFaceDepths: linkFaceDepths(faces.all),
+    linkFaceDepths: linkFaceDepths(faces.all, { W: faces.out, E: faces.in }),
     linkedKeys,
-    depthShortages: depthShortagesOf(st),
+    depthShortages: depthShortagesOf(st, restLinks),
     // 부을 수 없어 줄이 하나도 안 난 나머지 줄 — **삼키지 않는다**(위 [unpourableLines]).
     unpourableLines: unpourable.lines,
     unpourableFix: unpourable.fix,
@@ -287,6 +293,29 @@ function withTunnels(ctx: LinkFaceContext, p: LinkFacePlan | undefined): LinkFac
   const rec = ctx.tables.get(p.face)?.dives.get(p.owner);
   if (!rec || rec.bodies.length === 0) return p;
   return { ...p, tunnels: rec.bodies.map(([a, b]) => [a, b] as const), undergroundName: rec.entityName };
+}
+
+/**
+ * **gap 출구의 잠수를 계획에 적는다** — 출구 옆면(싣는 쪽 W · 집는 쪽 E)을 그 gap 에서 땅 위로 지나는 가장 깊은 깊이
+ * ([sideCrossingsFromPlans])가 있으면 `exitDive` 로 싣는다. 없으면 계획을 그대로 돌려준다(오늘 도형). 새 객체로 낸다.
+ *
+ * 종류는 좌석 때 자격으로 이미 받았다(`undergroundName` — `module/policy/link.tryLinkFace` ③′). 그 자격이 입력만으로 아는 상한을
+ * 봤으므로 건너는 깊이는 언제나 그 안이다 — 어기면 **던진다**(상한의 셈이 틀린 것이다. 조용히 두면 방출에서 포트가 사라진다).
+ */
+function withExitDive(
+  p: LinkFacePlan | undefined,
+  role: "output" | "input",
+  crossings: ReadonlyMap<string, number>,
+  undergroundBelts: ModuleInput["undergroundBelts"],
+): LinkFacePlan | undefined {
+  if (!p || (p.face !== "N" && p.face !== "S") || p.gap === undefined) return p;
+  const depth = crossings.get(`${role === "output" ? "W" : "E"}:${p.gap}`);
+  recordFaceDepthStats({ gapExits: 1, exitDives: depth === undefined ? 0 : 1 });
+  if (depth === undefined) return p;
+  const reach = undergroundBelts?.find((b) => b.entityName === p.undergroundName)?.maxDistance ?? 0;
+  if (depth > reach)
+    throw new Error(`gap ${p.gap} 출구가 옆면 d${depth} 를 건너야 하는데 지하벨트(${p.undergroundName ?? "없음"})의 사거리가 ${reach} 다 — 자격의 상한이 틀렸다`);
+  return { ...p, exitDive: depth };
 }
 
 /**
@@ -361,6 +390,7 @@ function recordPortPlanStats(
       said.push(
         `못앉음 ${groups[i]?.item ?? "?"}: ` +
           w.map((x: DepthShortage) => {
+            if (x.exitUnderground) return `${x.face} 출구 지하벨트 ${x.exitUnderground === "none" ? "없음" : "사거리 모자람"}`;
             if (x.seats) return `${x.face}d${x.clusterBeltDepth} 좌석 ${x.seats.need}>${x.seats.budget}`;
             if (x.blockedRows) {
               const r = x.blockedRows;
