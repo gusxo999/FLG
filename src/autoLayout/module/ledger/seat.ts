@@ -25,7 +25,7 @@ import type {
   DepthShortage, DiveOffer, LinkFaceContext, LinkFacePlan, SeatLedgerView,
 } from "../types/seat";
 // **도형의 단일 출처** — 방출기가 부르는 그 함수를 청구도 부른다(work-kinds §7 D1).
-import { linkShape, portCells, shapeCells } from "../shape/link";
+import { endCells, linkShape, shapeCells } from "../shape/link";
 import {
   cellAt, claimDepth, claimSeats, copyFaceTable, freeSeatRows, giveRows, groupsOn, depthClear, makeFaceTable,
   rowIndex, seatsTaken, takeOwner, type FaceCellKind, type FaceTable,
@@ -90,6 +90,11 @@ function outsideOf(row: number, table: FaceTable): { end: "N" | "S"; offset: num
 
 const outsideKey = (o: { end: "N" | "S"; offset: number }, depth: number): string =>
   `${o.end}:${o.offset}:${depth}`;
+
+/** **기둥 밖 첫 행** — 흐름이 향하는 끝 바로 바깥(S 면 `행 수`, N 이면 `−1`). 합류 도형이 거기서 선다. */
+export function outRowOf(table: FaceTable, end: Pick<LinkFacePlan, "portEnd" | "exitEnd">): number {
+  return flowEnd(end) === "S" ? table.rowsPerMachine * table.machineCount : -1;
+}
 
 /**
  * 후보가 먹는 칸을 **표 안 / 기둥 밖**으로 가른다 — 두 장부가 다르기 때문이다.
@@ -263,7 +268,8 @@ export function fitOnFace(
   ctx: LinkFaceContext,
   face: PortFace,
   cand: { clusterBeltDepth: number; arms: Map<number, number>; slotIndex: ReadonlyMap<number, readonly number[]> },
-  end: Pick<LinkFaceCandidate, "portEnd" | "exitEnd">,
+  /** 끝 — 합류 쌍이면 그 역할(`mergeRole`)까지. 구간 밖 칸의 도형이 그것으로 갈린다([endCells]). */
+  end: Pick<LinkFacePlan, "portEnd" | "exitEnd" | "mergeRole">,
   why?: DepthShortage[],
   /**
    * **잠수가 푼 칸** — 정책이 센 것([diveRelief] — `module/policy/link`). 여기서는 그 칸을 빈 것으로 볼 뿐이다.
@@ -277,7 +283,7 @@ export function fitOnFace(
   relief?: { tunnels?: ReadonlyArray<readonly [number, number]>; freed?: ReadonlySet<string>; range?: boolean },
 ): FaceFit | undefined {
   const { clusterBeltDepth, arms, slotIndex } = cand;
-  const { portEnd, exitEnd } = end;
+  const { portEnd, exitEnd, mergeRole } = end;
   // 점프 유체 면은 유체 상자 행을 [fluidboxPipeCell] 이 먹는다 → 그만큼 좌석이 준다.
   // (`planClusterPorts.seatRowsOf` 의 `base − fluidRows` 와 같은 셈이다.)
   // **자는 [faceSeatArms] 하나다** — 붓기([edgeLinkGroups])가 같은 함수를 `fluidRows = 0` 으로
@@ -331,8 +337,10 @@ export function fitOnFace(
   // **포트 칸까지 본다**(결함 B). 벨트만 보면 이 그룹의 포트 인서터·상자가 남의 깊이
   // 한복판에 서고, 그 사실이 아무 장부에도 안 올라간다 — 그러면 방출에서 부딪혀
   // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
+  // **합류 쌍이면 합류 도형 전부다**([endCells]) — 이끄는 줄은 기둥 밖까지 달리고 따르는 줄은 깊이 +2 로 비켜 간다.
+  // 포트 두 칸만 보면 그 길이 지나는 남의 칸을 청구가 덮어 쓴다(work-kinds §7 D9).
   // 비켜 주기로 빌 칸(`relief.freed`)은 빈 것으로 본다 — 그 줄이 그 행을 땅속으로 내준다.
-  const claim = splitByTable(portCells({ clusterBeltDepth, portEnd, exitEnd }, span), table);
+  const claim = splitByTable(endCells({ clusterBeltDepth, portEnd, exitEnd, mergeRole }, span, outRowOf(table, end)), table);
   const hitPort = claim.inside.filter(([r, d]) => !depthClear(table, d, r, r) && !relief?.freed?.has(`${r}|${d}`));
   if (hitPort.length > 0) {
     why?.push({ face, clusterBeltDepth, blockedPort: hitPort, ...(relief?.range ? { diveRange: true } : {}) });
@@ -398,9 +406,8 @@ export function commitLinkFace(
   // **반출 깊이**(`exitDepth`)로 푼다 — 자원의 모양이 아예 다르다(그래서 도형도 갈릴 일이 없다).
   if (span) {
     const end = flowEnd(cand);
-    const dir = end === "S" ? 1 : -1;
     /** 기둥 **밖** 첫 행 — 합류는 여기서 일어난다. */
-    const outRow = dir > 0 ? table.rowsPerMachine * table.machineCount : -1;
+    const outRow = outRowOf(table, cand);
     const shape = linkShape({
       role: side === "from" ? "output" : "input",
       clusterBeltDepth: cand.clusterBeltDepth,

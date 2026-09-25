@@ -29,10 +29,10 @@ import { bodyRows, fixedRowsOf, tunnelBodies, tunnelFault, type TunnelBody } fro
 import { diveUnderground, exitUnderground } from "./underground";
 import { flowEnd } from "../arith/trunk";
 import { recordFaceDepthStats } from "../../../debug/runStats";
-import { portCells } from "../shape/link";
+import { endCells, portCells } from "../shape/link";
 import { clusterBeltDepthsOf, LINK_LANE_DEPTH, sideCrossBound } from "../arith/face";
 import {
-  beltRowSpan, claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, seatTableOf, splitByTable, tunnelLength,
+  beltRowSpan, claimSharedSeats, commitLinkFace, fitOnFace, fitOnGap, outRowOf, seatTableOf, splitByTable, tunnelLength,
   type FaceFit, type LinkFaceCandidate,
 } from "../ledger/seat";
 
@@ -200,6 +200,18 @@ export function tryLinkFace(
    * 이끄는 줄은 먼저 앉으므로 자기 깊이를 모르고, 따르는 줄만 상대를 안다.
    */
   preferDepth?: number,
+  /**
+   * **합류 쌍에서 이 줄의 역할** — 받기가 그 역할의 도형을 청구하므로 묻기도 그 도형으로 잰다([endCells]).
+   *
+   * ```
+   * lead    끝을 받으면 이끄는 줄이다(받기의 `leadNow` 와 같은 조건) — 구간 끝에서 기둥 밖까지 달린다
+   * follow  끝을 **청구하지 않고** 이끄는 줄의 끝(`preferEnd`)으로 흐르며, 그 깊이(`preferDepth`)에만 앉는다 —
+   *         깊이가 다르면 합류 도형이 없고, 끝이 다르면 한 행에서 만나지 못한다
+   * ```
+   *
+   * 도형이 안 서면 후보가 없다 — 짝을 풀고 평범한 줄로 다시 묻는 것은 부르는 쪽(`link/policy/seat`)이다(work-kinds §7 D9).
+   */
+  mergeRole?: "lead" | "follow",
 ): LinkFaceCandidate | undefined {
   // ① 면 — 유체 면은 마지막 수단. 반대 면도 유체면 동률이라 비켜 가지 않는다
   if (avoidsPipeFace(ctx, face, allowPipeFace)) return undefined;
@@ -223,8 +235,14 @@ export function tryLinkFace(
       ...(exit ? { undergroundName: exit.entityName } : {}),
     };
   }
-  // ④ 끝 — 관통(또는 합류 쌍)이면 기둥 끝 포트. 깊이를 안 본다
-  const end = endOf(ctx, group, side, face, forceEnd, preferEnd);
+  // ④ 끝 — 관통(또는 합류 쌍)이면 기둥 끝 포트. 깊이를 안 본다. 따르는 줄은 끝을 안 받고 이끄는 줄의 끝으로 흐른다
+  const end: LinkEnd = mergeRole === "follow" && preferEnd
+    ? { spanning: true, portEnd: preferEnd, exitEnd: preferEnd }
+    : endOf(ctx, group, side, face, forceEnd, preferEnd);
+  /** 합류 도형의 역할 — 이끄는 줄은 끝을 받아야 도형이 선다. */
+  const role = mergeRole === "follow" && preferEnd ? "follow" : mergeRole === "lead" && end.portEnd ? "lead" : undefined;
+  /** 구간 밖 칸(포트 · 합류 도형)의 끝 — [endCells] 에 준다. */
+  const ends = { portEnd: end.portEnd, exitEnd: end.exitEnd, mergeRole: role } as const;
   // ⑤ 후보 — 팔 적은 것 → 얕은 것
   const table = seatTableOf(ctx, face);
   const flowToSouth = flowEnd(end) === "S";
@@ -234,18 +252,19 @@ export function tryLinkFace(
   for (const cand of depthCandidates(ctx, group, side, face, preferDepth)) {
     // ⑤′ 인서터 행 — 머신마다 몇 번째 좌석에(결정표 결-4 의 집)
     const d = cand.clusterBeltDepth;
+    if (role === "follow" && d !== preferDepth) continue; // 이끄는 줄의 깊이가 아니면 합류 도형이 없다
     const slotIndex = seatRowsOf(table, face, cand.arms, side, {
       flowToSouth,
       depth: d,
-      // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다).
+      // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸(합류 쌍이면 합류 도형)이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다).
       // 잠수하면 먼저 앉은 줄이 비켜 줄 수 있는 칸(soft · 몸통)도 빈 것으로 본다 — 정확한 판정은 ⑤″ 가 한다
-      portClear: (row) => splitByTable(portCells({ clusterBeltDepth: d, portEnd: end.portEnd, exitEnd: end.exitEnd }, [row, row]), table)
+      portClear: (row) => splitByTable(endCells({ clusterBeltDepth: d, ...ends }, [row, row], outRowOf(table, end)), table)
         .inside.every(([r, dd]) => depthClear(table, dd, r, r) || (dive !== undefined && yieldable(table, r, dd))),
     });
     // ⑤″ 잠수 — 막힌 칸을 땅속으로 비켜 가나(도착한 줄 · 먼저 앉은 줄)
     const relief = diver ? diveRelief(ctx, table, d, slotIndex, side, end, dive) : undefined;
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
-    const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, end, why, relief);
+    const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, ends, why, relief);
     if (!fit) continue;
     recordEndsAudit(ctx, face, cand, fit, end);
     if (AUTO_LAYOUT_SEAT_PICK) recordSeatPick(table, face, cand.arms, side, flowToSouth, slotIndex);

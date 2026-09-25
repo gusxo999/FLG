@@ -183,6 +183,42 @@ export function portCells(
 }
 
 /**
+ * 이 후보가 **자기 좌석 구간 밖에서** 먹는 칸 — `(행, 깊이)`. 검사 전용이고, 청구 · 방출이 부르는 [linkShape] 에서 답을 받는다.
+ *
+ * ```
+ * 합류 아님       포트 두 칸 — [portCells] 와 같다
+ * 이끄는 줄       구간 끝에서 기둥 밖까지 달리는 벨트 · 합류 칸 · 포트 두 칸
+ * 따르는 줄       깊이 +1 한 칸 · 깊이 +2 로 기둥 밖까지 비켜 가는 열(포트가 없다)
+ * ```
+ *
+ * 합류 쌍의 도형은 구간 **밖**으로 길게 뻗는다 — 이끄는 줄이 기둥 끝에서 먼 머신에 앉으면 그 사이 머신들의 행을 같은 깊이로
+ * 지난다. 묻기가 포트 두 칸만 보면 그 행에 이미 앉은 남의 벨트를 청구가 덮어 쓰고, 방출 안전망이 그 줄을 버린다
+ * (work-kinds §7 D9). 그래서 묻기도 청구와 **같은 도형**을 본다(D1 의 원칙).
+ *
+ * `outRow` 는 기둥 밖 첫 행(흐름이 S 면 `행 수`, N 이면 `−1`) — 합류 도형이 거기서 선다.
+ */
+export function endCells(
+  cand: Pick<LinkFacePlan, "clusterBeltDepth" | "portEnd" | "exitEnd" | "mergeRole">,
+  span: readonly [number, number],
+  outRow: number,
+): Array<readonly [number, number]> {
+  const d = cand.clusterBeltDepth;
+  const shape = linkShape({
+    role: "output", // 합류는 싣는 쪽에만 있고, 포트 두 칸은 역할과 무관하다
+    clusterBeltDepth: d,
+    portEnd: cand.portEnd,
+    flowToSouth: flowEnd(cand) === "S",
+    mergeRole: cand.mergeRole,
+    rows: span,
+    outRow,
+  });
+  // 자기 구간의 벨트는 뺀다 — 묻기가 따로 잰다(몸통이 있으면 그 행은 땅속이라 셈이 다르다)
+  return shapeCells(shape)
+    .filter((c) => !(c.depth === d && c.t >= span[0] && c.t <= span[1]))
+    .map((c) => [c.t, c.depth] as const);
+}
+
+/**
  * 포트 두 칸 — **`portEnd` 가 모양을 정한다.**
  *
  * ```

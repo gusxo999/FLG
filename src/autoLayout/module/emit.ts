@@ -227,8 +227,9 @@ function pushLinkPortEnd(o: {
  * 깊은 쪽으로 한 번 꺾고 **그 꺾인 칸(M)** 이 합류 칸이 된다 — `M` 의 뒤(`d+1`, 행 tL+1)는
  * 비어 있다.
  *
- * **`d+2` 는 팔이 안 닿는 열이라 아무도 안 쓴다**(깊이 = 1 + reach). 배정이 그 구간을
- * 미리 청구한다(`commitLinkFace` 의 `merged`).
+ * **`d+2` 는 팔이 안 닿는 열이다**(깊이 = 1 + reach) — 그래도 남의 옆 포트 상자 · 더 깊은 줄이 설 수 있다. 그래서
+ * 묻기가 그 길을 재고(`shape/link.endCells`) 받기가 청구한다(`commitLinkFace` 의 `merged`). 이끄는 줄이 기둥 밖까지 달리는
+ * 길도 같다(work-kinds §7 D9 — 예전엔 묻기가 포트 두 칸만 봐서 청구가 남의 칸을 덮어 썼다).
  *
  * **왜 모듈 안인가** — 두 줄 구간이 한 줄로 합쳐지는 순간이 **빠를수록** 공간을 아낀다
  * (2026-09-04 사장님). 채널은 통로일 뿐이고, 합류는 여기서 끝나야 포트·트랙·납품이 전부
@@ -360,7 +361,7 @@ export function emitOutputLinks(args: {
     const { portPair, seatCell, chestAt } = followed ?? made;
     const chest = made.chest;
     // ⓕ 검사 — 길 · 포트 칸이 비었나. 발동하면 그 "구성상"이 틀린 것이다. gap 포트가 옆면 벨트를 만나던 자리(D8)는
-    // 출구 잠수가 닫았다(`trunk-blocked.md` §4.2) — 남은 발동은 합류 이끄는 줄이다(work-kinds §7 D9)
+    // 출구 잠수가(`trunk-blocked.md` §4.2), 합류 이끄는 줄의 기둥 밖 주행(D9)은 묻기의 합류 도형이 닫았다(work-kinds §7)
     const blocked = route.path.some((c) => occupancy.has(cellKey(c.at.x, c.at.y)));
     if (blocked || (!followed && (occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다

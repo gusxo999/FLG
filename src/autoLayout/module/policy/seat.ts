@@ -91,7 +91,7 @@ export function openFaceSeating(
       if (reach === "near") {
         const why: DepthShortage[] = [];
         const offer = tryLinkFace(
-          ctx, line, side, LINK_NEAR[side], false, why, need?.forceEnd, need?.preferEnd, need?.preferDepth,
+          ctx, line, side, LINK_NEAR[side], false, why, need?.forceEnd, need?.preferEnd, need?.preferDepth, need?.mergeRole,
         );
         return { offer, why };
       }

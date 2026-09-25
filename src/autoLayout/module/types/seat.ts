@@ -371,6 +371,11 @@ export interface LinkNeed {
   readonly preferEnd?: "N" | "S";
   /** 이 깊이를 먼저 본다 — 따르는 줄이 이끄는 줄의 깊이를 물려받는다. */
   readonly preferDepth?: number;
+  /**
+   * **합류 쌍에서 이 줄의 역할** — 창구는 그 역할의 도형(이끄는 줄의 기둥 밖 주행 · 따르는 줄의 비켜 가는 열)이 서는 자리만
+   * 낸다. 따르는 줄은 이끄는 줄의 끝 · 깊이에만 앉는다. 도형이 안 서면 제안이 없다 — 링크 쪽이 짝을 풀고 다시 묻는다.
+   */
+  readonly mergeRole?: "lead" | "follow";
 }
 
 /**

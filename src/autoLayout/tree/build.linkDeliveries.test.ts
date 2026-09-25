@@ -7,6 +7,18 @@ import { groupRate } from "../module/arith/link";
 import * as allocateFlowsModule from "../link/arith/flows";
 import { faceVector } from "../shared/grid";
 import { EntityType } from "../../types/layout";
+import { AUTO_LAYOUT_LANE_MERGE, setAutoLayoutLaneMerge } from "../shared/flags";
+
+/** 레인 합류를 잠깐 켜거나 끄고 돌린다 — 끝나면 원래 값으로 되돌린다. */
+function withLaneMerge<T>(on: boolean, run: () => T): T {
+  const was = AUTO_LAYOUT_LANE_MERGE;
+  setAutoLayoutLaneMerge(on);
+  try {
+    return run();
+  } finally {
+    setAutoLayoutLaneMerge(was);
+  }
+}
 
 // 끝단 통합 — 벨트 줄 단위 fan-out/fan-in 이 납품 경로로 이어지는지.
 //
@@ -18,6 +30,8 @@ import { EntityType } from "../../types/layout";
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
 const inL = (name: string): IoLine => ({ name, kind: "belt", role: "input" });
 const outL = (name: string): IoLine => ({ name, kind: "belt", role: "output" });
+/** 모듈이 고를 수 있는 지하벨트 — 머신 사이 gap 의 출구가 옆면을 건널 때 쓴다(`trunk-blocked.md` §4.2). */
+const UG = [{ entityName: "underground-belt", throughput: 40, maxDistance: 5 }];
 
 const config: PackConfig = {
   inserterEntityName: "inserter",
@@ -230,6 +244,11 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
 describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 계획한다", () => {
   // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + gap 3칸).
   // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
+  //
+  // **지하벨트를 고른 입력이고 레인 합류는 끈다**(2026-09-25). 머신 사이 gap 의 출구는 옆면을 건너야 할 수 있어 지하벨트가
+  // 있어야 앉는다(`docs/auto-layout/module/trunk-blocked.md` §4.2). 합류는 이 시험의 관심사가 아니다 — 켜면 한 머신의 두 줄이
+  // 짝이 되는데 둘째 줄은 옆면 좌석이 모자라 짝이 풀리고, 첫 줄은 홀로 기둥 끝 합류 도형을 세워 기둥 끝 gap 출구의 납품을
+  // 막는다(work-kinds §7 D10 — 아래 「합류가 안 선 짝」 describe 가 그 상태를 따로 잰다).
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 4,
@@ -242,7 +261,7 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
       supplyCapacity: { lineRates: new Map([["output:x", 72]]) },
     },
   ];
-  const pack = packModuleTree(specs, config);
+  const pack = withLaneMerge(false, () => packModuleTree(specs, { ...config, undergroundBelts: UG }));
   const child = pack.placements.find((pl) => pl.id === "c")!;
 
   it("자식 머신마다 W 하나 + gap 하나 — 팔을 깎지 않는다", () => {
@@ -285,6 +304,58 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
 // 신원이 자식 구분을 잃지 않는지 — 같은 부모·같은 품목을 자식 **둘**이 먹인다. inputLinksOf
 // 가 두 자식의 그룹을 평평하게 이어붙이면서도 groupIndex 를 자식마다 따로 세야
 // makeLinkId 가 outputLinksOf(각 자식) 와 어긋나지 않는다(2026-07-21, 이 세션에서 고친 지점).
+/**
+ * **합류가 안 선 짝은 신원을 버린다**(work-kinds §7 D9 · 2026-09-25).
+ *
+ * 납품은 신원(`sharedLineId`)이 같은 두 링크를 **한 물리 벨트**로 보고 하나로 접는다(`link/arith/pair` — 뒤에 온 줄은 납품을
+ * 안 만든다). 그러니 신원은 두 줄이 **실제로** 한 벨트를 쓸 때만 남아야 한다. 예전엔 합류 도형이 안 선 짝(따르는 줄이 선호 면에
+ * 못 앉아 gap 으로 넘친 경우 등)이 신원을 든 채 남아, 물리 포트가 둘인데 납품이 하나라 **한 포트가 고아**가 됐다 — 상자가
+ * 외곽으로 못 나가 무한상자로 남았고(`perimeter-skip` *no exit assignment*), 배치는 성공으로 보고됐다.
+ *
+ * 이 픽스처는 한 자식 머신의 두 줄이 짝이 된다. 둘째 줄은 옆면 좌석이 모자라 짝이 풀린다.
+ */
+describe("합류가 안 선 짝 — 신원을 버려 물리 포트마다 납품이 하나", () => {
+  const specs: NodeSpec[] = [
+    {
+      id: "p", depth: 0, machine: M, count: 4,
+      lines: [inL("x"), outL("prod")],
+      supplyCapacity: { lineRates: new Map([["input:x", 72], ["output:prod", 24]]) },
+    },
+    {
+      id: "c", depth: 1, parentId: "p", machine: M, count: 2,
+      lines: [outL("x")],
+      supplyCapacity: { lineRates: new Map([["output:x", 72]]) },
+    },
+  ];
+  const pack = withLaneMerge(true, () => packModuleTree(specs, { ...config, undergroundBelts: UG }));
+  const ports = pack.placements.flatMap((pl) => [...pl.module.outputPorts, ...pl.module.inputPorts])
+    .filter((q) => q.line.name === "x");
+
+  it("신원이 같은 포트는 같은 자리다 — 한 물리 벨트가 아닌데 신원을 든 포트가 없다", () => {
+    const at = new Map<string, Set<string>>();
+    for (const q of ports) {
+      if (q.sharedLineId === undefined) continue;
+      const key = `${q.line.role}:${q.sharedLineId}`;
+      (at.get(key) ?? at.set(key, new Set()).get(key)!).add(`${q.anchor.x},${q.anchor.y}`);
+    }
+    for (const [key, anchors] of at) expect(anchors.size, key).toBe(1);
+  });
+
+  it("납품이 물리 포트마다 하나다 — 자식 출력 자리 수와 같고, 실패 0", () => {
+    const childAnchors = new Set(
+      pack.placements.find((pl) => pl.id === "c")!.module.outputPorts
+        .filter((q) => q.line.name === "x").map((q) => `${q.anchor.x},${q.anchor.y}`),
+    );
+    expect(pack.deliveries.filter((h) => h.item === "x")).toHaveLength(childAnchors.size);
+    const delivery = routeDeliveryRoutes(pack, {
+      beltEntityName: "transport-belt",
+      undergroundBeltEntityName: "underground-belt",
+      beltMaxUndergroundDistance: 4,
+    });
+    expect(delivery.failures).toBe(0);
+  });
+});
+
 describe("링크 신원 — 같은 부모를 같은 품목으로 먹이는 자식이 둘", () => {
   const specs: NodeSpec[] = [
     {

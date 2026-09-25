@@ -271,6 +271,10 @@ export interface LaneShareCounters {
    * 사유 둘은 **처방이 다르다.** `shape` 는 싣는 쪽(자식)이 두 줄을 같은 면·깊이·끝에
    * 못 세운 것이고, `seats` 는 집는 쪽(부모)이 한 벨트에 좌석을 다 못 얹은 것이다.
    * 합쳐 세면 어느 쪽을 고쳐야 하는지가 사라진다.
+   *
+   * 2026-09-25 부터 **합류가 안 선 짝은 전부 여기 온다** — 선호 면에서 합류 도형(이끄는 줄의 기둥 밖 주행 · 따르는 줄의
+   * 비켜 가는 열)을 못 세웠거나, 짝의 줄이 넘침 · 쪼갬 · 포기로 갔을 때다(그 전엔 신원을 든 채 남아 납품이 한 포트를
+   * 고아로 만들었다 — work-kinds §7 D9). 그래서 `pairs = merged + unshared.shape + unshared.seats` 에 가깝다.
    */
   unshared: { shape: number; seats: number };
   /**

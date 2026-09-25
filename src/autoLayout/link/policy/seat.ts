@@ -236,21 +236,33 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
     // 같은 `topT` 규약을 써야 방출이 합류 칸을 계산할 수 있다).
     const pair = g.sharedLineId !== undefined ? mergePairs.get(g.sharedLineId) : undefined;
     const inPair = pair !== undefined;
-    // **이끄는 줄이 이미 앉았으면 그 면·깊이를 물려받는다** — 배정 순서가 쌍을 붙여 놓았으므로
+    // **이끄는 줄이 이미 앉았으면 그 면·끝·깊이를 물려받는다** — 배정 순서가 쌍을 붙여 놓았으므로
     // 따르는 줄 차례엔 반드시 있다(없으면 이끄는 줄이 도형을 못 세운 것이라 짝도 아니다).
-    const fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
-    const nearFrom = fromDesk.ask(g, "from", "near", {
-      forceEnd: inPair, preferEnd: pair?.end, preferDepth: fromPartner?.clusterBeltDepth,
+    let fromPartner = g.sharedLineId !== undefined ? sharedFrom.get(g.sharedLineId) : undefined;
+    // **합류 도형의 역할** — 창구가 그 도형이 서는 자리만 낸다(이끄는 줄은 기둥 밖까지 달리고, 따르는 줄은 깊이 +2 로
+    // 비켜 간다). 받기가 청구하는 도형을 묻기가 안 재면, 그 길이 지나는 남의 칸을 청구가 덮어 쓴다(work-kinds §7 D9).
+    const mergeRole = inPair ? (fromPartner ? "follow" : "lead") : undefined;
+    let nearFrom = fromDesk.ask(g, "from", "near", {
+      forceEnd: inPair, preferEnd: fromPartner?.portEnd ?? pair?.end, preferDepth: fromPartner?.clusterBeltDepth, mergeRole,
     });
+    // **합류 도형이 안 서면 짝을 풀고 평범한 줄로 다시 묻는다** — 합류는 벨트를 아끼는 수단이지 자리의 조건이 아니다.
+    // 이끄는 줄이 못 이끌면 짝 전체를 푼다(따르는 줄이 홀로 이끄는 줄이 되면 아낄 것 없이 길만 길다).
+    if (inPair && !nearFrom.offer) {
+      g.sharedLineId = undefined;
+      if (mergeRole === "lead") pair.follow.sharedLineId = undefined;
+      fromPartner = undefined;
+      recordLaneUnshare("shape");
+      nearFrom = fromDesk.ask(g, "from", "near");
+    }
     const fw = nearFrom.why;
     let candFrom: SeatOffer | undefined = nearFrom.offer;
 
     // **싣는 쪽 — 짝의 둘째 줄은 첫 줄과 같은 끝을 써야 한다.**
     //
     // 출구 합류는 기둥 끝 **바깥 한 행**에서 일어난다(`emitOutputLinks`). 두 줄이 서로 다른
-    // 끝으로 나가면 그 행에서 만날 수가 없다. 그런데 기둥 끝 장부는 기본적으로
-    // **반대 끝**을 준다(먼저 앉은 줄이 N 을 잡으면 다음은 S) — 그래서 여기서 덮어쓴다.
-    // 링크 쪽이 제안을 고쳐 넘기는 **유일한** 자리다(합류는 양끝의 결정이다).
+    // 끝으로 나가면 그 행에서 만날 수가 없다. 창구는 따르는 줄에게 **끝을 청구시키지 않고** 첫 줄의 끝으로
+    // 흐르게 한다(`mergeRole: "follow"`) — 기둥 끝 장부에 물으면 반대 끝을 주기 때문이다(먼저 앉은 줄이 N 을 잡으면 다음은 S).
+    // 아래 덮어쓰기는 그 답과 같은 값이라 남은 안전장치다 — 링크 쪽이 제안을 고쳐 넘기는 **유일한** 자리다.
     //
     // 깊이가 **인접**하지 않거나 면이 다르면 그 도형이 안 선다 → **짝을 푼다.**
     // (배정 단계라 아직 풀 수 있다 — 납품이 하나로 접히는 것은 이 뒤다.)
@@ -317,6 +329,14 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
     }
 
     // 선호 면에 양끝이 다 못 앉았다 — **수단 사이의 순서**([remedyOf])를 따른다.
+    // **합류는 선호 면에서 양끝이 함께 설 때만 성립한다** — 여기 온 짝의 줄은 합류하지 않는다(쪼갠 토막 · 먼 자리는 합류 도형을
+    // 안 세운다). 신원을 남기면 납품이 두 줄을 하나로 접어(`link/arith/pair` — 뒤에 온 줄은 납품을 안 만든다) 물리 포트 하나가
+    // 고아가 된다. 그래서 푼다 — 이끄는 줄이면 따르는 줄도 푼다(work-kinds §7 D9).
+    if (pair && g.sharedLineId !== undefined) {
+      g.sharedLineId = undefined;
+      if (!fromPartner) pair.follow.sharedLineId = undefined;
+      recordLaneUnshare(candFrom ? "seats" : "shape");
+    }
     const r = remedyOf(g, { candFrom, candTo, fw, tw }, fromDesk, toDesk, edge.split && edge.budget > 0);
     if (r.kind === "split") {
       edge.budget -= r.parts.length;
