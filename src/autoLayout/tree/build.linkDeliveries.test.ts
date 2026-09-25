@@ -8,6 +8,7 @@ import * as allocateFlowsModule from "../link/arith/flows";
 import { faceVector } from "../shared/grid";
 import { EntityType } from "../../types/layout";
 import { AUTO_LAYOUT_LANE_MERGE, setAutoLayoutLaneMerge } from "../shared/flags";
+import { readRunStats } from "../../debug/runStats";
 
 /** 레인 합류를 잠깐 켜거나 끄고 돌린다 — 끝나면 원래 값으로 되돌린다. */
 function withLaneMerge<T>(on: boolean, run: () => T): T {
@@ -245,10 +246,10 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
   // 자식 2대 × 36/대 = 팔 6 → 그릇 3 이라 머신당 그룹 2개(W 3행 + gap 3칸).
   // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
   //
-  // **지하벨트를 고른 입력이고 레인 합류는 끈다**(2026-09-25). 머신 사이 gap 의 출구는 옆면을 건너야 할 수 있어 지하벨트가
-  // 있어야 앉는다(`docs/auto-layout/module/trunk-blocked.md` §4.2). 합류는 이 시험의 관심사가 아니다 — 켜면 한 머신의 두 줄이
-  // 짝이 되는데 둘째 줄은 옆면 좌석이 모자라 짝이 풀리고, 첫 줄은 홀로 기둥 끝 합류 도형을 세워 기둥 끝 gap 출구의 납품을
-  // 막는다(work-kinds §7 D10 — 아래 「합류가 안 선 짝」 describe 가 그 상태를 따로 잰다).
+  // **지하벨트를 고른 입력이다**(2026-09-25) — 머신 사이 gap 의 출구는 옆면을 건너야 할 수 있어 지하벨트가 있어야 앉는다
+  // (`docs/auto-layout/module/trunk-blocked.md` §4.2). 레인 합류는 켜져 있다(기본) — 한 머신의 두 줄이 짝이 되지만 둘째 줄이
+  // 옆면에 못 앉으므로 창구가 첫 줄을 받기 **전에** 짝을 푼다(work-kinds §7 D10). 예전엔 첫 줄이 홀로 기둥 끝 합류 도형을 세워
+  // 기둥 끝 gap 출구의 납품을 막았다(탐색 폴백 2).
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 4,
@@ -261,7 +262,7 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
       supplyCapacity: { lineRates: new Map([["output:x", 72]]) },
     },
   ];
-  const pack = withLaneMerge(false, () => packModuleTree(specs, { ...config, undergroundBelts: UG }));
+  const pack = packModuleTree(specs, { ...config, undergroundBelts: UG });
   const child = pack.placements.find((pl) => pl.id === "c")!;
 
   it("자식 머신마다 W 하나 + gap 하나 — 팔을 깎지 않는다", () => {
@@ -312,7 +313,8 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
  * 못 앉아 gap 으로 넘친 경우 등)이 신원을 든 채 남아, 물리 포트가 둘인데 납품이 하나라 **한 포트가 고아**가 됐다 — 상자가
  * 외곽으로 못 나가 무한상자로 남았고(`perimeter-skip` *no exit assignment*), 배치는 성공으로 보고됐다.
  *
- * 이 픽스처는 한 자식 머신의 두 줄이 짝이 된다. 둘째 줄은 옆면 좌석이 모자라 짝이 풀린다.
+ * 이 픽스처는 한 자식 머신의 두 줄이 짝이 된다. 둘째 줄은 옆면 좌석이 모자라 짝이 풀린다 — 창구가 첫 줄을 받기 **전에**
+ * 알아채므로 첫 줄도 평범한 줄로 앉는다(홀로 이끄는 줄이 없다 — work-kinds §7 D10).
  */
 describe("합류가 안 선 짝 — 신원을 버려 물리 포트마다 납품이 하나", () => {
   const specs: NodeSpec[] = [
@@ -328,8 +330,15 @@ describe("합류가 안 선 짝 — 신원을 버려 물리 포트마다 납품�
     },
   ];
   const pack = withLaneMerge(true, () => packModuleTree(specs, { ...config, undergroundBelts: UG }));
+  const share = readRunStats().laneShare;
   const ports = pack.placements.flatMap((pl) => [...pl.module.outputPorts, ...pl.module.inputPorts])
     .filter((q) => q.line.name === "x");
+
+  it("짝은 다 풀리거나 다 합쳐진다 — 홀로 이끄는 줄 0", () => {
+    expect(share.pairs, "[전제] 짝이 지어진다").toBe(2);
+    expect(share.merged + share.unshared.shape + share.unshared.seats).toBe(share.pairs);
+    expect(share.solo, "이끄는 줄이 합류 도형을 세운 뒤에 짝이 풀리지 않는다").toBe(0);
+  });
 
   it("신원이 같은 포트는 같은 자리다 — 한 물리 벨트가 아닌데 신원을 든 포트가 없다", () => {
     const at = new Map<string, Set<string>>();

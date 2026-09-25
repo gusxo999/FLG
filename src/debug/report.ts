@@ -196,6 +196,7 @@ export function buildReport(): string {
             ? ` · 되돌림 ${ls.unshared.shape + ls.unshared.seats}`
               + `(도형 ${ls.unshared.shape} · 좌석 ${ls.unshared.seats})`
             : '')
+          + (ls.solo > 0 ? ` · **홀로 이끄는 줄 ${ls.solo}**(합류 도형만 남았다)` : '')
           + ` · **합쳐짐 ${ls.merged}**  — 아낀 물리 벨트`,
     ),
   );

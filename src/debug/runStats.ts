@@ -278,6 +278,12 @@ export interface LaneShareCounters {
    */
   unshared: { shape: number; seats: number };
   /**
+   * **홀로 이끄는 줄** — 이끄는 줄이 합류 도형(기둥 밖까지 달리는 길 · 합류 칸 · 기둥 끝 포트)을 세운 **뒤에** 따르는 줄이 못
+   * 따라 짝이 풀린 수. 그 도형은 아낄 것 없이 길만 길고, 기둥 끝 포트가 같은 끝의 gap 출구 납품을 막기도 한다
+   * (work-kinds §7 D10). 창구가 이끄는 줄을 받기 전에 따를 줄을 시험하므로 **0 이어야 한다** — 0 이 아니면 시험이 못 본 자리가 있다.
+   */
+  solo: number;
+  /**
    * **셀까지 간 합류** — 방출이 실제로 첫 줄의 포트를 다시 쓴 횟수.
    *
    * **이 수만이 「아낀 물리 벨트」다.** `pairs` 는 자격을 통과한 수라 배정·방출에서
@@ -287,7 +293,7 @@ export interface LaneShareCounters {
 }
 
 const freshLaneShare = (): LaneShareCounters =>
-  ({ candidates: 0, pairs: 0, rejected: 0, unshared: { shape: 0, seats: 0 }, merged: 0 });
+  ({ candidates: 0, pairs: 0, rejected: 0, unshared: { shape: 0, seats: 0 }, solo: 0, merged: 0 });
 
 const freshLinkNeed = (): Record<LinkDepthNeed, number> => ({
   "free": 0, "opposite-face": 0, "direct": 0, "depth-starved": 0,
@@ -382,12 +388,17 @@ export function beginRunStats(): void {
 /** 레인 공유 짝짓기 결과 — `packModuleTree` 가 링크 캐시를 다 만든 뒤 한 번 부른다. */
 export function recordLaneShareStats(c: Pick<LaneShareCounters, "candidates" | "pairs" | "rejected">): void {
   // **뒤 단계 계수기는 여기서 0 이 된다** — 짝짓기가 다시 돌았다는 건 새 패스라는 뜻이다.
-  current.laneShare = { ...c, unshared: { shape: 0, seats: 0 }, merged: 0 };
+  current.laneShare = { ...c, unshared: { shape: 0, seats: 0 }, solo: 0, merged: 0 };
 }
 
 /** 배정이 짝을 되돌렸다 — `planner/module/policy.seatLinkEdge` 가 도형·좌석을 못 세운 자리에서 부른다. */
 export function recordLaneUnshare(why: "shape" | "seats"): void {
   current.laneShare.unshared[why] += 1;
+}
+
+/** 이끄는 줄이 합류 도형을 세운 뒤 따르는 줄이 못 따라 짝이 풀렸다 — [LaneShareCounters.solo]. `link/policy/seat` 가 부른다. */
+export function recordLaneSolo(): void {
+  current.laneShare.solo += 1;
 }
 
 /** 방출이 첫 줄의 포트를 다시 썼다 — **셀까지 간 합류**. `emitOutputLinks` 가 부른다. */

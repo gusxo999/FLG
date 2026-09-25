@@ -32,6 +32,7 @@ function partnerStub(): FaceSeating {
     }),
     take: (offer) => receipt(offer.face === "W" ? "W" : "E"),
     takeShared: () => receipt("E"),
+    canShare: () => true,
     close: () => {
       throw new Error("대역 창구는 닫지 않는다");
     },

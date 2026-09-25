@@ -536,6 +536,7 @@ export function openLinkFaceContext(
  *
  * 받은 값은 안 바꾼다. `generateModule` 은 입력의 순수 함수라야 하고(같은 입력이면 같은 답), 굳힌 좌석은 그 입력의 일부다.
  * 복사가 여기 하나뿐이다 — 예전에는 넘기는 쪽(`cloneLinkFaceStage`)이 *"받는 쪽이 원본을 더럽히지 않게"* 복사했다.
+ * 좌석 창구의 **시험**([copyLinkFaceContext])도 이 복사를 쓴다.
  */
 export function reopenLinkFaceContext(
   ledger: SeatLedgerView,
@@ -546,6 +547,21 @@ export function reopenLinkFaceContext(
   return {
     machine: input.machine, count, pipeFaces: pipeFaceRows, inserters: input.inserters,
     undergroundBelts: input.undergroundBelts,
+    ...copyLedger(ledger),
+  };
+}
+
+/**
+ * **무대를 베낀다 — 채워 보고 버리는 시험.** 좌석 창구가 *"이 자리를 받으면 저 줄이 뒤따라 앉나"* 를 원본을 안 건드리고
+ * 묻는다(합류 쌍 — `module/policy/seat.openFaceSeating`). 표가 값이라 가능하다([copyFaceTable]).
+ */
+export function copyLinkFaceContext(ctx: LinkFaceContext): LinkFaceContext {
+  return { ...ctx, ...copyLedger(ctx) };
+}
+
+/** 좌석표 · 끝 · 기둥 밖 칸을 베낀다 — 다시 열기와 시험이 함께 쓰는 복사 하나. */
+function copyLedger(ledger: SeatLedgerView): Pick<LinkFaceContext, "tables" | "ends" | "outside"> {
+  return {
     tables: new Map([...ledger.tables].map(([f, t]) => [f, copyFaceTable(t)] as const)),
     ends: new Map([...ledger.ends].map(([f, set]) => [f, new Set(set)] as const)),
     outside: new Map([...ledger.outside].map(([f, set]) => [f, new Set(set)] as const)),

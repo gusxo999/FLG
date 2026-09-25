@@ -25,7 +25,7 @@
 import type { Link } from "../../module/types/line";
 import type { DepthShortage, FaceSeating, SeatOffer, SeatReceipt } from "../../module/types/seat";
 import { resolveSpanBlock, splitLinkAtRows } from "../../module/arith/link";
-import { recordLaneUnshare } from "../../../debug/runStats";
+import { recordLaneSolo, recordLaneUnshare } from "../../../debug/runStats";
 
 /**
  * **합류 쌍을 골라 이끄는 줄과 포트 끝을 정한다** — 앉히기 **전에**, 수만으로.
@@ -242,14 +242,17 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
     // **합류 도형의 역할** — 창구가 그 도형이 서는 자리만 낸다(이끄는 줄은 기둥 밖까지 달리고, 따르는 줄은 깊이 +2 로
     // 비켜 간다). 받기가 청구하는 도형을 묻기가 안 재면, 그 길이 지나는 남의 칸을 청구가 덮어 쓴다(work-kinds §7 D9).
     const mergeRole = inPair ? (fromPartner ? "follow" : "lead") : undefined;
+    // 이끄는 줄은 따를 줄을 함께 넘긴다 — 창구가 그 줄이 옆에 앉을 자리만 낸다(work-kinds §7 D10)
     let nearFrom = fromDesk.ask(g, "from", "near", {
       forceEnd: inPair, preferEnd: fromPartner?.portEnd ?? pair?.end, preferDepth: fromPartner?.clusterBeltDepth, mergeRole,
+      ...(mergeRole === "lead" && pair ? { follow: pair.follow } : {}),
     });
     // **합류 도형이 안 서면 짝을 풀고 평범한 줄로 다시 묻는다** — 합류는 벨트를 아끼는 수단이지 자리의 조건이 아니다.
     // 이끄는 줄이 못 이끌면 짝 전체를 푼다(따르는 줄이 홀로 이끄는 줄이 되면 아낄 것 없이 길만 길다).
     if (inPair && !nearFrom.offer) {
       g.sharedLineId = undefined;
       if (mergeRole === "lead") pair.follow.sharedLineId = undefined;
+      else recordLaneSolo(); // 이끄는 줄은 이미 합류 도형을 세웠다
       fromPartner = undefined;
       recordLaneUnshare("shape");
       nearFrom = fromDesk.ask(g, "from", "near");
@@ -283,6 +286,7 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
       } else {
         g.sharedLineId = undefined;
         recordLaneUnshare("shape");
+        recordLaneSolo();
       }
     }
 
@@ -312,11 +316,21 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
       // 좌석이 모자라다 — **짝을 푼다.** 반쪽만 공유된 상태를 남기지 않는다.
       g.sharedLineId = undefined;
       recordLaneUnshare("seats");
+      recordLaneSolo();
     }
 
     const nearTo = toDesk.ask(g, "to", "near");
     const tw = nearTo.why;
     const candTo = nearTo.offer;
+    // **이끄는 줄은 받기 전에 집는 쪽도 본다** — 따를 줄이 그 벨트에 얹힐 좌석이 없으면 합류는 안 선다. 받은 뒤에 알면
+    // 이끄는 줄이 싣는 쪽에 합류 도형을 홀로 세운 채 남는다(work-kinds §7 D10). 짝을 풀고 평범한 줄로 다시 묻는다.
+    if (pair && candFrom && candTo && mergeRole === "lead" && g.sharedLineId !== undefined
+      && !toDesk.canShare(pair.follow, "to", candTo)) {
+      g.sharedLineId = undefined;
+      pair.follow.sharedLineId = undefined;
+      recordLaneUnshare("seats");
+      candFrom = fromDesk.ask(g, "from", "near").offer;
+    }
     if (candFrom && candTo) {
       const toSeat = toDesk.take(candTo, "to");
       const fromSeat = fromDesk.take(candFrom, "from", { merged, mergeLead: !merged && leadNow() });
@@ -335,6 +349,7 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
     if (pair && g.sharedLineId !== undefined) {
       g.sharedLineId = undefined;
       if (!fromPartner) pair.follow.sharedLineId = undefined;
+      else recordLaneSolo(); // 이끄는 줄은 이미 합류 도형을 세웠다
       recordLaneUnshare(candFrom ? "seats" : "shape");
     }
     const r = remedyOf(g, { candFrom, candTo, fw, tw }, fromDesk, toDesk, edge.split && edge.budget > 0);

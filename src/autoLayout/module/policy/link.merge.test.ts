@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { tryLinkFace } from "./link";
+import { openFaceSeating } from "./seat";
 import { claimDepth } from "../ledger/face";
 import { commitLinkFace, openLinkFaceContext, seatTableOf } from "../ledger/seat";
 import { endCells } from "../shape/link";
@@ -100,5 +101,54 @@ describe("따르는 줄 — 끝을 청구하지 않고 이끄는 줄의 끝 · �
     const { ctx } = scene();
     claimDepth(seatTableOf(ctx, "W"), 4, 1, 1, 99, "belt"); // 머신 0 의 행 1, d4 — 따르는 줄의 길 위
     expect(askFollow(ctx)).toBeUndefined();
+  });
+});
+
+/**
+ * **이끄는 줄은 따를 줄이 옆에 앉는 자리만 받는다**(work-kinds §7 D10). 창구가 베낀 무대에 이끄는 줄을 받아 보고 따를 줄을
+ * 묻는다(싣는 쪽) · 집는 쪽은 받기 전에 따를 줄이 그 벨트에 얹히나 묻는다(`canShare`). 예전엔 이끄는 줄이 합류 도형을 먼저
+ * 세우고, 따를 줄이 못 앉으면 짝만 풀려 그 도형이 홀로 남았다.
+ */
+describe("짝 맞춤 — 이끄는 줄을 받기 전에 따를 줄을 본다", () => {
+  /** 머신 0 의 두 줄 — 팔이 `a` · `b` 개. W 면 좌석은 머신당 3 이다. */
+  const pairOn0 = (a: number, b: number) => {
+    const line = (id: string, arms: number, side: "from" | "to"): Link => ({
+      id, item: "gear", sharedLineId: "lane",
+      from: side === "from" ? new Map([[0, arms]]) : new Map([[0, 1]]),
+      to: side === "to" ? new Map([[0, arms]]) : new Map([[0, 1]]),
+      carries: [{ from: 0, to: 0, rate: 2 * arms }],
+    });
+    return (side: "from" | "to") => ({ lead: line("l#0", a, side), follow: line("f#0", b, side) });
+  };
+
+  it("싣는 쪽 — 따를 줄이 옆면에 못 앉으면(좌석 3 + 1 > 3) 이끄는 줄로는 안 낸다 · 따를 줄을 안 주면 낸다(대조군)", () => {
+    const { lead, follow } = pairOn0(3, 1)("from");
+    const ask = (withFollow: boolean) => openFaceSeating(base, 1).ask(lead, "from", "near", {
+      forceEnd: true, preferEnd: "N", mergeRole: "lead", ...(withFollow ? { follow } : {}),
+    });
+    expect(ask(false).offer?.portEnd).toBe("N");
+    expect(ask(true).offer).toBeUndefined();
+  });
+
+  it("싣는 쪽 — 따를 줄이 앉을 자리가 있으면 이끄는 줄로 낸다", () => {
+    const { lead, follow } = pairOn0(2, 1)("from");
+    const offer = openFaceSeating(base, 1).ask(lead, "from", "near", {
+      forceEnd: true, preferEnd: "N", mergeRole: "lead", follow,
+    }).offer;
+    expect(offer?.portEnd).toBe("N");
+  });
+
+  it("집는 쪽 — 이끄는 줄의 벨트에 따를 줄의 좌석이 남나(받기 전) · 묻기는 장부를 안 바꾼다", () => {
+    const full = pairOn0(3, 1)("to");
+    const desk = openFaceSeating(base, 1);
+    const lead = desk.ask(full.lead, "to", "near").offer!;
+    expect(desk.canShare(full.follow, "to", lead)).toBe(false);
+    const roomy = pairOn0(2, 1)("to");
+    const desk2 = openFaceSeating(base, 1);
+    const lead2 = desk2.ask(roomy.lead, "to", "near").offer!;
+    expect(desk2.canShare(roomy.follow, "to", lead2)).toBe(true);
+    // 두 번 물어도 같다 — 시험은 베낀 무대에서 받는다
+    expect(desk2.canShare(roomy.follow, "to", lead2)).toBe(true);
+    expect(desk2.ask(roomy.lead, "to", "near").offer?.slotIndex).toEqual(lead2.slotIndex);
   });
 });

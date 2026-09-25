@@ -376,6 +376,11 @@ export interface LinkNeed {
    * 낸다. 따르는 줄은 이끄는 줄의 끝 · 깊이에만 앉는다. 도형이 안 서면 제안이 없다 — 링크 쪽이 짝을 풀고 다시 묻는다.
    */
   readonly mergeRole?: "lead" | "follow";
+  /**
+   * **이끄는 줄이면 뒤따를 줄** — 창구는 이 줄이 그 옆에 따르는 줄로 앉을 수 있는 자리만 이끄는 줄에게 낸다(베낀 무대에서 받아
+   * 보고 묻는다). 그래야 따르는 줄이 못 앉아 짝이 풀릴 때 이끄는 줄이 합류 도형을 홀로 세우는 일이 없다(work-kinds §7 D10).
+   */
+  readonly follow?: Link;
 }
 
 /**
@@ -443,6 +448,11 @@ export interface FaceSeating {
   ): SeatReceipt;
   /** 합류의 둘째 줄(집는 쪽) — 첫 줄 영수증의 벨트에 좌석만 얹는다. 좌석이 모자라면 `undefined`. */
   takeShared(line: Link, side: "from" | "to", lead: SeatReceipt): SeatReceipt | undefined;
+  /**
+   * **묻기 — 첫 줄이 이 제안을 받으면 둘째 줄이 그 벨트에 얹히나**([takeShared] 가 되나). 장부는 안 바뀐다(베낀 무대에서 받아 본다).
+   * 이끄는 줄을 받기 **전에** 묻는다 — 받은 뒤에 안 되면 이끄는 줄이 합류 도형을 홀로 세운 채 남는다(work-kinds §7 D10).
+   */
+  canShare(line: Link, side: "from" | "to", lead: SeatOffer): boolean;
   /** 닫기 — 준 순서로 계획을 늘어놓고 값으로 굳힌다. 이 뒤로는 묻지도 받지도 못한다. */
   close(order: { out: SeatOrderSide; in: SeatOrderSide }): SeatedFaces;
 }

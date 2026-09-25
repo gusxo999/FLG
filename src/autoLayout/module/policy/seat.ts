@@ -31,7 +31,7 @@ import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
 import type { PortFace } from "../../shared/types";
 import { planBundles } from "../arith/depth";
 import { allocateLinkFaces, seatOnSharedBelt, tryLinkFace, spillLinkFacesToGap } from "./link";
-import { commitLinkFace, openLinkFaceContext } from "../ledger/seat";
+import { commitLinkFace, copyLinkFaceContext, openLinkFaceContext, type LinkFaceCandidate } from "../ledger/seat";
 import { clusterBeltDepthsOf, fluidFacesOf } from "../arith/face";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,8 +90,21 @@ export function openFaceSeating(
       live();
       if (reach === "near") {
         const why: DepthShortage[] = [];
+        // **이끄는 줄은 따를 줄이 옆에 앉는 자리만 받는다** — 베낀 무대에 이끄는 줄을 받아 보고 따를 줄을 묻는다(work-kinds §7 D10)
+        const follow = need?.mergeRole === "lead" ? need.follow : undefined;
+        const accept = follow
+          ? (cand: LinkFaceCandidate): boolean => {
+            if (!cand.portEnd) return false; // 끝을 못 받으면 합류 칸이 설 자리가 없다
+            const trial = copyLinkFaceContext(ctx);
+            commitLinkFace(trial, cand, side, { mergeLead: true });
+            return tryLinkFace(
+              trial, follow, side, LINK_NEAR[side], false, undefined, true, cand.portEnd, cand.clusterBeltDepth, "follow",
+            ) !== undefined;
+          }
+          : undefined;
         const offer = tryLinkFace(
           ctx, line, side, LINK_NEAR[side], false, why, need?.forceEnd, need?.preferEnd, need?.preferDepth, need?.mergeRole,
+          accept,
         );
         return { offer, why };
       }
@@ -112,6 +125,11 @@ export function openFaceSeating(
       live();
       const p = seatOnSharedBelt(ctx, line, side, plans[lead.id]);
       return p && receipt(p);
+    },
+    canShare(line, side, lead) {
+      live();
+      const trial = copyLinkFaceContext(ctx);
+      return seatOnSharedBelt(trial, line, side, commitLinkFace(trial, lead, side)) !== undefined;
     },
     close(order) {
       live();

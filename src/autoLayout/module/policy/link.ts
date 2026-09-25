@@ -212,6 +212,11 @@ export function tryLinkFace(
    * 도형이 안 서면 후보가 없다 — 짝을 풀고 평범한 줄로 다시 묻는 것은 부르는 쪽(`link/policy/seat`)이다(work-kinds §7 D9).
    */
   mergeRole?: "lead" | "follow",
+  /**
+   * **후보를 더 거르는 시험** — 자리가 나는 후보마다 부르고, 거짓이면 다음 후보로 간다. 이끄는 줄에게 창구가 *"이 자리를 받으면
+   * 따를 줄이 옆에 앉나"* 를 묻는 자리다(`module/policy/seat` — work-kinds §7 D10). 장부를 바꾸면 안 된다(베낀 무대에서 잰다).
+   */
+  accept?: (cand: LinkFaceCandidate) => boolean,
 ): LinkFaceCandidate | undefined {
   // ① 면 — 유체 면은 마지막 수단. 반대 면도 유체면 동률이라 비켜 가지 않는다
   if (avoidsPipeFace(ctx, face, allowPipeFace)) return undefined;
@@ -266,17 +271,19 @@ export function tryLinkFace(
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
     const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, ends, why, relief);
     if (!fit) continue;
-    recordEndsAudit(ctx, face, cand, fit, end);
-    if (AUTO_LAYOUT_SEAT_PICK) recordSeatPick(table, face, cand.arms, side, flowToSouth, slotIndex);
-    if (relief?.tunnels?.length) recordFaceDepthStats({ diveOwn: 1 });
-    if (relief?.yields?.size) recordFaceDepthStats({ diveYield: 1 });
-    return {
+    const offer: LinkFaceCandidate = {
       face, arms: cand.arms, clusterBeltDepth: cand.clusterBeltDepth, reach: cand.clusterBeltDepth - 1,
       portEnd: end.portEnd, exitEnd: end.exitEnd, slotIndex,
       ...(dive ? { dive } : {}),
       ...(relief?.tunnels?.length ? { tunnels: relief.tunnels } : {}),
       ...(relief?.yields?.size ? { yields: relief.yields } : {}),
     };
+    if (accept && !accept(offer)) continue;
+    recordEndsAudit(ctx, face, cand, fit, end);
+    if (AUTO_LAYOUT_SEAT_PICK) recordSeatPick(table, face, cand.arms, side, flowToSouth, slotIndex);
+    if (relief?.tunnels?.length) recordFaceDepthStats({ diveOwn: 1 });
+    if (relief?.yields?.size) recordFaceDepthStats({ diveYield: 1 });
+    return offer;
   }
   // 이 면의 깊이가 다 찼다 — 넘침 단계가 다른 면을 준다([spillLinkFacesToGap]).
   return undefined;
