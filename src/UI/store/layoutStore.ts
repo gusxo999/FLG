@@ -424,6 +424,14 @@ export const useLayoutStore = create<LayoutState>()(
       let entityName: string | null = null;
       let direction: Direction = 0;
       let recipe: string | undefined;
+      /**
+       * origin 칸만 지는 **내용물** — 옮긴다고 사라지면 안 된다. 2026-09-28 까지 `recipe` 만
+       * 옮겨서, 외부 영역에서 무한상자를 드래그하면 `infinitySettings`(무슨 품목을 공급/회수하나)가
+       * **조용히 지워졌다** — 블루프린트로 나가면 빈 무한상자다. 여기 목록은 블루프린트 import 가
+       * origin 에만 싣는 것과 같아야 한다(`UI/components/Toolbar.tsx`).
+       * `recipe` 만 관례가 달라 따로 간다 — `setCellRecipe` 가 그 엔티티의 **모든 칸**에 쓴다.
+       */
+      let originOnly: Partial<GridCell> = {};
 
       for (let i = 0; i < grid.cells.length; i++) {
         const cell = grid.cells[i];
@@ -434,6 +442,15 @@ export const useLayoutStore = create<LayoutState>()(
           entityName = cell.entityName;
           direction = cell.direction;
           recipe = cell.recipe;
+          originOnly = {
+            ...(cell.modules !== undefined ? { modules: cell.modules } : {}),
+            ...(cell.quality !== undefined ? { quality: cell.quality } : {}),
+            ...(cell.undergroundType !== undefined ? { undergroundType: cell.undergroundType } : {}),
+            ...(cell.infinitySettings !== undefined ? { infinitySettings: cell.infinitySettings } : {}),
+            ...(cell.mirror !== undefined ? { mirror: cell.mirror } : {}),
+            ...(cell.tags !== undefined ? { tags: cell.tags } : {}),
+            ...(cell.color !== undefined ? { color: cell.color } : {}),
+          };
           break;
         }
       }
@@ -485,6 +502,7 @@ export const useLayoutStore = create<LayoutState>()(
               tileOffset: { x: dx, y: dy },
               isOrigin: dx === 0 && dy === 0,
               ...(recipe !== undefined ? { recipe } : {}),
+              ...(dx === 0 && dy === 0 ? originOnly : {}),
             };
           }
         }

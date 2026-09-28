@@ -66,16 +66,30 @@ export function BeltFlowAt({ x, y }: { x: number; y: number }) {
 
 function MachineFlowView({ v, result }: { v: MachineVerdict; result: FlowResult }) {
   const t = useT();
-  const badge = v.state === 'full'
-    ? { text: t('flow.machine.full'), cls: 'bg-emerald-900/50 text-emerald-300 border-emerald-700/60' }
-    : v.state === 'short'
-      ? { text: t('flow.machine.short', { pct: Math.min(99, Math.round(v.u * 100)) }), cls: 'bg-red-900/50 text-red-200 border-red-600/70' }
-      : { text: t('flow.machine.unknown'), cls: 'bg-orange-900/40 text-orange-200 border-orange-600/60' };
+  // 포트 실패가 가동률을 이긴다 — 갇힌 무한상자가 100% 를 만들어 주기 때문이다(`flow-model` §2.6).
+  const badge = v.portFail.length > 0
+    ? { text: t('flow.machine.failed'), cls: 'bg-red-800 text-white border-red-400 font-bold' }
+    : v.state === 'full'
+      ? { text: t('flow.machine.full'), cls: 'bg-emerald-900/50 text-emerald-300 border-emerald-700/60' }
+      : v.state === 'short'
+        ? { text: t('flow.machine.short', { pct: Math.min(99, Math.round(v.u * 100)) }), cls: 'bg-red-900/50 text-red-200 border-red-600/70' }
+        : { text: t('flow.machine.unknown'), cls: 'bg-orange-900/40 text-orange-200 border-orange-600/60' };
   const why = limitLabel(v, t);
   const shortItem = v.limit?.item;
 
   return (
     <Frame title={t('flow.machine.title')} badge={badge} approx={!result.converged}>
+      {v.portFail.map((f, i) => (
+        <div key={i} className="rounded border border-red-500 bg-red-900/40 px-2 py-1 text-red-100">
+          <div className="font-bold">
+            ⚠ {t(f.role === 'output' ? 'flow.portFail.output' : 'flow.portFail.input')}
+          </div>
+          <div className="text-[11px] text-red-200/90">
+            {t('flow.portFail.where', { at: `${f.chest.x}, ${f.chest.y}`, items: f.items.join(', ') || '—' })}
+          </div>
+          <div className="text-[10px] text-red-200/70">{t('flow.portFail.note')}</div>
+        </div>
+      ))}
       {why && <div className="text-red-300">✗ {why}</div>}
       {v.unknown.length > 0 && (
         <div className="text-orange-300/90 text-[11px]">

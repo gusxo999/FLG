@@ -30,8 +30,13 @@ export default function FlowSummary() {
       ) : (
         <>
           <span className="text-gray-300">{t('flow.summary.machines', { n: s.total })}</span>
-          {s.short === 0 && s.unknown === 0 && (
+          {s.short === 0 && s.unknown === 0 && s.failed === 0 && (
             <span className="text-emerald-400">{t('flow.summary.allFull')}</span>
+          )}
+          {s.failed > 0 && (
+            <span className="text-red-200 font-bold bg-red-900/60 border border-red-500 rounded px-1">
+              ⚠ {t('flow.summary.failed', { n: s.failed })}
+            </span>
           )}
           {s.short > 0 && (
             <span className="text-red-300 font-semibold">✗ {t('flow.summary.short', { n: s.short })}</span>
@@ -64,12 +69,16 @@ export function ModuleFlowRow({ bbox }: { bbox: { x: number; y: number; w: numbe
   if (inside.length === 0) return null;
   const short = inside.filter((v) => v.state === 'short').length;
   const unknown = inside.filter((v) => v.state === 'unknown').length;
+  const failed = inside.filter((v) => v.portFail.length > 0).length;
   return (
     <div className="flex items-baseline gap-2">
       <span className="text-gray-500 w-10 shrink-0">{t('flow.module.label')}</span>
       <span className={short > 0 ? 'text-red-300' : 'text-emerald-300'}>
         {t('flow.module.value', { n: inside.length, short })}
         {unknown > 0 && <span className="text-orange-300">{t('flow.module.unknownPart', { unknown })}</span>}
+        {failed > 0 && (
+          <span className="text-red-200 font-bold"> · ⚠ {t('flow.summary.failed', { n: failed })}</span>
+        )}
       </span>
     </div>
   );

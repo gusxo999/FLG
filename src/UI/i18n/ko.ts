@@ -320,6 +320,7 @@ export const ko = {
       full: '100% 가동',
       short: '미달 {pct}%',
       unknown: '판정 불가',
+      failed: '포트 실패',
       ingredients: '재료',
       products: '산출',
       got: '받을 수 있음',
@@ -348,6 +349,12 @@ export const ko = {
       scale: '처리량을 모르는 팔·벨트가 있다',
       fluid: '유체 상자의 연결을 게임데이터가 말해 주지 않는다',
     },
+    portFail: {
+      output: '반출 실패 — 산출을 밖으로 못 내보낸다',
+      input: '공급 실패 — 이 재료가 밖에서 안 들어온다',
+      where: '상자가 블루프린트 안({at})에 갇혀 있다 · {items}',
+      note: '가동률은 그 상자를 무한 공급/회수로 보고 낸 값이다 — 실제로는 아무것도 못 잇는다',
+    },
     belt: {
       title: '벨트 흐름 — 이 칸',
       left: '왼 레인',
@@ -368,10 +375,11 @@ export const ko = {
       allFull: '전부 100%',
       short: '미달 {n}',
       unknown: '판정 불가 {n}',
+      failed: '포트 실패 {n}',
       noData: '게임데이터 없음',
       show: '테두리 표시',
       hide: '테두리 숨김',
-      tooltip: '빨간 테두리 = 100% 로 못 도는 머신 · 주황 점선 = 판정 불가. 머신을 누르면 까닭이 나온다.',
+      tooltip: '빗금 = 포트 실패(밖과 안 이어진 상자) · 빨간 테두리 = 100% 로 못 도는 머신 · 주황 점선 = 판정 불가. 머신을 누르면 까닭이 나온다.',
     },
     module: {
       label: '가동률',

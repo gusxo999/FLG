@@ -22,12 +22,16 @@ let memo: { key: readonly unknown[]; result: FlowResult } | null = null;
 
 /** 지금 그리드의 분석 결과. 입력이 그대로면 지난 결과를 돌려준다. */
 export function currentFlow(): FlowResult {
-  const { grid } = useLayoutStore.getState();
+  // `externalAreaBbox` 는 이름과 달리 **블루프린트 안쪽**이다(바깥 영역은 그 밖의 링). 분석은 그것으로
+  // 무한상자의 안팎을 가른다 — 바깥 상자는 사용자가 잇는 포트, 안쪽 상자는 갇힌 포트다.
+  const { grid, externalAreaBbox } = useLayoutStore.getState();
   const { entityMap, recipeMap, moduleMap } = useGameDataStore.getState();
   const { inserterOverrides } = useWizardStore.getState();
-  const key = [grid, entityMap, recipeMap, moduleMap, inserterOverrides] as const;
+  const key = [grid, entityMap, recipeMap, moduleMap, inserterOverrides, externalAreaBbox] as const;
   if (memo && memo.key.every((v, i) => v === key[i])) return memo.result;
-  const result = analyzeLayout(grid, { entityMap, recipeMap, moduleMap, inserterOverrides });
+  const result = analyzeLayout(grid, {
+    entityMap, recipeMap, moduleMap, inserterOverrides, interiorBbox: externalAreaBbox,
+  });
   memo = { key, result };
   return result;
 }
@@ -54,6 +58,7 @@ export const useFlowStore = create<FlowUiState>()(
  */
 export function useCurrentFlow(): FlowResult {
   useLayoutStore((s) => s.grid);
+  useLayoutStore((s) => s.externalAreaBbox);
   useGameDataStore((s) => s.entityMap);
   useGameDataStore((s) => s.recipeMap);
   useGameDataStore((s) => s.moduleMap);

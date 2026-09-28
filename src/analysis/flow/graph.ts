@@ -18,6 +18,7 @@ import {
 } from '../../types/layout';
 import {
   MACHINE_TYPES,
+  beltCap,
   chestRole,
   dirVec,
   inserterCap,
@@ -76,6 +77,11 @@ export interface ArmNode {
   to: ArmEnd;
   /** 벨트에 놓으면 그 레인 노드, 아니면 -1. */
   dropLane: number;
+  /**
+   * 바깥 공급 상자에서 줄로 옮기는 팔 — 처리량을 **벨트 한 줄 운반량으로 가정**했다
+   * (사용자 결정 2026-09-28 · `flow-model` §2.6). 프로토타입 저울이 아니다.
+   */
+  assumedExternal?: true;
 }
 
 export interface MachineNode {
@@ -105,6 +111,11 @@ export interface ChestNode {
   role: ChestRole;
   armsIn: number[];
   armsOut: number[];
+  /**
+   * 블루프린트 **안쪽**에 있나(`FlowCtx.interiorBbox`). 바깥 테두리의 상자가 **사용자가 자기 벨트를
+   * 잇는 자리**이고, 안쪽에 남은 무한상자는 **갇힌 상자**다 — 밖에서 아무것도 못 잇는다.
+   */
+  interior: boolean;
 }
 
 export interface Component {
@@ -137,6 +148,8 @@ export interface FlowGraph {
   netConsumers: Map<number, Set<number>>;
   /** 그래프에 못 들어간 것 — 양끝이 안 닿은 팔 · 정면으로 마주 본 벨트. */
   breaks: FlowBreaks;
+  /** 블루프린트 안쪽에 갇힌 무한상자(`chests` 의 인덱스). */
+  orphanChests: number[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,7 +345,10 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
         });
       } else if (isContainer(c, ctx)) {
         chestIdx.set(key(x, y), chests.length);
-        chests.push({ x, y, name: c.entityName, role: chestRole(c), armsIn: [], armsOut: [] });
+        chests.push({
+          x, y, name: c.entityName, role: chestRole(c), armsIn: [], armsOut: [],
+          interior: inInterior(ctx.interiorBbox, x, y),
+        });
       }
     }
   }
@@ -375,7 +391,19 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
         });
         continue;
       }
-      const { cap, known } = inserterCap(c.entityName, ctx);
+      let { cap, known } = inserterCap(c.entityName, ctx);
+      // **바깥 공급 상자에서 줄로 옮기는 팔은 벨트 한 줄 운반량으로 본다**(사용자 결정 2026-09-28).
+      // 블루프린트 그대로면 이 팔이 병목이지만, 사용자는 **자기 외부 입력을 그 상자에 잇는다** —
+      // 그러니 이 팔은 검사의 병목이 아니다. 레인 상한은 그대로 걸린다(계획이 줄을 레인으로 센다).
+      const externalSupply = from.kind === 'chest'
+        && !chests[from.c].interior
+        && chests[from.c].role.supply.size > 0
+        && to.kind === 'belt';
+      if (externalSupply && to.kind === 'belt') {
+        const b = beltCap(belts[to.cell].name, ctx);
+        cap = b.cap;
+        known = b.known;
+      }
       let dropLane = -1;
       if (to.kind === 'belt') {
         const b = belts[to.cell];
@@ -385,7 +413,10 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
         dropLane = b.lanes[far === 'left' ? 0 : 1];
       }
       const k = arms.length;
-      arms.push({ x, y, name: c.entityName ?? '?', cap, capKnown: known, from, to, dropLane });
+      arms.push({
+        x, y, name: c.entityName ?? '?', cap, capKnown: known, from, to, dropLane,
+        ...(externalSupply ? { assumedExternal: true as const } : {}),
+      });
       if (from.kind === 'belt') belts[from.cell].picks.push(k);
       if (from.kind === 'machine') machines[from.m].armsOut.push(k);
       if (from.kind === 'chest') chests[from.c].armsOut.push(k);
@@ -517,10 +548,24 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
     for (const set of mn.fluid.out.values()) for (const n of set) addTo(netProducers, n, m);
   });
 
+  // ⑩ 갇힌 상자 — 안쪽에 남은 무한상자. 밖에서 못 잇는 포트이고, 그 포트의 머신은 실패다.
+  const orphanChests: number[] = [];
+  for (let c = 0; c < chests.length; c++) {
+    const ch = chests[c];
+    if (!ch.interior || ch.role.relay) continue;
+    orphanChests.push(c);
+  }
+
   return {
     belts, lanes, arms, machines, chests, comps, directs, transfers, nets, netProducers, netConsumers,
-    breaks: { deadArms, headOn },
+    breaks: { deadArms, headOn }, orphanChests,
   };
+}
+
+/** 칸이 블루프린트 안쪽 bbox 안인가. bbox 를 모르면(손으로 만든 그리드) **바깥**으로 본다. */
+function inInterior(bbox: FlowCtx['interiorBbox'], x: number, y: number): boolean {
+  if (!bbox) return false;
+  return x >= bbox.x && x < bbox.x + bbox.w && y >= bbox.y && y < bbox.y + bbox.h;
 }
 
 /** 머신 footprint — 프로토타입 크기, E/W 면 가로세로를 바꾼다. */

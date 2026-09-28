@@ -286,7 +286,9 @@ function runPass(
       for (const [item, amount] of offers(k)) {
         let offer = Math.min(amount, transfer ? Infinity : armCap(k));
         if (offer <= EPS) continue;
-        rec.offered.set(k, (rec.offered.get(k) ?? 0) + offer);
+        // 넣으려던 양은 **그 레인이 받을 수 있는 만큼**까지만 적는다 — 바깥 공급 팔은 벨트 한 줄
+        // 운반량이라(가정) 레인보다 큰 수가 나오고, 화면의 "정체로 거절"이 레인 용량을 넘어 보인다.
+        rec.offered.set(k, (rec.offered.get(k) ?? 0) + Math.min(offer, lanes[a.dropLane].cap));
         // 걷기 — room 은 지나온 레인 노드의 남은 용량 최솟값(여기까지 오는 물건이 다 지나야 한다)
         const path: number[] = [];
         const at: number[] = [];

@@ -322,6 +322,7 @@ export const en: Translations = {
       full: 'Running at 100%',
       short: 'Short {pct}%',
       unknown: 'Cannot judge',
+      failed: 'Port failed',
       ingredients: 'Ingredients',
       products: 'Products',
       got: 'Can receive',
@@ -350,6 +351,12 @@ export const en: Translations = {
       scale: 'An inserter or belt has no throughput data',
       fluid: 'Game data does not say where the fluid boxes connect',
     },
+    portFail: {
+      output: 'Export failed — the product cannot leave the blueprint',
+      input: 'Supply failed — this ingredient never arrives from outside',
+      where: 'Its chest is trapped inside the blueprint ({at}) · {items}',
+      note: 'The utilization above counts that chest as an infinite source/sink — in reality nothing can connect to it',
+    },
     belt: {
       title: 'Belt flow — this cell',
       left: 'Left lane',
@@ -370,10 +377,11 @@ export const en: Translations = {
       allFull: 'all at 100%',
       short: '{n} short',
       unknown: '{n} unknown',
+      failed: '{n} port failed',
       noData: 'No game data',
       show: 'Show borders',
       hide: 'Hide borders',
-      tooltip: 'Red border = machine below 100% · orange dashes = cannot judge. Click a machine for the reason.',
+      tooltip: 'Hatched = port failure (chest not connected to the outside) · red border = machine below 100% · orange dashes = cannot judge. Click a machine for the reason.',
     },
     module: {
       label: 'Utilization',

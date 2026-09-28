@@ -19,12 +19,13 @@ const UNKNOWN_LABEL: Record<string, string> = {
   fluid: '유체 상자 연결 미상',
 };
 
-/** 한 줄 요약 — `flg.report()` 가 쓴다. 끊김은 **있을 때만** 붙는다. */
+/** 한 줄 요약 — `flg.report()` 가 쓴다. 포트 실패·끊김은 **있을 때만** 붙는다. */
 export function flowSummaryLine(r: FlowResult): string {
   const s = r.summary;
   if (s.total === 0) return '머신 없음';
   const unsettled = r.machines.filter((v) => v.unsettled).length;
   return `${s.total}대 · 100% ${s.full} · **미달 ${s.short}** · 판정불가 ${s.unknown}`
+    + (s.failed > 0 ? `  · **포트 실패 ${s.failed}대**(갇힌 상자 ${r.orphanChests.length})` : '')
     + (r.converged ? '' : `  ← **근사**(고정점 ${r.iterations}회 안에 못 닿음 · 흔들리는 머신 ${unsettled}대 ~)`)
     + (breakCount(r.breaks) > 0 ? `  · **끊김 ${breakSummary(r.breaks)}** — flg.flow.breaks()` : '');
 }
@@ -34,8 +35,14 @@ const breakSummary = (b: FlowBreaks) =>
   [b.deadArms.length ? `팔 ${b.deadArms.length}` : '', b.headOn.length ? `정면 ${b.headOn.length}` : '']
     .filter(Boolean).join(' · ');
 
-/** 머신 하나의 까닭 한 줄. */
+/** 머신 하나의 까닭 한 줄. 포트 실패는 가동률을 이긴다 — 갇힌 상자가 100% 를 만들어 준다. */
 export function limitText(v: MachineVerdict): string {
+  if (v.portFail.length > 0) {
+    return v.portFail
+      .map((f) => `${f.role === 'output' ? '반출' : '공급'} 실패 — 상자 (${f.chest.x},${f.chest.y}) 가 안에 갇혔다`
+        + (f.items.length ? ` [${f.items.join(', ')}]` : ''))
+      .join(' · ');
+  }
   if (v.state === 'unknown') return `판정 불가 — ${v.unknown.map((u) => UNKNOWN_LABEL[u] ?? u).join(' · ')}`;
   if (!v.limit) return v.unknown.length ? `(가정: ${v.unknown.map((u) => UNKNOWN_LABEL[u] ?? u).join(' · ')})` : '';
   const { side, item, by } = v.limit;
@@ -56,7 +63,7 @@ export function limitText(v: MachineVerdict): string {
 export function renderMachines(r: FlowResult): string {
   const out = [`가동률 — ${flowSummaryLine(r)}`];
   for (const v of r.machines) {
-    const mark = v.state === 'short' ? '✗' : v.state === 'unknown' ? '?' : ' ';
+    const mark = v.portFail.length > 0 ? '⚠' : v.state === 'short' ? '✗' : v.state === 'unknown' ? '?' : ' ';
     out.push(
       `${mark} (${v.x},${v.y})`.padEnd(11)
       + `${(v.recipe ?? v.entityName ?? '?').padEnd(22)} ${pct(v.u)}${v.unsettled ? '~' : ' '} ${limitText(v)}`

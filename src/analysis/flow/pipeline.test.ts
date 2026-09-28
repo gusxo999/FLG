@@ -1,9 +1,9 @@
 /**
  * ⑫ 진짜 파이프라인의 배치를 푼다 — `runLayeredWizard` 합성 → 패널과 같은 `unifyLeaf` → 그리드.
  *
- * 이 파일의 둘째 시험은 **배치기의 성질을 기록한다** — 링크 포트는 인서터 하나로 선다
- * (`docs/auto-layout/common/known-limits.md` §13). 배치기가 포트 팔 수를 수요에서 세게 되면 그 시험은
- * 깨지는 것이 맞다 — 그때는 기대값을 "전부 100%" 로 바꾸고 §13 을 지운다.
+ * 이 파일의 둘째 시험은 **바깥 공급 팔 가정**을 못박는다(사용자 결정 2026-09-28 · `flow-model` §2.6):
+ * 블루프린트 그대로면 포트 인서터 하나(2.4/s)가 광석 4/s 를 먹여야 해 하위 머신이 60% 지만,
+ * 사용자는 **자기 외부 입력을 그 상자에 잇는다** — 그래서 검사는 그 팔을 벨트 한 줄 운반량으로 본다.
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -92,15 +92,23 @@ describe('⑫ 파이프라인 배치의 가동률', () => {
     expect(made).toBeCloseTo(eaten, 6);
   });
 
-  it('손셈 — 외부 공급 팔 하나(2.4/s)가 광석 4/s 를 먹여야 해서 하위 60%, 상위는 트렁크 순서대로 굶는다', () => {
+  it('바깥 공급 팔은 벨트 운반량 — 손셈대로 전부 100% 다', () => {
     const r = analyzeLayout(grid, ctx);
+    // 광석 4/s · 하위 2대 → 노랑 벨트 레인(7.5/s) 안. 팔(2.4/s)이 아니라 **줄**이 상한이다.
+    for (const s of byRecipe(r, 'sub-item')) expect(s.u).toBeCloseTo(1, 6);
+    for (const t of byRecipe(r, 'target-item')) expect(t.u).toBeCloseTo(1, 6);
+    expect(r.summary.failed).toBe(0);
+  });
+
+  it('대조 — 그 상자가 블루프린트 **안쪽**이면 가정이 안 걸리고, 포트 실패로 잡힌다', () => {
+    // 갇힌 상자(고아)는 사용자가 못 잇는다 — 가정의 근거가 없어지고, 그 포트의 머신은 실패다.
+    const whole = { x: 0, y: 0, w: grid.width, h: grid.height };
+    const r = analyzeLayout(grid, { ...ctx, interiorBbox: whole });
+    expect(r.orphanChests.length).toBeGreaterThan(0);
+    expect(r.summary.failed).toBeGreaterThan(0);
     const subs = byRecipe(r, 'sub-item');
-    for (const s of subs) {
-      expect(s.u).toBeCloseTo(0.6, 6);
-      expect(s.limit).toEqual({ side: 'input', item: 'ore', by: 'belt' });
-    }
-    const tops = byRecipe(r, 'target-item').map((m) => m.u).sort((a, b) => b - a);
-    expect(tops.map((u) => Math.round(u * 100))).toEqual([100, 100, 40, 0]);
+    expect(subs.every((s) => s.portFail.length > 0)).toBe(true);
+    expect(subs.some((s) => s.u < 1)).toBe(true);
   });
 });
 

@@ -83,3 +83,18 @@ describe('flowView — 끊김', () => {
     expect(renderBreaks(r)).toMatch(/\(9,4\) arm\s+집는 칸 \(9,3\) 빈칸 · 놓는 칸 \(9,5\) 빈칸\s+9,4/);
   });
 });
+
+describe('flowView — 포트 실패', () => {
+  /** 회수 상자 (7,6) 을 블루프린트 안쪽으로 두면 그 포트는 밖과 안 이어진 것이다. */
+  const inside = analyzeLayout(grid(), { ...ctx, interiorBbox: { x: 0, y: 0, w: 12, h: 10 } });
+
+  it('요약 줄이 포트 실패와 갇힌 상자 수를 함께 낸다', () => {
+    expect(flowSummaryLine(inside)).toContain('**포트 실패 1대**(갇힌 상자 2)');
+  });
+
+  it('머신 표는 ⚠ 로 표시하고, 까닭 자리에 어느 상자가 갇혔는지 적는다', () => {
+    const s = renderMachines(inside);
+    expect(s).toMatch(/⚠ \(3,5\)/);
+    expect(s).toContain('상자 (7,6) 가 안에 갇혔다');
+  });
+});

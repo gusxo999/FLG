@@ -80,8 +80,14 @@ export function inserterCap(name: string | null, ctx: FlowCtx): { cap: number; k
 
 /** 레인 하나의 용량(/s) = 벨트 처리량의 절반. 저울이 없으면 Infinity(낙관). */
 export function laneCap(name: string | null, ctx: FlowCtx): { cap: number; known: boolean } {
+  const full = beltCap(name, ctx);
+  return { cap: full.known ? full.cap / 2 : Infinity, known: full.known };
+}
+
+/** 벨트 **한 줄 전체**의 용량(/s). 바깥 공급 팔의 가정 저울이다(`flow-model` §2.6). */
+export function beltCap(name: string | null, ctx: FlowCtx): { cap: number; known: boolean } {
   const full = beltThroughput(name ? ctx.entityMap.get(name) : undefined);
-  return full > 0 ? { cap: full / 2, known: true } : { cap: Infinity, known: false };
+  return full > 0 ? { cap: full, known: true } : { cap: Infinity, known: false };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

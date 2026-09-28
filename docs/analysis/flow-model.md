@@ -11,6 +11,7 @@ tags: [visualization, factorio-data, fluid]
 > - `src/analysis/flow/**` 를 수정할 때
 > - 캔버스의 빨간 테두리 · 정보 모달의 가동률 · `flg.flow` 가 게임과 다른 답을 낸다고 느낄 때
 > - *"이 머신은 왜 미달인가"* 의 까닭(`limit`)이 이상할 때 → **§4 함정을 먼저**
+> - 바깥 상자에 붙은 팔이 왜 느리지 않은지, ⚠ **포트 실패**가 무엇인지 → **§2.6**
 > - 탐침을 한 번으로 줄이거나 야코비로 바꾸자는 생각이 들 때 → **§3**
 
 ## 0. 한 줄 요약
@@ -39,7 +40,7 @@ tags: [visualization, factorio-data, fluid]
 | 레인 노드 | 벨트 칸마다 좌/우 둘. 하류가 **정확히 하나**(없으면 막다른 끝) — 그래서 성분 하나는 뿌리 하나짜리 나무다 |
 | 팔 | 인서터. `direction` 은 **픽업 방향**. 집는 칸·놓는 칸은 프로토타입 벡터를 돌려 얻는다(렌더러와 같다) |
 | 머신 | `Assembler`·`Furnace`·`Lab`·`MiningDrill` origin. 정격 = 제작 속도(모듈 반영) ÷ `energy_required` |
-| 상자 | 무한상자 `at-least` = 무한 공급 · `remove_unfiltered_items`/`at-most` = 무한 회수 · 그 밖(보통 상자 · 설정 없는 무한상자)은 **중계** |
+| 상자 | 무한상자 `at-least` = 무한 공급 · `remove_unfiltered_items`/`at-most` = 무한 회수 · 그 밖(보통 상자 · 설정 없는 무한상자)은 **중계**. 블루프린트 **안쪽**인지 밖인지를 함께 적는다(§2.6) |
 | 관망 | 파이프 · 지하 파이프 · 무한파이프의 연결 성분([fluid.ts](../../src/analysis/flow/fluid.ts)). 용량 무한의 풀 |
 
 **레인 규칙은 [[belt-lane-semantics]] §2 그대로다** — 먼 레인에 떨군다 · 두 레인 다 집는다 · 그 칸의 유입이
@@ -100,6 +101,27 @@ tags: [visualization, factorio-data, fluid]
 낙관 가정 아래서도 모자라면 미달은 **확정**이라 판정 불가로 안 넘긴다. 율을 모르는 머신(`no-recipe`·`kind`)은
 아무것도 안 받고 안 내놓으며, 그와 벨트·직결을 나눠 쓰는 머신에는 `assumed` 꼬리표가 붙는다.
 
+**포트 실패(`portFail`)는 이 셋과 다른 축이다** — 가동률이 100% 여도 실패다(§2.6).
+
+### 2.6 바깥 포트 — 사용자가 잇는 쪽과, 아무도 못 잇는 쪽
+
+블루프린트의 경계에는 무한상자가 선다. 그 상자는 **모형**이다 — 실제로는 사용자가 자기 공장의 벨트를
+거기에 잇는다. 그래서 상자가 블루프린트 **밖**에 있느냐 **안**에 갇혔느냐로 답이 갈린다. 안팎은
+`FlowCtx.interiorBbox`(= 화면의 `layoutStore.externalAreaBbox`, **이름과 달리 안쪽** 사각형)로 가른다.
+
+| 상자 자리 | 무엇으로 보나 | 왜 |
+|---|---|---|
+| **밖** (사용자가 잇는다) | 공급 상자 → 벨트로 옮기는 팔의 처리량 = **벨트 한 줄 운반량**(`beltCap`) | 사용자 결정 2026-09-28. 배치 그대로면 포트 인서터 하나(2.4/s)가 줄(15/s)을 못 채우지만, 사용자는 **자기 입력을 그 상자 쪽에 직접 잇는다** — 납품된 배치에서 머신은 안 굶는다. 검사가 그 팔을 붙들면 **고칠 수 없는 빨강**이 가득 찬다 |
+| **안** (아무도 못 잇는다) | **포트 실패** — 그 상자에 매달린 머신은 실패다 | 갇힌 상자(`orphanChests`)는 공장에 연결할 길이 없다. 그런데 풀이에서는 여전히 무한 공급·무한 회수라 **가동률이 100% 로 나온다** — 실패가 성공으로 보인다. 그래서 가동률과 **따로** 적는다 |
+
+- 가정은 **공급 쪽(상자 → 벨트)만**이다. 반출 쪽(벨트 → 바깥 상자) 포트 팔은 여전히 프로토타입 저울로
+  잰다 — [[known-limits]] §13.
+- 갇힌 상자는 **중계 상자가 아닌 것**만 센다(설정 없는 보통 상자는 원래 포트가 아니다).
+  머신 ↔ 상자는 벨트 성분을 타고 잇는다(`portFailures` — 그 상자에 닿은 팔에서 출발해 같은 성분의
+  레인에 붙은 머신 전부).
+- 화면·콘솔에서는 가동률보다 **포트 실패가 앞선다**([[flow-inspection]] §2.1) — 100% 라는 숫자가
+  갇힌 상자가 만들어 준 값이기 때문이다.
+
 ## 3. 대안 검토 — 왜 이렇게 했나
 
 | 기각한 것 | 왜 |
@@ -145,14 +167,14 @@ tags: [visualization, factorio-data, fluid]
 
 | 단계 | 파일 | 심볼 |
 |---|---|---|
-| 어댑터 | [gamedata.ts](../../src/analysis/flow/gamedata.ts) | `machineRates` · `inserterCells` · `inserterCap` · `laneCap` · `chestRole` |
+| 어댑터 | [gamedata.ts](../../src/analysis/flow/gamedata.ts) | `machineRates` · `inserterCells` · `inserterCap` · `laneCap` · `beltCap`(§2.6 가정 저울) · `chestRole` |
 | 그래프 | [graph.ts](../../src/analysis/flow/graph.ts) | `buildFlowGraph` · 투입 순서(⑦) |
 | 관망 | [fluid.ts](../../src/analysis/flow/fluid.ts) | `buildFluidNets` · `machineFluidPorts` |
 | 풀이 | [solve.ts](../../src/analysis/flow/solve.ts) | `runPass` · `solveFlow` · `fluidSupply`/`fluidDrain` |
-| 판정 | [build.ts](../../src/analysis/flow/build.ts) | `analyzeLayout` · `machineVerdictAt` · `FULL_THRESHOLD` |
+| 판정 | [build.ts](../../src/analysis/flow/build.ts) | `analyzeLayout` · `machineVerdictAt` · `FULL_THRESHOLD` · `portFailures`(§2.6) |
 | 모으기 | [flowStore.ts](../../src/UI/store/flowStore.ts) | `currentFlow` — 입력 셋(그리드 · 게임데이터 · 인서터 보정)을 모으는 **한 자리**, 그리드 참조로 메모 |
 | 콘솔 | [flowView.ts](../../src/debug/flowView.ts) | `flg.flow.machines()` · `flg.flow.at(x, y)` · `flg.flow.breaks()` · `flg.report()` 의 가동률 줄 |
 
 시험은 **의도**로 적었다 — [build.test.ts](../../src/analysis/flow/build.test.ts)(과잉 생산 · 레인 · 합류 ·
-다재료 · 번짐 · 우선순위 · 판정 불가) · [fluid.test.ts](../../src/analysis/flow/fluid.test.ts) ·
+다재료 · 번짐 · 우선순위 · 판정 불가 · ⑬ 바깥 공급 팔 가정 · ⑭ 갇힌 상자) · [fluid.test.ts](../../src/analysis/flow/fluid.test.ts) ·
 [pipeline.test.ts](../../src/analysis/flow/pipeline.test.ts)(진짜 배치기를 돌려 손셈과 대조).

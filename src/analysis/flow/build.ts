@@ -24,6 +24,8 @@ import type {
   LaneFlow,
   LaneSide,
   MachineVerdict,
+  OrphanChest,
+  PortFailure,
   UnknownReason,
 } from './types';
 
@@ -35,7 +37,8 @@ export function analyzeLayout(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowRes
   const g = buildFlowGraph(grid, ctx);
   const sol = solveFlow(g);
 
-  const machines = g.machines.map((_, m) => verdictOf(g, sol, m));
+  const portFails = portFailures(g);
+  const machines = g.machines.map((_, m) => verdictOf(g, sol, m, portFails.get(m) ?? []));
   machines.sort((a, b) => a.y - b.y || a.x - b.x);
 
   // 벨트 칸마다 닿는 팔 — 칸마다 팔 전체를 훑지 않게 한 번 모은다.
@@ -55,19 +58,96 @@ export function analyzeLayout(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowRes
     belts.set(`${g.belts[b].x},${g.belts[b].y}`, beltCellOf(g, b, sol.final, armsAt.get(b) ?? []));
   }
 
-  const summary = { total: machines.length, full: 0, short: 0, unknown: 0 };
-  for (const v of machines) summary[v.state]++;
+  const summary = { total: machines.length, full: 0, short: 0, unknown: 0, failed: 0 };
+  for (const v of machines) {
+    summary[v.state]++;
+    if (v.portFail.length > 0) summary.failed++;
+  }
 
-  return { machines, belts, summary, converged: sol.converged, iterations: sol.iterations, breaks: g.breaks };
+  const orphanChests: OrphanChest[] = g.orphanChests.map((c) => orphanOf(g, c));
+
+  return {
+    machines, belts, summary, orphanChests,
+    converged: sol.converged, iterations: sol.iterations, breaks: g.breaks,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 갇힌 상자 — 밖과 안 이어진 포트
+// ─────────────────────────────────────────────────────────────────────────────
+
+function orphanOf(g: FlowGraph, c: number): OrphanChest {
+  const ch = g.chests[c];
+  const supply = ch.role.supply.size > 0;
+  const sink = ch.role.sinkAll || ch.role.sinkItems.size > 0;
+  return {
+    x: ch.x, y: ch.y,
+    items: [...new Set([...ch.role.supply, ...ch.role.sinkItems])],
+    role: supply && sink ? 'both' : supply ? 'supply' : 'sink',
+  };
+}
+
+/**
+ * 갇힌 상자 → 그 포트의 머신. 상자에 **넣는** 팔의 상류 머신은 반출(출력)이 막힌 것이고, 상자에서
+ * **꺼내는** 팔의 하류 머신은 공급(입력)이 안 온 것이다. 상자와 머신 사이에 줄이 한 토막 있으므로
+ * 벨트 성분을 한 칸 건너 찾는다.
+ */
+function portFailures(g: FlowGraph): Map<number, PortFailure[]> {
+  const out = new Map<number, PortFailure[]>();
+  const add = (m: number, f: PortFailure) => {
+    const list = out.get(m);
+    if (list && list.some((o) => o.role === f.role && o.chest.x === f.chest.x && o.chest.y === f.chest.y)) return;
+    if (list) list.push(f);
+    else out.set(m, [f]);
+  };
+  for (const c of g.orphanChests) {
+    const ch = g.chests[c];
+    const info = orphanOf(g, c);
+    // 상자로 들어가는 팔 ← 그 앞의 줄에 **넣는** 머신들
+    for (const k of ch.armsIn) {
+      for (const m of machinesOn(g, g.arms[k].from, 'drop')) {
+        add(m, { role: 'output', chest: { x: ch.x, y: ch.y }, items: info.items });
+      }
+    }
+    // 상자에서 나가는 팔 → 그 뒤의 줄에서 **집는** 머신들
+    for (const k of ch.armsOut) {
+      for (const m of machinesOn(g, g.arms[k].to, 'pick')) {
+        add(m, { role: 'input', chest: { x: ch.x, y: ch.y }, items: info.items });
+      }
+    }
+  }
+  return out;
+}
+
+/** 팔 끝이 머신이면 그 머신, 벨트면 그 성분에 **넣는**(`drop`) 또는 **집는**(`pick`) 머신들. */
+function machinesOn(g: FlowGraph, end: FlowGraph['arms'][number]['from'], side: 'drop' | 'pick'): number[] {
+  if (end.kind === 'machine') return [end.m];
+  if (end.kind !== 'belt') return [];
+  const comp = g.belts[end.cell].comp;
+  const found: number[] = [];
+  for (let k = 0; k < g.arms.length; k++) {
+    const a = g.arms[k];
+    if (side === 'drop') {
+      if (a.from.kind !== 'machine' || a.dropLane < 0) continue;
+      if (g.belts[g.lanes[a.dropLane].cell].comp !== comp) continue;
+      found.push(a.from.m);
+    } else {
+      if (a.to.kind !== 'machine' || a.from.kind !== 'belt') continue;
+      if (g.belts[a.from.cell].comp !== comp) continue;
+      found.push(a.to.m);
+    }
+  }
+  return [...new Set(found)];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 머신 판정
 // ─────────────────────────────────────────────────────────────────────────────
 
-function verdictOf(g: FlowGraph, sol: SolveOutput, m: number): MachineVerdict {
+function verdictOf(g: FlowGraph, sol: SolveOutput, m: number, portFail: PortFailure[]): MachineVerdict {
   const mn = g.machines[m];
   const base = {
+    portFail,
     entityId: mn.cell.entityId,
     entityName: mn.cell.entityName,
     recipe: mn.cell.recipe ?? null,

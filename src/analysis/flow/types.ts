@@ -16,6 +16,12 @@ export interface FlowCtx {
   moduleMap: Map<string, Module>;
   /** 위저드의 인서터 보정(entityName 키) — 계획과 **같은 저울**을 쓰려고 받는다. */
   inserterOverrides?: Record<string, { throughput?: number; stackSize?: number }>;
+  /**
+   * 블루프린트 **안쪽**의 bbox — `layoutStore.externalAreaBbox`(이름과 달리 내부 영역이다).
+   * 무한상자가 이 안에 있으면 **밖과 못 잇는 상자**다(`flow-model` §2.6 고아 상자).
+   * 없으면(손으로 만든 그리드) 모든 무한상자를 바깥 포트로 본다.
+   */
+  interiorBbox?: { x: number; y: number; w: number; h: number } | null;
 }
 
 /**
@@ -33,6 +39,20 @@ export interface FlowCtx {
 export type UnknownReason = 'no-recipe' | 'kind' | 'yield' | 'scale' | 'fluid';
 
 export type MachineState = 'full' | 'short' | 'unknown';
+
+/**
+ * 이 머신의 포트 하나가 **바깥과 안 이어졌다** — 그 상자가 블루프린트 안쪽에 갇혀 있다(고아 상자).
+ * 가동률과 **다른 축**이다: 갇힌 상자는 게임에서 무한상자로 돌아 머신이 100% 로 보이지만,
+ * 사용자는 그 포트에 아무것도 연결할 수 없다 → 그 머신은 실패다(`flow-model` §2.6).
+ */
+export interface PortFailure {
+  /** `output` = 산출을 못 내보낸다(반출 실패) · `input` = 재료가 안 들어온다(공급 실패). */
+  role: 'input' | 'output';
+  /** 갇힌 상자의 칸. */
+  chest: { x: number; y: number };
+  /** 그 상자가 맡던 품목(설정에서). */
+  items: string[];
+}
 
 /** 머신 하나의 판정. 좌표는 origin 칸(그리드 좌표). */
 export interface MachineVerdict {
@@ -62,6 +82,8 @@ export interface MachineVerdict {
   unknown: UnknownReason[];
   /** 율을 모르는 머신(`no-recipe`·`kind`)과 벨트·직결을 공유한다 — 그 가정 위의 판정이다. */
   assumed: boolean;
+  /** 밖과 안 이어진 포트 — 있으면 **가동률과 무관하게 실패다**(`PortFailure`). */
+  portFail: PortFailure[];
   /**
    * 고정점에 못 닿은 풀이에서 **마지막 되풀이에도 `us`·`ud` 가 움직였다** — 이 머신의 `u` 는 되풀이를
    * 어디서 멈췄느냐에 달렸다(2026-09-25 실측: 200회와 201회에서 머신 7대의 판정이 갈렸다).
@@ -128,6 +150,17 @@ export interface FlowSummary {
   full: number;
   short: number;
   unknown: number;
+  /** 포트가 밖과 안 이어진 머신 수 — `full`·`short`·`unknown` 과 **겹쳐 센다**(다른 축이다). */
+  failed: number;
+}
+
+/** 블루프린트 안쪽에 갇힌 무한상자 — 밖에서 아무것도 못 잇는다. */
+export interface OrphanChest {
+  x: number;
+  y: number;
+  items: string[];
+  /** 설정상 역할 — 공급(`supply`) · 회수(`sink`) · 둘 다. */
+  role: 'supply' | 'sink' | 'both';
 }
 
 export interface FlowResult {
@@ -140,4 +173,6 @@ export interface FlowResult {
   converged: boolean;
   iterations: number;
   breaks: FlowBreaks;
+  /** 블루프린트 안쪽에 갇힌 무한상자 — 그 포트는 밖과 안 이어졌다. */
+  orphanChests: OrphanChest[];
 }

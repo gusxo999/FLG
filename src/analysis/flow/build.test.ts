@@ -313,14 +313,15 @@ describe('analyzeLayout — 머신 가동률', () => {
     expect(at(r, 2, 2).limit?.side).toBe('output');
   });
 
-  /** 공급 1.5/s 인 벨트에 소비자 둘(각 1/s). */
+  /**
+   * 느린 벨트(레인 1/s) 한 줄에 소비자 둘(각 1/s) — 모자란 것은 **줄**이다.
+   * 공급 팔로는 모자람을 못 만든다: 바깥 공급 상자의 팔은 벨트 한 줄 운반량으로 본다(사용자 결정).
+   */
   function priorityGrid(): LayoutGrid {
     const grid = createEmptyGrid(20, 12);
-    beltRow(grid, 2, 1, 16);
+    beltRow(grid, 2, 1, 16, 'slow-belt');
     supply(grid, 2, 0, 'plate');
-    arm(grid, 2, 1, 0, 'slow-inserter');
-    supply(grid, 3, 0, 'plate');
-    arm(grid, 3, 1, 0, 'half-inserter');
+    arm(grid, 2, 1, 0);
     arm(grid, 5, 3, 0);          // (5,2) → (5,4) Q1
     machine(grid, 4, 4, 'eat');
     drainRight(grid, 4, 4);
@@ -331,13 +332,11 @@ describe('analyzeLayout — 머신 가동률', () => {
   }
 
   it('⑧ 같은 줄의 상류 소비자가 먼저 채워진다', () => {
-    const ctx = makeCtx();
-    ctx.inserterOverrides = { ...ctx.inserterOverrides, 'half-inserter': { throughput: 0.5 } };
-    const r = analyzeLayout(priorityGrid(), ctx);
+    const r = analyzeLayout(priorityGrid(), makeCtx());
     const q1 = at(r, 4, 4);
     const q2 = at(r, 11, 4);
     expect(q1.state).toBe('full');
-    expect(q2.u).toBeCloseTo(0.5);
+    expect(q2.u).toBeCloseTo(0);
     expect(q2.limit).toEqual({ side: 'input', item: 'plate', by: 'belt' });
   });
 
@@ -428,26 +427,27 @@ describe('analyzeLayout — ⑩ 판정 불가', () => {
 
 describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도를 정상상태로)', () => {
   it('투입기 지점마다 흐름량이 달라진다 — 드랍 둘 + 픽업 둘', () => {
+    // 느린 벨트(레인 1/s) — 바깥 공급 팔이 벨트 운반량이라 **눈금은 레인과 집기가 만든다**.
     const grid = createEmptyGrid(14, 10);
-    beltRow(grid, 5, 1, 10);
+    beltRow(grid, 5, 1, 10, 'slow-belt');
     supply(grid, 2, 3, 'plate');
-    arm(grid, 2, 4, 0);          // +4 @ x=2, 북쪽에서 → 오른 레인
+    arm(grid, 2, 4, 0);          // 북쪽에서 → 오른 레인(1/s 까지)
     supply(grid, 5, 7, 'plate');
-    arm(grid, 5, 6, 8);          // +4 @ x=5, 남쪽에서 → 왼 레인(한 레인은 7.5/s 라 8 을 못 싣는다)
-    arm(grid, 7, 4, 8);          // −4 @ x=7 → 회수 (7,3)
+    arm(grid, 5, 6, 8);          // 남쪽에서 → 왼 레인(1/s 까지)
+    arm(grid, 7, 4, 8, 'slow-inserter'); // −1 @ x=7 → 회수 (7,3)
     sink(grid, 7, 3);
-    arm(grid, 9, 4, 8);          // −4 @ x=9 → 회수 (9,3)
+    arm(grid, 9, 4, 8);          // 남은 것 전부 @ x=9 → 회수 (9,3)
     sink(grid, 9, 3);
     const r = analyzeLayout(grid, makeCtx());
     const flow = (x: number) => {
       const c = r.belts.get(`${x},5`)!;
       return c.lanes.left.rate + c.lanes.right.rate;
     };
-    expect(flow(3)).toBeCloseTo(4);
-    expect(flow(6)).toBeCloseTo(8);
-    expect(flow(8)).toBeCloseTo(4);
+    expect(flow(3)).toBeCloseTo(1);
+    expect(flow(6)).toBeCloseTo(2);
+    expect(flow(8)).toBeCloseTo(1);
     expect(flow(10)).toBeCloseTo(0); // 마지막 픽업 뒤는 비어 있다(정상상태)
-    expect(r.belts.get('3,5')!.lanes.right.items).toEqual([{ item: 'plate', rate: 4 }]);
+    expect(r.belts.get('3,5')!.lanes.right.items).toEqual([{ item: 'plate', rate: 1 }]);
   });
 
   it('하류에 소비가 없으면 투입이 막힌다 — 옛 beltFlow 는 여기서 4/s 가 흐른다고 했다(결함 ㉢)', () => {
@@ -459,7 +459,8 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
     expect(r.belts.get('6,5')!.lanes.right.rate).toBe(0);
     const tap = r.belts.get('2,5')!.taps[0];
     expect(tap.rate).toBe(0);
-    expect(tap.refused).toBeCloseTo(4);
+    // 넣으려던 양 = 레인 한 줄(바깥 공급 팔은 벨트 운반량이라 팔이 상한이 아니다).
+    expect(tap.refused).toBeCloseTo(7.5);
   });
 
   it('머신 생산율이 인서터 처리량보다 작으면 머신율로 캡', () => {
@@ -508,9 +509,10 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
   });
 
   it('side-load 합류: 두 상류가 각자의 레인으로 더해진다', () => {
+    // 느린 벨트(레인 1/s) — 두 줄이 각자 1/s 를 싣는다(바깥 공급 팔은 벨트 운반량이라 안 깎는다).
     const grid = createEmptyGrid(14, 10);
-    beltRow(grid, 5, 1, 9);
-    for (let y = 2; y <= 4; y++) belt(grid, 3, y, 8); // 지선 남향 → (3,5) 에 북쪽에서 옆 유입
+    beltRow(grid, 5, 1, 9, 'slow-belt');
+    for (let y = 2; y <= 4; y++) belt(grid, 3, y, 8, 'slow-belt'); // 지선 남향 → (3,5) 에 북쪽에서 옆 유입
     supply(grid, 1, 3, 'plate');
     arm(grid, 1, 4, 0);          // 본선 (1,5), 북쪽에서 → 오른(남) 레인
     supply(grid, 1, 2, 'plate');
@@ -521,8 +523,8 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
     sink(grid, 8, 3);
     const r = analyzeLayout(grid, makeCtx());
     const c = r.belts.get('5,5')!;
-    expect(c.lanes.right.rate).toBeCloseTo(4); // 본선 직진
-    expect(c.lanes.left.rate).toBeCloseTo(4);  // 지선은 닿은(북=왼) 레인으로 접힌다
+    expect(c.lanes.right.rate).toBeCloseTo(1); // 본선 직진
+    expect(c.lanes.left.rate).toBeCloseTo(1);  // 지선은 닿은(북=왼) 레인으로 접힌다
   });
 });
 
@@ -567,5 +569,110 @@ describe('analyzeLayout — ⑫ 끊김', () => {
     expect(r.breaks.deadArms).toEqual([
       expect.objectContaining({ x: 5, y: 6, ends: [{ end: 'pick', x: 5, y: 5, found: EntityType.Empty }] }),
     ]);
+  });
+});
+
+/**
+ * ⑬ **바깥 공급 팔은 벨트 한 줄 운반량으로 본다**(사용자 결정 2026-09-28 · `flow-model` §2.6).
+ *
+ * 블루프린트 그대로면 그 팔이 병목이지만, 사용자는 **자기 외부 입력을 바깥 상자에 잇는다** — 그러니
+ * 검사가 그 팔 때문에 머신을 빨갛게 칠하면 거짓 경보다. 안쪽에 갇힌 상자는 그 근거가 없으므로 예외다.
+ */
+describe('analyzeLayout — ⑬ 바깥 공급 팔 가정', () => {
+  /** 상자 (1,1) → 팔 (1,2) → 벨트 y=3 → 팔 (5,4) → 머신 (4,5) gear(판 2/s). */
+  function supplyLine(): LayoutGrid {
+    const grid = createEmptyGrid(14, 12);
+    supply(grid, 1, 1, 'plate');
+    arm(grid, 1, 2, 0, 'slow-inserter');   // 프로토타입 저울로는 1/s — 수요(2/s)의 절반
+    beltRow(grid, 3, 1, 6);
+    arm(grid, 5, 4, 0);
+    machine(grid, 4, 5, 'gear');
+    drainRight(grid, 4, 5);
+    return grid;
+  }
+
+  it('느린 팔이 물고 있어도 100% — 줄이 감당하면 바깥은 병목이 아니다', () => {
+    const r = analyzeLayout(supplyLine(), makeCtx());
+    const v = at(r, 4, 5);
+    expect(v.state).toBe('full');
+    expect(v.inputs).toEqual([{ item: 'plate', got: 2, need: 2 }]);
+  });
+
+  it('대조 — 그 상자가 안쪽에 갇혀 있으면 가정이 안 걸린다(프로토타입 저울 1/s → 50%)', () => {
+    const r = analyzeLayout(supplyLine(), { ...makeCtx(), interiorBbox: { x: 0, y: 0, w: 14, h: 12 } });
+    const v = at(r, 4, 5);
+    expect(v.u).toBeCloseTo(0.5);
+    // 까닭은 **줄**이다 — 머신 제 팔(4/s)은 놀고, 모자란 것은 줄에 실린 양이다(그 상자의 팔이 1/s).
+    expect(v.limit).toEqual({ side: 'input', item: 'plate', by: 'belt' });
+    // bbox 가 그리드 전체라 회수 상자도 갇힌 것이 된다 — 공급 쪽이 들어 있는지만 본다.
+    expect(v.portFail).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'input', chest: { x: 1, y: 1 } }),
+    ]));
+  });
+
+  it('대조 — 줄이 모자라면 여전히 미달이다(가정이 레인까지 지우지는 않는다)', () => {
+    const grid = supplyLine();
+    for (let x = 1; x <= 6; x++) getCell(grid, x, 3)!.entityName = 'slow-belt'; // 레인 1/s
+    const v = at(analyzeLayout(grid, makeCtx()), 4, 5);
+    expect(v.u).toBeCloseTo(0.5);
+    expect(v.limit).toEqual({ side: 'input', item: 'plate', by: 'belt' });
+  });
+});
+
+/**
+ * ⑭ **갇힌 상자 — 밖과 안 이어진 포트는 머신의 실패다**(사용자 결정 2026-09-28).
+ *
+ * 무한상자는 게임에서 무한히 대 주고 받아 주므로 가동률은 100% 로 나온다. 그런데 그 상자가
+ * 블루프린트 **안쪽**에 있으면 사용자가 거기에 아무것도 못 잇는다 — 그 포트는 실패이고,
+ * 가동률과 **다른 축**으로 센다(`summary.failed`).
+ */
+describe('analyzeLayout — ⑭ 갇힌 상자', () => {
+  /** 머신 (5,5) eat(판 1/s). 공급은 바깥(1,6), 회수는 `sinkAt` 칸. bbox = x 4..9 · y 4..9. */
+  function portGrid(sinkAt: { x: number; y: number }): LayoutGrid {
+    const grid = createEmptyGrid(16, 14);
+    supply(grid, 1, 6, 'plate');
+    arm(grid, 2, 6, 12);                 // (1,6) 상자 → (3,6) 벨트
+    belt(grid, 3, 6, 4);
+    arm(grid, 4, 6, 12);                 // (3,6) 벨트 → (5,6) 머신
+    machine(grid, 5, 5, 'eat');
+    arm(grid, 8, 6, 12);                 // (7,6) 머신 → 회수 상자
+    sink(grid, sinkAt.x, sinkAt.y);
+    return grid;
+  }
+  const INTERIOR = { x: 4, y: 4, w: 6, h: 6 };
+
+  it('회수 상자가 안쪽에 갇히면 — 가동률 100% 여도 **실패**다', () => {
+    const r = analyzeLayout(portGrid({ x: 9, y: 6 }), { ...makeCtx(), interiorBbox: INTERIOR });
+    const v = at(r, 5, 5);
+    expect(v.state).toBe('full');                     // 무한상자가 받아 주므로 가동률은 100%
+    expect(v.portFail).toEqual([{ role: 'output', chest: { x: 9, y: 6 }, items: [] }]);
+    expect(r.summary.failed).toBe(1);
+    expect(r.orphanChests).toEqual([{ x: 9, y: 6, items: [], role: 'sink' }]);
+  });
+
+  it('대조 — 같은 상자가 테두리 밖이면 실패가 아니다', () => {
+    const r = analyzeLayout(portGrid({ x: 10, y: 6 }), { ...makeCtx(), interiorBbox: INTERIOR });
+    expect(at(r, 5, 5).portFail).toEqual([]);
+    expect(r.summary.failed).toBe(0);
+    expect(r.orphanChests).toEqual([]);
+  });
+
+  it('공급 상자가 안쪽에 갇히면 입력 쪽 실패 — 어느 상자인지도 함께 낸다', () => {
+    const grid = portGrid({ x: 10, y: 6 });
+    // 공급 상자를 안쪽(4,8)로 옮겨 다시 잇는다: (4,8) 상자 → 팔 (4,7) → 머신 (5,7)… 대신 벨트 줄을 쓴다.
+    getCell(grid, 1, 6)!.entityType = EntityType.Empty;
+    getCell(grid, 1, 6)!.entityId = null;
+    supply(grid, 5, 9, 'plate');         // bbox(4..9) 안 — 갇힌 공급 상자
+    arm(grid, 5, 8, 8);                  // (5,9) 상자 → (5,7) 머신
+    const r = analyzeLayout(grid, { ...makeCtx(), interiorBbox: INTERIOR });
+    const v = at(r, 5, 5);
+    expect(v.portFail).toEqual([{ role: 'input', chest: { x: 5, y: 9 }, items: ['plate'] }]);
+    expect(r.summary.failed).toBe(1);
+  });
+
+  it('bbox 를 모르면(손으로 만든 그리드) 아무 상자도 갇힌 것으로 안 본다', () => {
+    const r = analyzeLayout(portGrid({ x: 9, y: 6 }), makeCtx());
+    expect(r.orphanChests).toEqual([]);
+    expect(at(r, 5, 5).portFail).toEqual([]);
   });
 });
