@@ -62,6 +62,29 @@ export interface MachineVerdict {
   unknown: UnknownReason[];
   /** 율을 모르는 머신(`no-recipe`·`kind`)과 벨트·직결을 공유한다 — 그 가정 위의 판정이다. */
   assumed: boolean;
+  /**
+   * 고정점에 못 닿은 풀이에서 **마지막 되풀이에도 `us`·`ud` 가 움직였다** — 이 머신의 `u` 는 되풀이를
+   * 어디서 멈췄느냐에 달렸다(2026-09-25 실측: 200회와 201회에서 머신 7대의 판정이 갈렸다).
+   */
+  unsettled?: true;
+}
+
+/**
+ * 흐름이 **못 건너는** 그리드 사실 — 풀이는 이것을 조용히 건너뛰므로 판정에는 결과(0)만 남는다.
+ * 미달의 까닭(`limit`)은 *"벨트가 덜 준다"* 까지만 말하고, 이것이 **어디서 끊겼나**를 짚는다.
+ */
+export interface FlowBreaks {
+  /** 집는 칸이나 놓는 칸에 벨트·머신·상자가 없는 인서터. 그래프에 안 들어간다. */
+  deadArms: {
+    x: number;
+    y: number;
+    name: string;
+    entityId: string | null;
+    /** 안 닿은 끝 — 그 칸과 거기 있는 것(`Empty` 면 빈 칸). */
+    ends: { end: 'pick' | 'drop'; x: number; y: number; found: string }[];
+  }[];
+  /** 앞 칸의 벨트류가 **반대 방향**이라 아이템이 안 건너간다. 서로를 가리키므로 쌍 하나로 센다. */
+  headOn: { a: { x: number; y: number; entityId: string | null }; b: { x: number; y: number; entityId: string | null } }[];
 }
 
 /** 벨트 칸 한 레인의 정상상태 흐름. */
@@ -116,4 +139,5 @@ export interface FlowResult {
   /** 고정점에 닿았나. false 면 화면은 **근사**로 표시한다. */
   converged: boolean;
   iterations: number;
+  breaks: FlowBreaks;
 }

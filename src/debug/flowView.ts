@@ -6,7 +6,7 @@
  */
 
 import { machineVerdictAt } from '../analysis/flow/build';
-import type { BeltCellFlow, FlowResult, MachineVerdict } from '../analysis/flow/types';
+import type { BeltCellFlow, FlowBreaks, FlowResult, MachineVerdict } from '../analysis/flow/types';
 
 const pct = (u: number) => (Number.isNaN(u) ? '  ?' : `${Math.round(u * 100)}%`.padStart(4));
 const rate = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : '∞');
@@ -19,13 +19,20 @@ const UNKNOWN_LABEL: Record<string, string> = {
   fluid: '유체 상자 연결 미상',
 };
 
-/** 한 줄 요약 — `flg.report()` 가 쓴다. */
+/** 한 줄 요약 — `flg.report()` 가 쓴다. 끊김은 **있을 때만** 붙는다. */
 export function flowSummaryLine(r: FlowResult): string {
   const s = r.summary;
   if (s.total === 0) return '머신 없음';
+  const unsettled = r.machines.filter((v) => v.unsettled).length;
   return `${s.total}대 · 100% ${s.full} · **미달 ${s.short}** · 판정불가 ${s.unknown}`
-    + (r.converged ? '' : `  ← **근사**(고정점 ${r.iterations}회 안에 못 닿음)`);
+    + (r.converged ? '' : `  ← **근사**(고정점 ${r.iterations}회 안에 못 닿음 · 흔들리는 머신 ${unsettled}대 ~)`)
+    + (breakCount(r.breaks) > 0 ? `  · **끊김 ${breakSummary(r.breaks)}** — flg.flow.breaks()` : '');
 }
+
+const breakCount = (b: FlowBreaks) => b.deadArms.length + b.headOn.length;
+const breakSummary = (b: FlowBreaks) =>
+  [b.deadArms.length ? `팔 ${b.deadArms.length}` : '', b.headOn.length ? `정면 ${b.headOn.length}` : '']
+    .filter(Boolean).join(' · ');
 
 /** 머신 하나의 까닭 한 줄. */
 export function limitText(v: MachineVerdict): string {
@@ -52,9 +59,32 @@ export function renderMachines(r: FlowResult): string {
     const mark = v.state === 'short' ? '✗' : v.state === 'unknown' ? '?' : ' ';
     out.push(
       `${mark} (${v.x},${v.y})`.padEnd(11)
-      + `${(v.recipe ?? v.entityName ?? '?').padEnd(22)} ${pct(v.u)}  ${limitText(v)}`
+      + `${(v.recipe ?? v.entityName ?? '?').padEnd(22)} ${pct(v.u)}${v.unsettled ? '~' : ' '} ${limitText(v)}`
       + (v.assumed ? '  [추정 포함]' : ''),
     );
+  }
+  if (r.machines.some((v) => v.unsettled)) out.push('~ 흔들림 — 되풀이를 어디서 멈췄느냐에 따라 값이 바뀐다(풀이가 고정점에 못 닿았다)');
+  return out.join('\n');
+}
+
+/**
+ * 끊김 — 흐름이 **못 건너는** 자리(`FlowBreaks`). 미달의 까닭은 *"벨트가 덜 준다"* 까지만 말한다 —
+ * 그 벨트가 어디서 끊겼는지는 여기서 본다. 둘 다 풀이가 조용히 건너뛰는 사실이라 다른 곳엔 안 나온다.
+ */
+export function renderBreaks(r: FlowResult): string {
+  const b = r.breaks;
+  if (breakCount(b) === 0) return '끊김 없음 — 모든 팔의 양끝이 닿고, 마주 본 벨트가 없다';
+  const out = [`끊김 ${breakCount(b)}건 — ${breakSummary(b)}`];
+  if (b.deadArms.length) out.push('', '팔 — 집는 칸이나 놓는 칸에 벨트·머신·상자가 없다(풀이에서 빠진다)');
+  for (const a of b.deadArms) {
+    const ends = a.ends
+      .map((e) => `${e.end === 'pick' ? '집는' : '놓는'} 칸 (${e.x},${e.y}) ${e.found === 'Empty' ? '빈칸' : e.found}`)
+      .join(' · ');
+    out.push(`  (${a.x},${a.y}) ${a.name.padEnd(18)} ${ends}  ${a.entityId ?? ''}`);
+  }
+  if (b.headOn.length) out.push('', '정면 — 서로를 가리키는 벨트. 아이템이 안 건너간다');
+  for (const h of b.headOn) {
+    out.push(`  (${h.a.x},${h.a.y})⇄(${h.b.x},${h.b.y})  ${h.a.entityId ?? '?'}  ⇄  ${h.b.entityId ?? '?'}`);
   }
   return out.join('\n');
 }

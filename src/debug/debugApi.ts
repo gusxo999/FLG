@@ -72,7 +72,7 @@ import {
   registerCommands,
 } from './registry';
 import { runLayout, type RunOverrides } from './runLayout';
-import { renderAt, renderMachines } from './flowView';
+import { renderAt, renderBreaks, renderMachines } from './flowView';
 import { currentFlow } from '../UI/store/flowStore';
 import {
   clearSnapshots,
@@ -411,6 +411,14 @@ const flow = defineGroup('flow', {
       return s;
     },
   },
+  breaks: {
+    desc: '끊김 — 양끝이 안 닿은 팔 · 정면으로 마주 본 벨트. 미달의 뿌리를 그리드에서 짚는다(풀이는 이것을 조용히 건너뛴다)',
+    fn: () => {
+      const s = renderBreaks(currentFlow());
+      console.log(s);
+      return s;
+    },
+  },
   result: {
     desc: '분석 결과 객체 그대로(FlowResult)',
     fn: () => currentFlow(),
@@ -703,6 +711,7 @@ function renderHelp(only?: string): string {
     "  flg.face('n0-concrete', 'W')     한 면의 단면표 (인자 없이 부르면 모듈 목록)",
     '  flg.check()                      규칙 위반만',
     '  flg.flow.machines()              머신마다 가동률 — 캔버스의 빨간 테두리를 텍스트로',
+    '  flg.flow.breaks()                미달의 뿌리 — 허공을 집는 팔 · 정면으로 마주 본 벨트',
     "  flg.snapshot('before') … flg.diff('before')   같은 코드에서 입력만 바꾼 비교",
     '',
     '게임에 없는 레시피를 만들어 시험하려면:',

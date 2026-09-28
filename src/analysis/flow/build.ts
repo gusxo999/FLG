@@ -58,7 +58,7 @@ export function analyzeLayout(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowRes
   const summary = { total: machines.length, full: 0, short: 0, unknown: 0 };
   for (const v of machines) summary[v.state]++;
 
-  return { machines, belts, summary, converged: sol.converged, iterations: sol.iterations };
+  return { machines, belts, summary, converged: sol.converged, iterations: sol.iterations, breaks: g.breaks };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +73,7 @@ function verdictOf(g: FlowGraph, sol: SolveOutput, m: number): MachineVerdict {
     recipe: mn.cell.recipe ?? null,
     x: mn.x, y: mn.y, w: mn.w, h: mn.h,
     assumed: isAssumed(g, m),
+    ...(sol.unsettled.has(m) ? { unsettled: true as const } : {}),
   };
   const rs = sol.supplyProbes.get(m);
   const rd = sol.drainProbes.get(m);

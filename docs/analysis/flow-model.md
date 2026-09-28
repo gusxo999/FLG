@@ -50,6 +50,11 @@ tags: [visualization, factorio-data, fluid]
 *뒤 가지 전부 → 옆 가지 전부 → 그 칸 자신의 투입*. 그래서 **상류가 먼저 · 직진이 먼저 · 유입이 투입보다
 먼저**다(⑦ *"옆에서 올라타려면 대상 레인에 여유가 있어야 한다"*).
 
+**그래프에 못 들어가는 것은 버리지 않고 `breaks` 에 적는다**(2026-09-25) — 양끝 중 하나가 벨트·머신·상자에
+안 닿은 팔(옮길 것이 없어 풀이에서 빠진다)과, 앞 칸의 벨트류가 반대 방향이라 유입에서 빠지는 **정면**
+쌍이다. 둘 다 판정에는 결과(0)만 남아 까닭이 *"벨트가 덜 준다"* 로 보이므로, 끊긴 자리는 따로 짚어야 한다
+(콘솔 `flg.flow.breaks()` — [[ai-console]] §5).
+
 ### 2.2 한 판 — `u` 가 주어졌을 때의 흐름([solve.ts](../../src/analysis/flow/solve.ts) `runPass`)
 
 투입 팔을 순서대로 꺼내 그 물건을 레인을 따라 하류로 걷는다. 지나는 칸의 집는 팔이 **받는 품목이면**
@@ -70,7 +75,9 @@ tags: [visualization, factorio-data, fluid]
 ```
 
 머신마다 차례로(가우스-자이델) 모두 1 에서 출발해 되풀이하고, 셋이 안 바뀌면 멈춘다(상한 200회 —
-못 닿으면 `converged: false` 이고 화면은 **근사**로 표시한다).
+못 닿으면 `converged: false` 이고 화면은 **근사**로 표시한다). 그때 마지막 되풀이에서도 `us`·`ud` 가 움직인
+머신은 `unsettled` 다 — 그 판정은 **멈춘 자리에 달렸다**(2026-09-25 advanced-circuit 10/s: 머신 8대가 주기 2 로
+오갔고, 200회와 201회에서 7대의 `u` 가 갈렸다).
 
 ### 2.4 유체 — 관망은 용량 무한의 풀
 
@@ -144,7 +151,7 @@ tags: [visualization, factorio-data, fluid]
 | 풀이 | [solve.ts](../../src/analysis/flow/solve.ts) | `runPass` · `solveFlow` · `fluidSupply`/`fluidDrain` |
 | 판정 | [build.ts](../../src/analysis/flow/build.ts) | `analyzeLayout` · `machineVerdictAt` · `FULL_THRESHOLD` |
 | 모으기 | [flowStore.ts](../../src/UI/store/flowStore.ts) | `currentFlow` — 입력 셋(그리드 · 게임데이터 · 인서터 보정)을 모으는 **한 자리**, 그리드 참조로 메모 |
-| 콘솔 | [flowView.ts](../../src/debug/flowView.ts) | `flg.flow.machines()` · `flg.flow.at(x, y)` · `flg.report()` 의 가동률 줄 |
+| 콘솔 | [flowView.ts](../../src/debug/flowView.ts) | `flg.flow.machines()` · `flg.flow.at(x, y)` · `flg.flow.breaks()` · `flg.report()` 의 가동률 줄 |
 
 시험은 **의도**로 적었다 — [build.test.ts](../../src/analysis/flow/build.test.ts)(과잉 생산 · 레인 · 합류 ·
 다재료 · 번짐 · 우선순위 · 판정 불가) · [fluid.test.ts](../../src/analysis/flow/fluid.test.ts) ·

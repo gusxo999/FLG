@@ -525,3 +525,47 @@ describe('analyzeLayout — ⑪ 벨트 칸 흐름(옛 beltFlow 시험의 의도�
     expect(c.lanes.left.rate).toBeCloseTo(4);  // 지선은 닿은(북=왼) 레인으로 접힌다
   });
 });
+
+/**
+ * 끊김 — 풀이가 **조용히 건너뛰는** 그리드 사실. 머신 판정에는 0 만 남고 까닭은 *"벨트가 덜 준다"* ·
+ * *"팔이 모자란다"* 라, 어디서 끊겼는지는 `breaks` 가 아니면 안 보인다(2026-09-25 실측: 외곽 경로가 포트
+ * 벨트에 정면으로 닿고 링크 셋이 인서터만 남긴 채 사라졌는데 `flg.check()` 는 통과였다).
+ *
+ *   y=3  공급 상자 (2,3)        y=5  벨트 → → → → (x=1..4) · (5,5) 는 시험마다 다르다
+ *   y=4  공급 팔 (2,4) N        y=6  소비 팔 (5,6) N  ·  y=7..9 머신 eat (4,7)
+ */
+describe('analyzeLayout — ⑫ 끊김', () => {
+  function line(end: 'same' | 'opposite' | 'none'): LayoutGrid {
+    const grid = createEmptyGrid(16, 16);
+    supply(grid, 2, 3, 'plate');
+    arm(grid, 2, 4, 0);
+    beltRow(grid, 5, 1, 4);
+    if (end !== 'none') belt(grid, 5, 5, end === 'same' ? 4 : 12);
+    arm(grid, 5, 6, 0);
+    machine(grid, 4, 7, 'eat');
+    drainRight(grid, 4, 7);
+    return grid;
+  }
+
+  it('정면으로 마주 본 벨트는 아이템이 안 건너간다 — 머신 0% · 쌍 하나로 적힌다', () => {
+    const r = analyzeLayout(line('opposite'), makeCtx());
+    expect(at(r, 4, 7).u).toBe(0);
+    expect(r.breaks.headOn).toHaveLength(1);
+    const pair = [r.breaks.headOn[0].a, r.breaks.headOn[0].b].map((p) => `${p.x},${p.y}`).sort();
+    expect(pair).toEqual(['4,5', '5,5']);
+  });
+
+  it('정면 대조 — 끝 칸이 같은 방향이면 100% · 끊김 없음', () => {
+    const r = analyzeLayout(line('same'), makeCtx());
+    expect(at(r, 4, 7).state).toBe('full');
+    expect(r.breaks).toEqual({ deadArms: [], headOn: [] });
+  });
+
+  it('집는 칸이 빈 팔은 풀이에서 빠지지만 끊김에는 남는다', () => {
+    const r = analyzeLayout(line('none'), makeCtx());
+    expect(at(r, 4, 7).u).toBe(0);
+    expect(r.breaks.deadArms).toEqual([
+      expect.objectContaining({ x: 5, y: 6, ends: [{ end: 'pick', x: 5, y: 5, found: EntityType.Empty }] }),
+    ]);
+  });
+});

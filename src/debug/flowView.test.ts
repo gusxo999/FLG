@@ -8,7 +8,7 @@ import { analyzeLayout } from '../analysis/flow/build';
 import { EntityType, createEmptyGrid, getCell, type Direction, type LayoutGrid } from '../types/layout';
 import type { Entity, Recipe } from '../types/gameData';
 import type { InfinitySettings } from '../types/blueprint';
-import { flowSummaryLine, renderAt, renderMachines } from './flowView';
+import { flowSummaryLine, renderAt, renderBreaks, renderMachines } from './flowView';
 
 const ctx = {
   entityMap: new Map<string, Entity>([
@@ -65,5 +65,21 @@ describe('flowView', () => {
 
   it('머신 칸은 footprint 어디를 짚어도 같은 판정', () => {
     expect(renderAt(r, 5, 7)).toContain('머신 (3,5) asm · gear · 50%');
+  });
+});
+
+describe('flowView — 끊김', () => {
+  it('끊김이 없으면 요약 줄에 안 붙고, 표는 없다고 말한다', () => {
+    const r = analyzeLayout(grid(), ctx);
+    expect(flowSummaryLine(r)).not.toContain('끊김');
+    expect(renderBreaks(r)).toContain('끊김 없음');
+  });
+
+  it('허공을 집는 팔은 요약 줄에 수로, 표에 칸과 id 로 나온다', () => {
+    const g = grid();
+    put(g, 9, 4, { entityType: EntityType.Inserter, entityName: 'arm', direction: 0 as Direction }); // 양끝 (9,3) · (9,5) 가 빈칸
+    const r = analyzeLayout(g, ctx);
+    expect(flowSummaryLine(r)).toContain('**끊김 팔 1**');
+    expect(renderBreaks(r)).toMatch(/\(9,4\) arm\s+집는 칸 \(9,3\) 빈칸 · 놓는 칸 \(9,5\) 빈칸\s+9,4/);
   });
 });

@@ -29,7 +29,7 @@ import {
   type MachineRates,
 } from './gamedata';
 import { buildFluidNets, machineFluidPorts, type FluidNet, type MachineFluidPorts } from './fluid';
-import type { FlowCtx, LaneSide, UnknownReason } from './types';
+import type { FlowBreaks, FlowCtx, LaneSide, UnknownReason } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -135,6 +135,8 @@ export interface FlowGraph {
   /** 관망 → 그 관망에 유체를 넣는 머신 · 빼는 머신. */
   netProducers: Map<number, Set<number>>;
   netConsumers: Map<number, Set<number>>;
+  /** 그래프에 못 들어간 것 — 양끝이 안 닿은 팔 · 정면으로 마주 본 벨트. */
+  breaks: FlowBreaks;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +277,23 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
     }
   }
 
+  // ②' 정면 마주보기 — `upstreamOf` 가 유입에서 빼는 자리. 빼기만 하면 **아무도 모른다**(2026-09-25 실측:
+  //     외곽 경로가 포트 벨트에 정면으로 닿아 머신이 0% 였는데 `flg.check()` 는 통과였다).
+  const headOn: FlowBreaks['headOn'] = [];
+  const seenPair = new Set<string>();
+  for (const b of belts) {
+    const n = nextOf(grid, b.x, b.y, getCell(grid, b.x, b.y)!);
+    const nc = n ? getCell(grid, n.x, n.y) : undefined;
+    if (!n || !nc || !isBeltLike(nc.entityType) || nc.direction !== (b.dir + 8) % 16) continue;
+    const pair = [key(b.x, b.y), key(n.x, n.y)].sort().join('|');
+    if (seenPair.has(pair)) continue;
+    seenPair.add(pair);
+    headOn.push({
+      a: { x: b.x, y: b.y, entityId: getCell(grid, b.x, b.y)!.entityId },
+      b: { x: n.x, y: n.y, entityId: nc.entityId },
+    });
+  }
+
   // ③ 레인의 하류 — ⑤ 뒤는 보존 · ⑥ 옆 하나뿐이면 곡선(보존) · ③ 아니면 닿은 쪽 레인으로 접힘
   for (let u = 0; u < belts.length; u++) {
     const n = belts[u].next;
@@ -333,6 +352,7 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
 
   // ⑤ 팔
   const arms: ArmNode[] = [];
+  const deadArms: FlowBreaks['deadArms'] = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       const c = grid.cells[y * grid.width + x];
@@ -342,7 +362,19 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
       const { pick, drop } = inserterCells(x, y, c.direction, ent);
       const from = endAt(pick.x, pick.y);
       const to = endAt(drop.x, drop.y);
-      if (from.kind === 'none' || to.kind === 'none') continue;
+      if (from.kind === 'none' || to.kind === 'none') {
+        // 옮길 것이 없어 풀이에서 빠진다 — 그래도 **적는다**. 빠진 팔의 머신은 판정에 0 으로만 남아,
+        // 까닭이 "벨트가 덜 준다" 인지 "팔이 허공을 집는다" 인지 판정만 보고는 못 가른다.
+        const found = (p: { x: number; y: number }) => getCell(grid, p.x, p.y)?.entityType ?? 'out-of-grid';
+        deadArms.push({
+          x, y, name: c.entityName ?? '?', entityId: c.entityId,
+          ends: [
+            ...(from.kind === 'none' ? [{ end: 'pick' as const, ...pick, found: found(pick) }] : []),
+            ...(to.kind === 'none' ? [{ end: 'drop' as const, ...drop, found: found(drop) }] : []),
+          ],
+        });
+        continue;
+      }
       const { cap, known } = inserterCap(c.entityName, ctx);
       let dropLane = -1;
       if (to.kind === 'belt') {
@@ -485,7 +517,10 @@ export function buildFlowGraph(grid: Readonly<LayoutGrid>, ctx: FlowCtx): FlowGr
     for (const set of mn.fluid.out.values()) for (const n of set) addTo(netProducers, n, m);
   });
 
-  return { belts, lanes, arms, machines, chests, comps, directs, transfers, nets, netProducers, netConsumers };
+  return {
+    belts, lanes, arms, machines, chests, comps, directs, transfers, nets, netProducers, netConsumers,
+    breaks: { deadArms, headOn },
+  };
 }
 
 /** 머신 footprint — 프로토타입 크기, E/W 면 가로세로를 바꾼다. */

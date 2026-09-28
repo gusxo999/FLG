@@ -114,6 +114,8 @@ export interface SolveOutput {
   final: PassRecord;
   converged: boolean;
   iterations: number;
+  /** 못 닿았을 때 마지막 되풀이에서도 `us`·`ud` 가 움직인 머신 — 그 `u` 는 멈춘 자리에 달렸다. 닿았으면 비어 있다. */
+  unsettled: Set<number>;
 }
 
 /** 한 판이 다른 머신의 몫을 무엇으로 셈하나(머리말 표). */
@@ -393,8 +395,10 @@ export function solveFlow(g: FlowGraph): SolveOutput {
   const fluidProbes = new Map<number, { got: ItemMap; sent: ItemMap }>();
   let converged = false;
   let iter = 0;
+  let moved = new Set<number>();
   for (iter = 1; iter <= MAX_ITER; iter++) {
     let delta = 0;
+    moved = new Set<number>();
 
     if (hasRelay) {
       delta = Math.max(delta, updateRelays(g, st, relays, runPass(g, st, allComps, g.directs, -1, 'actual', false)));
@@ -421,7 +425,9 @@ export function solveFlow(g: FlowGraph): SolveOutput {
       st.udParts.set(m, udParts);
       const us = minOf(usParts);
       const ud = minOf(udParts);
-      delta = Math.max(delta, Math.abs(us - st.us[m]), Math.abs(ud - st.ud[m]));
+      const du = Math.max(Math.abs(us - st.us[m]), Math.abs(ud - st.ud[m]));
+      if (du >= CONVERGE) moved.add(m);
+      delta = Math.max(delta, du);
       st.us[m] = us;
       st.ud[m] = ud;
       st.u[m] = Math.min(us, ud);
@@ -449,6 +455,7 @@ export function solveFlow(g: FlowGraph): SolveOutput {
   return {
     u: st.u, us: st.us, ud: st.ud, supplyProbes, drainProbes, fluidProbes, final,
     converged, iterations: Math.min(iter, MAX_ITER),
+    unsettled: converged ? new Set() : moved,
   };
 }
 
