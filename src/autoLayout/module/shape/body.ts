@@ -43,7 +43,7 @@ import type { PlannedLine } from "../types/line";
 import type { ModuleInput, ModulePort, TrunkContext } from "../types/module";
 import type { LinkFacePlan, LinkSeats } from "../types/seat";
 import type { Container, PortFace } from "../../shared/types";
-import { enumeratePerimeterCells, faceCell, faceVector } from "../../shared/grid";
+import { enumeratePerimeterCells, faceCell, faceVector, vectorToDirection } from "../../shared/grid";
 import { EntityType } from "../../../types/layout";
 
 type Cell = { x: number; y: number };
@@ -539,13 +539,34 @@ export function portGeometry(port: ModulePort): {
  *
  * 판정은 기하에서 **유도**한다 — 포트가 깐 벨트 셀에 `trunkStart`(= anchor − 2·faceVec)
  * 가 있으면 좌석 건너편이 벨트다. 새 플래그를 심으면 방출기와 여기가 따로 놀 수 있다.
+ *
+ * **그 벨트와 벨트끼리 이어질 때만이다**(2026-10-01 — 가동률 검사 결함 #2 *포트 벨트 정면*). 좌석을 벨트로 메우면 그 칸은
+ * 면 법선을 따라 흐른다 — 집는 쪽은 **안쪽**을 보고 트렁크 머리에 토해내고, 싣는 쪽은 트렁크 머리가 **바깥쪽**을 봐야
+ * 좌석 칸으로 토해낸다. 그런데 트렁크 머리는 자기 판단으로 방향을 고른다 — 긴팔(d3) 줄의 머리가 곧 흐름의 끝 칸이면
+ * [resolveBeltTermini] 가 안쪽(남의 `d2` 벨트)을 피해 **바깥, 곧 좌석 쪽**을 보게 한다. 상자를 인서터가 먹일 때는 그게 맞는
+ * 막다른 칸인데, 좌석을 벨트로 메우면 두 벨트가 **정면으로 마주 본다** — 물건이 한 칸도 안 들어간다(2026-09-25 실측: 외곽 경로가
+ * 긴팔 포트에 닿은 머신이 0%). 그런 포트는 좌석 인서터를 **남긴다** — 벨트 → 인서터 → 트렁크 머리, 모듈이 상자를 먹일 때와
+ * 같은 길이다.
  */
 export function seatIsBeltFeeder(port: ModulePort): boolean {
   const { trunkStart } = portGeometry(port);
-  return port.cells.some(
+  const head = port.cells.find(
     (c) =>
       c.x === trunkStart.x &&
       c.y === trunkStart.y &&
       (c.cell.entityType === EntityType.Belt || c.cell.entityType === EntityType.UndergroundBelt),
   );
+  if (!head) return false;
+  const fv = faceVector(port.face);
+  const outward = vectorToDirection(fv.x, fv.y);
+  const inward = vectorToDirection(-fv.x, -fv.y);
+  const { direction, entityType, undergroundType } = head.cell;
+  if (port.line.role === "input") {
+    // 좌석 벨트가 안쪽을 보고 토해낸다 — 지하 입구는 등 뒤로만 받고, 지상 벨트는 정면(좌석을 보는 것)만 안 된다.
+    if (entityType === EntityType.UndergroundBelt) return undergroundType === "input" && direction === inward;
+    return direction !== outward;
+  }
+  // 싣는 쪽 — 트렁크 머리가 좌석 칸으로 곧장 토해내야 한다(옆을 보면 물건이 좌석 칸에 안 온다).
+  if (entityType === EntityType.UndergroundBelt) return undergroundType === "output" && direction === outward;
+  return direction === outward;
 }
