@@ -19,6 +19,7 @@
  *
  * ```
  * 게이트      undergroundGateOf  지하벨트를 쓰나 — 충돌 회피용으로만
+ *             pipeReachOf        지하파이프 사거리 — 장부가 유체를 땅속으로 계획했으면 그 체인을 편다
  * 순서        fluidFirst         유체 먼저(실패 비용 순)
  * 고르기      chooseRoute        파이프 없음 → 계획 → 유체 포기 → 탐색 → 예약 무시
  * 탐색 칸     routeOneDelivery   dijkstraWithJumps 한 번 — 사다리의 한 칸(탐색 표식)
@@ -343,6 +344,11 @@ export function undergroundGateOf(config: DeliveryConfig): { maxJump: number; bl
     : 0;
   const blockGroup = config.undergroundBeltEntityName ?? config.beltEntityName;
   return { maxJump, blockGroup };
+}
+
+/** 지하파이프 사거리 — prototype 이 없으면 0(유체는 땅 위로만). 채널 장부가 같은 값으로 계획했다(`PackConfig`). */
+export function pipeReachOf(config: DeliveryConfig): number {
+  return config.undergroundPipeEntityName ? Math.max(0, config.pipeMaxUndergroundDistance ?? 0) : 0;
 }
 
 const isFluidDelivery = (h: DeliverySpec) => h.from.chest.kind === "infinity-pipe";

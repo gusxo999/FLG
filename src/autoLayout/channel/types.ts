@@ -55,11 +55,17 @@ export interface GeometryContext {
    * 지하벨트 점프 거리 상한(입구↔출구 셀 거리). 0(기본) = 지하 불가 = 지상만.
    *
    * **아이템 납품에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
-   * 지하로 갈 수 없고, 유체 납품은 이 장부가 pipe-to-ground 페어링을 모델링하지 않아 못 간다(결정 D2).
+   * 지하로 갈 수 없다. 유체 납품은 [maxJumpPipe] 를 쓴다.
    * 누가 땅 위를 먼저 갖나는 이 값이 아니라 실패 비용(`priority-ordering` P10 — 유체 → 반출 → 아이템)이,
    * 완전 교차에서 누가 땅속으로 가나는 해소 사다리(`channel/policy.settleFullCrossings`)가 정한다.
    */
   maxJump?: number;
+  /**
+   * 지하파이프 점프 거리 상한 — **유체 납품**이 완전 교차에서 땅속으로 갈 때 쓴다. 0(기본) = 지하파이프를 안 골랐다 =
+   * 유체는 땅속으로 못 간다(그때는 실패 비용 순서로 땅 위를 먼저 갖는다). [link/types.DeliveryConfig] 의
+   * `pipeMaxUndergroundDistance` 와 **같아야** 한다 — 장부가 계획한 점프를 방출기가 그대로 깐다.
+   */
+  maxJumpPipe?: number;
   /** 폭만 예약할 잔여 세로 구간(부적격 납품 경로·미지원 반출 등) — trackCount 에만 반영. */
   reserveIntervals?: Interval[];
   /**
@@ -126,4 +132,6 @@ export interface ChannelGeometryPlan {
   crossingYields: number;
   /** **관측** — 지상 탐색이 해를 못 찾아(예산 소진 포함) 탐욕 배정으로 갔나. 완전 교차를 푼 뒤에는 드물어야 한다. */
   greedy: boolean;
+  /** **관측** — 땅속으로 건넌 유체 납품 수(지하파이프). 유체가 먼저 들어가는 사다리가 실제로 돌았나를 센다. */
+  fluidDives: number;
 }

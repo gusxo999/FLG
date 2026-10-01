@@ -230,6 +230,81 @@ describe("planChannelGeometry — 지상 배정", () => {
     expect(plan.crossingYields).toBe(0);
   });
 
+  describe("유체가 먼저 땅속으로 — 지하파이프를 고른 판(두점-잇기 Step 2)", () => {
+    // 유체 dA 는 E벽 맨 위 · W벽 맨 아래 — 아이템 dB 와 완전 교차다.
+    const crossing: DeliveryInput[] = [
+      { id: "dA", startY: 1, endY: 20, fluid: "water" },
+      { id: "dB", startY: 5, endY: 8 },
+    ];
+    const wide = { yMin: 0, yMax: 25, maxJump: 5 };
+
+    it("유체 × 아이템 — 유체가 지하파이프로 건너고 아이템은 땅 위에 남는다", () => {
+      const plan = planChannelGeometry(crossing, [], { ...wide, maxJumpPipe: 10 });
+      expect(plan.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
+      expect(plan.fluidDives).toBe(1);
+    });
+
+    it("지하파이프가 없으면 오늘처럼 — 유체가 땅 위를 갖고 아이템이 건넌다", () => {
+      const plan = planChannelGeometry(crossing, [], { ...wide, maxJumpPipe: 0 });
+      expect(plan.deliveries.get("dA")!.kind).toBe("staircase");
+      expect(plan.deliveries.get("dB")!.kind).toBe("undergroundCrossing");
+      expect(plan.fluidDives).toBe(0);
+    });
+
+    it("유체 × 반출 — 뒤집기가 막히면 유체가 건너고 반출은 물러나지 않는다", () => {
+      // dB 가 반출의 S 뒤집기를 막는다(뒤집으면 dB 가 갇힌다) — 예전엔 반출이 유체에 물러났다.
+      const dels: DeliveryInput[] = [
+        { id: "dA", startY: 3, endY: 7, fluid: "water" },
+        { id: "dB", startY: 8, endY: 9 },
+      ];
+      const exps: ExportInput[] = [{ id: "x", entryY: 5, entryWall: "E", preferredExit: "N" }];
+      const withPipe = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4, maxJumpPipe: 10 });
+      expect(withPipe.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      const x = withPipe.exports.get("x")!;
+      expect(x.kind).toBe("elbow");
+      if (x.kind === "elbow") expect(x.exitEdge).toBe("N");
+      const noPipe = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4, maxJumpPipe: 0 });
+      expect(noPipe.exports.get("x")).toEqual({ kind: "fallback", reason: "yielded-to-fluid" });
+    });
+
+    it("유체가 못 건너면 땅 위로 돌아오고 상대가 건넌다 — 다시 배정", () => {
+      // 나란한 아이템 둘(dB · dC)의 가로선 두 행을 유체가 한 번에 건너야 한다 — 사거리 2 로는 못 건넌다.
+      const dels: DeliveryInput[] = [
+        { id: "dA", startY: 1, endY: 20, fluid: "water" },
+        { id: "dB", startY: 5, endY: 8 },
+        { id: "dC", startY: 6, endY: 9 },
+      ];
+      const short = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 2 });
+      expect(short.deliveries.get("dA")!.kind).toBe("staircase");
+      expect(short.fluidDives).toBe(0);
+      expect(short.deliveries.get("dB")!.kind).toBe("undergroundCrossing");
+      expect(short.deliveries.get("dC")!.kind).toBe("undergroundCrossing");
+      const long = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 10 });
+      expect(long.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      expect(long.fluidDives).toBe(1);
+    });
+
+    it("다른 유체 × 유체 — 하나가 건너 둘 다 계획된다(예전엔 하나가 거절)", () => {
+      // fluid-delivery-reservation §6 잔여 결정의 그 경우 — 둘 다 못 비켜 한쪽이 트리 거절로 갔다.
+      const dels: DeliveryInput[] = [
+        { id: "dA", startY: 1, endY: 20, fluid: "water" },
+        { id: "dB", startY: 5, endY: 12, fluid: "petroleum" },
+      ];
+      const withPipe = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 10 });
+      expect([withPipe.deliveries.get("dA")!.kind, withPipe.deliveries.get("dB")!.kind].sort()).toEqual([
+        "staircase",
+        "undergroundCrossing",
+      ]);
+      // 상대 수 동률이라 id 뒤쪽 dB 가 먼저 들어가 본다 — 그런데 땅 위의 dA 가 트랙 0 에 앉아 W벽 바로 옆 칸(dB 의 도착
+      // 칸)이 dA 의 둘레다. dB 는 못 건너고, 다시 돌 때 **무리 안에서도** 들어갈 수 있는 dA 가 내준다.
+      expect(withPipe.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      expect(withPipe.fluidDives).toBe(1);
+      const noPipe = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 0 });
+      expect([...noPipe.deliveries.values()].map((p) => p.kind)).toContain("fallback");
+    });
+  });
+
   it("출발 행 = 도착 행 — 일자 수평선(트랙 소비 0)", () => {
     const plan = planChannelGeometry([{ id: "d", startY: 4, endY: 4 }], [], ctx);
     expect(plan.deliveries.get("d")!.kind).toBe("straight");

@@ -99,7 +99,7 @@ export interface ChannelLedgerCounters {
    * 장부가 실제로 한 일 — 완전 교차에서 땅 위를 내준 경로 수 · 탐욕으로 간 채널 수와 그 분모(채널 수).
    * 탐욕 채널은 완전 교차를 먼저 푼 뒤에는 드물어야 한다 — 0 이 아니면 폭 · 예산 · 다른 유체의 인접이다.
    */
-  ledger: { channels: number; greedyChannels: number; crossingYields: number };
+  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number };
 }
 
 /** 반출 — [modulePerimeterPass.rePathToPerimeter] 의 카운터 그대로. */

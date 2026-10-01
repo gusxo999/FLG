@@ -276,7 +276,7 @@ export function buildReport(): string {
   if (cl) {
     const byReason = new Map<string, number>();
     for (const s of cl.skips) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
-    const did = ` · 완전교차 양보 ${cl.ledger.crossingYields} · 탐욕 채널 ${cl.ledger.greedyChannels}/${cl.ledger.channels}`;
+    const did = ` · 완전교차 양보 ${cl.ledger.crossingYields} · 유체 지하 ${cl.ledger.fluidDives} · 탐욕 채널 ${cl.ledger.greedyChannels}/${cl.ledger.channels}`;
     out.push(
       line(
         '납품장부',

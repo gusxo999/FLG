@@ -219,6 +219,7 @@ export function materializeChannelGeometry(args: {
     channels: plans.length,
     greedyChannels: plans.filter((p) => p.greedy).length,
     crossingYields: plans.reduce((n, p) => n + p.crossingYields, 0),
+    fluidDives: plans.reduce((n, p) => n + p.fluidDives, 0),
   };
   return { deliveries, reservedExportCells, skips, ledger };
 }

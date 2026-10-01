@@ -214,6 +214,10 @@ function packConfigOf(options: BuildSpec): PackConfig {
     beltMaxUndergroundDistance: options.undergroundBeltEntityName
       ? options.beltMaxUndergroundDistance
       : 0,
+    // 유체의 지하파이프 — 같은 이유로 prototype 이 없으면 0. 아래 납품 설정의 `pipeMaxUndergroundDistance` 와 같은 값이다.
+    pipeMaxUndergroundDistance: options.undergroundPipeEntityName
+      ? options.pipeMaxUndergroundDistance
+      : 0,
   };
 }
 

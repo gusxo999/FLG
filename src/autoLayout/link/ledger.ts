@@ -35,8 +35,11 @@ export interface PlannedChains {
   reservedExport: ReadonlySet<string>;
 }
 
-/** **ⓑ 계획** — 납품마다 채널 장부의 지시를 칸으로 편다. 편 체인은 예약이 되고, 못 편 것은 사유를 남긴다. */
-export function plannedChainsOf(pack: PackResult, maxJump: number): PlannedChains {
+/**
+ * **ⓑ 계획** — 납품마다 채널 장부의 지시를 칸으로 편다. 편 체인은 예약이 되고, 못 편 것은 사유를 남긴다.
+ * 지하 사거리는 매체마다다 — 아이템은 지하벨트(`maxJump`), 유체는 지하파이프(`maxJumpPipe`).
+ */
+export function plannedChainsOf(pack: PackResult, maxJump: number, maxJumpPipe: number): PlannedChains {
   // 채널 기하 예약(통합 장부, docs/…channel-geometry-reservation.md) — 계획된 납품 경로는
   // 배정 좌표(계단꼴/열 갈아타기/지하 횡단)를 탐색 없이 체인으로 방출한다. dijkstra 는
   // 최후 폴백으로만 남고, 예약 자리(반출 트랙 + 다른 계획 납품 경로)를 침범하지 못한다 —
@@ -55,7 +58,8 @@ export function plannedChainsOf(pack: PackResult, maxJump: number): PlannedChain
         chainMisses.push({ key: k, reason: why ? `no-plan:${why}` : "no-geometry-plan" });
         continue;
       }
-      if (g.kind === "undergroundCrossing" && maxJump < 2) {
+      const reach = delivery.from.chest.kind === "infinity-pipe" ? maxJumpPipe : maxJump;
+      if (g.kind === "undergroundCrossing" && reach < 2) {
         chainMisses.push({ key: k, reason: "underground-not-allowed" }); // 지하 미허용 — dijkstra 로
         continue;
       }

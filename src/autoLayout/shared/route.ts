@@ -548,7 +548,7 @@ function beltFlowConflictCell(
  * (= 한 corridor 의 endpoint 가 다른 corridor 의 open interior 에 끼는 모든
  * 케이스 거부 — nested · partial overlap 모두 broken 으로 처리.)
  */
-function isJumpAllowed(
+export function isJumpAllowed(
   x0: number,
   y0: number,
   x1: number,

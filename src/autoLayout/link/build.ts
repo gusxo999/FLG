@@ -33,7 +33,7 @@ import type { PackResult } from "../tree/types/pack";
 import type { DeliveryConfig, DeliveryResult } from "./types";
 import { buildOccupancy, deliveryResultOf, openDeliveryLedger, plannedChainsOf, recordRoute } from "./ledger";
 import { searchBoundsOf } from "./shape";
-import { chooseRoute, fluidFirst, undergroundGateOf } from "./policy/delivery";
+import { chooseRoute, fluidFirst, pipeReachOf, undergroundGateOf } from "./policy/delivery";
 
 /**
  * 모든 납품 경로를 라우팅. 결정적 순서(packResult.deliveries 순서)로 누적 occupancy 를 공유해
@@ -45,7 +45,7 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
   const bounds = searchBoundsOf(pack.bbox);
   const gate = undergroundGateOf(config);
   // ⓑ 계획 — 납품마다 채널 장부의 지시를 칸으로 편다. 편 체인은 예약이 되고, 못 편 것은 사유를 남긴다
-  const plans = plannedChainsOf(pack, gate.maxJump);
+  const plans = plannedChainsOf(pack, gate.maxJump, pipeReachOf(config));
   // ⓒ 순서 — 유체 먼저(실패 비용 순)
   const ordered = fluidFirst(pack.deliveries);
   // ⓓ 한 납품씩 — 계획 → 막히면 탐색 → 탐색도 막히면 예약 무시. 깐 칸은 뒤 납품이 피한다

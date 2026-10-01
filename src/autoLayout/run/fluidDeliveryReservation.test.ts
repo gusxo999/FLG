@@ -173,8 +173,11 @@ describe("P4-4c — 파이프는 닿기만 해도 이어진다 (인접 금지)",
   });
 });
 
-describe("P4-4d — 교차하면 유체가 지상, 아이템이 밑으로 (실패 비용 순)", () => {
+describe("P4-4d — 지하파이프가 없으면 교차에서 유체가 지상, 아이템이 밑으로 (실패 비용 순)", () => {
   // 끝점이 엇갈린 두 경로 = 기하학적으로 교차 불가피(Jordan). 지상은 한 쪽만 가능하다.
+  //
+  // **2026-10-01 — 지하파이프를 고른 판은 반대다**(유체가 먼저 밑으로 — 아래 describe). 이 묶음의 `geoCtx` 는 `maxJumpPipe`
+  // 가 없다 = 지하파이프를 안 골랐다. 그때는 유체가 못 들어가 실패 비용 순으로 땅 위를 먼저 갖는다 — 그 답을 지킨다.
   const up: DeliveryInput = { id: "up", startY: 2, endY: 10 };
   const down: DeliveryInput = { id: "down", startY: 10, endY: 2 };
 
@@ -190,7 +193,7 @@ describe("P4-4d — 교차하면 유체가 지상, 아이템이 밑으로 (실�
       fluidPlan.kind,
       `유체가 지상을 못 잡았다 (${fluidPlan.kind}) — 우선순위가 id 순서에 밀렸다`,
     ).not.toBe("fallback");
-    expect(fluidPlan.kind, "유체에 지하 횡단이 배정됐다 — D2 위반").not.toBe("undergroundCrossing");
+    expect(fluidPlan.kind, "지하파이프 없이 유체에 지하 횡단이 배정됐다").not.toBe("undergroundCrossing");
   });
 
   it("역할을 바꿔도 결과가 따라 바뀐다 (지상을 갖는 쪽 = 유체인 쪽)", () => {
@@ -199,7 +202,7 @@ describe("P4-4d — 교차하면 유체가 지상, 아이템이 밑으로 (실�
     expect(plan.deliveries.get("down")!.kind).not.toBe("undergroundCrossing");
   });
 
-  it("유체는 어떤 경우에도 지하 횡단 계획을 받지 않는다 (D2)", () => {
+  it("지하파이프가 없으면 유체는 어떤 경우에도 지하 횡단 계획을 받지 않는다", () => {
     // 트랙을 좁혀 지상을 빡빡하게 만든다 — 아이템이라면 지하로 내려갈 상황.
     const plan = planChannelGeometry(
       [{ ...up, fluid: "water" }, { ...down, id: "d2" }, { id: "d3", startY: 4, endY: 8 }],
@@ -207,5 +210,65 @@ describe("P4-4d — 교차하면 유체가 지상, 아이템이 밑으로 (실�
       { ...geoCtx, trackCap: 3 },
     );
     expect(plan.deliveries.get("up")!.kind).not.toBe("undergroundCrossing");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-10-01 — 지하파이프를 고르면 유체가 먼저 밑으로 (계획 두점-잇기 Step 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("지하파이프를 고르면 교차에서 유체가 밑으로 — 장부부터 방출까지", () => {
+  // 부모 하나가 석탄 · 철판(아이템) · 가스(유체)를 받는다. 형제 셋이 한 열 채널을 지나는데, 가스 납품이 아이템 납품과
+  // 끝이 엇갈린다(완전 교차). 지하파이프가 있으면 가스가 들어가고, 계획 그대로 지하파이프 한 쌍으로 깔린다.
+  //
+  // 이 형상은 합성 스윕(부모 · 형제 수 × 포트 순서, 216 트리)에서 골랐다 — 실측 픽스처 32 개에는 유체가 낀 완전 교차가
+  // 한 건도 없었다. 모듈 생성이 바뀌어 아래 전제가 깨지면 기대값을 낮추지 말고 형상을 다시 고른다.
+  const twoFaceTrunk = (side: "W" | "E", role: "input" | "output") => ({
+    ...fluidTrunk(side),
+    lines: [{ name: "gas", role, side, fluidboxOffset: 0, rank: 0, boxIndex: 0 }],
+  });
+  const rates = (lines: IoLine[]) => ({
+    supplyCapacity: { lineRates: new Map(lines.filter((l) => l.kind === "belt").map((l) => [`${l.role}:${l.name}`, 15])) },
+  });
+  const userLines = [inL("coal"), inL("iron"), inFluidL("gas"), outL("plastic")];
+  const specs: NodeSpec[] = [
+    { id: "user", depth: 0, machine: M, count: 1, lines: userLines, ...rates(userLines), fluidTrunk: twoFaceTrunk("E", "input") },
+    { id: "gasmaker", depth: 1, parentId: "user", machine: M, count: 1, lines: [inL("water-item"), outFluidL("gas")], ...rates([inL("water-item")]), fluidTrunk: twoFaceTrunk("W", "output") },
+    { id: "coalmaker", depth: 1, parentId: "user", machine: M, count: 2, lines: [inL("ore"), outL("coal")], ...rates([inL("ore"), outL("coal")]) },
+    { id: "ironmaker", depth: 1, parentId: "user", machine: M, count: 2, lines: [inL("ore2"), outL("iron")], ...rates([inL("ore2"), outL("iron")]) },
+  ];
+  const config = (pipeReach: number): PackConfig => ({
+    inserterEntityName: "inserter",
+    inserters: [{ entityName: "inserter", reach: 1, throughput: 6 }, { entityName: "long-handed-inserter", reach: 2, throughput: 6 }],
+    beltEntityName: "transport-belt",
+    belts: [{ entityName: "transport-belt", throughput: 40 }],
+    reservePerimeterExits: true,
+    pipeMaxUndergroundDistance: pipeReach,
+  });
+  const gasPlan = (p: ReturnType<typeof packModuleTree>) =>
+    [...p.channelGeometry.deliveries.entries()].find(([k]) => k.includes("gas"))?.[1];
+
+  it("지하파이프가 있으면 가스가 들어간다 — 장부", () => {
+    const p = packModuleTree(specs, config(10));
+    expect(p.channelGeometry.ledger.crossingYields, "완전 교차가 없다 — 형상의 전제가 깨졌다").toBeGreaterThan(0);
+    expect(gasPlan(p)?.kind).toBe("undergroundCrossing");
+    expect(p.channelGeometry.ledger.fluidDives).toBe(1);
+  });
+
+  it("지하파이프가 없으면 가스는 땅 위다(대조군)", () => {
+    const p = packModuleTree(specs, config(0));
+    expect(p.channelGeometry.ledger.crossingYields).toBeGreaterThan(0);
+    expect(gasPlan(p)?.kind).not.toBe("undergroundCrossing");
+    expect(p.channelGeometry.ledger.fluidDives).toBe(0);
+  });
+
+  it("계획한 땅속 길이 지하파이프 한 쌍으로 깔린다 — 방출 · 실패 0", () => {
+    const p = packModuleTree(specs, config(10));
+    // 지하벨트는 안 고른다 — 방출의 문이 매체마다 사거리를 보나도 함께 잰다.
+    const res = routeDeliveryRoutes(p, deliveryConfig);
+    expect(res.failures).toBe(0);
+    const gas = res.routes.find((r) => r.item === "gas")!;
+    expect(gas.ok).toBe(true);
+    expect(gas.cells.filter((c) => c.cell.entityType === EntityType.PipeUnderground)).toHaveLength(2);
   });
 });

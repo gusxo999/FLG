@@ -107,7 +107,7 @@ export function planChannels(
   exitPlan: PerimeterExitPlan,
   span: { yMin: number; yMax: number },
   maxDepth: number,
-  config: Pick<PackConfig, "reservePerimeterExits" | "beltMaxUndergroundDistance">,
+  config: Pick<PackConfig, "reservePerimeterExits" | "beltMaxUndergroundDistance" | "pipeMaxUndergroundDistance">,
 ): { plans: Map<number, ChannelGeometryPlan>; widthOf: (d: number) => number } {
   const { yMin: gyMin, yMax: gyMax } = span;
   const geometryPlans = new Map<number, ChannelGeometryPlan>();
@@ -138,6 +138,7 @@ export function planChannels(
         yMax: gyMax,
         reserveIntervals: reserve,
         maxJump: config.beltMaxUndergroundDistance ?? 0,
+        maxJumpPipe: config.pipeMaxUndergroundDistance ?? 0,
       }),
     );
   }

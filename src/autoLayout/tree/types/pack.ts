@@ -122,6 +122,12 @@ export interface PackConfig {
    * 어긋나면 장부가 계획한 점프를 방출기가 거부하고 조용히 dijkstra 로 샌다.
    */
   beltMaxUndergroundDistance?: number;
+  /**
+   * 지하파이프 점프 거리 상한 — 장부가 **유체 납품**의 완전 교차를 지하파이프로 계획할 때 쓴다
+   * ([channel/types.GeometryContext.maxJumpPipe]). 0/미지정 = 지하파이프를 안 골랐다 → 유체는 땅 위를 먼저 갖는다.
+   * [link/types.DeliveryConfig] 의 `pipeMaxUndergroundDistance` 와 **같아야** 한다.
+   */
+  pipeMaxUndergroundDistance?: number;
 }
 
 /** 한 노드의 최종 배치 — 절대 좌표로 옮겨진 모듈 + 적용된 방위·이동량. */
@@ -244,9 +250,9 @@ export interface PackChannelGeometry {
   /**
    * **관측 — 채널 장부가 실제로 무엇을 했나.** 깊이마다의 [ChannelGeometryPlan] 을 더한 것.
    * `crossingYields` = 완전 교차에서 땅 위를 내준 경로 수 · `greedyChannels` = 지상 탐색이 해를 못 찾아 탐욕으로 간
-   * 채널 수 · `channels` = 그 분모(장부가 돈 채널 수).
+   * 채널 수 · `channels` = 그 분모(장부가 돈 채널 수) · `fluidDives` = 지하파이프로 건넌 유체 납품 수.
    */
-  ledger: { channels: number; greedyChannels: number; crossingYields: number };
+  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number };
 }
 
 export interface PackResult {

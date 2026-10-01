@@ -56,6 +56,10 @@ import type {
   GeometryContext,
   Jump,
 } from "../types";
+import type { UndergroundCorridor } from "../../shared/types";
+import { isJumpAllowed } from "../../shared/route";
+import { corridorBetween } from "../../shared/cells/path";
+import { PIPE_BLOCK_GROUP } from "../../shared/grid";
 import {
   cellsOf,
   columnSwitchShape,
@@ -104,8 +108,14 @@ function occupiedCells(placed: ReadonlyArray<Placed>): Set<string> {
  *    경로가 그 위를 지나가도 되는지 알 수 없다).
  *  - 막힌 구간의 **양 끝 바깥 셀**(지하 입구·출구)이 비어 있어야 한다.
  *  - 입구·출구가 **같은 축**이어야 한다 — 코너를 물면 지하벨트가 못 꺾어 기각.
- *  - 거리가 지하벨트 한계(maxJump) 안이어야 한다.
+ *  - 거리가 지하 사거리(벨트 `maxJump` · 파이프 `maxJumpPipe`) 안이어야 한다.
  *  - 체인 양 끝(상자 자리)은 점프로 못 덮는다.
+ *  - **짝을 안 가로챈다** — 같은 줄(행 · 열) 위에서 같은 무리(파이프 하나 · 벨트 하나)의 다른 점프와 구간이 겹치면
+ *    한쪽 입구가 남의 출구와 짝이 된다(`shared/route.isJumpAllowed` — 라우터와 같은 규칙. 좌표는 채널의 추상 열이지만 평행
+ *    이동이라 겹침의 답이 같다). 이 장부가 지금까지 깐 점프가 `corridors` 다.
+ *
+ * **유체는 둘이 더 붙는다** — 다른 유체의 파이프에 **닿기만 해도** 한 관망이 되므로 그 둘레(halo)도 막힌 칸으로 친다
+ * (출구가 halo 밖으로 밀린다). 그리고 마지막 겹침 검사가 유체의 halo 를 함께 본다.
  */
 function placeWithJumps(
   d: DeliveryInput,
@@ -113,9 +123,13 @@ function placeWithJumps(
   cap: number,
   capCol: number,
   maxJump: number,
+  corridors: ReadonlyArray<UndergroundCorridor>,
 ): { track: number; jumps: Jump[]; shape: Shape } | null {
-  if (maxJump < 2) return null; // 지하벨트 없음 — 건널 방법이 없다.
+  if (maxJump < 2) return null; // 지하 사거리 없음 — 건널 방법이 없다.
   const occ = occupiedCells(placed);
+  // 다른 유체의 둘레 — 거기 지상 칸(입구 · 출구 포함)을 두면 두 관망이 닿는다
+  if (d.fluid !== undefined)
+    for (const p of placed) if (p.fluid !== undefined && p.fluid !== d.fluid && p.halo) for (const k of p.halo) occ.add(k);
   const free = (c: Cell) => !occ.has(`${c.col},${c.row}`);
 
   const lo = Math.min(d.startY, d.endY);
@@ -163,6 +177,7 @@ function placeWithJumps(
       // 코너를 물면 입구·출구가 축이 어긋나거나(straight 실패) 거리가 셀 수와 안 맞는다.
       const spansCorner = dist !== e - i + 1;
       if (!straight || spansCorner || dist > maxJump) { ok = false; break; }
+      if (!isJumpAllowed(from.col, from.row, to.col, to.row, corridors)) { ok = false; break; }
       jumps.push({ fromCol: from.col, fromRow: from.row, toCol: to.col, toRow: to.row });
       for (let m = i; m < e; m++) underground[m] = true;
       i = e;
@@ -170,8 +185,8 @@ function placeWithJumps(
     if (!ok || jumps.length === 0) continue;
 
     const shape = shapeFromCells(cells, underground);
-    // 지하 횡단은 아이템 전용(§D2)이라 후보에 유체 표시가 없다 — 인접 규칙이 안 걸린다.
-    if (conflictsAny(placedOf(shape), placed)) continue; // 방어 — 위 판정이 놓친 겹침
+    // 방어 — 위 판정이 놓친 겹침. 유체면 halo 를 붙여 다른 유체와의 **인접**까지 본다.
+    if (conflictsAny(placedOf(shape, d.fluid), placed)) continue;
     return { track: t, jumps, shape };
   }
   return null;
@@ -181,33 +196,56 @@ function placeWithJumps(
 // 진입점
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * **유체는 먼저 땅속으로 — 못 건너면 땅 위로 돌아온다.** ① 의 해소 사다리는 들어갈 수 있는 유체를 먼저 넣는데, 정말
+ * 건너지나는 ③ 이 트랙을 받고서야 안다. 못 건넌 유체가 있으면 그 유체를 *"못 들어가는 쪽"* 으로 표시하고 처음부터
+ * 다시 배정한다 — 그러면 같은 사다리가 그 유체에게 땅 위를 주고 상대가 들어간다(2026-10-01 이전의 답). 다시 돌 때마다
+ * 표시가 하나 이상 늘므로 유체 수만큼 돌면 끝난다.
+ */
 export function planChannelGeometry(
   deliveriesIn: ReadonlyArray<DeliveryInput>,
   exportsIn: ReadonlyArray<ExportInput>,
   ctx: GeometryContext,
 ): ChannelGeometryPlan {
+  const noDive = new Set<string>();
+  for (;;) {
+    const { plan, failedFluidDivers } = planOnce(deliveriesIn, exportsIn, ctx, noDive);
+    if (failedFluidDivers.length === 0) return plan;
+    for (const id of failedFluidDivers) noDive.add(id);
+  }
+}
+
+function planOnce(
+  deliveriesIn: ReadonlyArray<DeliveryInput>,
+  exportsIn: ReadonlyArray<ExportInput>,
+  ctx: GeometryContext,
+  noDive: ReadonlySet<string>,
+): { plan: ChannelGeometryPlan; failedFluidDivers: string[] } {
   // ⓪ 판 — 트랙 상한 · 벽 열 · id 순 · 유체와 아이템 · 빈 계획. 아직 어느 경로도 트랙이 없다
   const sheet = openChannelSheet(deliveriesIn, exportsIn, ctx);
   // ① 완전 교차 풀기 — 끝이 엇갈린 쌍을 해소 사다리로. 행 · 벽 비교만. 끝나면 남은 후보끼리 완전 교차가 없다
   const sides = settleFullCrossings(
     sheet.deliveries, sheet.exports_, sheet.fluidDels, sheet.itemDels, sheet.deliveryPlans, sheet.exportPlans, ctx,
+    { maxJumpPipe: ctx.maxJumpPipe ?? 0, noDive },
   );
   // ② 지상 — 누가 어느 트랙. 실패 비용 순 → 폭 최소 백트래킹(밀도부터) → 막히면 탐욕 + 열 갈아타기
   const items = surfaceItemsOf(sides, sheet.exports_, ctx, sheet.cap, sheet.capCol);
   const { assigned, greedy } = assignSurface(sheet, sides, items);
   writeSurfacePlans(sheet, sides, assigned);
-  // ③ 지하 — ①에서 땅 위를 내준 아이템 · ②에서 자리를 못 받은 아이템은 막힌 셀 밑으로. 유체는 아직 못 간다(결정 D2)
-  crossUnderground(sheet, sides, ctx.maxJump ?? 0);
+  // ③ 지하 — ①에서 땅 위를 내준 납품(유체 먼저) · ②에서 자리를 못 받은 아이템은 막힌 셀 밑으로
+  const failedFluidDivers = crossUnderground(sheet, sides, ctx.maxJump ?? 0, ctx.maxJumpPipe ?? 0);
   nameFluidFallbacks(sheet.fluidDels, sheet.deliveryPlans);
   // ④ 폭 — 폴백 경로 · 잔여 구간도 세로 구간만큼 트랙을 잡는다. 폭은 이 결과다(폭 역전)
   reserveWidth(sheet, ctx);
-  return {
+  const plan: ChannelGeometryPlan = {
     deliveries: sheet.deliveryPlans,
     exports: sheet.exportPlans,
     trackCount: trackCountOf(sheet.placedShapes),
     crossingYields: sides.yieldedDeliveries.size + sides.yieldedExports.size,
     greedy,
+    fluidDives: sheet.fluidDels.filter((d) => sheet.deliveryPlans.get(d.id)?.kind === "undergroundCrossing").length,
   };
+  return { plan, failedFluidDivers };
 }
 
 /**
@@ -376,38 +414,52 @@ function writeSurfacePlans(sheet: ChannelSheet, sides: ExitSides, assigned: Read
 }
 
 /**
- * **③ 지하** — 막힌 셀 밑으로 건넌 도형을 쌓고(청구), 못 건넌 납품에는 폴백의 사유를 적는다.
+ * **③ 지하** — 막힌 셀 밑으로 건넌 도형을 쌓고(청구), 못 건넌 납품에는 폴백의 사유를 적는다. 못 건넌 **유체**를 돌려준다 —
+ * [planChannelGeometry] 가 그 유체에게 땅 위를 주고 다시 배정한다.
  *
  * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
  */
-function crossUnderground(sheet: ChannelSheet, sides: ExitSides, maxJump: number): void {
-  const { cap, capCol, itemDels, deliveryPlans, placedShapes } = sheet;
+function crossUnderground(sheet: ChannelSheet, sides: ExitSides, maxJump: number, maxJumpPipe: number): string[] {
+  const { cap, capCol, fluidDels, itemDels, deliveryPlans, placedShapes } = sheet;
   const { yieldedDeliveries } = sides;
   // ── ③ 지하 횡단(사다리 2단) — 지상에 자리가 없는 납품은 막힌 셀 **밑으로** 건넌다 ──
   //
-  // 여기 오는 아이템 납품은 두 부류다: ①이 **완전 교차**에서 땅 위를 내주게 한 것(`yieldedDeliveries`), 그리고
-  // ②에서 폭 · 탐욕 때문에 자리를 못 받은 것. 해법은 같다 — "내 길을 막은 셀 밑을 건넌다". 사유만 가른다:
+  // 여기 오는 납품은 두 부류다: ①이 **완전 교차**에서 땅 위를 내주게 한 것(`yieldedDeliveries`), 그리고
+  // ②에서 폭 · 탐욕 때문에 자리를 못 받은 아이템. 해법은 같다 — "내 길을 막은 셀 밑을 건넌다". 사유만 가른다:
   // 앞의 것이 못 건너면 `crossing-needs-underground`, 뒤의 것은 ②의 `no-surface-assignment` 그대로다.
   //
-  // 반출은 여기 안 온다 — [perimeterRouter] 가 지상 belt 로만 깔아 지하로 못 도망간다.
-  // **유체 납품도 안 온다**(결정 D2) — 지하파이프는 프로토타입과 무관하게 같은 직선 위에서
-  // 서로 페어링이 끊긴다. 겹침·인접과 성질이 다른 세 번째 제약이라 이 장부가 아직 모델링하지
-  // 않는다. 유체는 지하파이프를 많이 쓸수록 좋아 **먼저** 들어가야 하는 쪽인데(① 의 매체 순서), 그 가능성이
-  // 여기서 막혀 있다 — 열면 ① 의 `canDive` 와 이 단계가 함께 바뀐다.
+  // **유체가 먼저 건넌다** — 지하파이프는 많이 쓸수록 좋다(사용자 2026-10-01). ① 이 땅 위를 내주게 한 유체만 온다
+  // (② 에서 못 앉은 유체는 이미 폴백이다 — 다른 유체의 인접 · 폭). 파이프와 벨트는 짝을 안 다투므로 장부가 둘이다.
+  // 반출은 여기 안 온다 — [perimeterRouter] 가 지상 belt 로만 깔아 지하로 못 간다(계획 두점-잇기 Step 5).
+  const pipeCorridors: UndergroundCorridor[] = [];
+  const beltCorridors: UndergroundCorridor[] = [];
+  const failedFluidDivers: string[] = [];
+  const cross = (d: DeliveryInput, reach: number, corridors: UndergroundCorridor[], kind: UndergroundCorridor["kind"]): boolean => {
+    const res = placeWithJumps(d, placedShapes, cap, capCol, reach, corridors);
+    if (!res) return false;
+    deliveryPlans.set(d.id, { kind: "undergroundCrossing", track: res.track, jumps: res.jumps });
+    placedShapes.push(placedOf(res.shape, d.fluid));
+    for (const j of res.jumps)
+      corridors.push(
+        corridorBetween({ x: j.fromCol, y: j.fromRow }, { x: j.toCol, y: j.toRow }, kind, kind === "pipe" ? PIPE_BLOCK_GROUP : "belt"),
+      );
+    return true;
+  };
+  for (const d of fluidDels) {
+    // 들어가기로 한 유체만 — 못 들어가는 유체는 ① 이 이미 폴백을 적었다.
+    if (!yieldedDeliveries.has(d.id) || deliveryPlans.has(d.id)) continue;
+    if (!cross(d, maxJumpPipe, pipeCorridors, "pipe")) failedFluidDivers.push(d.id);
+  }
   for (const d of itemDels) {
     const cur = deliveryPlans.get(d.id);
     if (cur && cur.kind !== "fallback") continue;
-    const res = placeWithJumps(d, placedShapes, cap, capCol, maxJump);
-    if (res) {
-      deliveryPlans.set(d.id, { kind: "undergroundCrossing", track: res.track, jumps: res.jumps });
-      placedShapes.push(placedOf(res.shape));
-    } else {
-      deliveryPlans.set(d.id, {
-        kind: "fallback",
-        reason: yieldedDeliveries.has(d.id) ? "crossing-needs-underground" : "no-surface-assignment",
-      });
-    }
+    if (cross(d, maxJump, beltCorridors, "belt")) continue;
+    deliveryPlans.set(d.id, {
+      kind: "fallback",
+      reason: yieldedDeliveries.has(d.id) ? "crossing-needs-underground" : "no-surface-assignment",
+    });
   }
+  return failedFluidDivers;
 }
 
 /** **④ 폭** — 폴백 경로 · 잔여 구간의 유령 세로선을 쌓는다(청구만 — 계획은 안 바꾼다). */
