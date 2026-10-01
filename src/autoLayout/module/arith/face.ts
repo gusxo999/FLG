@@ -126,6 +126,8 @@ export function gapExitSidesFromPlans(
  *
  * 반환: `${면}:${gap}` → 그 gap 에서 그 면을 땅 위로 지나는 **가장 깊은 깊이**. 지나는 것이 없으면 키가 없다.
  * 벨트를 공유한 줄(`sharesBelt`)은 자기 칸이 없어 안 센다 — 첫 줄의 도형이 이미 셌다.
+ *
+ * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
  */
 export function sideCrossingsFromPlans(
   rowsPerMachine: number,

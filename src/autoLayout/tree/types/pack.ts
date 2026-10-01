@@ -241,6 +241,12 @@ export interface PackChannelGeometry {
    * 밟아 연쇄한다 — 조용하면 안 되는 수가 됐다.
    */
   skips: { key: string; reason: string }[];
+  /**
+   * **관측 — 채널 장부가 실제로 무엇을 했나.** 깊이마다의 [ChannelGeometryPlan] 을 더한 것.
+   * `crossingYields` = 완전 교차에서 땅 위를 내준 경로 수 · `greedyChannels` = 지상 탐색이 해를 못 찾아 탐욕으로 간
+   * 채널 수 · `channels` = 그 분모(장부가 돈 채널 수).
+   */
+  ledger: { channels: number; greedyChannels: number; crossingYields: number };
 }
 
 export interface PackResult {

@@ -428,6 +428,8 @@ function yieldable(table: FaceTable, row: number, depth: number): boolean {
  * T4(종착 입구가 잠수 출구와 짝이 된다)는 종착이 종류를 고를 때 지킨다(`module/policy/underground`).
  *
  * **장부는 안 바꾼다** — 센 몸통을 제안에 싣고, 받기(`commitLinkFace`)가 적는다. 규칙은 `trunk-blocked.md` §1 · §4.
+ *
+ * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
  */
 function diveRelief(
   ctx: LinkFaceContext,

@@ -9,7 +9,8 @@
  * 채널 기하 장부(`channelGeometryPlanner`)가 누가 어느 트랙인지 고를 때 묻는 도형이다. 좌표계는 추상 (열, 행) —
  * 열 = 트랙 index(벽 마진은 `-1` / `capCol`), 행 = abs y. 답이 하나이고 자원을 모른다 — 트랙을 **잡는** 일
  * (배정 · 지하 청구 · 폭 예약)은 장부에, 반출의 진출 변을 **고르는** 일은 `channel/policy` 에 있다.
- * 같은 쪽 판정([sameSideOfCut])도 여기다 — 행 · 벽 비교라 답이 하나이고, 그 답을 받아 고르는 것은 사다리 쪽이다.
+ * 완전 교차 판정([fullCrossing])도 여기다 — 행 · 벽 비교라 답이 하나이고, 그 답을 받아 고르는 것은 해소 사다리
+ * (`channel/policy.settleFullCrossings`)다.
  *
  * > **내력.** `modulePacking.packModuleTree` 의 `5)`·`6)`·`6b)` 블록과 `materializeChannelGeometry` 였다
  * > (2026-09-14 계획 구조-2축 · 2 Step 3c-3). `materializeChannelGeometry` 는 **통째로** 옮겼다 — 납품과 반출이
@@ -213,23 +214,13 @@ export function materializeChannelGeometry(args: {
     }
   }
 
-  return { deliveries, reservedExportCells, skips };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 같은 쪽 판정 — 문서 §4.2
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 납품 경로의 두 끝이 반출 경로가 긋는 절단선의 같은 쪽인가.
- * 안쪽 ① = "진입 벽과 같은 벽" ∧ "진입 행에서 진출 변 방향"(경계 행 포함 = 보수적:
- * 같은 행이면 가로 진입끼리 겹쳐 어차피 지상 공유 불가).
- */
-export function sameSideOfCut(d: DeliveryInput, x: ExportInput, exit: NsEdge): boolean {
-  const inside = (wall: ChannelWall, y: number): boolean =>
-    wall === x.entryWall && (exit === "N" ? y <= x.entryY : y >= x.entryY);
-  // 납품의 출발 끝은 E벽, 도착 끝은 W벽에 붙어 있다.
-  return inside("E", d.startY) === inside("W", d.endY);
+  const plans = [...geometryPlans.values()];
+  const ledger = {
+    channels: plans.length,
+    greedyChannels: plans.filter((p) => p.greedy).length,
+    crossingYields: plans.reduce((n, p) => n + p.crossingYields, 0),
+  };
+  return { deliveries, reservedExportCells, skips, ledger };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -363,9 +354,20 @@ export type ChannelEndpoint =
 /** 그 끝점이 붙는 **가상 벽 열** — W벽은 `-1`, E벽은 `capCol`. */
 const wallColOf = (wall: ChannelWall, capCol: number): number => (wall === "E" ? capCol : -1);
 
-/** 그 끝점의 **행** — `edge` 는 그 변 바깥 한 칸(seat 행). */
-const rowOf = (e: ChannelEndpoint, ctx: GeometryContext): number =>
-  e.kind === "wall" ? e.row : e.edge === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
+/**
+ * **바깥 변의 행 — 상자가 앉는 seat 행.** 반출의 세로 주행은 모듈 밴드 밖 `PERIMETER_MARGIN` 칸까지 달린다 —
+ * [materializeChannelGeometry] 가 예약하는 셀(`seatRow` 까지)과 같은 자리다.
+ *
+ * > **정정(2026-10-01).** 예전엔 밴드 밖 **한 칸**(`yMin − 1`)으로 적어 실제 주행보다 한 행 짧았다. 그 행에는 바깥 행 채널
+ * > (`marginN` · `marginS`)의 트랙이 선다 — 그 행을 지나는 납품과의 만남을 도형이 못 봤다. 옛 같은 쪽 판정은 그 너머를
+ * > 통째로 *"안쪽"* 으로 쳐서 우연히 덮었고, 완전 교차 판정이 도형을 따르면서 드러났다(계획 두점-잇기 Step 1).
+ */
+export const edgeRowOf = (edge: NsEdge, ctx: Pick<GeometryContext, "yMin" | "yMax">): number =>
+  edge === "N" ? ctx.yMin - PERIMETER_MARGIN : ctx.yMax + PERIMETER_MARGIN;
+
+/** 그 끝점의 **행** — `edge` 는 그 변의 seat 행([edgeRowOf]). */
+const rowOf = (e: ChannelEndpoint, ctx: Pick<GeometryContext, "yMin" | "yMax">): number =>
+  e.kind === "wall" ? e.row : edgeRowOf(e.edge, ctx);
 
 /**
  * **경로 하나의 도형** — 가로 진입 + 세로 주행 + 가로 진출.
@@ -396,17 +398,87 @@ export function routeShape(
   return { h, v: [vseg(track, r1, r2)] };
 }
 
+/** 경로 하나의 두 끝점 — 출발 · 도착. */
+export type RouteEnds = readonly [ChannelEndpoint, ChannelEndpoint];
+
 /** 납품의 두 끝점 — 자식 출력은 **E벽**, 부모 입력은 **W벽**을 마주 본다. */
-const deliveryEnds = (d: DeliveryInput): [ChannelEndpoint, ChannelEndpoint] => [
+export const deliveryEnds = (d: DeliveryInput): [ChannelEndpoint, ChannelEndpoint] => [
   { kind: "wall", row: d.startY, wall: "E" },
   { kind: "wall", row: d.endY, wall: "W" },
 ];
 
 /** 반출의 두 끝점 — 상자가 마주 본 벽에서 들어와 **바깥 변**으로 나간다. */
-const exportEnds = (x: ExportInput, exit: NsEdge): [ChannelEndpoint, ChannelEndpoint] => [
+export const exportEnds = (x: ExportInput, exit: NsEdge): [ChannelEndpoint, ChannelEndpoint] => [
   { kind: "wall", row: x.entryY, wall: x.entryWall },
   { kind: "edge", edge: exit },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 완전 교차 — 문서 §5-3 · §10.2 정리 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 트랙과 무관한 경로의 뼈대 — 벽에 붙은 가로선들(행 · 붙은 벽)과 세로 주행이 덮는 행 구간. */
+interface CrossingFrame {
+  h: { row: number; walls: ChannelWall[] }[];
+  v: readonly [number, number] | null;
+}
+
+function frameOf([from, to]: RouteEnds, ctx: Pick<GeometryContext, "yMin" | "yMax">): CrossingFrame {
+  const r1 = rowOf(from, ctx);
+  const r2 = rowOf(to, ctx);
+  // 양 끝이 벽이고 행이 같으면 세로가 없고, 가로선 하나가 **두 벽에 다** 붙는다([routeShape] 와 같은 접기).
+  if (from.kind === "wall" && to.kind === "wall" && r1 === r2) return { h: [{ row: r1, walls: [from.wall, to.wall] }], v: null };
+  const h: CrossingFrame["h"] = [];
+  if (from.kind === "wall") h.push({ row: r1, walls: [from.wall] });
+  if (to.kind === "wall") h.push({ row: r2, walls: [to.wall] });
+  return { h, v: [Math.min(r1, r2), Math.max(r1, r2)] };
+}
+
+/**
+ * `b` 의 트랙이 `a` 의 트랙에 대해 **서야 할 쪽** — `W`(서쪽) · `E`(동쪽) · `X`(어느 쪽에 서도 겹친다).
+ *
+ * E벽 가로선은 `[내 트랙 … E벽]` 을, W벽 가로선은 `[W벽 … 내 트랙]` 을 덮는다. 그래서 내 가로선의 행을 지나는 남의
+ * 세로선은 **내 벽의 반대쪽**에 서야 한다 — E벽이면 내 서쪽, W벽이면 내 동쪽.
+ */
+function sidesFor(a: CrossingFrame, b: CrossingFrame): Set<"W" | "E" | "X"> {
+  const out = new Set<"W" | "E" | "X">();
+  for (const h of a.h) {
+    if (b.v && b.v[0] <= h.row && h.row <= b.v[1]) for (const w of h.walls) out.add(w === "E" ? "W" : "E");
+    for (const hb of b.h) {
+      if (hb.row !== h.row) continue;
+      // 같은 행의 가로선 둘 — 같은 벽에 붙었으면 그 벽 열을 함께 먹는다. 트랙과 무관하게 겹친다.
+      if (h.walls.some((w) => hb.walls.includes(w))) out.add("X");
+      // 다른 벽이면 a 의 E벽 가로 [ta … E] 와 b 의 W벽 가로 [W … tb] 가 안 닿으려면 tb < ta. 거울도 같다.
+      else out.add(h.walls[0] === "E" ? "W" : "E");
+    }
+  }
+  return out;
+}
+
+/**
+ * **완전 교차** — 두 경로의 끝이 채널 테두리 위에서 엇갈려, **트랙을 어떻게 골라도** 한 칸에서 만나는가.
+ *
+ * 도형 규칙 한 문장에서 나온다(`docs/auto-layout/channel/channel-geometry-reservation.md` §10.1 *읽는 말*) — *가로선은 제
+ * 벽에 붙어 있다. 내 가로선의 행을 지나는 남의 세로선은 내 벽의 반대쪽 트랙에 서야 한다.* 두 경로가 서로에게 **반대쪽**을
+ * 요구하거나(순서 그래프의 2-순환 — 같은 문서 §10.2 정리 3), 같은 벽 · 같은 행에 가로선을 가지면 지상 해가 없다.
+ * **트랙을 안 본다** — 행 · 벽만으로 답하므로 배정보다 먼저 선다.
+ *
+ * 반출은 끝 하나가 `edge` 라 가로선이 하나뿐이고 세로가 변까지 뻗는다. 반출 하나가 채널을 두 쪽으로 가르는 그림도
+ * 이 판정의 한 경우다. 출발 행 = 도착 행인 납품은 가로선이 두 벽에 다 붙어 그 행을 지나는 모든 세로선과 완전 교차다.
+ *
+ * > **같은 답이라는 확인(2026-09-30).** 실제 도형(`routeShape` · `conflicts`)으로 *"어떤 트랙 쌍으로도 겹친다"* 를 작은 판에서
+ * > 전수로 재면 이 판정과 어긋남이 0 이고, 셋이 얽혀야만 막히는 경우도 0 이다 — `geometry.test.ts` 가 그 대조를 든다.
+ */
+export function fullCrossing(a: RouteEnds, b: RouteEnds, ctx: Pick<GeometryContext, "yMin" | "yMax">): boolean {
+  const fa = frameOf(a, ctx);
+  const fb = frameOf(b, ctx);
+  const ab = sidesFor(fa, fb); // b 가 a 의 어느 쪽에
+  const ba = sidesFor(fb, fa); // a 가 b 의 어느 쪽에 — 뒤집으면 b 가 a 의 반대쪽
+  if (ab.has("X") || ba.has("X")) return true;
+  const west = ab.has("W") || ba.has("E");
+  const east = ab.has("E") || ba.has("W");
+  return west && east;
+}
 
 /** 납품 계단꼴(일자 수평선 포함) — [routeShape] 의 납품판. */
 export function staircaseShape(d: DeliveryInput, track: number, ctx: GeometryContext, capCol: number): Shape {

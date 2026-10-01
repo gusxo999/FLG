@@ -1,6 +1,6 @@
 /**
  * channelGeometryPlanner — 채널 예약을 "폭(트랙 수)"에서 "기하(누가 어느 트랙)"로
- * 승격하는 **통합 장부** (같은 쪽 판정).
+ * 승격하는 **통합 장부** (완전 교차 판정 + 해소 사다리).
  *
  * 단일 출처: docs/auto-layout-wizard.channel-geometry-reservation.md
  *
@@ -9,14 +9,14 @@
  *    양 끝 행은 포트가 정했고 자유는 세로 주행 트랙 하나 → 모양은 **계단꼴(staircase)**.
  *    출발 행 = 도착 행이면 일자 수평선(트랙 소비 0).
  *  - **반출 경로(exportRoute**, 현 코드 track): 갇힌 외부상자(벽의 한 점) → 열린 N/S 변.
- *    모양은 **한꺾임꼴(elbow)** — 채널에 **절단선(cut)** 을 긋는다.
+ *    모양은 **한꺾임꼴(elbow)**.
  *
- * 핵심 판정 [sameSideOfCut]: 납품 경로의 두 끝이 절단선의 **같은 쪽**이면 지상 계단꼴이
- * 존재하고, **다른 쪽**이면 지상 경로가 기하적으로 존재하지 않는다 — 행·트랙 숫자
- * 비교만으로, 벨트를 깔기 전에 끝난다. 다른 쪽이면 **해소 사다리**(문서 §4.4):
- *   ① 반출 경로 재배정(진출 변 N↔S 뒤집기 — 다른 납품을 새로 가두지 않을 때만)
- *   ② 지하 횡단(undergroundCrossing — 절단선 밑을 지하벨트로, 탐색 아닌 좌표 배정)
- *   ③ fallback 마킹 — 호출자가 그 경로만 기존 dijkstra 로 (감지·로그, 조용한 회귀 아님).
+ * 핵심 판정 [fullCrossing]: 두 경로의 끝이 채널 테두리에서 **엇갈리면**(완전 교차) 트랙을 어떻게 골라도
+ * 지상 경로가 기하적으로 존재하지 않는다 — 행 · 벽 비교만으로, 트랙을 고르기 전에 끝난다. 납품 × 납품 · 납품 × 반출 ·
+ * 반출 × 반출 모두 같은 판정이다. 완전 교차면 **해소 사다리**(`channel/policy.settleFullCrossings`):
+ *   ① 반출이 끼었으면 진출 변 N↔S 뒤집기 — 납품을 새로 안 가둘 때만(반출끼리는 반출 차례에서 다시 푼다)
+ *   ② 들어갈 수 있는 쪽이 땅속으로(지하 횡단 — 탐색 아닌 좌표 배정) — 유체 파이프가 먼저, 같은 매체면 상대 많은 쪽
+ *   ③ 아무도 못 들어가면 실패 비용이 낮은 쪽이 땅 위를 잃는다 → fallback 마킹(감지 · 로그, 조용한 회귀 아님)
  *
  * 납품끼리(문서 §5): 분리=트랙 공유(백트래킹이 자연 해결), 부분 겹침=**열 갈아타기
  * (columnSwitch)**, 완전 교차=사다리로.
@@ -35,7 +35,7 @@
  *
  * ```
  * ⓪ 판       트랙 상한 · 벽 열 · id 순 · 유체와 아이템                   openChannelSheet
- * ① 진출 변   반출마다 N/S · 갇힌 납품 · 물러난 반출(사다리 1단)          channel/policy.settleExitSides
+ * ① 완전 교차 풀기  반출마다 N/S · 땅 위를 내준 납품 · 반출(해소 사다리)   channel/policy.settleFullCrossings
  * ② 지상     후보(실패 비용 순) → 누가 어느 트랙 → 계획 객체              channel/policy.surfaceItemsOf · assignSurface · writeSurfacePlans
  * ③ 지하     막힌 셀 밑으로(사다리 2단) → 유체 폴백의 사유                crossUnderground · channel/policy.nameFluidFallbacks
  * ④ 폭       폴백 경로 · 잔여 구간의 유령 세로선 → trackCount(폭 역전)     reserveWidth · trackCountOf
@@ -59,6 +59,7 @@ import type {
 import {
   cellsOf,
   columnSwitchShape,
+  edgeRowOf,
   conflicts,
   conflictsAny,
   placedOf,
@@ -71,11 +72,12 @@ import {
 } from "../shape";
 import {
   nameFluidFallbacks,
-  settleExitSides,
+  settleFullCrossings,
   surfaceItemsOf,
   type ExitSides,
   type SurfaceItem,
 } from "../policy";
+import { assignTracksLeftEdge } from "./tracks";
 
 /** trackCap 미지정 시의 하한 — 경로가 적어도 이만큼의 트랙은 골라 쓸 수 있게. */
 const MIN_TRACK_CAP = 8;
@@ -186,18 +188,26 @@ export function planChannelGeometry(
 ): ChannelGeometryPlan {
   // ⓪ 판 — 트랙 상한 · 벽 열 · id 순 · 유체와 아이템 · 빈 계획. 아직 어느 경로도 트랙이 없다
   const sheet = openChannelSheet(deliveriesIn, exportsIn, ctx);
-  // ① 진출 변 — 반출마다 N/S · 갇힌 아이템 납품 · 유체에 물러난 반출. 행 비교만(사다리 1단)
-  const sides = settleExitSides(sheet.deliveries, sheet.exports_, sheet.fluidDels, sheet.itemDels, sheet.exportPlans);
-  // ② 지상 — 누가 어느 트랙. 실패 비용 순 → 폭 최소 백트래킹 → 막히면 탐욕 + 열 갈아타기
+  // ① 완전 교차 풀기 — 끝이 엇갈린 쌍을 해소 사다리로. 행 · 벽 비교만. 끝나면 남은 후보끼리 완전 교차가 없다
+  const sides = settleFullCrossings(
+    sheet.deliveries, sheet.exports_, sheet.fluidDels, sheet.itemDels, sheet.deliveryPlans, sheet.exportPlans, ctx,
+  );
+  // ② 지상 — 누가 어느 트랙. 실패 비용 순 → 폭 최소 백트래킹(밀도부터) → 막히면 탐욕 + 열 갈아타기
   const items = surfaceItemsOf(sides, sheet.exports_, ctx, sheet.cap, sheet.capCol);
-  const assigned = assignSurface(sheet, sides, items);
+  const { assigned, greedy } = assignSurface(sheet, sides, items);
   writeSurfacePlans(sheet, sides, assigned);
-  // ③ 지하 — 지상에 자리가 없는 아이템 납품은 막힌 셀 밑으로(사다리 2단). 유체에게는 남은 수가 없다
+  // ③ 지하 — ①에서 땅 위를 내준 아이템 · ②에서 자리를 못 받은 아이템은 막힌 셀 밑으로. 유체는 아직 못 간다(결정 D2)
   crossUnderground(sheet, sides, ctx.maxJump ?? 0);
   nameFluidFallbacks(sheet.fluidDels, sheet.deliveryPlans);
   // ④ 폭 — 폴백 경로 · 잔여 구간도 세로 구간만큼 트랙을 잡는다. 폭은 이 결과다(폭 역전)
   reserveWidth(sheet, ctx);
-  return { deliveries: sheet.deliveryPlans, exports: sheet.exportPlans, trackCount: trackCountOf(sheet.placedShapes) };
+  return {
+    deliveries: sheet.deliveryPlans,
+    exports: sheet.exportPlans,
+    trackCount: trackCountOf(sheet.placedShapes),
+    crossingYields: sides.yieldedDeliveries.size + sides.yieldedExports.size,
+    greedy,
+  };
 }
 
 /**
@@ -260,12 +270,16 @@ function openChannelSheet(
 /**
  * **② 배정** — 누가 어느 트랙. 폭 최소 백트래킹이 풀면 그 해를, 못 풀면(예산 소진 포함) 탐욕 + 열 갈아타기.
  * 탐욕이 못 앉힌 경로와 열 갈아타기는 계획을 여기서 **먼저** 적는다 — [writeSurfacePlans] 가 그 계획을 건너뛴다.
+ *
+ * **폭은 밀도에서 시작한다** — 세로 구간이 겹치는 둘은 같은 트랙에 못 오므로(충돌 규칙 1) 밀도보다 좁은 폭은 반드시
+ * 실패하고, 그 실패의 증명이 전 탐색이라 예산만 태운다(`docs/auto-layout/channel/channel-geometry-reservation.md` §10.4 T-A).
+ * ① 이 완전 교차를 다 풀었으므로 남은 후보는 해가 있는 입력이다 — `greedy` 는 그래도 탐욕으로 간 채널을 센다(관측).
  */
 function assignSurface(
   sheet: ChannelSheet,
   sides: ExitSides,
   items: ReadonlyArray<SurfaceItem>,
-): Map<string, Assignment> {
+): { assigned: Map<string, Assignment>; greedy: boolean } {
   const { cap, capCol, deliveryPlans, exportPlans, placedShapes } = sheet;
   const { surfaceDels } = sides;
   // ── ② 지상 배정 — iterative-deepening 백트래킹(폭 최소 우선, 결정적) ──
@@ -289,7 +303,11 @@ function assignSurface(
     return false;
   };
   let solved: Acc[] | null = null;
-  for (let T = 1; T <= cap && !solved; T++) {
+  // 밀도 — 후보들의 세로 구간(트랙과 무관 — 0번 트랙의 도형에서 읽는다)이 한 행에서 가장 많이 겹치는 수.
+  const density = assignTracksLeftEdge(
+    items.flatMap((it) => it.candidates(0)?.v ?? []).map((v) => ({ lo: v.r1, hi: v.r2 })),
+  ).trackCount;
+  for (let T = Math.max(1, density); T <= cap && !solved; T++) {
     const acc: Acc[] = [];
     if (search(0, T, acc)) solved = acc;
     if (budget.left <= 0) break;
@@ -330,7 +348,7 @@ function assignSurface(
       else exportPlans.set(item.id, { kind: "fallback", reason: "no-surface-assignment" });
     }
   }
-  return assigned;
+  return { assigned, greedy: !solved };
 }
 
 /** **②′ 계획** — 배정을 계획 객체로 적는다. 배정을 **읽기만** 한다. */
@@ -357,21 +375,25 @@ function writeSurfacePlans(sheet: ChannelSheet, sides: ExitSides, assigned: Read
   }
 }
 
-/** **③ 지하** — 막힌 셀 밑으로 건넌 도형을 쌓고(청구), 못 건넌 납품에는 폴백의 사유를 적는다. */
+/**
+ * **③ 지하** — 막힌 셀 밑으로 건넌 도형을 쌓고(청구), 못 건넌 납품에는 폴백의 사유를 적는다.
+ *
+ * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
+ */
 function crossUnderground(sheet: ChannelSheet, sides: ExitSides, maxJump: number): void {
   const { cap, capCol, itemDels, deliveryPlans, placedShapes } = sheet;
-  const { cutOff } = sides;
+  const { yieldedDeliveries } = sides;
   // ── ③ 지하 횡단(사다리 2단) — 지상에 자리가 없는 납품은 막힌 셀 **밑으로** 건넌다 ──
   //
-  // 지상 배정(②)이 못 앉힌 납품은 두 부류다: 반출의 절단선에 갇힌 것(①이 cutOff 로
-  // 표시), 그리고 **다른 납품과 교차하는 것**. 1:1 에선 후자가 압도적으로 많다 — 교차는
-  // 불가피하기 때문이다(DeliveryPlan.undergroundCrossing 주석의 Jordan 논증). 둘을 구분할
-  // 이유가 없다: 어느 쪽이든 "내 길을 막은 셀 밑을 건넌다"는 같은 해법이다.
+  // 여기 오는 아이템 납품은 두 부류다: ①이 **완전 교차**에서 땅 위를 내주게 한 것(`yieldedDeliveries`), 그리고
+  // ②에서 폭 · 탐욕 때문에 자리를 못 받은 것. 해법은 같다 — "내 길을 막은 셀 밑을 건넌다". 사유만 가른다:
+  // 앞의 것이 못 건너면 `crossing-needs-underground`, 뒤의 것은 ②의 `no-surface-assignment` 그대로다.
   //
   // 반출은 여기 안 온다 — [perimeterRouter] 가 지상 belt 로만 깔아 지하로 못 도망간다.
   // **유체 납품도 안 온다**(결정 D2) — 지하파이프는 프로토타입과 무관하게 같은 직선 위에서
-  // 서로 페어링이 끊긴다. 겹침·인접과 성질이 다른 세 번째 제약이라 v1 장부가 모델링하지
-  // 않는다. 그 대신 유체는 ①②에서 **지상 우선권**을 받았다(§4.3) — 밑으로 갈 일이 없다.
+  // 서로 페어링이 끊긴다. 겹침·인접과 성질이 다른 세 번째 제약이라 이 장부가 아직 모델링하지
+  // 않는다. 유체는 지하파이프를 많이 쓸수록 좋아 **먼저** 들어가야 하는 쪽인데(① 의 매체 순서), 그 가능성이
+  // 여기서 막혀 있다 — 열면 ① 의 `canDive` 와 이 단계가 함께 바뀐다.
   for (const d of itemDels) {
     const cur = deliveryPlans.get(d.id);
     if (cur && cur.kind !== "fallback") continue;
@@ -382,7 +404,7 @@ function crossUnderground(sheet: ChannelSheet, sides: ExitSides, maxJump: number
     } else {
       deliveryPlans.set(d.id, {
         kind: "fallback",
-        reason: cutOff.has(d.id) ? "cut-different-side" : "crossing-needs-underground",
+        reason: yieldedDeliveries.has(d.id) ? "crossing-needs-underground" : "no-surface-assignment",
       });
     }
   }
@@ -411,7 +433,7 @@ function reserveWidth(sheet: ChannelSheet, ctx: GeometryContext): void {
   for (const x of exports_) {
     const p = exportPlans.get(x.id);
     if (p?.kind === "fallback") {
-      const edgeRow = x.preferredExit === "N" ? ctx.yMin - 1 : ctx.yMax + 1;
+      const edgeRow = edgeRowOf(x.preferredExit, ctx);
       phantom(Math.min(x.entryY, edgeRow), Math.max(x.entryY, edgeRow));
     }
   }

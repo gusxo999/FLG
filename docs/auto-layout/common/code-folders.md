@@ -249,7 +249,7 @@ rg -l 'UI/store' src/autoLayout -g '*.ts' -g '!*.test.ts'   # → run/build/laye
 | `shared/route` | `shared/` ⚠ | Dijkstra 는 **탐색**이고 종류가 안 갈린다([[work-kinds]] §6). 런타임 소비처는 `link/policy/delivery`(납품의 탐색 칸) 하나뿐이고, `shared/cells/path` 는 **타입만** 가져간다 |
 | `run/gamedata/picker` | `run/` (shared 아님) | 머신 픽커인데 `module/arith/arms` 와 `tree/arith/recipe` 를 **부른다**. 관심사를 아는 어댑터는 입구의 것이다 |
 | `module/inspect` | `module/` | 소비처가 UI 셋(렌더러 · 정보창 · 라우팅 모달)이지만 **주제는 모듈**이다 — 모듈 신원(`${moduleId}-m${j}`)의 규약에 묶여 있다 |
-| `perimeter/shape/rays` | `perimeter/` | 광선은 반출의 어휘다(`perimeter/types` 를 읽는다). 행 채널 환승 자격 때문에 `channel/ledger` 도 부르지만, 그 방향의 간선은 규칙이 막지 않는다 |
+| `perimeter/shape/rays` | `perimeter/` | 광선은 반출의 어휘다(`perimeter/types` 를 읽는다) |
 
 **아직 안 가른 것 하나:** `channel/shape.materializeChannelGeometry` 는 납품(channel)과
 반출(perimeter)을 **한 번에** 훑는다. 둘이 같은 트랙 풀을 다투기 때문이다

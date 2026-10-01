@@ -5,7 +5,7 @@ aliases: [유체납품 경로예약, fluid-delivery-reservation]
 
 # 유체 납품 경로를 채널 기하 예약 안으로 — 설계 계획서
 
-> **부모 문서:** [[channel-geometry-reservation]] — 통합 장부(같은 쪽 판정)의 원 설계
+> **부모 문서:** [[channel-geometry-reservation]] — 통합 장부(완전 교차 판정)의 원 설계
 > **관련:** [[fluid-delivery]] · [[trunk-pipe]] · [[pipe-semantics]]
 
 > **상태(2026-07-25): 구현 완료.** 리팩토링 Phase 4-B(P4-4 · P4-5).

@@ -258,7 +258,7 @@ function recordPlanStats(pack: PackResult, deliveryRes: DeliveryResult): void {
     noSideWayOut: pack.exitPlan.noSideWayOut,
   });
   // **계획 단계의 포기** — 방출의 `dijkstraFallback` 보다 한 단계 앞이다(둘은 다른 수다).
-  recordChannelLedgerStats({ skips: pack.channelGeometry.skips });
+  recordChannelLedgerStats({ skips: pack.channelGeometry.skips, ledger: pack.channelGeometry.ledger });
   recordRowChannelStats({
     count: pack.rowChannels.length,
     channels: pack.rowChannels.map(

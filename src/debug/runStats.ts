@@ -89,11 +89,17 @@ export interface ExitPlanCounters {
  *
  * **만들어지기만 하고 읽는 곳이 0곳이었다**(2026-09-11 재감사에서 발견). 그동안
  * `채널-장부-충실도` J-교차지하가 이 수를 보고 있다고 적었다(*"관측 방법: report 에 찍힌다"*
- * 는 거짓이었다). 사유 `no-surface-assignment` 의 한계는 `channel-geometry-reservation.md` §10.4.
+ * 는 거짓이었다). 사유가 *완전 교차*(`crossing-needs-underground`)와 *폭 · 탐욕*(`no-surface-assignment`)으로
+ * 갈린 것은 2026-10-01 부터다(`channel-geometry-reservation.md` §10.4 T-C).
  */
 export interface ChannelLedgerCounters {
   /** 장부에 못 들어간 납품 경로와 사유. 빈 배열이 정상이다. */
   skips: ReadonlyArray<{ key: string; reason: string }>;
+  /**
+   * 장부가 실제로 한 일 — 완전 교차에서 땅 위를 내준 경로 수 · 탐욕으로 간 채널 수와 그 분모(채널 수).
+   * 탐욕 채널은 완전 교차를 먼저 푼 뒤에는 드물어야 한다 — 0 이 아니면 폭 · 예산 · 다른 유체의 인접이다.
+   */
+  ledger: { channels: number; greedyChannels: number; crossingYields: number };
 }
 
 /** 반출 — [modulePerimeterPass.rePathToPerimeter] 의 카운터 그대로. */
@@ -489,7 +495,7 @@ export function recordExitPlanStats(c: ExitPlanCounters): void {
 
 /** 채널 통합 장부 — `packModuleTree` 가 낸 `channelGeometry.skips` 를 그대로 옮긴다(관측만). */
 export function recordChannelLedgerStats(c: ChannelLedgerCounters): void {
-  current.channelLedger = { skips: c.skips.map((s) => ({ ...s })) };
+  current.channelLedger = { skips: c.skips.map((s) => ({ ...s })), ledger: { ...c.ledger } };
 }
 
 export function recordPerimeterStats(c: PerimeterCounters): void {
@@ -511,7 +517,7 @@ export function readRunStats(): RunStats {
       ? { ...current.exitPlan, blocked: current.exitPlan.blocked.map((b) => ({ ...b })) }
       : null,
     channelLedger: current.channelLedger
-      ? { skips: current.channelLedger.skips.map((s) => ({ ...s })) }
+      ? { skips: current.channelLedger.skips.map((s) => ({ ...s })), ledger: { ...current.channelLedger.ledger } }
       : null,
     rowChannels: current.rowChannels
       ? {

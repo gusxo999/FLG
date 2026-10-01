@@ -95,7 +95,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
-| [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 같은 쪽 판정 (구현 완료). 트랙 배정이 **두 그래프(구간 · 순서)의 문제**라는 것과 탐색기의 알려진 비용은 §10 |
+| [channel-geometry-reservation](auto-layout/channel/channel-geometry-reservation.md) | 채널 예약을 폭→기하로 승격 — 납품·반출의 완전 교차 판정과 해소 사다리 (구현 완료). 트랙 배정이 **두 그래프(구간 · 순서)의 문제**라는 것과 탐색기의 알려진 비용은 §10 |
 | [fluid-delivery-reservation](auto-layout/channel/fluid-delivery-reservation.md) | **[구현됨]** 유체 납품 경로를 채널 기하 예약 안으로. 인접(합류) 규칙 + 유체 지상 우선권 |
 | [fluid-underground-crossing](auto-layout/channel/fluid-underground-crossing.md) | **[계획]** 유체 지하 횡단을 장부 안으로 |
 | [s-layer-channel-reservation](auto-layout/channel/s-layer-channel-reservation.md) | **[역사]** S-LAYER 채널 예약 — 본체는 삭제됨. 남긴 이유 = "왜 채널을 비워 두는가" |

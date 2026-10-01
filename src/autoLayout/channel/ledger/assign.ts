@@ -95,7 +95,7 @@ const MODULE_CHANNEL_MIN = 4;
 /**
  * **⑦ 통로 — 깊이마다 채널 트랙.** 납품·반출 경로를 한 장부에 모아 트랙을 배정한다
  *
- *     (같은 쪽 판정 + 해소 사다리, docs/…channel-geometry-reservation.md). 폭 역전:
+ *     (완전 교차 판정 + 해소 사다리, docs/…channel-geometry-reservation.md). 폭 역전:
  *     아래 channelWidth 가 이 배정 결과(trackCount)에서 폭을 유도한다. 부적격 경로
  *     (스필 납품 경로)는 폭만 예약(reserveIntervals)하고 방출의 dijkstra 에 맡긴다.
  *

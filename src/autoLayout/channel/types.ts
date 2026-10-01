@@ -48,16 +48,16 @@ export interface ExportInput {
 }
 
 export interface GeometryContext {
-  /** 전역 모듈 밴드(abs y) — 반출 세로 주행이 이 밖(±1 = perimeter seat 행)까지 달린다. */
+  /** 전역 모듈 밴드(abs y) — 반출 세로 주행이 이 밖(±`PERIMETER_MARGIN` = perimeter seat 행 — `channel/shape.edgeRowOf`)까지 달린다. */
   yMin: number;
   yMax: number;
   /**
    * 지하벨트 점프 거리 상한(입구↔출구 셀 거리). 0(기본) = 지하 불가 = 지상만.
    *
-   * **납품 경로에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
-   * 지하로 도망갈 수 없다 — 그래서 반출이 **제약이 센 쪽**이고, 배정에서 먼저 자리를
-   * 잡는다(제약 센 것부터). 납품은 [deliveryRoute] 이 지하벨트를 방출할 수 있어 막히면
-   * 밑으로 건널 수 있다.
+   * **아이템 납품에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
+   * 지하로 갈 수 없고, 유체 납품은 이 장부가 pipe-to-ground 페어링을 모델링하지 않아 못 간다(결정 D2).
+   * 누가 땅 위를 먼저 갖나는 이 값이 아니라 실패 비용(`priority-ordering` P10 — 유체 → 반출 → 아이템)이,
+   * 완전 교차에서 누가 땅속으로 가나는 해소 사다리(`channel/policy.settleFullCrossings`)가 정한다.
    */
   maxJump?: number;
   /** 폭만 예약할 잔여 세로 구간(부적격 납품 경로·미지원 반출 등) — trackCount 에만 반영. */
@@ -103,6 +103,9 @@ export type DeliveryPlan =
        *
        * 세로 주행(track)은 늘 지상이다 — 빈 트랙을 골랐기 때문. 점프는 가로선(진입·진출)
        * 위에서 남의 세로선을 건너거나, 세로선 위에서 남의 가로선을 건널 때 생긴다.
+       *
+       * 끝점이 엇갈렸나는 트랙을 고르기 **전에** 판정한다 — [fullCrossing](`channel/shape`)의 **완전 교차**.
+       * 누가 땅 위를 내주나는 해소 사다리(`channel/policy.settleFullCrossings`)가 고른다.
        */
       kind: "undergroundCrossing";
       track: number;
@@ -119,4 +122,8 @@ export interface ChannelGeometryPlan {
   exports: Map<string, ExportPlan>;
   /** 사용한 트랙 수(fallback 경로의 폭 예약 포함) — 채널 폭의 근거. */
   trackCount: number;
+  /** **관측** — 완전 교차에서 땅 위를 내준 경로 수(납품 + 반출). 해소 사다리가 실제로 돌았나를 센다. */
+  crossingYields: number;
+  /** **관측** — 지상 탐색이 해를 못 찾아(예산 소진 포함) 탐욕 배정으로 갔나. 완전 교차를 푼 뒤에는 드물어야 한다. */
+  greedy: boolean;
 }

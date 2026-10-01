@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { routeShape, type ChannelEndpoint } from "./shape";
+import { PERIMETER_MARGIN } from "../shared/grid";
 
 // 채널 세로 범위 [0,9] · 가상 E벽 열 = capCol
 const ctx = { yMin: 0, yMax: 9 };
@@ -19,14 +20,17 @@ describe("routeShape — 납품과 반출은 같은 도형이다", () => {
     // 납품엔 가로 **진출**이 하나 더 있다. 반출은 세로가 채널을 그대로 빠져나간다.
     expect(납품.h).toHaveLength(2);
     expect(반출.h).toHaveLength(1);
-    // 세로 주행은 둘 다 하나 — 끝나는 행만 다르다(도착 벽의 행 vs 변 바깥 한 칸).
+    // 세로 주행은 둘 다 하나 — 끝나는 행만 다르다(도착 벽의 행 vs 변의 seat 행).
     expect(납품.v).toEqual([{ col: 3, r1: 2, r2: 7 }]);
-    expect(반출.v).toEqual([{ col: 3, r1: 2, r2: 10 }]); // yMax + 1
+    expect(반출.v).toEqual([{ col: 3, r1: 2, r2: 9 + PERIMETER_MARGIN }]); // yMax + PERIMETER_MARGIN
   });
 
-  it("`edge` 끝점의 행은 **그 변 바깥 한 칸**이다 — N 은 위, S 는 아래", () => {
-    expect(routeShape(wall(4, "W"), edge("N"), 1, ctx, CAP).v).toEqual([{ col: 1, r1: -1, r2: 4 }]);
-    expect(routeShape(wall(4, "W"), edge("S"), 1, ctx, CAP).v).toEqual([{ col: 1, r1: 4, r2: 10 }]);
+  // **seat 행까지 달린다** — 상자는 밴드 밖 `PERIMETER_MARGIN` 칸에 앉고, 예약 셀도 거기까지다(`materializeChannelGeometry`).
+  // 2026-10-01 까지 이 시험은 *"바깥 한 칸"* 을 못 박았는데, 그 값이 실제 주행보다 한 행 짧았다 — 그 행의 바깥 행 채널
+  // 트랙과의 만남을 도형이 못 봤다(`channel/shape.edgeRowOf`).
+  it("`edge` 끝점의 행은 **그 변의 seat 행**이다 — N 은 위, S 는 아래", () => {
+    expect(routeShape(wall(4, "W"), edge("N"), 1, ctx, CAP).v).toEqual([{ col: 1, r1: -PERIMETER_MARGIN, r2: 4 }]);
+    expect(routeShape(wall(4, "W"), edge("S"), 1, ctx, CAP).v).toEqual([{ col: 1, r1: 4, r2: 9 + PERIMETER_MARGIN }]);
   });
 
   it("진입 벽이 가로 조각의 **끝**을 정한다 — W벽은 −1, E벽은 capCol", () => {
@@ -41,9 +45,9 @@ describe("routeShape — 납품과 반출은 같은 도형이다", () => {
   });
 
   it("한쪽이 `edge` 면 행이 같아도 **접지 않는다** — 세로가 밖으로 나가야 한다", () => {
-    // 도착이 변이면 도착 행이 −1/10 이라 애초에 같아질 수 없지만, 규칙이 벽에만 걸린다는 것을 못 박는다.
-    const s = routeShape(wall(-1, "E"), edge("N"), 3, ctx, CAP);
-    expect(s.v).toEqual([{ col: 3, r1: -1, r2: -1 }]);
+    // 도착이 변이면 도착 행이 seat 행이라 애초에 같아질 수 없지만, 규칙이 벽에만 걸린다는 것을 못 박는다.
+    const s = routeShape(wall(-PERIMETER_MARGIN, "E"), edge("N"), 3, ctx, CAP);
+    expect(s.v).toEqual([{ col: 3, r1: -PERIMETER_MARGIN, r2: -PERIMETER_MARGIN }]);
     expect(s.h).toHaveLength(1);
   });
 });

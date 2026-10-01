@@ -269,19 +269,22 @@ export function buildReport(): string {
   // 저건 *"계획을 못 썼다"* 이고 이건 *"계획이 아예 없었다"* 이다.
   //
   // `채널-장부-충실도` J-교차지하 가 이 줄을 본다(2026-09-11 재감사 전까지 **만들어지기만 하고
-  // 읽는 곳이 없었다**). 사유 `no-surface-assignment` 은 폭 부족인지 순서 그래프의 순환인지를
-  // 아직 못 가른다 — `channel-geometry-reservation.md` §10.4 T-C.
+  // 읽는 곳이 없었다**). 사유는 2026-10-01 부터 *완전 교차*(`crossing-needs-underground`)와 *폭 · 탐욕*
+  // (`no-surface-assignment`)으로 갈린다 — `channel-geometry-reservation.md` §10.4 T-C.
+  // 뒤의 꼬리(교차양보 · 탐욕)는 장부가 **실제로 한 일**이다 — 해소 사다리가 돌았나 · 탐색이 해를 놓쳤나.
   const cl = stats.channelLedger;
   if (cl) {
     const byReason = new Map<string, number>();
     for (const s of cl.skips) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+    const did = ` · 완전교차 양보 ${cl.ledger.crossingYields} · 탐욕 채널 ${cl.ledger.greedyChannels}/${cl.ledger.channels}`;
     out.push(
       line(
         '납품장부',
-        cl.skips.length === 0
+        (cl.skips.length === 0
           ? '포기 0 — 모든 납품이 장부에서 도형을 받았다'
           : `**포기 ${cl.skips.length}**  ← `
-            + [...byReason].sort(([a], [b]) => a.localeCompare(b)).map(([r, n]) => `${r}×${n}`).join(' · '),
+            + [...byReason].sort(([a], [b]) => a.localeCompare(b)).map(([r, n]) => `${r}×${n}`).join(' · '))
+          + did,
       ),
     );
     for (const s of cl.skips.slice(0, 8)) out.push(sub(`${s.key}: ${s.reason}`));

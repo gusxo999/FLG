@@ -1,11 +1,13 @@
 /**
- * channelGeometryPlanner — 통합 장부(같은 쪽 판정 + 해소 사다리) 단위 테스트.
- * 케이스 번호는 docs/auto-layout-wizard.channel-geometry-reservation.md 를 따른다.
+ * channelGeometryPlanner — 통합 장부(완전 교차 판정 + 해소 사다리) 단위 테스트.
+ * 케이스 번호는 docs/auto-layout/channel/channel-geometry-reservation.md 를 따른다.
  */
 import { describe, it, expect } from "vitest";
 import { planChannelGeometry } from "./geometry";
-import { sameSideOfCut } from "../shape";
-import type { DeliveryInput, ExportInput } from "../types";
+import {
+  conflicts, deliveryEnds, elbowShape, exportEnds, fullCrossing, placedOf, staircaseShape, type RouteEnds,
+} from "../shape";
+import type { DeliveryInput, ExportInput, GeometryContext, NsEdge } from "../types";
 import { packModuleTree, deliveryKey } from "../../tree/build";
 import type { NodeSpec, PackConfig } from "../../tree/types/pack";
 import { routeDeliveryRoutes } from "../../link/build";
@@ -15,25 +17,118 @@ import type { IoLine } from "../../module/types/line";
 
 const ctx = { yMin: 0, yMax: 10 };
 
-describe("sameSideOfCut — §4.2 판정", () => {
+describe("fullCrossing — 완전 교차 판정(§5-3 · §10.2 정리 3)", () => {
   const exp: ExportInput = { id: "x", entryY: 3, entryWall: "E", preferredExit: "N" };
+  const dx = (d: DeliveryInput, x: ExportInput, exit: NsEdge) => fullCrossing(deliveryEnds(d), exportEnds(x, exit), ctx);
 
-  it("§4.3 Case A — 두 끝 다 바깥쪽 ② → 같은 쪽", () => {
-    expect(sameSideOfCut({ id: "d", startY: 5, endY: 1 }, exp, "N")).toBe(true);
+  // 반출 × 납품 — 옛 같은 쪽 판정(§4.2)의 네 경우. 답이 같아야 한다(다른 쪽 = 완전 교차).
+  it("§4.3 Case A — 두 끝이 반출이 가르는 같은 쪽 → 완전 교차가 아니다", () => {
+    expect(dx({ id: "d", startY: 5, endY: 1 }, exp, "N")).toBe(false);
   });
 
-  it("§4.4 Case B — 출발이 안쪽 ①에 갇힘 → 다른 쪽", () => {
-    expect(sameSideOfCut({ id: "d", startY: 1, endY: 2 }, exp, "N")).toBe(false);
+  it("§4.4 Case B — 출발이 반출의 안쪽에 갇힘 → 완전 교차", () => {
+    expect(dx({ id: "d", startY: 1, endY: 2 }, exp, "N")).toBe(true);
   });
 
-  it("진출 변을 S 로 뒤집으면 같은 케이스가 같은 쪽이 된다 (해소 사다리 ①의 근거)", () => {
-    expect(sameSideOfCut({ id: "d", startY: 1, endY: 2 }, exp, "S")).toBe(true);
+  it("진출 변을 S 로 뒤집으면 같은 납품이 완전 교차가 아니게 된다 (해소 사다리 ①의 근거)", () => {
+    expect(dx({ id: "d", startY: 1, endY: 2 }, exp, "S")).toBe(false);
   });
 
-  it("반출이 W벽 진입이면 안쪽 ①은 W벽 쪽 — 도착 끝이 갇힌다", () => {
+  it("반출이 W벽 진입이면 안쪽은 W벽 쪽 — 도착 끝이 갇힌다", () => {
     const expW: ExportInput = { id: "x", entryY: 3, entryWall: "W", preferredExit: "N" };
-    expect(sameSideOfCut({ id: "d", startY: 1, endY: 2 }, expW, "N")).toBe(false); // endY=2 안쪽
-    expect(sameSideOfCut({ id: "d", startY: 1, endY: 5 }, expW, "N")).toBe(true); // 둘 다 바깥
+    expect(dx({ id: "d", startY: 1, endY: 2 }, expW, "N")).toBe(true); // endY=2 안쪽
+    expect(dx({ id: "d", startY: 1, endY: 5 }, expW, "N")).toBe(false); // 둘 다 바깥
+  });
+
+  it("납품 × 납품 — 양 벽에서 끝 순서가 엇갈리면 완전 교차, 순서를 지키면 아니다(§5-2 · §5-3)", () => {
+    const dd = (a: DeliveryInput, b: DeliveryInput) => fullCrossing(deliveryEnds(a), deliveryEnds(b), { yMin: 0, yMax: 40 });
+    expect(dd({ id: "a", startY: 20, endY: 5 }, { id: "b", startY: 10, endY: 30 })).toBe(true);
+    expect(dd({ id: "a", startY: 10, endY: 30 }, { id: "b", startY: 20, endY: 40 })).toBe(false);
+  });
+
+  it("출발 행 = 도착 행인 납품은 그 행을 지나는 모든 세로선과 완전 교차다", () => {
+    const flat: DeliveryInput = { id: "flat", startY: 5, endY: 5 };
+    expect(fullCrossing(deliveryEnds(flat), deliveryEnds({ id: "v", startY: 2, endY: 8 }), ctx)).toBe(true);
+    expect(fullCrossing(deliveryEnds(flat), deliveryEnds({ id: "v", startY: 6, endY: 8 }), ctx)).toBe(false);
+  });
+
+  it("반출 × 반출 — 같은 벽에서 위 상자는 S 로 · 아래 상자는 N 으로 나가면 완전 교차", () => {
+    const up: ExportInput = { id: "u", entryY: 3, entryWall: "E", preferredExit: "S" };
+    const down: ExportInput = { id: "w", entryY: 6, entryWall: "E", preferredExit: "N" };
+    expect(fullCrossing(exportEnds(up, "S"), exportEnds(down, "N"), ctx)).toBe(true);
+    expect(fullCrossing(exportEnds(up, "N"), exportEnds(down, "N"), ctx)).toBe(false); // 하나를 뒤집으면 풀린다
+  });
+
+  /**
+   * **판정이 도형과 같은 답을 내나** — 실제 도형(`routeShape` · `conflicts`)으로 *"어떤 트랙 쌍으로도 겹친다"* 를 재서
+   * 작은 판의 모든 쌍과 비교한다. 이 대조가 판정의 근거다(2026-09-30 전수 — 어긋남 0).
+   */
+  describe("작은 판 전수 — 판정 = 도형", () => {
+    const R = 5;
+    const K = 4;
+    const board: Pick<GeometryContext, "yMin" | "yMax"> = { yMin: 0, yMax: R };
+    const capCol = K + 1;
+    type Route = { ends: RouteEnds; shape: (t: number) => ReturnType<typeof staircaseShape>; wallEnds: string[] };
+    const routes: Route[] = [];
+    // 납품의 끝은 **밴드 밖**(바깥 행 채널의 트랙 행)에도 선다 — 반출의 seat 행 너머까지 넣어 잰다.
+    for (let s = -3; s <= R + 3; s++)
+      for (let e = -3; e <= R + 3; e++) {
+        const d: DeliveryInput = { id: `d${s}${e}`, startY: s, endY: e };
+        routes.push({ ends: deliveryEnds(d), shape: (t) => staircaseShape(d, t, board, capCol), wallEnds: [`E${s}`, `W${e}`] });
+      }
+    for (let y = 0; y <= R; y++)
+      for (const w of ["E", "W"] as const)
+        for (const exit of ["N", "S"] as const) {
+          const x: ExportInput = { id: `x${y}${w}`, entryY: y, entryWall: w, preferredExit: exit };
+          routes.push({ ends: exportEnds(x, exit), shape: (t) => elbowShape(x, t, exit, board, capCol), wallEnds: [`${w}${y}`] });
+        }
+    /** 같은 벽 · 같은 행의 끝을 나눠 쓰는 쌍 — 같은 상자 자리라 입력에서 안 나온다. */
+    const sharesEnd = (a: Route, b: Route) => a.wallEnds.some((k) => b.wallEnds.includes(k));
+    const mustMeet = (...rs: Route[]): boolean => {
+      const shapes = rs.map((r) => Array.from({ length: K }, (_, t) => placedOf(r.shape(t))));
+      const pick = (i: number, chosen: number[]): boolean => {
+        if (i === rs.length) return true; // 겹침 없이 다 앉았다
+        for (let t = 0; t < K; t++)
+          if (chosen.every((u, j) => !conflicts(shapes[i][t], shapes[j][u])) && pick(i + 1, [...chosen, t])) return true;
+        return false;
+      };
+      return !pick(0, []);
+    };
+
+    it("쌍 — 어떤 트랙으로도 겹치는 쌍과 완전 교차가 같다", () => {
+      const wrong: string[] = [];
+      let checked = 0;
+      let crossing = 0;
+      for (let i = 0; i < routes.length; i++)
+        for (let j = i + 1; j < routes.length; j++) {
+          if (sharesEnd(routes[i], routes[j])) continue;
+          checked += 1;
+          if (fullCrossing(routes[i].ends, routes[j].ends, board)) crossing += 1;
+          if (mustMeet(routes[i], routes[j]) !== fullCrossing(routes[i].ends, routes[j].ends, board))
+            wrong.push(`${JSON.stringify(routes[i].ends)} × ${JSON.stringify(routes[j].ends)}`);
+        }
+      expect(wrong).toEqual([]);
+      expect(checked).toBeGreaterThan(10000); // 비어 있는 대조가 아니다
+      expect(crossing).toBeGreaterThan(1000);
+    });
+
+    it("셋 — 쌍으로 안 엇갈리면 셋도 함께 앉는다(셋이 얽혀야만 막히는 경우가 없다)", () => {
+      const small = routes.filter((r) => r.ends.every((e) => e.kind === "edge" || (e.row >= -1 && e.row <= 3)));
+      const stuck: string[] = [];
+      let checked = 0;
+      const clear = (a: Route, b: Route) => !sharesEnd(a, b) && !fullCrossing(a.ends, b.ends, board);
+      for (let i = 0; i < small.length; i++)
+        for (let j = i + 1; j < small.length; j++) {
+          if (!clear(small[i], small[j])) continue;
+          for (let k = j + 1; k < small.length; k++) {
+            if (!clear(small[i], small[k]) || !clear(small[j], small[k])) continue;
+            checked += 1;
+            if (mustMeet(small[i], small[j], small[k])) stuck.push(`${i},${j},${k}`);
+          }
+        }
+      expect(stuck).toEqual([]);
+      expect(checked).toBeGreaterThan(1000);
+    });
   });
 });
 
@@ -74,7 +169,7 @@ describe("planChannelGeometry — 지상 배정", () => {
     const a = plan.deliveries.get("dA")!;
     expect(a.kind).toBe("undergroundCrossing");
     if (a.kind === "undergroundCrossing") {
-      // 반출이 그은 절단선을 지하로 건넌다 — 점프 하나, 입구·출구는 축이 같고 거리 ≥ 2.
+      // 반출과 완전 교차라 땅 위를 내주고 지하로 건넌다 — 점프 하나, 입구·출구는 축이 같고 거리 ≥ 2.
       expect(a.jumps.length).toBeGreaterThanOrEqual(1);
       for (const j of a.jumps) {
         const sameAxis = j.fromCol === j.toCol || j.fromRow === j.toRow;
@@ -100,6 +195,39 @@ describe("planChannelGeometry — 지상 배정", () => {
     expect(kinds).toContain("fallback"); // 한쪽은 dijkstra 로
     // fallback 경로도 폭은 예약된다(phantom) — 자리 소멸로 인한 모듈 폴백 방지.
     expect(plan.trackCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("별 모양 — 하나가 셋과 완전 교차하면 상대가 가장 많은 그 하나만 땅속으로(id 가 앞이어도)", () => {
+    // dA 는 E벽에서 맨 위 · W벽에서 맨 아래 — dB · dC · dD 와 각각 엇갈린다. 셋끼리는 순서를 지킨다.
+    const dels: DeliveryInput[] = [
+      { id: "dA", startY: 1, endY: 20 },
+      { id: "dB", startY: 2, endY: 5 },
+      { id: "dC", startY: 3, endY: 6 },
+      { id: "dD", startY: 4, endY: 7 },
+    ];
+    const plan = planChannelGeometry(dels, [], { yMin: 0, yMax: 25, maxJump: 5 });
+    expect(plan.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+    for (const id of ["dB", "dC", "dD"]) expect(plan.deliveries.get(id)!.kind).toBe("staircase");
+    expect(plan.crossingYields).toBe(1);
+    expect(plan.greedy).toBe(false); // 남은 셋은 탐색이 푼다 — 예전엔 채널 전체가 탐욕으로 갔다
+  });
+
+  it("반출 × 반출 완전 교차 — 진출 변을 뒤집어 둘 다 땅 위에 남는다", () => {
+    // 같은 E벽에서 위 상자는 S 로 · 아래 상자는 N 으로 — 반드시 만난다. 하나를 뒤집으면 풀린다.
+    const exps: ExportInput[] = [
+      { id: "xa", entryY: 3, entryWall: "E", preferredExit: "S" },
+      { id: "xb", entryY: 6, entryWall: "E", preferredExit: "N" },
+    ];
+    const plan = planChannelGeometry([], exps, ctx);
+    const a = plan.exports.get("xa")!;
+    const b = plan.exports.get("xb")!;
+    expect(a.kind).toBe("elbow");
+    expect(b.kind).toBe("elbow");
+    if (a.kind === "elbow" && b.kind === "elbow") {
+      expect(b.exitEdge).toBe("S"); // id 뒤쪽이 먼저 뒤집힌다
+      expect(fullCrossing(exportEnds(exps[0], a.exitEdge), exportEnds(exps[1], b.exitEdge), ctx)).toBe(false);
+    }
+    expect(plan.crossingYields).toBe(0);
   });
 
   it("출발 행 = 도착 행 — 일자 수평선(트랙 소비 0)", () => {
