@@ -246,6 +246,8 @@ export function edgeLinkGroups(
     inserter,
     fromFaceSeats: faceSeatArms(child.machine.h, 0),
     toFaceSeats: faceSeatArms(parent.machine.h, 0),
+    // 부모가 벨트로 받는 재료가 이 품목 말고도 있나 — 있으면 그 면의 좌석을 나눠 쓴다.
+    toFaceShared: parent.lines.some((l) => l.role === "input" && l.kind === "belt" && l.name !== item),
   };
   const carries: LinkCarry[] = flows.map((f) => ({
     from: f.fromMachine,

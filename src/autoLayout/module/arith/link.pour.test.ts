@@ -40,8 +40,9 @@ describe("인서터 운반량을 아무리 크게 넣어도 줄이 안 변한다
 
   it("벨트 한 줄(15/s) 이상인 값은 전부 같은 줄을 낸다 — 15 · 100 · 무한", () => {
     const base = shapeOf(flows, ins(15));
-    // 흐름을 억지로 쪼개지 않으므로(새 줄에 통째로 들어가면 넘긴다) 15 · 15 가 아니라 12 · 12 · 6 이다.
-    expect(base.map((l) => l.rate)).toEqual([12, 12, 6]);
+    // 흐름을 억지로 쪼개지 않으므로(새 줄에 통째로 들어가면 넘긴다) 15 · 15 가 아니라 세 줄이다. 줄이 찬 곳에서 끊으면
+    // 12 · 12 · 6 인데, 그러면 가운데 줄의 양끝에서 자식이 갈린다 — 같은 세 줄로 12 · 8 · 10 을 고른다(`./cut`).
+    expect(base.map((l) => l.rate)).toEqual([12, 8, 10]);
     for (const tp of [100, Infinity]) expect(shapeOf(flows, ins(tp)), `인서터 ${tp}/s`).toEqual(base);
   });
 
@@ -102,5 +103,26 @@ describe("한 머신의 몫을 옮기는 팔이 한 면에 다 못 앉으면 그
 
   it("팔이 좌석 안인 자식 — 남는 자리에 다른 자식이 얹힌다(대조군)", () => {
     expect(sharedByChildren(small, 100)).toBe(1);
+  });
+});
+
+describe("몫이 벨트 한 줄보다 큰 흐름은 자기 줄을 쓴다 — 줄 수가 안 늘 때만", () => {
+  it("24/s 두 쌍 — 15 · 9 · 15 · 9. 이어 부으면 15 · 9+6 · 15 · 3 이고 둘째 줄을 두 쌍이 함께 쓴다", () => {
+    const links = pour([{ from: 0, to: 0, rate: 24 }, { from: 1, to: 1, rate: 24 }], ins(100));
+    expect(links.map((l) => groupRate(l))).toEqual([15, 9, 15, 9]);
+    // 줄마다 한 쌍만 쓴다.
+    expect(links.every((l) => l.from.size === 1 && l.to.size === 1)).toBe(true);
+  });
+
+  it("줄이 늘면 안 바꾼다(대조군) — 20 · 10 · 10 · 20: 이어 부으면 넷, 자기 줄이면 여섯", () => {
+    const flows: LinkCarry[] = [
+      { from: 0, to: 0, rate: 20 }, { from: 1, to: 0, rate: 10 }, { from: 1, to: 1, rate: 10 }, { from: 2, to: 1, rate: 20 },
+    ];
+    expect(pour(flows, ins(100)).map((l) => groupRate(l))).toEqual([15, 15, 15, 15]);
+  });
+
+  it("한 줄에 통째로 들어가는 흐름뿐이면 손대지 않는다(대조군)", () => {
+    const links = pour([{ from: 0, to: 0, rate: 10 }, { from: 1, to: 1, rate: 5 }], ins(100));
+    expect(links.map((l) => groupRate(l))).toEqual([15]);
   });
 });

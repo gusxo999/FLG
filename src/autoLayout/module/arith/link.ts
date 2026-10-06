@@ -36,6 +36,7 @@ import {
   armsFor, armsForShare, faceSeatArms, inserterForReach, maxRatePerMachinePerLine, type SpecBelt, type SpecInserter,
 } from "../../shared/gamedata/spec";
 import { determineBeltCount, laneCapOfTier } from "../../shared/arith/belt";
+import { chooseCuts, hasContestedLine, splitCount } from "./cut";
 
 /**
  * **이 줄에 실린 초당 총량** — 적재 목록의 합. 목록이 없으면 `undefined`(지어내지 않는다).
@@ -71,6 +72,12 @@ export interface LinkLimits {
    */
   fromFaceSeats?: number;
   toFaceSeats?: number;
+  /**
+   * **받는 머신의 면을 다른 재료 품목과 나눠 쓴다** — 받는 머신이 벨트로 받는 재료가 이 품목 말고도 있다.
+   * 참이면 붓기가 끊는 자리를 다시 고를 때 받는 머신을 **새로 가르지 않는다**: 갈린 머신은 인서터가 하나 더 드는데,
+   * 다른 품목이 그 면의 좌석을 얼마나 쓰는지를 이 함수는 모른다. 안 주면 혼자 쓰는 것으로 본다.
+   */
+  toFaceShared?: boolean;
 }
 
 /**
@@ -166,33 +173,101 @@ export function createLinks(
   const others = (line: Pour, side: "from" | "to", mi: number | undefined): boolean =>
     line.carries.some((c) => c[side] !== mi);
 
-  let cur = openLine();
-  for (const f of flows) {
-    let left = f.rate;
-    while (left > POUR_EPS) {
-      const room = Math.min(
-        cur.cap - cur.used,
-        fromSeat - rateOn(cur, "from", f.from),
-        toSeat - rateOn(cur, "to", f.to),
-      );
-      // 넘치는 쪽은 줄을 남과 나눠 쓰지 않는다(위 `mergeFrom`/`mergeTo`).
-      // 이 자리(줄을 남과 나눠 쓰나)를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-벨트냐-머신이냐).
-      const wouldMix =
-        (!mergeFrom && others(cur, "from", f.from)) ||
-        (!mergeTo && others(cur, "to", f.to));
-      // 줄이 찼거나 이 머신의 좌석이 찼거나, 쪼갤 이유가 없는데 안 들어간다 → 새 줄.
-      if (wouldMix || room <= POUR_EPS || (left > room + POUR_EPS && fitsInFreshLine(left))) {
-        cur = openLine();
-        continue;
+  /**
+   * 흐름을 차례로 붓는다 — `lines` 를 비우고 다시 채운다.
+   *
+   * @param ownLines 몫이 벨트 한 줄보다 큰 흐름(새 줄 하나에 통째로 안 들어가는 것)이 **자기 줄**을 쓴다 — 앞 흐름이 실린 줄에
+   *   이어 붓지 않고, 그 흐름의 남는 조각이 실린 줄에 뒤 흐름도 안 얹는다.
+   */
+  const pour = (ownLines: boolean): void => {
+    lines.length = 0;
+    let cur = openLine();
+    let prevBig = false;
+    for (const f of flows) {
+      const big = !fitsInFreshLine(f.rate);
+      if (ownLines && cur.used > POUR_EPS && (big || prevBig)) cur = openLine();
+      prevBig = big;
+      let left = f.rate;
+      while (left > POUR_EPS) {
+        const room = Math.min(
+          cur.cap - cur.used,
+          fromSeat - rateOn(cur, "from", f.from),
+          toSeat - rateOn(cur, "to", f.to),
+        );
+        // 넘치는 쪽은 줄을 남과 나눠 쓰지 않는다(위 `mergeFrom`/`mergeTo`).
+        // 이 자리(줄을 남과 나눠 쓰나)를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-벨트냐-머신이냐).
+        const wouldMix =
+          (!mergeFrom && others(cur, "from", f.from)) ||
+          (!mergeTo && others(cur, "to", f.to));
+        // 줄이 찼거나 이 머신의 좌석이 찼거나, 쪼갤 이유가 없는데 안 들어간다 → 새 줄.
+        if (wouldMix || room <= POUR_EPS || (left > room + POUR_EPS && fitsInFreshLine(left))) {
+          cur = openLine();
+          continue;
+        }
+        const take = Math.min(left, room);
+        cur.used += take;
+        // **같은 흐름 조각은 한 항목으로 합친다** — 한 줄 안에서 두 번 나눠 실을 이유가 없고,
+        // 나뉘어 있으면 팔 수를 조각마다 올림하게 되어 팔이 부풀어 오른다.
+        const prev = cur.carries.find((c) => c.from === f.from && c.to === f.to);
+        if (prev) prev.rate += take;
+        else cur.carries.push({ from: f.from, to: f.to, rate: take });
+        left -= take;
       }
-      const take = Math.min(left, room);
-      cur.used += take;
-      // **같은 흐름 조각은 한 항목으로 합친다** — 한 줄 안에서 두 번 나눠 실을 이유가 없고,
-      // 나뉘어 있으면 팔 수를 조각마다 올림하게 되어 팔이 부풀어 오른다.
-      const prev = cur.carries.find((c) => c.from === f.from && c.to === f.to);
-      if (prev) prev.rate += take;
-      else cur.carries.push({ from: f.from, to: f.to, rate: take });
-      left -= take;
+    }
+  };
+  pour(false);
+
+  // **몫이 벨트 한 줄보다 큰 흐름은 자기 줄을 쓴다 — 줄 수가 안 늘 때만.**
+  //
+  // 한 쌍(주는 머신 · 받는 머신)의 흐름이 벨트 한 줄을 넘으면 줄 여럿에 걸친다. 위 붓기는 그 남는 조각을 다음 쌍과 한 줄에
+  // 섞는다(24/s 둘이면 `15 · 9+6 · 15 · 3`). 그러면 섞인 줄을 두 쌍이 함께 쓰고, 그 줄의 양끝에 두 줄을 쓰는 머신이 선다 —
+  // 줄마다 얼마가 흐를지를 계획이 못 정한다(`docs/용어사전.md` §split belt 할당량 문제). 쌍마다 자기 줄을 쓰면(`15 · 9 · 15 · 9`)
+  // 그 줄들은 한 쌍만 쓰므로 어떻게 갈려도 총량이 맞는다. **줄 수가 늘면 안 바꾼다** — 벨트를 늘릴지는 여기서 정하지 않는다.
+  // 전용 줄이 이미 걸린 붓기(`mergeFrom`/`mergeTo`)는 그대로 둔다.
+  if (mergeFrom && mergeTo) {
+    const mixed = lines.map((l) => ({ ...l, carries: l.carries.map((c) => ({ ...c })) }));
+    const spansLines = mixed.reduce((sum, l) => sum + l.carries.length, 0) > flows.length;
+    if (spansLines) {
+      pour(true);
+      if (lines.length > mixed.length) {
+        lines.length = 0;
+        lines.push(...mixed);
+      }
+    }
+  }
+
+  // **끊는 자리를 다시 고른다** — 위 붓기는 *줄이 찬 곳* 에서 끊는다. 그 결과 한 줄의 양끝에 두 줄을 쓰는 머신이 서면
+  // (위 · 아래 경계가 같은 편을 연달아 가른다) 방향으로는 한 대만 맨 끝이 된다. 줄들에 남는 자리가 있으면 **같은 줄 수로**
+  // 그런 줄이 없는 끊는 자리를 찾는다([chooseCuts]). 못 찾으면 붓기 그대로다 — 줄을 늘릴지는 여기서 정하지 않는다
+  // (`tempPlanDocs/split-belt-할당량/judgements.md` J-벨트냐-머신이냐).
+  //
+  // 손대는 것은 좁다 — 흐름이 통째로 한 줄에 실린 붓기뿐이다. 흐름 하나가 줄 여럿에 걸쳤거나(몫이 벨트 한 줄보다 큰 머신)
+  // 전용 줄이 걸린 붓기(`mergeFrom`/`mergeTo`)는 그대로 둔다. 그런 줄이 없는 붓기도 그대로다 — 다른 답을 낼 이유가 없다.
+  const whole = lines.reduce((sum, l) => sum + l.carries.length, 0) === flows.length;
+  if (whole && mergeFrom && mergeTo && lines.length > 1) {
+    const cutsNow: number[] = [];
+    for (let k = 0, at = 0; k + 1 < lines.length; k++) cutsNow.push((at += lines[k].carries.length));
+    if (hasContestedLine(flows, cutsNow)) {
+      const tierOf = (k: number) => tiers[Math.min(k, tiers.length - 1)];
+      const found = chooseCuts(flows, lines.length, { capOf: (k) => laneCapOfTier(tierOf(k)), fromSeat, toSeat });
+      // **받는 머신의 면을 다른 품목과 나눠 쓰면, 받는 머신을 새로 가르는 답은 안 받는다**([LinkLimits.toFaceShared]).
+      // 갈린 머신마다 인서터가 하나 더 드는데 다른 품목이 그 면의 좌석을 얼마나 쓰는지를 여기서는 모른다 —
+      // 받는 쪽 가름이 붓기보다 늘면 좌석이 모자랄 수 있다([chooseCuts] 머리말).
+      const addsToSplits = found !== undefined && splitCount(flows, found, "to") > splitCount(flows, cutsNow, "to");
+      const cuts = found && !(limits.toFaceShared && addsToSplits) ? found : undefined;
+      if (cuts) {
+        const bounds = [0, ...cuts, flows.length];
+        lines.length = 0;
+        for (let k = 0; k + 1 < bounds.length; k++) {
+          const part = flows.slice(bounds[k], bounds[k + 1]);
+          lines.push({
+            cap: laneCapOfTier(tierOf(k)),
+            used: part.reduce((sum, f) => sum + f.rate, 0),
+            belt: tierOf(k).entityName,
+            carries: part.map((f) => ({ from: f.from, to: f.to, rate: f.rate })),
+          });
+        }
+      }
     }
   }
 

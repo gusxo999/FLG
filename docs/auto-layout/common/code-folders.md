@@ -145,7 +145,7 @@ autoLayout/
 ├ module/                      한 모듈 안쪽 — 형제를 모른다
 │   ├ types/{line,seat,module}.ts  타입 — 무엇을 나르나 · 어디에 앉나 · 무엇을 받고 내나
 │   ├ arith/                     셈 — link(벨트 한 줄 = 팔 묶음) · trunk · arms · face · depth · dive(터널 몸통)
-│   │                                  · lineOrder(줄 위의 순서 — 누가 맨 끝인가)
+│   │                                  · lineOrder(줄 위의 순서 — 누가 맨 끝인가) · cut(줄을 어디서 끊나)
 │   ├ ledger/{face,seat}.ts      장부 — 면마다 좌석표 · 끝 · 기둥 밖 칸을 묻고 적는다
 │   ├ shape/                     도형 — body(머신 좌표 위) · link(순번 축 · **계획과 방출의 단일 출처**) ·
 │   │                                  cluster · transform · ways(내 몸통에 안 막히는 방향)
