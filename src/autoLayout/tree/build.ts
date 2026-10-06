@@ -46,10 +46,12 @@ import { edgeResult, openEdge, seatInOrder, seatLinkEdge, type EdgeSeatResult, t
 import { faceDepthsOf } from "../module/arith/face";
 import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";
 import { summarizeBeltForms } from "../module/arith/link";
+import { emptySplitMachineCounters, splitMachinesOf, standingOf } from "../module/arith/lineOrder";
+import { flowEnd } from "../module/arith/trunk";
 import { laneCapOfTier } from "../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LINK_ORDER } from "../shared/flags";
 import type { Orientation } from "../module/shape/transform";
-import { recordBeltFormStats, recordFaceDepthStats } from "../../debug/runStats";
+import { recordBeltFormStats, recordFaceDepthStats, recordSplitBeltStats } from "../../debug/runStats";
 // 트리 관심사 — 좌표 없이 트리가 답하는 것 · 그 순서를 좌표로 옮기는 것.
 import { moduleInputOf, treeIndexOf, type TreeIndex } from "./arith/pack";
 import { absPortYOf, assembleDeliveries, placeColumns, spanYOf, stackColumns, unionExtent } from "./shape";
@@ -202,6 +204,7 @@ function seatTree(
   }
 
   recordLinkNeed(specs, firstInputs, outOf, inOf);
+  recordSplitMachines(specs, outOf, inOf);
 
   // 창구를 닫아 **값으로 굳힌다** — `generateModule` 이 보는 `input.outputLinks` 와 **같은 순서**여야
   // 방출이 index 로 짝을 찾는다.
@@ -260,6 +263,44 @@ function recordLinkNeed(
     linkNeed: needTally as Record<LinkDepthNeed, number>,
     linkNeedWho: needWho,
   });
+}
+
+/**
+ * **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — 모듈마다 · 편마다([standingOf]). **관측만 한다.**
+ *
+ * 좌석 **뒤**에서 읽는다 — 줄이 어느 끝으로 흐르는지는 좌석이 확정한다(영수증의 `portEnd` · `exitEnd`). 붓기 직후의
+ * 줄 목록만으로는 누가 맨 끝인지 모른다. 판정은 줄의 구조만 본 것이고 가동률은 깔린 그리드를 푼 것이라(`analysis/flow`),
+ * 둘이 어긋나면 그것이 발견이다(`docs/용어사전.md` §split belt 할당량 문제).
+ */
+function recordSplitMachines(
+  specs: readonly NodeSpec[],
+  outOf: ReadonlyMap<string, { links: Link[]; seats: (SeatReceipt | undefined)[] }>,
+  inOf: ReadonlyMap<string, { links: Link[]; seats: (SeatReceipt | undefined)[] }>,
+): void {
+  const counters = { from: emptySplitMachineCounters(), to: emptySplitMachineCounters() };
+  const who: string[] = [];
+  const num = (v: number): string => String(Number(v.toFixed(2)));
+  for (const s of specs) {
+    for (const [side, book] of [["from", outOf.get(s.id)!], ["to", inOf.get(s.id)!]] as const) {
+      const flowEndOf = (i: number): "N" | "S" | undefined => {
+        const seat = book.seats[i];
+        return seat ? flowEnd(seat) : undefined;
+      };
+      for (const sm of splitMachinesOf(book.links, side)) {
+        const { standing, perLine } = standingOf(sm, book.links, side, flowEndOf);
+        counters[side].split += 1;
+        counters[side][standing] += 1;
+        // **다 지킨 머신은 이름을 안 남긴다** — 읽을 것은 어긴 자리다.
+        if (standing === "lastOnAll") continue;
+        const verdict = standing === "lastOnSmaller" ? "몫이 작은 줄에서만 맨 끝" : standing === "notLast" ? "**맨 끝 아님**" : "방향 모름(못 앉은 줄)";
+        who.push(
+          `${s.id} ${side === "from" ? "싣는" : "집는"} 머신 ${sm.machine} [${sm.item}] — ${verdict} · 줄마다 몫 `
+            + perLine.map((l) => `${num(l.share)}${l.last === undefined ? "(?)" : l.last ? "(맨 끝)" : "(앞)"}`).join(" · "),
+        );
+      }
+    }
+  }
+  recordSplitBeltStats({ ...counters, who });
 }
 
 /** 면=역할은 생성 단계에서 확정되므로 사후 회전 없이 항등 방위. */

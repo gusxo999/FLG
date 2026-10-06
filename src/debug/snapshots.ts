@@ -20,7 +20,9 @@
 import { checkLayout } from './checkRules';
 import { cellHistogram } from './faceTable';
 import { machineBoxOf, type LayoutView } from './layoutView';
-import { readRunStats, type BeltFormCounters, type DeliveryCounters, type PerimeterCounters } from './runStats';
+import {
+  readRunStats, type BeltFormCounters, type DeliveryCounters, type PerimeterCounters, type SplitBeltCounters,
+} from './runStats';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 
 const STORAGE_KEY = 'flg-snapshots';
@@ -51,6 +53,8 @@ export interface LayoutDigest {
    * 스냅샷은 **전/후**를 말한다 — 새로고침을 견디므로 코드 두 버전 사이도 비교된다.
    */
   beltForms: BeltFormCounters | null;
+  /** 두 줄 이상을 쓰는 머신의 자리. 2026-10-06 이전에 찍은 스냅샷에는 없다. */
+  splitBelt?: SplitBeltCounters | null;
   issues: string[];
   violations: string[];
   modules: Array<{
@@ -93,6 +97,7 @@ export function digestOf(view: LayoutView, label: string): LayoutDigest {
     delivery: stats.delivery,
     perimeter: stats.perimeter,
     beltForms: stats.beltForms,
+    splitBelt: stats.splitBelt,
     issues: run.issues.map((i) => `${i.severity}:${i.code}`).sort(),
     violations: checkLayout(view).map((v) => `${v.rule} ${v.detail}`).sort(),
     modules: view.modules
@@ -201,6 +206,16 @@ export function diffDigests(before: LayoutDigest, after: LayoutDigest): string {
     num('형태 이용률%', pct(bf), pct(af), counters);
   } else if (bf !== af) {
     counters.push(`  형태 카운터        ${bf ? '있음' : '없음'} → ${af ? '있음' : '없음'}`);
+  }
+  // 두 줄 이상을 쓰는 머신 — 붓기 · 방향 규칙을 바꾸면 셀 좌표와 따로 움직인다. 옛 스냅샷에는 없다(둘 다 있을 때만 견준다).
+  const bs = before.splitBelt;
+  const as = after.splitBelt;
+  if (bs && as) {
+    for (const [label, side] of [['싣는 쪽', 'from'], ['집는 쪽', 'to']] as const) {
+      num(`두 줄 머신 ${label}`, bs[side].split, as[side].split, counters);
+      num(`두 줄 머신 ${label} 모든 줄 맨 끝`, bs[side].lastOnAll, as[side].lastOnAll, counters);
+      num(`두 줄 머신 ${label} 맨 끝 아님`, bs[side].notLast, as[side].notLast, counters);
+    }
   }
   if (counters.length) lines.push('카운터', ...counters);
 

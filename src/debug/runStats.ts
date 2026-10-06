@@ -30,6 +30,7 @@
  * [mergeBeltFormCounters] 로 누적한다.
  */
 import { mergeBeltFormCounters, type BeltFormCounters } from '../autoLayout/module/arith/link';
+import type { SplitMachineCounters } from '../autoLayout/module/arith/lineOrder';
 import type { LinkDepthNeed } from '../autoLayout/module/arith/depth';
 import type { ExitBlocked } from '../autoLayout/perimeter/types';
 export type { BeltFormCounters };
@@ -335,9 +336,24 @@ export interface BeltTerminusCounters {
   merged: number;
 }
 
+/**
+ * **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
+ *
+ * 편마다 센다 — 싣는 쪽(`from`)과 집는 쪽(`to`)은 맨 끝을 읽는 법이 다르다. `split` 이 분모다: **0 은 그런 머신이
+ * 없다는 뜻이고**, `split > 0` 인데 `notLast = 0` 이면 다 지켰다는 뜻이다.
+ */
+export interface SplitBeltCounters {
+  from: SplitMachineCounters;
+  to: SplitMachineCounters;
+  /** 모든 줄에서 맨 끝이 아닌 머신 — 누가 · 줄마다 몫과 자리. 앞에서 12개까지. */
+  who: ReadonlyArray<string>;
+}
+
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
+  /** 두 줄 이상을 쓰는 머신의 자리. 좌석 단계까지 갔으면 채워진다. */
+  splitBelt: SplitBeltCounters | null;
   /**
    * 배선 형태 — 벨트 줄을 하나라도 만들었으면 채워진다.
    * **null 과 "전부 0" 은 다르다** — 전자는 줄을 만드는 단계에 못 갔다는 뜻이다.
@@ -380,7 +396,7 @@ const freshBeltTermini = (): BeltTerminusCounters => ({
 
 const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, exitPlan: null, channelLedger: null,
-  rowChannels: null, beltForms: null,
+  rowChannels: null, beltForms: null, splitBelt: null,
   faceDepths: freshFaceDepths(), laneShare: freshLaneShare(), beltTermini: freshBeltTermini(),
 });
 
@@ -440,6 +456,14 @@ export function resetBeltFormStats(): void {
  */
 export function recordBeltFormStats(c: BeltFormCounters): void {
   current.beltForms = current.beltForms ? mergeBeltFormCounters(current.beltForms, c) : c;
+}
+
+/**
+ * 두 줄 이상을 쓰는 머신의 자리 — `packModuleTree` 가 좌석을 다 앉힌 뒤 한 번 부른다(트리 전체의 한 벌).
+ * **덮어쓴다** — 좌석이 다시 돌았다는 것은 새 패스라는 뜻이다.
+ */
+export function recordSplitBeltStats(c: SplitBeltCounters): void {
+  current.splitBelt = { from: { ...c.from }, to: { ...c.to }, who: c.who.slice(0, 12) };
 }
 
 /**
@@ -509,6 +533,9 @@ export function readRunStats(): RunStats {
     laneShare: { ...current.laneShare },
     beltTermini: { ...current.beltTermini },
     beltForms: current.beltForms ? { ...current.beltForms } : null,
+    splitBelt: current.splitBelt
+      ? { from: { ...current.splitBelt.from }, to: { ...current.splitBelt.to }, who: [...current.splitBelt.who] }
+      : null,
     delivery: current.delivery ? { ...current.delivery } : null,
     perimeter: current.perimeter
       ? { ...current.perimeter, skips: current.perimeter.skips.map((s) => ({ ...s })) }

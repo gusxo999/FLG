@@ -124,6 +124,24 @@ export function buildReport(): string {
     ),
   );
 
+  // **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
+  // 그런 머신이 없으면 안 찍는다. 찍혔는데 `맨 끝 아님` 이 없으면 다 지킨 것이다 — 가동률 줄과 함께 읽는다.
+  const sb = stats.splitBelt;
+  if (sb && sb.from.split + sb.to.split > 0) {
+    const sideText = (label: string, c: typeof sb.from): string | undefined =>
+      c.split > 0
+        ? `${label} ${c.split}대(모든 줄에서 맨 끝 ${c.lastOnAll} · 몫이 작은 줄에서만 ${c.lastOnSmaller}`
+          + (c.notLast > 0 ? ` · **맨 끝 아님 ${c.notLast}**` : '')
+          + (c.unknown > 0 ? ` · 방향 모름 ${c.unknown}` : '')
+          + ')'
+        : undefined;
+    out.push(sub(
+      '두 줄 이상을 남과 함께 쓰는 머신 — '
+        + [sideText('싣는 쪽', sb.from), sideText('집는 쪽', sb.to)].filter((t) => t !== undefined).join(' · '),
+    ));
+    for (const w of sb.who) out.push(sub(`  ${w}`));
+  }
+
   // **면 깊이** — 좌석표 계획. 읽는 법: `깊은줄` 은 긴팔이 값을 하는 정도이고(정상),
   // **`안전망 > 0` 이 유일한 경보**다 — 포트 칸 다툼이 배정을 빠져나가 방출까지 갔다는 뜻.
   const fl = stats.faceDepths;
