@@ -70,7 +70,20 @@ export function setAutoLayoutLinkLadder(v: boolean): void {
  * **`false`(현재 기본) 면 짝짓기 자체가 안 돈다** — `sharedLineId` 가 아무 줄에도 안 붙어 아래 모든
  * 갈래가 도달 불가가 된다. 즉 끄면 **합류 이전 동작 그대로**다(대조군을 그렇게 잰다).
  *
- * ## 기본을 켰다 (2026-09-04)
+ * ## 기본을 다시 껐다 (2026-10-06 사용자 — *"기본값을 비활성화로 바꿔주세요"*)
+ *
+ * 켜는 법은 `flg.flags.laneMerge(true)` · 디버그 탭의 `레인 합류` 버튼이다. 켠 채로 두면 걸리는 자리가 둘 남아 있다:
+ *
+ * ```
+ * 합쳐진 줄의 받는 쪽   받는 모듈에서 그 줄의 벨트가 인서터 행을 다 잇지 못한다 — 집을 칸이 빈 인서터가 남는다
+ *                      (2026-10-06 `tree/build.laneMerge.test` 의 판: 꺼짐 0 · 켜짐 2). 배치는 성공으로 나온다 —
+ *                      찾는 자리는 `flg.report()` 가동률 줄의 `끊김` · `flg.flow.breaks()` 다
+ * 짝의 끝              짝은 같은 끝으로 나가야 한 행에서 만난다(`link/policy/seat`). 두 줄을 쓰는 머신을 그 줄들
+ *                      모두에서 맨 끝에 세우려면(용어사전 §split belt 할당량 문제 — 구현 전) 두 줄이 서로 다른
+ *                      끝으로 흘러야 한다 — 둘이 부딪힌다
+ * ```
+ *
+ * ## 2026-09-04 에 기본을 켰던 근거 — 켰을 때 무엇이 서는가
  *
  * 성립 조건 셋이 다 섰다 — 부모 면이 **한 벨트**를 쓰고(싣는 쪽 둘 · 집는 쪽 하나, 그
  * 비대칭이 핵심이다), 그 벨트의 **포트가 하나**이고(논리 포트 둘이 한 셀), 자식 출구의
@@ -90,7 +103,7 @@ export function setAutoLayoutLinkLadder(v: boolean): void {
  * 남은 `되돌림 1` 은 따르는 줄이 이끄는 줄의 깊이를 못 얻은 것이고, **자리가 진짜로
  * 없는 것**이라 정직한 포기다(합류 없이 줄 둘로 간다).
  */
-export let AUTO_LAYOUT_LANE_MERGE = true;
+export let AUTO_LAYOUT_LANE_MERGE = false;
 
 export function setAutoLayoutLaneMerge(v: boolean): void {
   AUTO_LAYOUT_LANE_MERGE = v;
@@ -190,7 +203,7 @@ export function setAutoLayoutLinkDirect(v: boolean): void {
  *
  * 이미 앉은 줄의 인서터는 옮기지 않는다(자리-3) — 옮기면 그것을 보고 비켜 간 줄의 판단이 틀어진다.
  *
- * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*, 잠수 · 순서 규칙과 함께). 대조(합성 32 픽스처)에서 이슈가 는
+ * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*, 지하 횡단 · 순서 규칙과 함께). 대조(합성 32 픽스처)에서 이슈가 는
  * 픽스처는 없었고 성공한 배치의 질도 그대로였다. **다만 `AUTO_LAYOUT_LINK_DIRECT` 실험 판에서는 되던 배치 둘이 깨진다** —
  * 한 머신짜리 줄이 포트 쪽 끝(흐름 S 면 아래 행)에 앉아 여러 머신을 잇는 줄의 **머신 사이 통로**를 막는다
  * (`tempPlanDocs/링크-좌석/judgements.md` J-통로).

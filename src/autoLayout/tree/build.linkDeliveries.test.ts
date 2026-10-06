@@ -215,7 +215,7 @@ describe("점대점 — 큰 링크는 그릇이 꽉 차 안 묶인다", () => {
     const out = child.module.outputPorts.filter((p) => p.line.name === "x");
     expect(out).toHaveLength(2);
     expect(parent.module.inputPorts.filter((p) => p.line.name === "x")).toHaveLength(2);
-    // **납품 수를 못 박지 않는다**(2026-09-04). 레인 합류가 기본으로 켜지면서 논리 포트
+    // **납품 수를 못 박지 않는다**(2026-09-04). 레인 합류를 켜면(기본은 꺼짐 — 2026-10-06) 논리 포트
     // 둘이 **한 물리 자리**를 나눠 쓸 수 있고, 그러면 그 사이를 잇는 벨트도 하나다.
     // 겨눈 것은 *"그릇이 차서 안 묶인다"* — 그건 **논리 포트 둘**이 말한다(위).
     // 납품은 그 아래 층이라 **물리 자리 수**로 잰다.
@@ -247,9 +247,8 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
   // 부모 4대 × 18/대 = 팔 3 → 부모 면은 안 넘친다.
   //
   // **지하벨트를 고른 입력이다**(2026-09-25) — 머신 사이 gap 의 출구는 옆면을 건너야 할 수 있어 지하벨트가 있어야 앉는다
-  // (`docs/auto-layout/module/trunk-blocked.md` §4.2). 레인 합류는 켜져 있다(기본) — 한 머신의 두 줄이 짝이 되지만 둘째 줄이
-  // 옆면에 못 앉으므로 창구가 첫 줄을 받기 **전에** 짝을 푼다(work-kinds §7 D10). 예전엔 첫 줄이 홀로 기둥 끝 합류 도형을 세워
-  // 기둥 끝 gap 출구의 납품을 막았다(탐색 폴백 2).
+  // (`docs/auto-layout/module/trunk-blocked.md` §4.2). 레인 합류는 꺼져 있다(기본 — 2026-10-06). 같은 판을 켜고 재는 것은
+  // 아래 「합류가 안 선 짝」 이다.
   const specs: NodeSpec[] = [
     {
       id: "p", depth: 0, machine: M, count: 4,
@@ -269,7 +268,7 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
     const ports = child.module.outputPorts.filter((p) => p.line.name === "x");
     expect(ports).toHaveLength(4); // 그룹마다 포트 하나 — 넘쳤다고 하나도 안 버린다
     // 넘친 그룹도 **장부가 아는 면**으로 나온다 — 새 도형을 요구하지 않는다.
-    // (W = 평범한 옆 포트, N/S = 기둥 끝. 레인 합류가 짝에게 기둥 끝을 주므로 둘 다 온다.)
+    // (W = 평범한 옆 포트, N/S = 기둥 끝. 레인 합류를 켜면 짝에게 기둥 끝을 주므로 둘 다 온다.)
     for (const p of ports) expect(["W", "N", "S"]).toContain(p.face);
     // 그리고 **어느 포트도 벨트를 잃지 않았다.** 예전엔 여기를 `cells` 합계 12 로 못 박았는데,
     // 그 수는 벨트 **길이**라 합류가 이끄는 줄을 기둥 밖까지 늘리면 그냥 바뀐다 — 겨눈
@@ -314,7 +313,10 @@ describe("거대 출력 — 넘친 그룹이 gap 을 타고 나가도 예약이 
  * 외곽으로 못 나가 무한상자로 남았고(`perimeter-skip` *no exit assignment*), 배치는 성공으로 보고됐다.
  *
  * 이 픽스처는 한 자식 머신의 두 줄이 짝이 된다. 둘째 줄은 옆면 좌석이 모자라 짝이 풀린다 — 창구가 첫 줄을 받기 **전에**
- * 알아채므로 첫 줄도 평범한 줄로 앉는다(홀로 이끄는 줄이 없다 — work-kinds §7 D10).
+ * 알아채므로 첫 줄도 평범한 줄로 앉는다(홀로 이끄는 줄이 없다 — work-kinds §7 D10). 예전엔 첫 줄이 홀로 기둥 끝 합류 도형을 세워
+ * 기둥 끝 gap 출구의 납품을 막았다(탐색 폴백 2).
+ *
+ * **레인 합류를 켜고 잰다** — 기본은 꺼짐이다(2026-10-06). 위 「거대 출력」 과 같은 판이고, 그쪽은 꺼진 판을 잰다.
  */
 describe("합류가 안 선 짝 — 신원을 버려 물리 포트마다 납품이 하나", () => {
   const specs: NodeSpec[] = [
@@ -362,6 +364,9 @@ describe("합류가 안 선 짝 — 신원을 버려 물리 포트마다 납품�
       beltMaxUndergroundDistance: 4,
     });
     expect(delivery.failures).toBe(0);
+    // 홀로 이끄는 줄이 기둥 끝 gap 출구의 납품을 막던 때는 여기가 탐색 폴백 2 였다 — 전부 예약이 계획한다.
+    expect(delivery.planned).toBe(pack.deliveries.length);
+    expect(delivery.dijkstraFallback).toBe(0);
   });
 });
 

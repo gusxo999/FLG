@@ -22,9 +22,21 @@ import { gapExitDive } from "../shape/body";
 import { generateModule as generateSeated } from "../build";
 import { seatedAlone } from "../../link/testSeat";
 import { EntityType } from "../../../types/layout";
+import { AUTO_LAYOUT_LANE_MERGE, setAutoLayoutLaneMerge } from "../../shared/flags";
 import type { Link } from "../types/line";
 import type { ModuleInput } from "../types/module";
 import type { DepthShortage, LinkFacePlan } from "../types/seat";
+
+/** 레인 합류를 잠깐 켜거나 끄고 돌린다 — 끝나면 원래 값으로 되돌린다. */
+function withLaneMerge<T>(on: boolean, run: () => T): T {
+  const was = AUTO_LAYOUT_LANE_MERGE;
+  setAutoLayoutLaneMerge(on);
+  try {
+    return run();
+  } finally {
+    setAutoLayoutLaneMerge(was);
+  }
+}
 
 const UG = { entityName: "underground-belt", throughput: 15, maxDistance: 5 };
 const M = { entityName: "assembling-machine-3", w: 3, h: 3 };
@@ -120,14 +132,22 @@ describe("자격 — 진짜 gap 의 출구는 옆면을 건널 지하벨트가 �
   it("운반량을 모르거나 감당 못 하면 없는 것과 같다 · 사거리가 모자라면 `사거리초과`", () => {
     expect(ask([UG], { ...g0, carries: undefined }).why[0]?.exitUnderground).toBe("none");
     expect(ask([{ ...UG, throughput: 1 }], g0).why[0]?.exitUnderground).toBe("none");
-    const short = ask([{ ...UG, maxDistance: 4 }], g0); // 상한 = 깊이 3 + 합류 열 2 = 5
+    const short = ask([{ ...UG, maxDistance: 2 }], g0); // 상한 = 옆면 벨트 깊이 최댓값 3
     expect(short.why[0]?.exitUnderground).toBe("range");
     expect(rungOfLine(short.why)).toBe("dive-range");
   });
 
+  it("레인 합류를 켜면 상한이 따르는 줄의 비켜 가는 열만큼(+2) 는다 — 사거리 4 는 꺼짐에서 닿고 켜짐에서 모자란다", () => {
+    const four = [{ ...UG, maxDistance: 4 }];
+    expect(ask(four, g0).cand?.undergroundName, "꺼짐(기본) — 상한 3").toBe("underground-belt");
+    const on = withLaneMerge(true, () => ask(four, g0)); // 상한 = 깊이 3 + 합류 열 2 = 5
+    expect(on.cand).toBeUndefined();
+    expect(on.why[0]?.exitUnderground).toBe("range");
+  });
+
   it("감당하는 것 중 사거리가 닿는 가장 느린 것을 고른다", () => {
     const fast = { entityName: "fast-underground-belt", throughput: 30, maxDistance: 7 };
-    expect(ask([{ ...UG, maxDistance: 4 }, fast], g0).cand?.undergroundName).toBe("fast-underground-belt");
+    expect(ask([{ ...UG, maxDistance: 2 }, fast], g0).cand?.undergroundName).toBe("fast-underground-belt");
     expect(ask([UG, fast], g0).cand?.undergroundName).toBe("underground-belt");
   });
 
@@ -139,7 +159,7 @@ describe("자격 — 진짜 gap 의 출구는 옆면을 건널 지하벨트가 �
   });
 });
 
-describe("도형 — 출구 잠수의 두 칸", () => {
+describe("도형 — 출구 지하 횡단의 두 칸", () => {
   it("건너는 것이 없으면 없다(오늘 도형) · 있으면 옆면 d1 과 건너는 깊이 바로 바깥", () => {
     expect(gapExitDive({ x: 0, y: 4 }, { x: -1, y: 0 }, undefined)).toBeUndefined();
     expect(gapExitDive({ x: 0, y: 4 }, { x: -1, y: 0 }, 2)).toEqual({ near: { x: -1, y: 4 }, far: { x: -3, y: 4 } });
