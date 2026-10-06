@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planBundles, type DepthBudgetInput } from "./depth";
+import { planMachinesPerBeltLine, type DepthBudgetInput } from "./depth";
 import type { IoLine } from "../types/line";
 
 /**
@@ -20,7 +20,7 @@ const run = (
   R: number,
   extra: Partial<DepthBudgetInput> = {},
 ): Map<string, number> =>
-  planBundles({
+  planMachinesPerBeltLine({
     lines,
     count: 4,
     belts: BELT,

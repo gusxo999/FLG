@@ -50,7 +50,7 @@ tags: [auto-layout, placement, module]
 
 ## 2. 지금 구조 — 낟알 **둘**이 시간 **둘**에 흩어져 있다
 
-| | `planBundles` | `FaceTable` |
+| | `planMachinesPerBeltLine` | `FaceTable` |
 |---|---|---|
 | 낟알 | **스칼라** — 면당 깊이 *수* `R_f` | **셀** — `(행, 깊이) → 주인` |
 | 시점 | 붓기 **앞**(면·깊이 미정) | 앉히는 **중** |
@@ -108,7 +108,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 ```
 
 **오늘은 이 고리를 ⑤(실제로 앉혀 본다)로 끊는다** — 정확하지만, *"되나?"* 를 물으려면
-**해 봐야** 한다. 그래서 `planBundles` 는 앉히기 전에 답해야 하므로 **행을 안 보기로**
+**해 봐야** 한다. 그래서 `planMachinesPerBeltLine` 는 앉히기 전에 답해야 하므로 **행을 안 보기로**
 했고([[trunk-assignment]] §4.2), 대신 보수적으로 틀린다.
 
 > **면을 앞당기면 행 구간이 산술로 나온다. 그러나 그것이 이 결정의 값이다** —
@@ -124,7 +124,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 ## 4. 낟알의 사다리 — 여섯 칸 중 **둘**만 쓰고 있다
 
 ```
-① 스칼라       면당 깊이 수                        ✅ planBundles
+① 스칼라       면당 깊이 수                        ✅ planMachinesPerBeltLine
 ② 넓이         Σ(깊이 × 행) — 총량 필요조건         ❌ 싸지만 충분조건이 못 된다
 ③ 구간 하나    줄 = [lo, hi]                       ❌ ← 비어 있다
 ④ 구간 집합    줄 = [lo,hi][]  (쪼갬 · 못)          ❌ ← 비어 있다
@@ -155,7 +155,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 
 그래서 ③ 으로 올려도 대부분의 답은 **안 바뀐다.** 모든 I/O 줄이 모든 머신을 먹여야 하므로
 `g > 1` 조각들이 축 전체를 덮고 `g = 1` 줄은 자기 좌석 행만 덮는다 →
-최대 겹침 = `(g>1 줄 수) + (g=1 이 있으면 1)`. **`planBundles` 가 세는 그 수 그대로다.**
+최대 겹침 = `(g>1 줄 수) + (g=1 이 있으면 1)`. **`planMachinesPerBeltLine` 가 세는 그 수 그대로다.**
 
 **바뀌는 자리는 셋뿐이고, 셋 다 실제로 관측된 것이다:**
 
@@ -184,7 +184,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 ## 7. 만들지 않고 **반쯤** 얻는 길
 
 **표는 값이다** — `copyFaceTable` 이 있고, 그것이 있는 이유가 *"채워 보고 버리기"* 다
-([[module-planning]] §4.5 · [[trunk-assignment]] §15). 그러니 `planBundles` 가
+([[module-planning]] §4.5 · [[trunk-assignment]] §15). 그러니 `planMachinesPerBeltLine` 가
 판정하기 전에 **복사본에 채워 보고 재는** 길은 **오늘도 열려 있다.**
 
 *계산*이 아니라 **결정적 시뮬레이션**이다 — 공식이 안 서고 비용도 더 든다. 그러나 정확하고
@@ -214,13 +214,13 @@ TR7 (나) **잠수**가 들어오면 팔 없는 구간을 건너뛰므로 한 �
 | 행 구간의 유도 | [ledger/seat.ts](../../../src/autoLayout/module/ledger/seat.ts) · [shape/link.ts](../../../src/autoLayout/module/shape/link.ts) | `beltRowSpan` · `portCells` |
 | 좌석 확정(접두합) | [ledger/seat.ts](../../../src/autoLayout/module/ledger/seat.ts) | `commitLinkFace` |
 | 면 배정 2단 | [policy/link.ts](../../../src/autoLayout/module/policy/link.ts) | `allocateLinkFaces` → `spillLinkFacesToGap` |
-| 행 없는 깊이 예산 | [arith/depth.ts](../../../src/autoLayout/module/arith/depth.ts) | `planBundles` |
+| 행 없는 깊이 예산 | [arith/depth.ts](../../../src/autoLayout/module/arith/depth.ts) | `planMachinesPerBeltLine` |
 | 부분집합 팔 수 | [arith/link.ts](../../../src/autoLayout/module/arith/link.ts) | `armsAt` · `spansAllMachines` |
 | 막힌 뒤 쪼개기 | 〃 | `resolveSpanBlock` · `splitLinkAtRows` |
 
 ## 10. 함정
 
-- **`planBundles` 가 "행을 못 본다" 가 아니라 "안 본다" 다.** 결함이 아니라 §3 의 고리를
+- **`planMachinesPerBeltLine` 가 "행을 못 본다" 가 아니라 "안 본다" 다.** 결함이 아니라 §3 의 고리를
   끊은 자리이고, 틀리는 방향이 안전하다(모듈이 커지는 쪽). **문서를 코드에 맞춰 고칠 일도,
   결함으로 적을 일도 아니다** — 낟알 선택이다.
 - **first-fit 을 이력 의존으로 읽지 않는다.** §2 대로 접두합이다. *"장부를 없애면 답이

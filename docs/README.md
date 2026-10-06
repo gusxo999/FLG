@@ -75,7 +75,7 @@ docs/
 | 문서 | 주제 |
 |------|------|
 | [module-planning](auto-layout/module/module-planning.md) | **모듈 안쪽 계획은 어떻게 도는가** — 자리를 정하는 주체는 하나(`planModulePorts`) · 순서가 제약의 세기인 이유 · 좌표의 경계 · **면의 자리는 `FaceTable` 한 장**(§4.5). **모듈 생성 순서를 바꾸기 전에 읽는다** |
-| [trunk-assignment](auto-layout/module/trunk-assignment.md) | **배정 모델 — 면 하나를 어떻게 쓰나** — 자원(좌석·레인) · 수요(`k`·`g`·`c`) · 배정 여섯 단계 · 상한 · **깊이는 결과이지 입력이 아니다** · 경로는 탐색이 아니라 배분. **§0 구현 상태가 모델과 코드의 차를 들고, §0.1 이 갈라져 나간 둘의 행선지를 든다**(2026-09-02 분리) |
+| [trunk-assignment](auto-layout/module/trunk-assignment.md) | **배정 모델 — 면 하나를 어떻게 쓰나** — 자원(좌석·레인) · 수요(`g`·`c`·`a`) · 배정 여섯 단계 · 상한 · **깊이는 결과이지 입력이 아니다** · 경로는 탐색이 아니라 배분. **§0 구현 상태가 모델과 코드의 차를 들고, §0.1 이 갈라져 나간 둘의 행선지를 든다**(2026-09-02 분리) |
 | [trunk-concepts](auto-layout/module/trunk-concepts.md) | ↳ **무대와 용어 — 트렁크가 정확히 무엇인가** — 다이렉트/트렁크의 정의 · 합치기 조건 여섯 · **직선은 특수해** · 왜 "경로"가 핵심 객체인가 · 좌표의 고리. **처음 읽는 사람용**(절 번호 `A1`~`A8` 유지) |
 | [trunk-blocked](auto-layout/module/trunk-blocked.md) | ↳ **막힐 때 — 지하 · 진출 · gap** — 지하는 아끼는 자원이 아니다 · 진출이 막히는 실물 · **좌석이 넘치면 gap 을 연다**(TR8) · 배치1/배치2 검산. **`LadderRung` 을 다룰 때** |
 | [trunk-redesign](auto-layout/module/trunk-redesign.md) | **[구현됨]** 새 트렁크 — "씨앗 발견"→"1:1 을 합친 결과". §10 의 `insertingPlanner`+`emitTapInserting` 은 **둘 다 삭제됐다**(2026-08-16 · 2026-09-02) — 문서가 낡았다 |

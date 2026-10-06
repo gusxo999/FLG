@@ -113,7 +113,7 @@ export function buildReport(): string {
       '형태',
       bf
         ? `트렁크 ${bf.trunk} · 다이렉트 ${bf.direct} · 관통 ${bf.spanning}`
-          + ` · 최대 fan-out ${bf.fanOutMax}`
+          + ` · 머신당 벨트 줄 수 최대 ${bf.beltLinesPerMachineMax}`
           + (bf.capacity > 0
             ? ` · 이용률 ${Math.round((bf.loaded / bf.capacity) * 100)}%`
               + ` (${bf.loaded.toFixed(1)}/${bf.capacity.toFixed(0)}/s)`

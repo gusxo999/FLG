@@ -143,9 +143,9 @@ describe("팔 수는 requiredInserterCount 와 같은 값", () => {
 describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
   const line: IoLine[] = [{ name: "x", kind: "belt", role: "input" }];
   /** 줄 하나에 100(레인) · 머신 `n` 대 · 총 수요 `total` → 머신 하나의 몫 = total/n. */
-  const run = (n: number, total: number, bundle?: number) =>
+  const run = (n: number, total: number, machinesPerBeltLine?: number) =>
     externalLineGroups(line, n, { lineRates: new Map([["input:x", total]]) }, INS, undefined,
-      { belts: BELTS, bundle });
+      { belts: BELTS, machinesPerBeltLine });
 
   it("**부분** — 벨트가 3대치면 6대가 두 토막으로 갈린다 (오늘 없던 값)", () => {
     // per = 180/6 = 30.  k = ⌊100/30⌋ = 3  →  g = 3  →  c = ⌈6/3⌉ = 2
@@ -168,7 +168,7 @@ describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
     expect(new Set(gs.flatMap((g) => [...g.to.keys()]))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
   });
 
-  it("`bundle` 을 주면 그 값이 이긴다 — gap 탈출이 필요할 때 호출부가 못박는다", () => {
+  it("`machinesPerBeltLine` 을 주면 그 값이 이긴다 — gap 탈출이 필요할 때 호출부가 못박는다", () => {
     const gs = run(6, 6, 1); // 유도했으면 g=6 인데 1 로 못박는다
     expect(gs).toHaveLength(6);
     expect(gs.every((g) => g.to.size === 1)).toBe(true);
@@ -183,7 +183,7 @@ describe("묶음 크기 `g` — 처리량이 상한을 준다", () => {
  * `g = 1` 로 떨어졌다. 여기서 잠그는 것은 그 대응이다:
  *
  * ```
- * 넘친 줄      bundle 1  →  머신마다 하나 (gap 으로 갈 수 있는 유일한 값)
+ * 넘친 줄      machinesPerBeltLine 1  →  머신마다 하나 (gap 으로 갈 수 있는 유일한 값)
  * 안 넘친 줄   유도값    →  **부분 트렁크가 살아 있다**
  * ```
  */
@@ -194,8 +194,8 @@ describe("줄마다 다른 묶음 크기 — 한 줄이 내려가도 남은 줄�
   ];
   /** 둘 다 per = 180/6 = 30 → k = ⌊100/30⌋ = 3 → 유도값 g = 3. */
   const rates: SupplyCapacity = { lineRates: new Map([["input:a", 180], ["input:b", 180]]) };
-  const pour = (line: IoLine, bundle?: number) =>
-    externalLineGroups([line], 6, rates, INS, undefined, { belts: BELTS, bundle });
+  const pour = (line: IoLine, machinesPerBeltLine?: number) =>
+    externalLineGroups([line], 6, rates, INS, undefined, { belts: BELTS, machinesPerBeltLine });
 
   it("`a` 만 내리면 `a` 는 6그룹 · `b` 는 **2그룹 그대로**", () => {
     const a = pour(two[0], 1);

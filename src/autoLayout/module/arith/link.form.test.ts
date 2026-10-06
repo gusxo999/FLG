@@ -133,9 +133,40 @@ describe("계수기 — 실제 붓기가 낸 줄을 센다", () => {
     expect(c.unpourable).toBe(0);
   });
 
-  it("fan-out 은 한 머신이 쓰는 줄 수의 최대다", () => {
+  it("머신당 벨트 줄 수 최대 — 한 머신이 한 품목에 쓰는 줄 수의 최대다", () => {
     // 자식 2대가 200 을 내고 벨트는 20/s — 한 대가 여러 줄을 쓸 수밖에 없다.
-    expect(c.fanOutMax).toBeGreaterThan(1);
+    expect(c.beltLinesPerMachineMax).toBeGreaterThan(1);
+  });
+
+  it("머신당 벨트 줄 수는 **품목마다** 센다 — 품목이 다른 두 줄은 갈린 것이 아니다", () => {
+    // 머신 0 이 유리 한 줄 · 모래 한 줄을 받는다. 품목마다 한 줄이라 갈린 품목이 없다.
+    const glass = link({ to: [[0, 1]], carries: [{ to: 0, rate: 5 }] });
+    const sand: Link = { ...link({ to: [[0, 1]], carries: [{ to: 0, rate: 5 }] }), item: "sand" };
+    const apart = summarizeBeltForms(
+      [glass, sand].map((group) => ({ group, fromCount: 0, toCount: 1 })), () => 15,
+    );
+    expect(apart.beltLinesPerMachineMax).toBe(1);
+    // 대조군 — 같은 품목 두 줄이면 2 다.
+    const same = summarizeBeltForms(
+      [glass, glass].map((group) => ({ group, fromCount: 0, toCount: 1 })), () => 15,
+    );
+    expect(same.beltLinesPerMachineMax).toBe(2);
+  });
+
+  it("머신당 벨트 줄 수는 **모듈마다** 센다 — 머신 index 는 모듈-로컬이다", () => {
+    // 두 모듈의 0번 머신이 유리를 한 줄씩 낸다. 서로 다른 머신이라 각자 한 줄이다.
+    const out = link({ from: [[0, 1]], carries: [{ from: 0, rate: 5 }] });
+    const twoModules = summarizeBeltForms(
+      [{ group: out, fromCount: 1, toCount: 0, fromScope: "a" }, { group: out, fromCount: 1, toCount: 0, fromScope: "b" }],
+      () => 15,
+    );
+    expect(twoModules.beltLinesPerMachineMax).toBe(1);
+    // 대조군 — 같은 모듈이면 그 머신이 두 줄을 쓴 것이다.
+    const oneModule = summarizeBeltForms(
+      [{ group: out, fromCount: 1, toCount: 0, fromScope: "a" }, { group: out, fromCount: 1, toCount: 0, fromScope: "a" }],
+      () => 15,
+    );
+    expect(oneModule.beltLinesPerMachineMax).toBe(2);
   });
 
   it("과적재를 센다 — 벨트가 못 나르는 양이 실린 줄", () => {

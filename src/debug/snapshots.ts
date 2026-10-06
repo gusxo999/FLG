@@ -192,7 +192,7 @@ export function diffDigests(before: LayoutDigest, after: LayoutDigest): string {
     num('형태 트렁크', bf.trunk, af.trunk, counters);
     num('형태 다이렉트', bf.direct, af.direct, counters);
     num('형태 관통', bf.spanning, af.spanning, counters);
-    num('형태 fan-out최대', bf.fanOutMax, af.fanOutMax, counters);
+    num('형태 머신당 벨트 줄 수 최대', bf.beltLinesPerMachineMax, af.beltLinesPerMachineMax, counters);
     num('형태 붓기불가', bf.unpourable, af.unpourable, counters);
     num('형태 과적재', bf.overloaded, af.overloaded, counters);
     // **줄 수만 보면 오독한다** — 먼저 나누느라 줄이 늘어도 이용률이 유지되면 낭비가 아니다.

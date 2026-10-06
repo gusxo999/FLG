@@ -83,9 +83,9 @@
 gap 출구의 교차(D8)                격자-클러스터 Step 1 의 몫. 부품은 나눠 쓴다(계획서 §8)
 나머지 줄(원료·완제품)의 순서       링크 뒤에 앉는 오늘 순서를 이어받는다 → judgements J-나머지줄순서
 모양 문법을 더 넓히지 않는다        얹기 · 짜깁기 · 열 바꾸기 → judgements J-모양문법
-깊이 예산(planBundles)을 안 고친다  잠수만 들이면 부등식이 그대로 참이다(계획서 §7). 바뀌는 것은 얹기가 들어올 때다
+깊이 예산(planMachinesPerBeltLine)을 안 고친다  잠수만 들이면 부등식이 그대로 참이다(계획서 §7). 바뀌는 것은 얹기가 들어올 때다
 쪼개기(AUTO_LAYOUT_LINK_LADDER)    기본값을 안 바꾼다. 전기 기사의 마지막 수단으로 그대로 둔다
-g · 벨트 줄 수 · 레인              planBundles · 부분-링크 · 벨트-레인 의 몫
+g · 벨트 줄 수 · 레인              planMachinesPerBeltLine · 부분-링크 · 벨트-레인 의 몫
 반대 옆면(LINK_OPPOSITE_FACE)      부분-링크 J14 의 몫. 넘침 순서를 안 건드린다
 기둥 밖 칸 장부 통합               구간-밖-주행 A2 의 몫. ctx.ends · ctx.outside 를 그대로 옮긴다
 ```

@@ -279,10 +279,10 @@ export function shareLanePairs(linkCache: ReadonlyMap<string, Link[]>, config: P
 /**
  * **(가) 다이렉트 — 넘치는 부모의 링크 입력만 `g = 1` 로 다시 붓는다** (플래그 뒤).
  *
- * 밸브([EdgeBundle])는 진작 뚫려 있었고 **주는 사람이 없었다.** 여기가 주는 자리다.
+ * 밸브([EdgeMachinesPerBeltLine])는 진작 뚫려 있었고 **주는 사람이 없었다.** 여기가 주는 자리다.
  *
  * **두 번 붓는 것이 낭비가 아니다** — `edgeLinkGroups` 가 `undefined` 를 내는 조건
- * (유체 줄 · 흐름 0 · 벨트/인서터 못 고름)은 `bundle` 과 **무관**하다. 그러니 1차가
+ * (유체 줄 · 흐름 0 · 벨트/인서터 못 고름)은 `perBeltLine` 과 **무관**하다. 그러니 1차가
  * 어떤 간선이 링크가 되는지를 확정해 주고, 그 결과라야 `L_f`(품목 종류 수)를 **방출과
  * 같은 낟알로** 셀 수 있다. 트리에서 자식 수를 세면 유체 간선까지 세어 과대평가한다.
  *
@@ -320,7 +320,7 @@ export function repourOverflowing(
       // **집는 쪽(`to`) 기준이다** — 넘치는 것은 받는 면이고, `g` 는 그 끝의 값이다.
       for (const s of specs) {
         if (s.parentId !== p.id || !linkCache.get(s.id)?.length) continue;
-        const re = edgeLinkGroups(s, p, productOf.get(s.id)!, config, { side: "to", g: 1 });
+        const re = edgeLinkGroups(s, p, productOf.get(s.id)!, config, { side: "to", machinesPerBeltLine: 1 });
         if (!re?.length) continue; // 다시 부어 빈손이면 **1차 결과를 지키다** — 없애지 않는다
         const end = linkEndOf(tree, s);
         linkCache.set(s.id, end ? re.map((g) => ({ ...g, end })) : re);

@@ -52,7 +52,7 @@ tree/build.seatTree                        ← 좌표가 없다 · 트리 전체
 planModulePorts(input, count)              ← 좌표가 없다 · 모듈 하나
   ①′ 장부 다시 열기   moduleFacesOf — 굳힌 값에서 **복사해** 연다(받은 값은 안 바꾼다)
   ② 유체 줄 조립      pipePlanned · isJumpableToClusterPipe
-  ③ 나머지 줄 배정    planBundles(줄마다 `g`) → externalLineGroups → allocateLinkFaces ×3
+  ③ 나머지 줄 배정    planMachinesPerBeltLine(줄마다 `g`) → externalLineGroups → allocateLinkFaces ×3
   ④ gap 폭 산출       gapRowsFromPlans(이 모듈의 면 배정 — faceAssignmentOf)
   → ModulePortPlan
 
@@ -196,7 +196,7 @@ W면 (머신 3×3, reach {1,2})
 > **표는 값이다.** 복사해서 채워 보고 버릴 수 있다(`copyFaceTable`) — 트렁크 경로 계획의
 > 배정 3단이 요구하는 것이 그것 하나다.
 
-> **이 표는 낟알의 한쪽 끝이다** — 반대쪽 끝이 깊이 예산(`planBundles`)의 스칼라이고,
+> **이 표는 낟알의 한쪽 끝이다** — 반대쪽 끝이 깊이 예산(`planMachinesPerBeltLine`)의 스칼라이고,
 > 그 사이가 비어 있다. *"앉혀 보지 않고 어느 깊이가 어느 행에서 비었는지"* 를 물을 때는
 > [[face-occupancy]].
 
@@ -421,11 +421,11 @@ B  gen ─→ depthShortages ─→ 사다리 ─→ linkCache ─→ gen       
 옛 모델의 전제는 *"클러스터의 모든 머신이 같은 슬롯을 쓴다"* 였다 — 벨트 한 줄이 머신 여럿을
 훑는 [[용어사전#탭 인서팅 (Tap Inserting)|탭 인서팅]]이 그 위에 서 있었다. **그 전제가 먼저
 무너졌다**: 벨트 한 줄이 맡는 머신 수가 `g` 라는 **변수**가 되면서(→
-[[용어사전#묶음 크기 `g` · 기둥 길이 `N`|g · N]]) *"모든 머신이 같다"* 가 성립하지 않는다.
+[[용어사전#벨트 줄당 머신 수 · 기둥 길이|g · N]]) *"모든 머신이 같다"* 가 성립하지 않는다.
 
 그래서 뒤집는 대신 **없앴다.** 나머지 줄도 링크와 같은 배분기(`allocateLinkFaces` →
 `spillLinkFacesToGap`)를 타고 같은 표에 앉는다. 남은 계산은 **수를 세는 일 하나**이고
-(`depthBudget.planBundles` — 줄마다 `g`), 그건 행도 면도 안 봐서 장부가 아예 필요 없다.
+(`depthBudget.planMachinesPerBeltLine` — 줄마다 `g`), 그건 행도 면도 안 봐서 장부가 아예 필요 없다.
 
 > **합치는 방법은 "모델을 뒤집기" 가 아니었다.** 한쪽 모델이 **틀렸다는 것**이 드러나기를
 > 기다린 것이고, 그 계기가 부분 트렁크였다.
@@ -639,8 +639,8 @@ const rowsPerFace = Math.max(1, seatRows.WE - linkUsedWE);              // 면 �
 | ①의 셈 · 도형 | `module/arith/face.ts` · `module/shape/link.ts` | `clusterBeltDepthsOf` · `gapRowsFromPlans` · `gapExitSidesFromPlans` · `linkFaceDepths` · `portCells` |
 | ①의 자리 장부 | `module/ledger/face.ts` | `FaceTable` — 면마다 한 장(§4.5) |
 | ①의 팔 수 | `module/arith/link.ts` | `armsAt(group, side, inserter)` — 깊이마다 다시 센다 |
-| ③ 줄마다 `g` | `module/arith/depth.ts` | `planBundles` — 깊이 예산(§4.2 of trunk-assignment) |
-| ③ 붓기 | `module/arith/link.ts` | `externalLineGroups` · `bundleCap` |
+| ③ 줄마다 `g` | `module/arith/depth.ts` | `planMachinesPerBeltLine` — 깊이 예산(§4.2 of trunk-assignment) |
+| ③ 붓기 | `module/arith/link.ts` | `externalLineGroups` · `maxMachinesPerBeltLine` |
 | ③ 자리 | `module/policy/seat.ts` | `seatRestLines` — ①과 **같은 함수**(`allocateLinkFaces`)를 탄다(2026-09-02 통합) |
 | 간선 축 좌석 | `module/policy/seat.ts` | `seatLinkEdge` — 한 링크의 양끝을 함께 |
 | 좌표 입히기 | `module/shape/body.ts` | `layoutModule`(머신) · `placeLinkSeats`(좌석 — 덧셈만) |

@@ -514,8 +514,11 @@ export interface BeltFormCounters {
   direct: number;
   /** 그중 기둥을 관통하는 줄 수(포트가 기둥 끝으로 가는 것). */
   spanning: number;
-  /** 머신 하나가 쓰는 줄 수의 **최대** — fan-out 의 크기. */
-  fanOutMax: number;
+  /**
+   * **머신당 벨트 줄 수**의 최대 — 머신 한 대가 **한 품목**에 쓰는 벨트 줄 수(`docs/용어사전.md` §D).
+   * 2 이상이면 그 머신의 그 품목이 줄 여럿으로 갈렸다(split belt).
+   */
+  beltLinesPerMachineMax: number;
   /** 줄들에 실린 초당 총량(수량을 아는 줄만). */
   loaded: number;
   /** 그 줄들이 쓰는 벨트의 처리량 합 — `loaded ÷ capacity` 가 이용률이다. */
@@ -538,7 +541,7 @@ export interface BeltFormCounters {
 }
 
 export const emptyBeltFormCounters = (): BeltFormCounters => ({
-  trunk: 0, direct: 0, spanning: 0, fanOutMax: 0, loaded: 0, capacity: 0, unpourable: 0, overloaded: 0,
+  trunk: 0, direct: 0, spanning: 0, beltLinesPerMachineMax: 0, loaded: 0, capacity: 0, unpourable: 0, overloaded: 0,
 });
 
 export function summarizeBeltForms(
@@ -547,9 +550,12 @@ export function summarizeBeltForms(
   throughputOf: (entityName: string | undefined) => number | undefined,
 ): BeltFormCounters {
   const c = emptyBeltFormCounters();
-  /** `${side}:${머신index}` → 그 머신이 쓰는 줄 수. 양쪽을 따로 센다(끝이 다르면 다른 머신). */
-  const linesPerMachine = new Map<string, number>();
-  for (const { group, fromCount, toCount } of entries) {
+  /**
+   * `(모듈, side, 머신index, 품목)` → 그 머신이 그 품목에 쓰는 줄 수. 양쪽을 따로 센다(끝이 다르면 다른 머신).
+   * **품목마다 따로 센다** — 한 머신이 서로 다른 품목 둘을 한 줄씩 쓰는 것은 갈린 것이 아니다.
+   */
+  const beltLinesPerMachine = new Map<string, number>();
+  for (const { group, fromCount, toCount, fromScope, toScope } of entries) {
     if (beltLineForm(group) === "trunk") c.trunk += 1;
     else c.direct += 1;
     if (spansAllMachines(group, "from", fromCount) || spansAllMachines(group, "to", toCount)) {
@@ -557,8 +563,8 @@ export function summarizeBeltForms(
     }
     for (const side of ["from", "to"] as const) {
       for (const mi of group[side].keys()) {
-        const k = `${side}:${mi}`;
-        linesPerMachine.set(k, (linesPerMachine.get(k) ?? 0) + 1);
+        const k = `${(side === "from" ? fromScope : toScope) ?? ""}|${side}:${mi}|${group.item}`;
+        beltLinesPerMachine.set(k, (beltLinesPerMachine.get(k) ?? 0) + 1);
       }
     }
     const rate = groupRate(group);
@@ -571,7 +577,7 @@ export function summarizeBeltForms(
       if (rate > tp + 1e-9) c.overloaded += 1;
     }
   }
-  c.fanOutMax = Math.max(0, ...linesPerMachine.values());
+  c.beltLinesPerMachineMax = Math.max(0, ...beltLinesPerMachine.values());
   return c;
 }
 
@@ -581,7 +587,7 @@ export function mergeBeltFormCounters(a: BeltFormCounters, b: BeltFormCounters):
     trunk: a.trunk + b.trunk,
     direct: a.direct + b.direct,
     spanning: a.spanning + b.spanning,
-    fanOutMax: Math.max(a.fanOutMax, b.fanOutMax),
+    beltLinesPerMachineMax: Math.max(a.beltLinesPerMachineMax, b.beltLinesPerMachineMax),
     loaded: a.loaded + b.loaded,
     capacity: a.capacity + b.capacity,
     unpourable: a.unpourable + b.unpourable,
@@ -603,15 +609,15 @@ export function readLinkRole(group: Link): "input" | "output" {
 }
 
 /**
- * **묶음 크기의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
+ * **벨트 줄당 머신 수의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
  *
  * ```
  * g_max = min(N, ⌊벨트 처리량 ÷ 머신 하나의 몫⌋)
  * ```
  *
- * **이건 상한일 뿐 실제 `g` 가 아니다.** 자리(깊이 예산)가 여기서 더 깎는다 —
+ * **이건 상한일 뿐 실제 값(식에서 `g`)이 아니다.** 자리(깊이 예산)가 여기서 더 깎는다 —
  * 관통 줄은 깊이를 통째로 먹으므로 면마다 몇 줄까지 관통할 수 있는지가 따로 있다
- * (`docs/auto-layout/module/trunk-assignment.md` §4.2, 계산은 [planBundles]).
+ * (`docs/auto-layout/module/trunk-assignment.md` §4.2, 계산은 [planMachinesPerBeltLine]).
  *
  * 수량을 모르면 `N` 이다 — **지어내지 않는다.** 그 값이 곧 옛 탭 동작이고,
  * 깊이 예산이 그걸 다시 깎는 것이 지금의 모양이다.
@@ -619,7 +625,7 @@ export function readLinkRole(group: Link): "input" | "output" {
  * 붓기와 계획이 **같은 함수를 본다**(R3). 예전엔 이 식이 [externalLineGroups] 안에만
  * 있어서 바깥에서 `g_max` 를 알려면 베껴 쓰는 수밖에 없었다.
  */
-export function bundleCap(
+export function maxMachinesPerBeltLine(
   machineCount: number,
   per: number | undefined,
   /** 그 벨트의 **물리** 처리량(두 레인 합). 안에서 레인 하나로 접는다. */
@@ -668,7 +674,7 @@ export function bundleCap(
  * 있는데, 쪼갠 그룹은 애초에 한 대짜리라 그 제약에 걸릴 것이 없기 때문이다.
  *
  * @param linkedKeys 이미 내부 링크가 있는 줄의 키(`${role}:${name}`) — 두 번 세지 않는다.
- * @param opts.bundle 묶음 크기 `g` — 안 주면 줄마다 `min(⌊벨트÷per⌋, N)` 으로 유도한다.
+ * @param opts.machinesPerBeltLine 벨트 줄당 머신 수(식에서 `g`) — 안 주면 줄마다 `min(⌊레인÷per⌋, N)` 으로 유도한다.
  */
 export function externalLineGroups(
   lines: ReadonlyArray<IoLine>,
@@ -682,14 +688,14 @@ export function externalLineGroups(
   linkedKeys?: ReadonlySet<string>,
   opts?: {
     /**
-     * **묶음 크기를 바깥에서 못박는다** — 주면 그 값을 쓰고, 안 주면 **줄마다 유도한다**
-     * (`g = min(⌊가장 빠른 벨트 ÷ 머신 하나의 몫⌋, N)`).
+     * **벨트 줄당 머신 수를 바깥에서 못박는다** — 주면 그 값을 쓰고, 안 주면 **줄마다 유도한다**
+     * (`g = min(⌊가장 빠른 벨트의 레인 ÷ 머신 하나의 몫⌋, N)`).
      *
      * 옛 `perMachine: boolean` 을 대체한다. 그것은 **모듈 하나의 값이 그 모듈의 모든 줄**을
      * 정했고, 그래서 한 줄이 안 되면 전부 `g = 1` 로 떨어졌다. 유도로 바꾸면 그 이분법이
      * **한 공식의 두 끝**이 된다 — `per` 가 작으면 `g = N`(관통), 벨트를 넘으면 `g = 1`(다이렉트).
      */
-    bundle?: number;
+    machinesPerBeltLine?: number;
     belts?: ReadonlyArray<SpecBelt>;
     /**
      * 머신 면의 길이 방향 칸 수(W/E 면이면 `machine.h`) — **좌석 상한의 재료**다.
@@ -740,7 +746,7 @@ export function externalLineGroups(
       );
     };
 
-    // **낱알은 `g`(묶음 크기) 가 정한다** — 한 벨트 줄이 몇 대를 맡나.
+    // **낱알은 벨트 줄당 머신 수(식에서 `g`)가 정한다** — 한 벨트 줄이 몇 대를 맡나.
     //
     // ```
     // g = 1     머신마다 자기 벨트            = 다이렉트
@@ -748,16 +754,17 @@ export function externalLineGroups(
     // 1<g<N     **부분 트렁크** — 예전엔 없었다
     // ```
     //
-    // 상한은 처리량이 준다: `k = ⌊벨트 처리량 ÷ 머신 하나의 몫⌋`.
-    // 넘기면 그 벨트가 굶는다. 그래서 `g = min(k, N)` 이 **공식 하나**이고,
+    // 상한은 처리량이 준다: `⌊벨트 한 줄(레인)의 운반량 ÷ 머신 하나의 몫⌋`.
+    // 넘기면 그 벨트가 굶는다. 그래서 `g = min(그 상한, N)` 이 **공식 하나**이고([maxMachinesPerBeltLine]),
     // 예전의 이분법(탭/다이렉트)이 그 **두 끝**이 된다.
     //
     // **쪼개는 일 자체는 여전히 [createLinks] 가 한다** — 여기서 정하는 것은
     // *한꺼번에 몇 명씩 부을까* 뿐이고, 부은 묶음 안에서는 벨트·좌석 상한까지 채운다.
-    const g = opts?.bundle ?? bundleCap(n, per, opts?.belts?.[0]?.throughput);
+    const machinesPerBeltLine =
+      opts?.machinesPerBeltLine ?? maxMachinesPerBeltLine(n, per, opts?.belts?.[0]?.throughput);
     const batches: number[][] = [];
-    for (let i = 0; i < n; i += Math.max(1, g))
-      batches.push(Array.from({ length: Math.min(g, n - i) }, (_, j) => i + j));
+    for (let i = 0; i < n; i += Math.max(1, machinesPerBeltLine))
+      batches.push(Array.from({ length: Math.min(machinesPerBeltLine, n - i) }, (_, j) => i + j));
     const made: Link[] = [];
     let poured = true;
     for (const batch of batches) {

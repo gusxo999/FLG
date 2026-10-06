@@ -153,7 +153,7 @@ export function edgeFlows(
 }
 
 /**
- * **간선의 묶음 크기** — 이 쪽 머신 `g` 대를 벨트 한 줄이 맡는다(`g = N` 이면 관통).
+ * **간선의 벨트 줄당 머신 수** — 이 쪽 머신 `g` 대를 벨트 한 줄이 맡는다(`g = N` 이면 관통).
  *
  * ## 왜 `side` 가 붙나 — `g` 는 모듈마다 다르다
  *
@@ -170,18 +170,18 @@ export function edgeFlows(
  * ## 아직 아무도 안 준다 — 밸브만 먼저 뚫는다
  *
  * 오늘 호출부는 이 값을 **비워 둔다** → 흐름을 한 번에 붓는 옛 동작 그대로다(관통). 채울
- * 사람은 **깊이 예산**(`module/arith/depth.ts` 의 `planBundles`)인데, 그쪽은 아직
+ * 사람은 **깊이 예산**(`module/arith/depth.ts` 의 `planMachinesPerBeltLine`)인데, 그쪽은 아직
  * 나머지 줄(원료·완제품)만 본다. 그 판정을 링크까지 넓히는 자리는 `modulePacking` 의 간선
  * 루프다 — **거기서만** 자식·부모의 좌석표를 둘 다 보고 있다(`tempPlanDocs/부분-링크/`).
  *
  * > **이 타입은 정책이 아니라 손잡이다.** *언제* 쓸지는 여기서 정하지 않는다 — 정하면
  * > 형태가 다시 **입력**이 되고, 그것이 이 설계가 없앤 것이다(`link.ts` 의 *판독* 절).
  */
-export interface EdgeBundle {
+export interface EdgeMachinesPerBeltLine {
   /** 기준으로 삼는 끝 — `"from"` 은 자식 머신, `"to"` 는 부모 머신. */
   side: "from" | "to";
   /** 그 끝의 머신 몇 대를 한 줄이 맡나. `1` = 다이렉트, `≥ N` = 관통. */
-  g: number;
+  machinesPerBeltLine: number;
 }
 
 /**
@@ -217,8 +217,8 @@ export function edgeLinkGroups(
   parent: NodeSpec,
   item: string,
   config: PackConfig,
-  /** 이 간선의 묶음 크기([EdgeBundle]). **안 주면 한 번에 다 붓는다** = 오늘 동작(관통). */
-  bundle?: EdgeBundle,
+  /** 이 간선의 벨트 줄당 머신 수([EdgeMachinesPerBeltLine]). **안 주면 한 번에 다 붓는다** = 오늘 동작(관통). */
+  perBeltLine?: EdgeMachinesPerBeltLine,
 ): Link[] | undefined {
   // 유체는 팔로 나르지 않는다 — [externalLineGroups] 가 외부 줄에 두는 것과 **같은 가드**다.
   // 여기 없으면 유체 링크가 인서터 장부에 올라 "벨트 1줄, 줄당 팔 3" 같은 배정을 받고
@@ -256,7 +256,7 @@ export function edgeLinkGroups(
 
   // **붓는 일 자체는 [createLinks] 가 한다** — 이 저장소에서 [Link] 를 만드는 유일한 곳이다.
   // 여기가 하는 일은 그 앞뒤 셋뿐이다: ① 흐름을 계산하고(자식·부모를 **둘 다** 봐야 하므로
-  // planner 의 몫) ② `bundle` 이 있으면 묶음으로 잘라 **묶음마다** 붓고 ③ 난 줄에 **신원**을
+  // planner 의 몫) ② `perBeltLine` 이 있으면 묶음으로 잘라 **묶음마다** 붓고 ③ 난 줄에 **신원**을
   // 얹는다(간선의 양끝 id 를 아는 것도 여기뿐).
   //
   // **줄 수와 티어는 묶음마다 다시 센다** — `determineBeltCount(그 묶음의 총량)`. 묶음이
@@ -272,7 +272,7 @@ export function edgeLinkGroups(
   };
 
   const links: Link[] = [];
-  for (const part of bundle ? batchCarries(carries, bundle) : [carries]) {
+  for (const part of perBeltLine ? batchCarries(carries, perBeltLine) : [carries]) {
     const got = pour(part);
     if (got.length === 0) return undefined; // 한 묶음이라도 못 부으면 간선을 지어내지 않는다
     links.push(...got);
@@ -290,16 +290,16 @@ export function edgeLinkGroups(
  * 반대쪽 머신은 **묶음 둘에 걸칠 수 있다**(자식 하나가 부모 둘을 먹이는 경우). 새 형태가
  * 아니다 — 한 흐름이 줄 여럿에 실리는 [[split belt]] 그대로다.
  */
-function batchCarries(carries: readonly LinkCarry[], bundle: EdgeBundle): LinkCarry[][] {
-  const g = Math.max(1, Math.floor(bundle.g));
-  const machines = [...new Set(carries.map((c) => c[bundle.side]))].sort(
+function batchCarries(carries: readonly LinkCarry[], perBeltLine: EdgeMachinesPerBeltLine): LinkCarry[][] {
+  const machinesPerBeltLine = Math.max(1, Math.floor(perBeltLine.machinesPerBeltLine));
+  const machines = [...new Set(carries.map((c) => c[perBeltLine.side]))].sort(
     (a, b) => (a ?? 0) - (b ?? 0),
   );
   const parts: LinkCarry[][] = [];
-  for (let i = 0; i < machines.length; i += g) {
-    const own = new Set(machines.slice(i, i + g));
+  for (let i = 0; i < machines.length; i += machinesPerBeltLine) {
+    const own = new Set(machines.slice(i, i + machinesPerBeltLine));
     // `filter` 가 순서를 지키므로 묶음 안의 흐름 수열도 단조 그대로다.
-    const part = carries.filter((c) => own.has(c[bundle.side]));
+    const part = carries.filter((c) => own.has(c[perBeltLine.side]));
     if (part.length > 0) parts.push(part);
   }
   return parts;

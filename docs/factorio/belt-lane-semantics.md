@@ -134,7 +134,7 @@ itemsPerSec = speed × 480
 ## 5. 우리 코드는 레인을 어디까지 아나
 
 > **2026-09-03 — 상한은 고쳤다.** 계획이 보는 모든 적재 상한이 **레인 하나**가 됐다
-> (`determineBeltCount` · `createLinks` 붓기 · `bundleCap` · `buildSpec` 의 팔 상한).
+> (`determineBeltCount` · `createLinks` 붓기 · `maxMachinesPerBeltLine` · `buildSpec` 의 팔 상한).
 > 인서터가 싣는 줄은 벨트의 절반만 쓰므로, 예전 수치는 **2배 과대평가**였다 —
 > 45/s 벨트 한 줄에 40/s 를 실어 놓고 "충분하다" 고 보고했다.
 > **남은 것은 그 절반을 되찾는 일**(두 줄을 한 벨트의 좌/우 레인으로 합류).
@@ -142,7 +142,7 @@ itemsPerSec = speed × 480
 | 자리 | 지금 | 레인이 오면 |
 |---|---|---|
 | [arith/belt.ts](../../src/autoLayout/shared/arith/belt.ts) | `× 480` = 두 레인 합 · `laneThroughput` = 절반 | ✅ **계획이 보는 상한은 전부 레인**(2026-09-03) |
-| [arith/link.ts](../../src/autoLayout/module/arith/link.ts) `createLinks` | ✅ 붓기 상한이 **레인**(`laneCapOfTier`) · `bundleCap` 도 | 남은 것은 두 줄이 **한 물리 벨트**를 쓰는 것 |
+| [arith/link.ts](../../src/autoLayout/module/arith/link.ts) `createLinks` | ✅ 붓기 상한이 **레인**(`laneCapOfTier`) · `maxMachinesPerBeltLine` 도 | 남은 것은 두 줄이 **한 물리 벨트**를 쓰는 것 |
 | [shared/route.ts](../../src/autoLayout/shared/route.ts) `collectBeltFlow` | 이 기하를 찾아내 **전부 오염으로 막는다** | 허가된 합류만 예외. 나머지는 그대로 오염 |
 | [analysis/flow/](../../src/analysis/flow/graph.ts) | ✅ **레인을 센다**(2026-09-22) — 칸마다 유입 개수로 곡선/접힘을 가르고(⑥) 흐름·포화가 레인별이다. 옛 `analysis/beltFlow.ts`(한 벨트 = 1품목 · 줄 용량)는 삭제됐다 | 남은 것은 [[flow-model]] §4 의 확인 안 된 가정 둘(정체된 벨트의 우선순위 · 나란히 선 인서터의 레인) |
 | 인서터 필터(②) | `GridCell` 에 자리가 없고 export 도 안 한다 | 새 필드 + `BlueprintEntity.filters` 매핑 |

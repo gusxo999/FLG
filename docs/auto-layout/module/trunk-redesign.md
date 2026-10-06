@@ -15,7 +15,7 @@ tags: [auto-layout, placement, routing]
 > (2026-08-16 · 2026-09-02) — 그 일을 지금 하는 것은 다음 셋이다:
 >
 > ```
-> 줄마다 몇 대를 맡나   module/arith/depth.planBundles   ← 깊이 예산
+> 줄마다 몇 대를 맡나   module/arith/depth.planMachinesPerBeltLine   ← 깊이 예산
 > 어느 면·어느 깊이에   module/policy/link             ← 링크와 같은 배분기
 > 무엇을 놓나           execution/module/emitOutputLinks · emitInputLinks
 > ```

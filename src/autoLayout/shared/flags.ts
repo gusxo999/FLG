@@ -132,9 +132,9 @@ export function setAutoLayoutLinkOppositeFace(v: boolean): void {
  * AUTO_LAYOUT_LINK_DIRECT — **넘치는 부모의 링크 입력을 `g = 1` 로 내린다**
  * (`tempPlanDocs/부분-링크/` — 눈금 `"direct"`).
  *
- * 밸브는 진작 뚫려 있었다(`edgeLinkGroups(…, bundle?: EdgeBundle)`) — **주는 사람이
+ * 밸브는 진작 뚫려 있었다(`edgeLinkGroups(…, perBeltLine?: EdgeMachinesPerBeltLine)`) — **주는 사람이
  * 없었을 뿐이다.** `true` 면 [linkDepthNeed] 가 `"free"` 가 아니라고 판정한 부모로 가는
- * 간선에 `{ side: "to", g: 1 }` 을 준다. 그러면 그 줄은 **부모 머신마다 한 토막**이 되고,
+ * 간선에 `{ side: "to", machinesPerBeltLine: 1 }` 을 준다. 그러면 그 줄은 **부모 머신마다 한 토막**이 되고,
  * `g=1` 줄들은 면당 공용 깊이 하나를 함께 쓰므로 깊이가 몇이든 담긴다.
  *
  * ## 대가 — 포트가 `c` 배다

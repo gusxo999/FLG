@@ -22,7 +22,7 @@
 | **격자 클러스터** | 한 모듈 **안**의 머신 배열이 2차원인 것 | 이 계획 |
 | **교차로 격자** | 열 채널 × 행 채널의 교차로. 모듈 **사이**의 통로망이다 | `채널-양보-명세/judgements.md` `J-관리관` |
 | **바깥 기둥 · 안쪽 기둥** | 옆면 하나가 모듈 변에 닿는 기둥 · 양 옆면이 다 가운데 길을 보는 기둥. **안쪽 기둥은 `C ≥ 3` 부터 생긴다** | 계획서 §2.6 |
-| **트렁크 방문 수 `g`** | 벨트 한 줄이 감당하는 머신 수 = `min(N, ⌊벨트 처리량 ÷ 한 대 소비량⌋)`(`bundleCap`). `G` = `C=1` 에서 트렁크로 서는 줄들 중 최대값 | 계획서 §2.5 |
+| **트렁크 방문 수 `g`** | 벨트 한 줄이 감당하는 머신 수 = `min(N, ⌊벨트 처리량 ÷ 한 대 소비량⌋)`(`maxMachinesPerBeltLine`). `G` = `C=1` 에서 트렁크로 서는 줄들 중 최대값 | 계획서 §2.5 |
 
 **그냥 "격자"라고 쓰면 앞의 것이다.** 뒤의 것은 반드시 *교차로 격자*라고 쓴다.
 
@@ -43,7 +43,7 @@
 - **밖의 통로를 재설계하지 않는다.** 열 채널과 행 채널은 그대로 둔다. 교차로 격자는 `J-관리관` 이 맡는다.
 - **내부 행 채널을 모듈 폭 전체로 관통시키지 않는다**(v1 = 내부 (E)). 이 판단은 `J-내부교차` 가 맡는다.
 - **블루프린트를 관통하는 가로 벨트를 만들지 않는다.** *모듈 전용*은 *남이 못 쓴다*는 뜻이다. `J-관통허용` 이 맡는다.
-- **형태 판정은 처리량이 정한 `g`(`bundleCap`)만 읽는다.** `planBundles` 가 깊이로 깎은 `g` 는 기둥 수의 **결과**다. 그것을 읽으면 되먹임이 생긴다.
+- **형태 판정은 처리량이 정한 `g`(`maxMachinesPerBeltLine`)만 읽는다.** `planMachinesPerBeltLine` 가 깊이로 깎은 `g` 는 기둥 수의 **결과**다. 그것을 읽으면 되먹임이 생긴다.
 - **가운데 길의 차선을 끊지 않는다**(v1). 끊으면 배달함을 세울 자리가 없다(계획서 §2.6).
 - **배정이 실패했다고 기둥 수를 바꿔 다시 돌리지 않는다**(되먹임 0). 판정이 불확실하면 `C = 1` 로 간다.
 - **좌석 한계를 형태로 풀지 않는다.** `Σ팔 > 2h+2w` 는 머신 수와 인서터로 풀 문제다.
@@ -66,7 +66,7 @@
 | `module/arith/face.ts` | `clusterBeltDepthsOf`(R) · `gapRowsFromPlans` · `gapExitSidesFromPlans` · `linkFaceDepths`. **확정 배정에서 유도되는 값**이 모인 곳이다 |
 | `module/shape/body.ts` `linkFrameOf` · `outputRouteOf` · `inputRouteOf` · `tapAnchorOf` | gap 도형이다. 머신 자기 면에서 깊이를 재는 `mExt` 가 여기 있다 |
 | `module/late.ts` 머리말 · `run/ledger.ts` `terminusCorridorsOf` | 모듈 지하벨트는 **놓인 셀에서 되읽어** 장부에 올린다. 그 전제는 *"입구 = 종착"* 이다 |
-| `module/arith/depth.ts` · `module/arith/link.ts` `bundleCap` · 붓기 | Step 3 기준의 입력(`g`)과 Step 2 의 *"그림자"* 두 자리 |
+| `module/arith/depth.ts` · `module/arith/link.ts` `maxMachinesPerBeltLine` · 붓기 | Step 3 기준의 입력(`g`)과 Step 2 의 *"그림자"* 두 자리 |
 | `module/shape/cluster.ts` | 형태의 실물 전부다. `dx: 0` · `rowGap: number \| number[]` · `columnTapCapacity`(= `2R`) |
 | [flow-model](../../docs/analysis/flow-model.md) · `flg.flow.machines()` | 머신 100% 가동을 **그리드에서** 잰다. 2026-09-22 에 생겼다 |
 

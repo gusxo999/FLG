@@ -29,7 +29,7 @@ import { inserterForReach } from "../../shared/gamedata/spec";
 import { determineBeltCount } from "../../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_OPPOSITE_FACE } from "../../shared/flags";
 import type { PortFace } from "../../shared/types";
-import { planBundles } from "../arith/depth";
+import { planMachinesPerBeltLine } from "../arith/depth";
 import { allocateLinkFaces, seatOnSharedBelt, tryLinkFace, spillLinkFacesToGap } from "./link";
 import { commitLinkFace, copyLinkFaceContext, openLinkFaceContext, type LinkFaceCandidate } from "../ledger/seat";
 import { clusterBeltDepthsOf, fluidFacesOf } from "../arith/face";
@@ -176,7 +176,7 @@ export interface RestSeating {
  * 모드가 남기는 것은 **쪼개기 여부** 하나뿐이다: 탭이면 묶은 그룹(벨트 하나가 전 머신),
  * 다이렉트면 머신마다 하나. 그 둘은 `g = N` 과 `g = 1` 이라는 **같은 축의 두 끝**이다(§16).
  *
- * **어느 줄이 `g = 1` 로 내려가야 하나** — [planBundles] 가 **깊이 예산**으로 정한다
+ * **어느 줄이 `g = 1` 로 내려가야 하나** — [planMachinesPerBeltLine] 가 **깊이 예산**으로 정한다
  * (`docs/auto-layout/module/trunk-assignment.md` §4.2). 기본값은 *"공짜일 때만 관통"* 이다.
  *
  * ```
@@ -190,7 +190,7 @@ export interface RestSeating {
  * 자리를 잃는 일이 조용히 났다(2026-09-01 실측: battery 에서 copper-plate 가 못 앉았다).
  *
  * 이제 **같은 지도**(`FaceTable`·[clusterBeltDepthsOf])가 낸 수로 정한다. `supply` 는 2026-09-02 에
- * 지도 A 와 함께 삭제됐다 — `g` 를 정하는 곳은 [planBundles] **하나**다.
+ * 지도 A 와 함께 삭제됐다 — `g` 를 정하는 곳은 [planMachinesPerBeltLine] **하나**다.
  */
 export function seatRestLines(
   st: ModuleFaces,
@@ -206,7 +206,7 @@ export function seatRestLines(
     ...restLines.filter((l) => l.role === "input" && !l.external),
     ...restLines.filter((l) => l.role === "input" && l.external),
   ];
-  const bundleByKey = planBundles({
+  const machinesPerBeltLineByKey = planMachinesPerBeltLine({
     lines: restByPriority,
     count,
     lineRates: input.supplyCapacity?.lineRates,
@@ -240,7 +240,7 @@ export function seatRestLines(
       // `g = 1` 이 처방인 이유: 그 줄은 **gap(N/S)으로 가야** 하고, 오늘 gap 은
       // `machinesOn !== 1` 이라 한 대짜리 그룹만 받는다([tryLinkFace]).
       // 넘치지 않은 줄은 처리량이 준 `g` 를 그대로 쓴다 — **부분 트렁크가 살아 있다.**
-      bundle: bundleByKey.get(`${line.role}:${line.name}`),
+      machinesPerBeltLine: machinesPerBeltLineByKey.get(`${line.role}:${line.name}`),
       belts: input.belts,
       // **좌석 상한의 재료** — 이걸 안 주면 바깥 줄이 좌석을 안 보고 묶여, 팔이 면에
       // 안 들어가는 줄이 나서 배정에서 통째로 떨어진다(2026-08-23 실측: 40/s 원료 줄이

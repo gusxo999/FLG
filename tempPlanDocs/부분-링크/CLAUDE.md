@@ -32,7 +32,7 @@ g_from · g_to    끝마다 다르다 — 자식 32대 · 부모 64대면 한 �
 c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자식 ÷ g_자식⌉ = ⌈N_부모 ÷ g_부모⌉
 ```
 
-그래서 `EdgeBundle` 이 `(어느 끝, 그 끝의 g)` 쌍을 받는다 — 한쪽이 말하면 반대쪽은
+그래서 `EdgeMachinesPerBeltLine` 이 `(어느 끝, 그 끝의 g)` 쌍을 받는다 — 한쪽이 말하면 반대쪽은
 **결과로** 정해진다.
 
 > **`c` 가 일치한다고 좋은 값은 아니다.** 일치는 **후보를 거르는 조건**일 뿐이고,
@@ -50,10 +50,10 @@ c                **간선이 공유하는 낱말** — 토막 수.  c = ⌈N_자
 
 **코드**
 
-- `link/policy/edge.ts` — `edgeFlows` · `edgeLinkGroups(…, bundle?)` · `EdgeBundle` ·
+- `link/policy/edge.ts` — `edgeFlows` · `edgeLinkGroups(…, perBeltLine?)` · `EdgeMachinesPerBeltLine` ·
   `batchCarries`(**토막 내기 자체** — `g` 대씩 자른다)
 - `tree/build.ts` 의 간선 루프 — **거기서만** 자식·부모의 좌석표를 둘 다 본다
-- `module/arith/depth.ts` — `planBundles`. 오늘은 **나머지 줄만** 본다
+- `module/arith/depth.ts` — `planMachinesPerBeltLine`. 오늘은 **나머지 줄만** 본다
 - `module/policy/port.ts` — `seatLinkEdge`(양끝을 한꺼번에 앉힌다) ·
   **`spillPair`(넘침 면 순서 — 반대 면이 빠진 그 상수)** · `planModulePorts`(자매 경로.
   같은 자리에서 **반대 면을 이미 쓴다**)
@@ -83,7 +83,7 @@ LinkDepthNeed     **무엇을 내주나**의 눈금 (free · opposite-face ·   
 ## 하지 않는 것
 
 ```
-나머지 줄의 `g`      이미 끝났다(`planBundles`). 여기서 안 건드린다
+나머지 줄의 `g`      이미 끝났다(`planMachinesPerBeltLine`). 여기서 안 건드린다
 면·깊이 배정         `링크-좌석` 의 몫(옛 `자리-배정`)
 격자 클러스터        **`g>1` gap 형태만** 범위 밖이다 (가로 벨트 하나가 위·아래 두 대를
                     먹이는 것). **`g=1` gap 은 이미 살아 있다** — `module/policy/link.ts:447` 이

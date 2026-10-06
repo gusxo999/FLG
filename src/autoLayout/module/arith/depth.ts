@@ -1,5 +1,5 @@
 /**
- * **깊이 예산** — 줄마다 `g`(묶음 크기)를 정한다. 자리를 앉혀 보기 **전에**, 수만으로.
+ * **깊이 예산** — 줄마다 벨트 줄당 머신 수(식에서 `g`)를 정한다. 자리를 앉혀 보기 **전에**, 수만으로.
  *
  * 모델은 `docs/auto-layout/module/trunk-assignment.md` **§4.2**("공짜" 의 정확한 뜻).
  *
@@ -13,7 +13,7 @@
  * g > 1   첫 머신 첫 행 … 끝 머신 끝 행     → **사이 행까지** 먹어 깊이를 독점한다
  * ```
  *
- * 그래서 상한에 `g` 가 들어간다 — 처리량이 준 `g_max`([bundleCap])를 **깊이가 더 깎는다**:
+ * 그래서 상한에 `g` 가 들어간다 — 처리량이 준 `g_max`([maxMachinesPerBeltLine])를 **깊이가 더 깎는다**:
  *
  * ```
  * 모듈 전체:   (g>1 줄 수)  +  (g=1 줄이 있으면 **면 수**)   ≤   Σ_f R_f
@@ -56,7 +56,7 @@
  * > 느슨해지는 방향이라 오늘 배치는 안 깨지지만, 그때 이 함수를 다시 세야 한다.
  */
 
-import { bundleCap } from "./link";
+import { maxMachinesPerBeltLine } from "./link";
 import type { SpecBelt } from "../../shared/gamedata/spec";
 import type { IoLine } from "../types/line";
 
@@ -97,13 +97,13 @@ const keyOf = (l: IoLine): string => `${l.role}:${l.name}`;
  * **되먹임이 없다.** `g_max` → 면 배정 → 부등식 → 넘치면 내림 → 다시 확인, 이 한 방향뿐이고
  * 내릴 때마다 관통 수가 줄어 **반드시 끝난다.** 앉혀 보지 않으므로 되돌릴 것도 없다.
  */
-export function planBundles(input: DepthBudgetInput): Map<string, number> {
+export function planMachinesPerBeltLine(input: DepthBudgetInput): Map<string, number> {
   const beltTp = input.belts?.[0]?.throughput;
-  const g = new Map<string, number>();
+  const machinesPerBeltLine = new Map<string, number>();
   for (const line of input.lines) {
     const total = input.lineRates?.get(keyOf(line));
     const per = total !== undefined && input.count > 0 ? total / input.count : undefined;
-    g.set(keyOf(line), bundleCap(input.count, per, beltTp));
+    machinesPerBeltLine.set(keyOf(line), maxMachinesPerBeltLine(input.count, per, beltTp));
   }
 
   const faces = (["W", "E"] as const).filter((f) => input.depthsOf(f) > 0);
@@ -113,7 +113,7 @@ export function planBundles(input: DepthBudgetInput): Map<string, number> {
     faces.reduce((n, f) => n + input.depthsOf(f), 0) - base.reduce((n, b) => n + b.spanning, 0);
   const takenDirect = base.some((b) => b.direct);
   /** 이 줄이 깊이를 **독점**하나 — 머신을 걸치면 사이 행까지 먹는다(§4.1). */
-  const wide = (l: IoLine): boolean => (g.get(keyOf(l)) ?? 1) > 1;
+  const wide = (l: IoLine): boolean => (machinesPerBeltLine.get(keyOf(l)) ?? 1) > 1;
 
   // **우선순위가 낮은 줄부터 내린다** — 뒤에서 앞으로. 내릴 때마다 관통이 하나 줄고,
   // 첫 번째로 내리는 순간 공용 깊이 예약이 켜지므로 예산이 **단조 감소**한다 → 반드시 끝난다.
@@ -124,9 +124,9 @@ export function planBundles(input: DepthBudgetInput): Map<string, number> {
     // 독점하고 있으면 **갈 곳을 잃는다**(2026-09-01 실측: 일곱 줄 스펙에서 포트가 사라졌다).
     const budget = depths - (narrow ? faces.length : 0);
     if (input.lines.filter(wide).length <= budget) break;
-    if (wide(input.lines[i])) g.set(keyOf(input.lines[i]), 1);
+    if (wide(input.lines[i])) machinesPerBeltLine.set(keyOf(input.lines[i]), 1);
   }
-  return g;
+  return machinesPerBeltLine;
 }
 
 /**
@@ -176,14 +176,14 @@ export function planBundles(input: DepthBudgetInput): Map<string, number> {
  *
  * ## `"direct"` 가 깊이를 안 막는 이유
  *
- * `g=1` 줄들은 **면당 공용 깊이 하나**를 함께 쓰므로([planBundles] 의 부등식), 줄이 몇이든
+ * `g=1` 줄들은 **면당 공용 깊이 하나**를 함께 쓰므로([planMachinesPerBeltLine] 의 부등식), 줄이 몇이든
  * 깊이 하나면 담긴다. 그래서 다이렉트까지 내려가면 **깊이는 더 이상 한계가 아니고 좌석이
  * 한계가 된다**(`Σ_j a_j(m) ≤ h` — [tryLinkFace] 의 몫이다). 이 함수는 좌석을 안 본다.
  *
  * ## 오늘 코드는 `"free"` 밖에 못 한다
  *
  * 링크의 넘침 경로는 반대 옆면을 안 본다(`spillPair` 의 `OUT`/`IN`), 그리고 링크에 `g` 를
- * 주는 호출부가 없다(`edgeLinkGroups(…, bundle?)` 는 언제나 비어 온다). **그래서 이
+ * 주는 호출부가 없다(`edgeLinkGroups(…, perBeltLine?)` 는 언제나 비어 온다). **그래서 이
  * 함수가 `"free"` 가 아닌 값을 내는 모듈은 오늘 통째로 실패한다** — 그 사실이 곧 진단이다.
  *
  * **이 함수가 `"free"` 가 아닌 값을 내기 시작하면** `tempPlanDocs/부분-링크/judgements.md`
