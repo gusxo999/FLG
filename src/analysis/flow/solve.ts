@@ -32,6 +32,22 @@
  * > 있나" 를 묻게 되고, 그 물음에는 내 탓으로 줄어든 값이 끼지 않는다. 다투는 쪽은 실제 `u` 다 —
  * > 제 출력이 막혀 덜 먹는 윗 소비자가 능력만큼 먹는다고 치면 아랫 소비자가 억울하게 굶는다.
  *
+ * ## 한 머신의 팔들은 몫을 반반 나눈다 — 막히면 다른 쪽으로 (2026-10-06 사용자 결정)
+ *
+ * 머신 하나에 같은 품목을 옮기는 팔이 여럿이면(한 머신이 벨트 두 줄에 싣거나 두 줄에서 집는다), 그 팔들은
+ * 몫을 **균등하게** 가져가려 한다. 한 팔이 제 몫을 다 못 옮기면(벨트에 자리가 없다 · 벨트에 물건이 없다 ·
+ * 그 팔의 처리량이 모자라다) **그 팔은 옮긴 만큼에서 멈추고 남은 몫은 안 막힌 팔들이 고르게 나눠 갖는다.**
+ * 9/s 를 내는 머신의 두 팔 가운데 한쪽 벨트에 자리가 3 뿐이면 3 · 6 이고, 둘 다 넉넉하면 4.5 · 4.5 다.
+ *
+ * 탐침([runProbe])이 이 규칙으로 푼다 — 팔마다 **한도**를 균등하게 두고 한 판 풀고, 한도를 못 채운 팔의 한도를
+ * 옮긴 만큼으로 내리고, 남은 몫을 한도를 다 채운 팔에 얹어 다시 푼다. 바뀌는 것이 없으면 멈춘다.
+ *
+ * > **왜 바꿨나.** 예전 탐침은 머신의 몫을 팔들이 나눠 쓰는 **한 덩어리**로 두고 처리 순서가 앞선 팔이
+ * > 벨트가 받는 만큼 다 가져가게 했다. 그러면 두 줄에 3 · 6 으로 싣도록 깔린 머신이 한 줄에 9, 다른 줄에 0 으로
+ * > 풀린다 — 게임에서 빠른 팔 둘이 번갈아 집는 것과 어긋나고, 그 차이가 미달의 크기를 몇 배로 부풀렸다
+ * > (자식 9/s ×5 → 부모 5/s ×9 판: 모자란 양 6/s → 1.5/s). 게임 안에서 확인한 규칙은 아니다
+ * > (`docs/analysis/flow-model.md` §4 의 가정 (c)).
+ *
  * ## 다른 머신의 몫은 팔마다 고정한다
  *
  * 탐침 밖 머신의 수요·산출(`need × u` · `made × u`)은 **팔마다 나눠** 둔다. 나누는 비율은 그 머신의
@@ -121,6 +137,14 @@ export interface SolveOutput {
 /** 한 판이 다른 머신의 몫을 무엇으로 셈하나(머리말 표). */
 type View = 'actual' | 'supply' | 'drain';
 
+/** 탐침 머신의 팔 → 품목 → 이번 판에 그 팔이 옮길 수 있는 양의 한도([runProbe]). 없는 칸은 한도 없음. */
+interface ArmLimits {
+  /** 내보내는 팔(머신 → 벨트 · 상자). */
+  out: Map<number, ItemMap>;
+  /** 받는 팔(벨트 · 상자 → 머신). */
+  inn: Map<number, ItemMap>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 한 판
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +157,7 @@ function runPass(
   probe: number,
   view: View,
   withLanes: boolean,
+  limits?: ArmLimits,
 ): PassRecord {
   const { arms, machines, chests, lanes, belts } = g;
   const rec: PassRecord = {
@@ -143,7 +168,8 @@ function runPass(
   const armCap = (k: number) => capLeft.get(k) ?? arms[k].cap;
   const isTransfer = (k: number) => arms[k].from.kind === 'belt' && arms[k].to.kind === 'belt';
 
-  // 탐침 머신의 몫은 팔끼리 **나눠 쓰는** 풀이다.
+  // 탐침 머신의 몫은 팔끼리 **나눠 쓰는** 풀이다 — 팔마다 가져갈 수 있는 양은 `limits` 가 묶는다
+  // (머리말 *"한 머신의 팔들은 몫을 반반 나눈다"*). 한도가 없으면 순서가 앞선 팔이 벨트가 받는 만큼 다 가져간다.
   const pm = probe >= 0 ? machines[probe].rates : null;
   const poolIn: ItemMap = pm ? new Map(pm.needs) : new Map();
   const poolOut: ItemMap = pm ? new Map(pm.makes) : new Map();
@@ -201,7 +227,9 @@ function runPass(
     if (to.kind === 'machine') {
       const r = machines[to.m].rates;
       if (!r || !r.needs.has(item)) return 0;
-      return Math.min(cap, to.m === probe ? poolIn.get(item) ?? 0 : alloc(k, to.m, item, 'in'));
+      if (to.m !== probe) return Math.min(cap, alloc(k, to.m, item, 'in'));
+      const left = (limits?.inn.get(k)?.get(item) ?? Infinity) - (rec.picked.get(k)?.get(item) ?? 0);
+      return Math.max(0, Math.min(cap, poolIn.get(item) ?? 0, left));
     }
     if (to.kind === 'chest') {
       const role = chests[to.c].role;
@@ -238,7 +266,11 @@ function runPass(
       const r = machines[from.m].rates;
       if (!r) return [];
       const items = [...r.makes.keys(), ...r.unknownYield];
-      return items.map((it) => [it, from.m === probe ? poolOut.get(it) ?? 0 : alloc(k, from.m, it, 'out')]);
+      return items.map((it): [string, number] => {
+        if (from.m !== probe) return [it, alloc(k, from.m, it, 'out')];
+        const left = (limits?.out.get(k)?.get(it) ?? Infinity) - (rec.dropped.get(k)?.get(it) ?? 0);
+        return [it, Math.max(0, Math.min(poolOut.get(it) ?? 0, left))];
+      });
     }
     if (from.kind === 'chest') {
       const role = chests[from.c].role;
@@ -371,6 +403,73 @@ const minOf = (m: ItemMap | undefined, except?: string): number => {
   return u;
 };
 
+/** [runProbe] 가 한도를 고쳐 다시 푸는 횟수의 상한 — 팔 하나가 막힐 때마다 한 번이라 팔 수를 넘을 일이 없다. */
+const MAX_SHARE_ROUNDS = 32;
+const SHARE_EPS = 1e-7;
+
+/**
+ * **탐침 한 번** — 머신 `m` 만 100% 로 올려 그 머신이 닿는 성분을 푼다. 그 머신의 팔들은 몫을
+ * **반반 나누고, 막힌 팔의 남은 몫은 안 막힌 팔로 간다**(머리말).
+ *
+ * ```
+ * ① 팔마다 한도 = 몫 ÷ 그 품목을 옮기는 팔 수      (산출은 내보내는 팔 전부 · 재료는 그것을 가져올 수 있는 팔)
+ * ② 한 판 푼다
+ * ③ 한도를 못 채운 팔(막혔다)   → 한도를 옮긴 만큼으로 내린다
+ *    한도를 다 채운 팔(안 막혔다) → 남은 몫을 고르게 얹는다
+ * ④ 한도가 바뀌었으면 ② 로
+ * ```
+ *
+ * 수율을 모르는 산출(`unknownYield`)은 몫이 무한이라 나눌 수가 없다 — 한도를 안 건다(옛 동작).
+ */
+function runProbe(g: FlowGraph, st: SolveState, m: number, view: View): PassRecord {
+  const mn = g.machines[m];
+  const rates = mn.rates!;
+  const limits: ArmLimits = { out: new Map(), inn: new Map() };
+  const setLimit = (book: Map<number, ItemMap>, k: number, item: string, v: number) => {
+    let row = book.get(k);
+    if (!row) book.set(k, (row = new Map()));
+    row.set(item, v);
+  };
+  const outArms = () => mn.armsOut;
+  const inArms = (item: string) => mn.armsIn.filter((k) => canBring(g, k, item));
+  for (const [item, made] of rates.makes) for (const k of mn.armsOut) setLimit(limits.out, k, item, made / mn.armsOut.length);
+  for (const [item, need] of rates.needs) {
+    const arms = inArms(item);
+    for (const k of arms) setLimit(limits.inn, k, item, need / arms.length);
+  }
+
+  let rec = runPass(g, st, mn.comps, mn.directs, m, view, false, limits);
+  for (let round = 0; round < MAX_SHARE_ROUNDS; round++) {
+    let changed = false;
+    /** 한쪽(산출 또는 재료)의 한도를 이번 판의 결과로 고친다. */
+    const reshare = (
+      shares: ItemMap,
+      armsOf: (item: string) => number[],
+      book: Map<number, ItemMap>,
+      moved: (k: number, item: string) => number,
+    ): void => {
+      for (const [item, share] of shares) {
+        const arms = armsOf(item);
+        const rest = share - arms.reduce((s, k) => s + moved(k, item), 0);
+        // 한도까지 다 옮긴 팔은 더 옮길 수 있었다 — 안 막힌 팔이다.
+        const open = arms.filter((k) => moved(k, item) >= (book.get(k)?.get(item) ?? 0) - SHARE_EPS);
+        for (const k of arms) {
+          const next = rest > SHARE_EPS && open.includes(k) ? moved(k, item) + rest / open.length : moved(k, item);
+          if (Math.abs(next - (book.get(k)?.get(item) ?? 0)) > SHARE_EPS) {
+            setLimit(book, k, item, next);
+            changed = true;
+          }
+        }
+      }
+    };
+    reshare(rates.makes, outArms, limits.out, (k, item) => rec.dropped.get(k)?.get(item) ?? 0);
+    reshare(rates.needs, inArms, limits.inn, (k, item) => rec.picked.get(k)?.get(item) ?? 0);
+    if (!changed) break;
+    rec = runPass(g, st, mn.comps, mn.directs, m, view, false, limits);
+  }
+  return rec;
+}
+
 export function solveFlow(g: FlowGraph): SolveOutput {
   const n = g.machines.length;
   const st: SolveState = {
@@ -412,8 +511,8 @@ export function solveFlow(g: FlowGraph): SolveOutput {
     for (const m of rated) {
       const mn = g.machines[m];
       const rates = mn.rates!;
-      const rs = runPass(g, st, mn.comps, mn.directs, m, 'supply', false);
-      const rd = runPass(g, st, mn.comps, mn.directs, m, 'drain', false);
+      const rs = runProbe(g, st, m, 'supply');
+      const rd = runProbe(g, st, m, 'drain');
       supplyProbes.set(m, rs);
       drainProbes.set(m, rd);
       const got = probeTotals(g, m, rs, 'in');

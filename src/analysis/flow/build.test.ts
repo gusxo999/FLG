@@ -50,6 +50,8 @@ const RECIPES: Recipe[] = [
   recipe('circuit', [item('plate', 1), item('cable', 3)], [item('circuit', 1)]), // plate 1/s · cable 3/s
   recipe('mystery', [item('plate', 1)], [{ name: 'dust', type: 'item' }]),       // 수율 미상
   recipe('plastic', [item('coal', 1), { name: 'gas', amount: 20, type: 'fluid' }], [item('plastic', 2)]),
+  recipe('trio', [item('plate', 1)], [item('trio', 3)]),                 // plate 1/s → trio 3/s
+  recipe('gulp', [item('plate', 4)], [item('crumb', 1)]),                // plate 4/s
 ];
 
 function makeCtx(): FlowCtx {
@@ -674,5 +676,107 @@ describe('analyzeLayout — ⑭ 갇힌 상자', () => {
     const r = analyzeLayout(portGrid({ x: 9, y: 6 }), makeCtx());
     expect(r.orphanChests).toEqual([]);
     expect(at(r, 5, 5).portFail).toEqual([]);
+  });
+});
+
+describe('analyzeLayout — ⑮ 한 머신의 팔 여럿은 몫을 반반 나눈다 · 막히면 다른 쪽으로', () => {
+  /**
+   * P(trio 3/s) 가 벨트 둘에 싣는다. 벨트는 끝의 회수 팔이 집는 만큼만 받아들인다(정체).
+   *
+   *   y=0   회수 (9,0)                      y=1   회수 팔 (9,1) S
+   *   y=2   위 벨트 → → →                   y=3   P 출력 팔 (5,3) S
+   *   y=4..6  P (4,4)                       y=7   P 출력 팔 (5,7) N
+   *   y=8   아래 벨트 → → →                 y=9   회수 팔 (9,9) N  ·  y=10  회수 (9,10)
+   */
+  function twoBelts(o: { upDrain?: string; downDrain?: string; upArm?: string } = {}): LayoutGrid {
+    const grid = createEmptyGrid(14, 12);
+    machine(grid, 4, 4, 'trio');
+    feedLeft(grid, 4, 4, 'plate');
+    arm(grid, 5, 3, 8, o.upArm);     // (5,4) P → (5,2) 위 벨트
+    beltRow(grid, 2, 1, 10);
+    arm(grid, 9, 1, 8, o.upDrain);   // (9,2) → (9,0) 회수
+    sink(grid, 9, 0);
+    arm(grid, 5, 7, 0);              // (5,6) P → (5,8) 아래 벨트
+    beltRow(grid, 8, 1, 10);
+    arm(grid, 9, 9, 0, o.downDrain); // (9,8) → (9,10) 회수
+    sink(grid, 9, 10);
+    return grid;
+  }
+  const dropped = (r: FlowResult, key: string) => r.belts.get(key)!.taps.find((t) => t.kind === 'drop')!.rate;
+
+  // 예전 풀이는 처리 순서가 앞선 팔이 벨트가 받는 만큼 다 가져가 3 · 0 을 냈다.
+  it('두 벨트가 다 넉넉하면 반반 싣는다 — 3/s 가 1.5 · 1.5', () => {
+    const r = analyzeLayout(twoBelts(), makeCtx());
+    expect(at(r, 4, 4).state).toBe('full');
+    expect(dropped(r, '5,2')).toBeCloseTo(1.5);
+    expect(dropped(r, '5,8')).toBeCloseTo(1.5);
+  });
+
+  it('한쪽 벨트가 1/s 만 받으면 그 팔은 1 에서 막히고 남은 몫이 다른 팔로 간다 — 1 · 2', () => {
+    const r = analyzeLayout(twoBelts({ upDrain: 'slow-inserter' }), makeCtx());
+    expect(at(r, 4, 4).state).toBe('full');
+    expect(dropped(r, '5,2')).toBeCloseTo(1);
+    expect(dropped(r, '5,8')).toBeCloseTo(2);
+  });
+
+  it('막는 것이 벨트가 아니라 그 팔의 처리량이어도 같다 — 1 · 2', () => {
+    const r = analyzeLayout(twoBelts({ upArm: 'slow-inserter' }), makeCtx());
+    expect(at(r, 4, 4).state).toBe('full');
+    expect(dropped(r, '5,2')).toBeCloseTo(1);
+    expect(dropped(r, '5,8')).toBeCloseTo(2);
+  });
+
+  it('대조 — 두 벨트가 다 막히면 넘길 곳이 없다: 1 · 1 이고 머신이 2/3 로 돈다', () => {
+    const r = analyzeLayout(twoBelts({ upDrain: 'slow-inserter', downDrain: 'slow-inserter' }), makeCtx());
+    const p = at(r, 4, 4);
+    expect(p.u).toBeCloseTo(2 / 3);
+    expect(p.limit).toEqual({ side: 'output', item: 'trio', by: 'belt' });
+    expect(dropped(r, '5,2')).toBeCloseTo(1);
+    expect(dropped(r, '5,8')).toBeCloseTo(1);
+  });
+
+  /**
+   * Q(gulp, 판 4/s) 가 벨트 둘에서 집는다. 느린 벨트는 레인 하나가 1/s 라 그만큼만 실려 온다.
+   *
+   *   y=0   공급 (2,0)  ·  y=1  공급 팔 (2,1) N      y=2   위 벨트 → → →
+   *   y=3   Q 입력 팔 (5,3) N                       y=4..6  Q (4,4)
+   *   y=7   Q 입력 팔 (5,7) S                       y=8   아래 벨트 → → →
+   *   y=9   공급 팔 (2,9) S  ·  y=10  공급 (2,10)
+   */
+  function twoSources(upBelt = 'transport-belt', downBelt = 'transport-belt'): LayoutGrid {
+    const grid = createEmptyGrid(14, 12);
+    beltRow(grid, 2, 1, 10, upBelt);
+    supply(grid, 2, 0, 'plate');
+    arm(grid, 2, 1, 0);              // (2,0) → (2,2)
+    arm(grid, 5, 3, 0);              // (5,2) 위 벨트 → (5,4) Q
+    machine(grid, 4, 4, 'gulp');
+    arm(grid, 5, 7, 8);              // (5,8) 아래 벨트 → (5,6) Q
+    beltRow(grid, 8, 1, 10, downBelt);
+    supply(grid, 2, 10, 'plate');
+    arm(grid, 2, 9, 8);              // (2,10) → (2,8)
+    drainRight(grid, 4, 4);
+    return grid;
+  }
+  const picked = (r: FlowResult, key: string) => r.belts.get(key)!.taps.find((t) => t.kind === 'pick')!.rate;
+
+  it('받는 쪽도 같다 — 두 벨트가 다 넉넉하면 4/s 를 2 · 2 로 집는다', () => {
+    const r = analyzeLayout(twoSources(), makeCtx());
+    expect(at(r, 4, 4).state).toBe('full');
+    expect(picked(r, '5,2')).toBeCloseTo(2);
+    expect(picked(r, '5,8')).toBeCloseTo(2);
+  });
+
+  it('한쪽 벨트에 1/s 만 실려 오면 모자란 몫을 다른 벨트에서 집는다 — 1 · 3', () => {
+    const r = analyzeLayout(twoSources('slow-belt'), makeCtx());
+    expect(at(r, 4, 4).state).toBe('full');
+    expect(picked(r, '5,2')).toBeCloseTo(1);
+    expect(picked(r, '5,8')).toBeCloseTo(3);
+  });
+
+  it('대조 — 두 벨트가 다 모자라면 1 · 1 이고 머신이 절반으로 돈다', () => {
+    const r = analyzeLayout(twoSources('slow-belt', 'slow-belt'), makeCtx());
+    const q = at(r, 4, 4);
+    expect(q.u).toBeCloseTo(0.5);
+    expect(q.limit).toEqual({ side: 'input', item: 'plate', by: 'belt' });
   });
 });
