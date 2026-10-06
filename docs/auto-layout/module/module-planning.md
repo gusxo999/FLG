@@ -121,7 +121,7 @@ const t = (isGap ? m.origin.x : m.origin.y) + slotIndex;
 | 필드 | 무엇으로 정하나 | 층 |
 |---|---|---|
 | `item` · `carries` · `from`/`to` · 벨트 티어 | 레시피 · 대수 · 벨트 용량 | **계획** |
-| **`g`**(묶음 크기) | `min(⌊벨트 ÷ per⌋, N)` + 자리 사정 | **계획** |
+| **벨트 줄당 머신 수**(식에서 `g`) | `min(⌊B ÷ per⌋, N)` + 자리 사정 (`B` = 레인 하나) | **계획** |
 | `face` | 역할(출력 W·입력 E) + `Σ팔 ≤ h` 넘침 | **계획** |
 | `clusterBeltDepth` · `reach` | `a(j,d) = ⌈per_j ÷ tp(d)⌉` 로 후보 거르기 | **계획** |
 | `arms` | `⌈per ÷ tp(reach)⌉` | **계획** |

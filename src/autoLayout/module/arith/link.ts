@@ -161,6 +161,7 @@ export function createLinks(
         toSeat - rateOn(cur, "to", f.to),
       );
       // 넘치는 쪽은 줄을 남과 나눠 쓰지 않는다(위 `mergeFrom`/`mergeTo`).
+      // 이 자리(줄을 남과 나눠 쓰나)를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-벨트냐-머신이냐).
       const wouldMix =
         (!mergeFrom && others(cur, "from", f.from)) ||
         (!mergeTo && others(cur, "to", f.to));
