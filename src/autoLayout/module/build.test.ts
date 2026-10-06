@@ -200,7 +200,7 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
     expect(mod.unroutedLines).toHaveLength(0);
 
     const inserters = mod.cells.filter((c) => c.cell.entityType === EntityType.Inserter);
-    // 각 머신의 E 면 좌석 열(x=3)에 탭 인서터가 2행 앉는다(= requiredInserterCount 2).
+    // 각 머신의 E 면 좌석 열(x=3)에 탭 인서터가 2행 앉는다(팔 2개 — [armsFor]).
     for (const m of mod.machines) {
       const seatCol = inserters.filter(
         (c) => c.x === 3 && c.y >= m.origin.y && c.y < m.origin.y + m.size.h,
@@ -231,7 +231,7 @@ describe("Parallel Inserting — 머신당 탭 인서터 여러 개", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * **다이렉트 인서팅이 [requiredInserterCount] 만큼 팔을 놓는다.**
+ * **다이렉트 인서팅이 필요한 수([armsFor])만큼 팔을 놓는다.**
  *
  * 팔 개수는 공급 방식과 무관한 물리량이다 — 인서터 하나가 나르는 양은 벨트에서 집든
  * 상자에서 집든 같다. 그래서 탭이 "팔 2개"라고 판정한 수요는 다이렉트에서도 팔 2개다.

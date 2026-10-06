@@ -9,7 +9,7 @@
  *
  * true 일 때 dump 출력 시점:
  *  - handleApplyCandidate          : 컨테이너·라우팅(레이아웃 좌표) + `unifyLeaf` 후 그리드 좌표
- *  - runModuleWizard              : `[팔·벨트 상한]` — 줄마다 팔 개수·그릇·면 좌석을 나란히.
+ *  - runModuleWizard              : `[팔·벨트 상한]` — 줄마다 벨트 줄 수·실린 양·팔 개수·면 좌석을 나란히.
  *                                   벨트가 포화된 배치를 봤을 때 **어느 상한이 물렸는지** 가른다.
  */
 export let AUTO_LAYOUT_COORD_DUMP = true;

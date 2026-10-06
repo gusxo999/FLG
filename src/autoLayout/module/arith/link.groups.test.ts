@@ -111,9 +111,9 @@ describe("그룹이 안 되는 줄 — 지어내지 않는다", () => {
   });
 });
 
-// 팔 수는 [requiredInserterCount] 하나에서 온다 — 이 함수가 자기 식을 따로 갖지 않는지.
+// 팔 수는 [armsFor] 하나에서 온다 — 이 함수가 자기 식을 따로 갖지 않는지.
 // (이 세션에 고친 버그들의 공통 원인이 "같은 수를 두 곳이 각자 유도"였다.)
-describe("팔 수는 requiredInserterCount 와 같은 값", () => {
+describe("팔 수는 armsFor 와 같은 값 — 그 머신이 그 줄에 맡긴 양 ÷ 인서터 운반량", () => {
   it("머신 수가 늘면 머신당 팔은 줄어든다 — 클러스터 rate 를 나눠 갖는다", () => {
     const one = externalLineGroups(lines, 1, cap, INS, undefined, { belts: BELTS })[0].to.get(0);
     const six = externalLineGroups(lines, 6, cap, INS, undefined, { belts: BELTS })[0].to.get(0);

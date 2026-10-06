@@ -32,7 +32,9 @@
  */
 
 import type { IoLine, Link, LinkCarry, SupplyCapacity } from "../types/line";
-import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../../shared/gamedata/spec";
+import {
+  armsFor, armsForShare, faceSeatArms, inserterForReach, maxRatePerMachinePerLine, type SpecBelt, type SpecInserter,
+} from "../../shared/gamedata/spec";
 import { determineBeltCount, laneCapOfTier } from "../../shared/arith/belt";
 
 /**
@@ -57,15 +59,18 @@ export interface LinkLimits {
   /** 팔 하나 — 팔 수 유도([armsFor])에 쓴다. */
   inserter: SpecInserter;
   /**
-   * **한 줄이 그 끝의 머신 한 대에게 줄 수 있는 최대**(초당) = 면 좌석 수 × 팔 하나.
-   * 벨트 한 줄은 면 하나에 눕고 머신이 그 면에 가진 칸은 정해져 있어서, 그보다 많은 팔을
-   * 한 줄에 붙일 수 없다. **벨트 용량과는 다른 축이다.**
+   * **그 끝의 머신이 한 면에 가진 좌석 수**([faceSeatArms]). 벨트 한 줄은 면 하나에 눕고 머신이 그 면에 가진
+   * 칸은 정해져 있어서, 그보다 많은 팔을 한 줄에 붙일 수 없다. **벨트 용량과는 다른 축이다.**
+   *
+   * 붓기는 이 수로 둘을 본다 — *한 줄이 그 머신과 주고받는 최대*(좌석 수 × 인서터 운반량 — 양)와
+   * *그 머신의 몫을 옮기는 팔이 한 면에 다 앉나*(수). 2026-10-06 까지는 부르는 쪽 둘이 앞의 양을 각자 곱해
+   * 넘겼고, 뒤의 물음도 그 양으로 견줬다 — 인서터 운반량이 벨트 한 줄보다 크면 그 견줌은 언제나 참이 된다.
    *
    * **`undefined` 는 그 끝이 모듈 밖이라는 뜻이다** — 밖에는 인서터가 앉을 면이 없으므로
    * 상한도 없다. 원료·완제품 줄이 이 값을 비운다.
    */
-  fromSeat?: number;
-  toSeat?: number;
+  fromFaceSeats?: number;
+  toFaceSeats?: number;
 }
 
 /**
@@ -99,8 +104,10 @@ export function createLinks(
   limits: LinkLimits,
 ): Link[] {
   const { tiers, inserter } = limits;
-  const fromSeat = limits.fromSeat ?? Infinity;
-  const toSeat = limits.toSeat ?? Infinity;
+  const faceSeats = { from: limits.fromFaceSeats, to: limits.toFaceSeats };
+  // 한 줄이 그 끝의 머신 한 대와 주고받는 최대 — 좌석 수 × 인서터 운반량. 밖인 끝은 상한이 없다.
+  const fromSeat = maxRatePerMachinePerLine(0, faceSeats.from, inserter);
+  const toSeat = maxRatePerMachinePerLine(0, faceSeats.to, inserter);
 
   type Pour = { cap: number; used: number; belt: string; carries: LinkCarry[] };
   const lines: Pour[] = [];
@@ -145,8 +152,16 @@ export function createLinks(
     for (const f of flows) per.set(f[side], (per.get(f[side]) ?? 0) + f.rate);
     return Math.max(0, ...per.values());
   };
-  const mergeFrom = peak("from") <= fromSeat + POUR_EPS;
-  const mergeTo = peak("to") <= toSeat + POUR_EPS;
+  // **수로 견준다** — 그 머신의 몫을 옮기는 팔 수([armsForShare] — 줄마다 올린 합) ≤ 한 면의 좌석 수.
+  // 몫을 자르는 단위는 가장 빠른 벨트의 한 줄이다(팔이 가장 적게 드는 쪽 — 어림과 같은 낙관).
+  const fitsOneFace = (side: "from" | "to"): boolean => {
+    const seats = faceSeats[side];
+    if (seats === undefined) return true;
+    const perLine = maxRatePerMachinePerLine(laneCapOfTier(tiers[0]), seats, inserter);
+    return (armsForShare(peak(side), perLine, inserter) ?? 1) <= seats;
+  };
+  const mergeFrom = fitsOneFace("from");
+  const mergeTo = fitsOneFace("to");
 
   const others = (line: Pour, side: "from" | "to", mi: number | undefined): boolean =>
     line.carries.some((c) => c[side] !== mi);
@@ -731,10 +746,7 @@ export function externalLineGroups(
     // 밖과 주고받는 줄은 **한쪽 끝이 비어 있다**([LinkCarry]). 머신이 든 쪽이 곧 역할이다.
     const side: "from" | "to" = line.role === "output" ? "from" : "to";
     // **좌석 상한은 머신 쪽 끝에만 있다** — 밖에는 인서터가 앉을 면이 없다.
-    const seat =
-      inserter && opts?.machineFaceCells !== undefined
-        ? faceSeatArms(opts.machineFaceCells, 0) * inserter.throughput
-        : undefined;
+    const seats = opts?.machineFaceCells !== undefined ? faceSeatArms(opts.machineFaceCells, 0) : undefined;
 
     /** 이 머신들의 몫을 [createLinks] 에 부어 줄로 만든다. 못 만들면 빈 배열(폴백으로 간다). */
     const pour = (machines: readonly number[]): Link[] => {
@@ -747,8 +759,8 @@ export function externalLineGroups(
         {
           tiers,
           inserter,
-          fromSeat: side === "from" ? seat : undefined,
-          toSeat: side === "to" ? seat : undefined,
+          fromFaceSeats: side === "from" ? seats : undefined,
+          toFaceSeats: side === "to" ? seats : undefined,
         },
       );
     };

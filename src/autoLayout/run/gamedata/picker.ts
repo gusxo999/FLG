@@ -3,7 +3,10 @@ import type { Area, ContainerWizardInput } from "../../shared/types";
 import { clusterLineRate, type MachineParamsLookup } from "../../tree/arith/recipe";
 import { allocateArms } from "../../module/arith/arms";
 import type { IoLine } from "../../module/types/line";
-import { inserterForReach, type SpecInserter } from "../../shared/gamedata/spec";
+import {
+  faceSeatArms, inserterForReach, maxRatePerMachinePerLine, type BuildSpec, type SpecBelt, type SpecInserter,
+} from "../../shared/gamedata/spec";
+import { laneCapOfTier } from "../../shared/arith/belt";
 
 // ─── Area 유틸 ───────────────────────────────────────────────────────────────
 
@@ -34,17 +37,18 @@ export function makeMachinePicker(
  * "선택된 머신 중 카테고리가 맞는 첫 머신" 을 고르고, 그 머신의 base crafting_speed 를
  * 반환한다. 모듈은 v1 미반영(productivityMultiplier=1).
  *
- * **`inserters` 를 주면 [굶주림 보상]이 켜진다.** 인서터 팔을 다 앉힐 자리(면 좌석 행)가
+ * **`carriers`(고른 인서터 · 벨트)를 주면 [굶주림 보상]이 켜진다.** 인서터 팔을 다 앉힐 자리(면 좌석 행)가
  * 없으면 머신은 그만큼만 돌므로, 그 비율을 `speedFraction` 으로 함께 낸다 →
  * `countForDemand` 가 **부족분만큼 머신을 더 놓는다**(2026-07-16 사용자 설계).
  * 안 주면 `speedFraction` 미지정 = 1 = 옛 동작(굶어도 모른 척).
+ * **인서터와 벨트는 함께 온다** — 인서터가 몇 개 드는지는 몫이 벨트 몇 줄에 나뉘느냐에 달렸다([armLoadsOf]).
  *
  * `gameData` 는 부르는 쪽이 [gameDataLookupOf] 로 떼어 넘긴다 — 실행 입구와, 레시피 단계 트리가 머신 대수를
  * 미리 세는 화면(`AutoLayoutModal`)이다.
  */
 export function makeMachineParamsLookup(
   selectedMachines: ReadonlyArray<string>,
-  inserters: ReadonlyArray<SpecInserter> | undefined,
+  carriers: Pick<BuildSpec, "inserters" | "belts"> | undefined,
   gameData: GameDataLookup,
 ): MachineParamsLookup {
   // lookup 은 노드마다 여러 번 불린다(countForDemand + buildThroughput) — 경고는 조합당 한 번만.
@@ -57,8 +61,8 @@ export function makeMachineParamsLookup(
       const ent = state.entityMap.get(name);
       if (ent?.crafting_categories?.includes(recipe.category)) {
         const craftingSpeed = ent.crafting_speed ?? 1;
-        const speedFraction = inserters?.length
-          ? machineSpeedFraction(recipe, ent, craftingSpeed, inserters)
+        const speedFraction = carriers?.inserters.length
+          ? machineSpeedFraction(recipe, ent, craftingSpeed, carriers.inserters, carriers.belts)
           : undefined;
         if (speedFraction !== undefined && !warned.has(recipeName)) {
           warned.add(recipeName);
@@ -89,8 +93,12 @@ export function makeMachineParamsLookup(
  * ([PortPlannerInput.seatRowsPerFace] — 2026-07-17). 그 전엔 배분기가 줄 하나를 면 하나에
  * 붙박아서 이 수가 **낙관 상한**이었다(비율이 "된다"고 해도 모듈이 좌석 예산에서 거절 → 옛 경로).
  *
- * 팔 개수는 **머신 수와 무관**하므로([requiredInserterCount]) 이 비율도 머신 수와 무관하다 —
+ * 팔 개수는 **머신 수와 무관**하므로(머신 한 대의 몫에서 나온다 — [armLoadsOf]) 이 비율도 머신 수와 무관하다 —
  * 그래서 머신 수를 정하기 **전에** 계산할 수 있다(순환 없음).
+ *
+ * **벨트를 함께 받는다**(2026-10-06). 팔 개수는 몫이 벨트 몇 줄에 나뉘느냐에 달렸다 — 벨트 한 줄의 상한이
+ * 인서터 운반량의 정수배가 아니면 줄마다 따로 올려야 줄에 실제로 다는 수와 맞는다. 예전엔 이 함수가 벨트를 몰라서,
+ * 벨트의 한도를 인서터 값에 미리 깎아 넣어(`makeBuildSpec`) 대신했다.
  *
  * **두 곳이 이 함수를 함께 읽는다** — [makeMachineParamsLookup](머신 **수**를 늘려 보상)과
  * [tryRunModulePipeline](배분기에 줄 **수요**를 넘김). 둘이 다른 속도를 믿으면 보상은 80%로
@@ -102,6 +110,8 @@ export function machineSpeedFraction(
   ent: Entity,
   craftingSpeed: number,
   inserters: ReadonlyArray<SpecInserter>,
+  /** 고른 벨트들(빠른 것부터 — [BuildSpec.belts]). 가장 빠른 것의 한 줄이 몫을 자르는 단위다. */
+  belts: ReadonlyArray<SpecBelt>,
 ): number | undefined {
   // 예전엔 여기서 `min` 을 **자체 계산**했는데, 그 규칙이 moduleWizard 에서 바뀌자
   // **여기만 옛 값에 남아** 둘이 다른 속도를 믿게 됐다(2026-07-23 실측: 팔 3개면 되는
@@ -127,12 +137,15 @@ export function machineSpeedFraction(
       role: "output" as const,
     })),
   ];
-  const rowBudget = (ent.tile_height ?? 1) * 2; // W/E 두 면
+  const faceCells = ent.tile_height ?? 1;
+  const rowBudget = faceCells * 2; // W/E 두 면
   const { speedFraction } = allocateArms(
     lines,
     (l) => clusterLineRate(recipe, l.role, l.name, 1, params), // 머신 1대 = 머신당
     seatInserter,
     rowBudget,
+    // 붓기와 같은 낙관으로 유체 행을 0 으로 둔다 — 이 시점엔 그 줄이 어느 면에 앉을지 모른다([faceSeatArms]).
+    maxRatePerMachinePerLine(laneCapOfTier(belts[0]), faceSeatArms(faceCells, 0), seatInserter),
   );
   // 0 = 줄마다 팔 하나씩도 못 앉힌다 → 이 머신으론 불가능. 비율로 표현할 수 없으니
   // undefined 로 두고(옛 동작) 배치 단계가 정직하게 실패하게 둔다.

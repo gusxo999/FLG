@@ -149,7 +149,7 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
   // ── ③ 명세 — 모듈마다 **무엇을 몇 대·얼마나** 나르나 ────────────────────────────
   const { specs, recipeOfId } = nodeSpecsOf(nodes, parentOf, fluid.trunkOf, options);
   const packConfig = packConfigOf(options);
-  if (AUTO_LAYOUT_COORD_DUMP) logArmBeltLimits(specs, packConfig, options, input, gameData);
+  if (AUTO_LAYOUT_COORD_DUMP) logArmBeltLimits(specs, packConfig, options);
 
   // ── ④ 배치 — 모듈이 **어디 앉았고** 무엇이 못 앉았나 ─────────────────────────────
   const pack = packModuleTree(specs, packConfig);

@@ -78,18 +78,6 @@ export interface PlannedLine {
    * 나머지는 그걸 감당하는 가장 싼 것). 미지정이면 호출부의 기본 벨트.
    */
   beltEntityName?: string;
-  /**
-   * **[requiredInserterCount](../../../../../docs/용어사전.md#requiredinsertercount)** — 머신 한
-   * 대의 이 줄을 먹이는 데 필요한 인서터 팔의 개수. **공급 방식과 무관한 물리량**이다
-   * (`ceil(머신당 수요 ÷ 인서터 하나 처리량)`) — 탭이면 그 팔들이 같은 [ClusterBelt] 에서
-   * 집고([Parallel Inserting](../../../../../docs/용어사전.md#parallel-inserting)), 다이렉트면
-   * 각자 자기 상자에서 집는다. 팔 **개수** 자체는 어느 쪽이든 같다.
-   *
-   * [insertingPlanner] 가 [SupplyCapacity] 로 **두 모드 모두에** 채운다. 미지정 = 수량을
-   * 모른다(판정 보류 → 소비처가 1로 본다). `planClusterPorts` 자체는 채우지 않는다(용량을
-   * 안 본다).
-   */
-  requiredInserterCount?: number;
 }
 
 /** 벨트·인서터가 감당할 수 있는 양(items/sec). 미지정 항목은 무제한으로 본다. */
@@ -98,7 +86,7 @@ export interface SupplyCapacity {
   beltCapacity?: number;
   /**
    * 품목별 **클러스터 전체** 초당 수요/산출(items/sec). 키 = `${role}:${name}`.
-   * 미지정이면 [requiredInserterCount] 가 `undefined` 를 낸다 — 없는 숫자를 지어내지 않는다.
+   * 미지정이면 그 줄은 붓지 않는다([externalLineGroups] · [edgeFlows]) — 없는 숫자를 지어내지 않는다.
    */
   lineRates?: Map<string, number>;
 }

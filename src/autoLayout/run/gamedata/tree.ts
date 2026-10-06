@@ -17,17 +17,16 @@
  */
 
 import type { Entity, GameDataLookup, Recipe } from "../../../types/gameData";
-import type { ContainerWizardInput } from "../../shared/types";
 import type { RecipeTreeNode } from "../../tree/types/recipe";
 import type { IoLine } from "../../module/types/line";
 import type { FluidLineSpec } from "../../module/gamedata";
-import { externalLineGroups, groupRate } from "../../module/arith/link";
+import { externalLineGroups, groupRate, readLinkRole } from "../../module/arith/link";
 import type { PipeFlowMachine } from "../../shared/pipeFlow";
 import { edgeLinkGroups } from "../../tree/build";
 import type { NodeSpec, PackConfig, PackResult } from "../../tree/types/pack";
-import { inserterThroughput } from "../../shared/arith/inserter";
+import { laneCapOfTier } from "../../shared/arith/belt";
 import { clusterLineRate } from "../../tree/arith/recipe";
-import { inserterForReach, type BuildSpec } from "../../shared/gamedata/spec";
+import type { BuildSpec } from "../../shared/gamedata/spec";
 import { machineSpeedFraction } from "./picker";
 
 /** layeredWizard NodeMeta 와 동형(필요한 부분만). */
@@ -140,11 +139,11 @@ export function nodeSpecsOf(
     const params = {
       craftingSpeed,
       productivityMultiplier: 1,
-      speedFraction: ent ? machineSpeedFraction(recipe, ent, craftingSpeed, options.inserters) : undefined,
+      speedFraction: ent ? machineSpeedFraction(recipe, ent, craftingSpeed, options.inserters, options.belts) : undefined,
     };
     // 수량을 모르는 줄(범위 산출물인데 게임데이터에 amount_min/max 가 없는 경우)은 **넣지
-    // 않는다** — 그래야 requiredInserterCount 가 `rate === undefined` 로 보고 **판정 보류(1개)로
-    // 보류**한다. 지어낸 숫자나 NaN 을 넣으면 탭 수가 조용히 틀어진다.
+    // 않는다** — 그래야 붓기가 그 줄을 *양을 모르는 줄* 로 보고 안 만든다([externalLineGroups]).
+    // 지어낸 숫자나 NaN 을 넣으면 팔 수가 조용히 틀어진다.
     const lineRates = new Map<string, number>();
     const putRate = (key: string, rate: number | undefined): void => {
       if (rate !== undefined) lineRates.set(key, rate);
@@ -202,14 +201,13 @@ export function undergroundDistanceOf(gameData: GameDataLookup): (entityName: st
  * **왜 팔이 그만큼 앉았나** — 관측 전용 표식(`AUTO_LAYOUT_COORD_DUMP` 일 때만). 계산·분기·반환값을 안 바꾼다.
  *
  * 한 벨트에 팔이 몰려 포화된 배치를 봤을 때, 그 수가 어느 식에서 나왔는지 좌표만 보고는 못 가린다.
- * 그런데 줄마다 **누가 세느냐**부터 갈린다:
- *  - **링크 줄**(자식↔부모): [allocateFlows] 가 간선별로 벨트를 쪼갠다. 팔 개수는
- *    링크마다 다르므로 `requiredInserterCount`(아래 팔/머신)는 **쓰이지 않는다** — 참고용.
- *  - **외부 줄**(raw 입력·최종 출력): `requiredInserterCount` 가 그대로 배치를 정한다.
- * 두 줄을 섞어 팔/머신만 보면 링크 줄에서 헛다리를 짚는다(실측 오해). 그래서 갈라 찍는다.
+ * 줄마다 **누가 붓느냐**가 갈린다 — 링크 줄(자식↔부모)은 [edgeLinkGroups], 원료 · 완제품 줄은 [externalLineGroups].
+ * 둘 다 [Link] 를 내므로 찍는 모양은 하나다: 벨트 줄 수 · 줄마다 실린 양 · 그 줄들에 단 팔의 합.
  *
- * 세 상한(팔 개수·그릇·면 좌석)이 같은 값을 낼 수 있어 나란히 둔다. `그릇×normalTp` 열(=
- * 그 벨트가 실제로 받는 부하)이 벨트 처리량을 넘으면 그 자리가 포화다.
+ * **부하는 실린 양으로 잰다**(2026-08-22). `팔 수 × 인서터 운반량` 은 **올림된 용량**이라 언제나 실제보다 커서
+ * 멀쩡한 줄을 "포화" 라고 거짓 경고했다. 견주는 상대는 **벨트 한 줄의 상한**(레인 하나 — [laneCapOfTier])이다.
+ * 2026-10-06 까지는 `그릇 = ⌊벨트 ÷ 인서터⌋` 열과 벨트 전체(두 레인 합)를 찍었다 — 앞의 것은 2026-08-22 에 버린 식이고
+ * 뒤의 것은 계획이 보는 상한의 두 배였다.
  *
  * 명세(이 파일의 산출)를 설명하는 표식이라 여기 산다 — 태그는 태그하는 종류의 파일에 둔다.
  */
@@ -217,64 +215,45 @@ export function logArmBeltLimits(
   specs: readonly NodeSpec[],
   packConfig: PackConfig,
   options: BuildSpec,
-  input: ContainerWizardInput,
-  gameData: GameDataLookup,
 ): void {
-  // 인서터별 실제 throughput(items/sec) — 좌석 기준 팔이 없을 때의 대체값. 이 표식만 읽는다.
-  const ov = input.inserterOverrides;
-  const normalTp = inserterThroughput(gameData.entityMap.get(options.inserterEntityName), ov?.[options.inserterEntityName]);
   const specInserters = options.inserters;
-  const fastest = options.belts?.[0]?.throughput ?? 0;
+  const lineCap = laneCapOfTier(options.belts?.[0]);
   const nodeById = new Map(specs.map((s) => [s.id, s]));
-  // 팔 처리량은 **reach 마다 다르다**(계획서 §16) — 하나로 접어 찍으면 덤프가 거짓말을 한다.
+  // 팔 운반량은 **reach 마다 다르다**(계획서 §16) — 하나로 접어 찍으면 덤프가 거짓말을 한다.
   const perReach = specInserters
     .map((i) => `reach${i.reach}=${i.throughput}(${i.entityName})`)
     .join(" ");
-  const seatTp = inserterForReach(specInserters, 1)?.throughput ?? normalTp;
-  console.log(`[팔·벨트 상한] ${perReach} | 좌석기준(reach1)=${seatTp} 벨트(최속)=${fastest}`);
-  const grail = Math.max(1, Math.floor(fastest / seatTp));
+  console.log(`[팔·벨트 상한] ${perReach} | 벨트 한 줄의 상한(최속 · 레인 하나)=${lineCap}`);
   for (const s of specs) {
     const rows = { WE: s.machine.h, NS: s.machine.w };
-    // 이 모듈의 **모든** 벨트 줄을 한 장부로 본다 — 링크 줄은 [edgeLinkGroups],
-    // 외부 줄은 [externalLineGroups]. 둘 다 [Link] 이라 아래 출력이 하나다.
-    const ext = new Map(
-      externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}, specInserters).map((g) => [g.id!, g]),
-    );
+    const ext = externalLineGroups(s.lines, s.count, s.supplyCapacity ?? {}, specInserters, undefined, {
+      belts: options.belts,
+      machineFaceCells: s.machine.h,
+    });
     for (const [key, rate] of s.supplyCapacity?.lineRates ?? []) {
       const [role, name] = key.split(":");
       // 이 줄이 링크인가 — 출력이면 부모가, 입력이면 자식이 같은 품목을 주고받나.
       const parent = s.parentId ? nodeById.get(s.parentId) : undefined;
       const child = specs.find((c) => c.parentId === s.id && c.lines.some((l) => l.role === "output" && l.name === name));
-      // **벨트 줄**로 본다(2026-08-22) — 흐름 목록이 아니라 접힌 결과가 화면의 단위다.
       const linkEdge =
         role === "output" && parent?.lines.some((l) => l.role === "input" && l.name === name)
           ? edgeLinkGroups(s, parent, name, packConfig)
           : role === "input" && child
             ? edgeLinkGroups(child, s, name, packConfig)
             : undefined;
-      const g = ext.get(`ext:${key}`);
-      const who = linkEdge ? "링크" : g ? "외부" : "미상";
-      // **벨트 줄 수와 줄당 부하**는 두 줄에서 뜻이 다르다 — 누가 셌는지 밝힌다:
-      //  - 링크: [edgeLinkGroups] 가 **이미 접은 결과**. 줄마다 실린 양이 다를 수 있다.
-      //  - 외부: 그룹은 아직 줄 하나(Step 4 대기) → 여기서 **그릇으로 유도한 예측**을 찍는다.
-      //    이 예측과 화면이 어긋나면 둘이 다른 수를 보고 있다는 뜻이다(그게 이 로그의 쓸모다).
-      //
-      // **부하는 rate 로 잰다**(2026-08-22). `max(팔) × 팔처리량` 은 **올림된 용량**이라
-      // 언제나 실제보다 커서 멀쩡한 줄을 "포화" 라고 거짓 경고했다.
-      const armsOf = (m: Map<number, number>): number => [...m.values()].reduce((a, b) => a + b, 0);
-      const total = g ? armsOf(g.from.size > 0 ? g.from : g.to) : 0;
-      const belts = linkEdge ? linkEdge.length : g ? Math.ceil(total / grail) : 0;
-      const perBelt = linkEdge
-        ? linkEdge.map((l) => Number((groupRate(l) ?? 0).toFixed(1)))
-        : g
-          ? [Math.min(total, grail) * normalTp]
-          : [];
+      // 원료 · 완제품 줄은 깊이 예산이 뒤에서 묶음을 다시 정할 수 있다 — 여기 찍는 것은 그 전의 붓기다.
+      const links = linkEdge ?? ext.filter((g) => g.item === name && readLinkRole(g) === role);
+      const who = linkEdge ? "링크" : links.length > 0 ? "외부" : "미상";
+      // 이 모듈의 머신들이 그 줄들에 단 팔 — 출력이면 싣는 쪽(`from`), 입력이면 집는 쪽(`to`).
+      const mine = role === "output" ? ("from" as const) : ("to" as const);
+      const arms = links.reduce((sum, l) => sum + [...l[mine].values()].reduce((a, b) => a + b, 0), 0);
+      const perBelt = links.map((l) => Number((groupRate(l) ?? 0).toFixed(1)));
       const load = perBelt.length > 0 ? Math.max(...perBelt) : 0;
       console.log(
-        `  ${s.id} ${key}: [${who}] 벨트 ${belts}줄, 줄당 부하 [${perBelt}]/s${g ? ` (총 팔 ${total})` : ""} ` +
-          `· 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} · 그릇=${grail} ` +
+        `  ${s.id} ${key}: [${who}] 벨트 ${links.length}줄, 줄마다 실린 양 [${perBelt}]/s (팔 ${arms}) ` +
+          `· 클러스터rate=${rate.toFixed(2)} 머신수=${s.count} ` +
           `· 면좌석=W/E ${rows.WE} N/S ${rows.NS} ` +
-          `|| 최대 실부하 ${load.toFixed(1)}/s vs 벨트 ${fastest}/s${load > fastest ? "  ← 포화" : ""}`,
+          `|| 가장 많이 실린 줄 ${load.toFixed(1)}/s vs 한 줄의 상한 ${lineCap}/s${load > lineCap + 1e-9 ? "  ← 포화" : ""}`,
       );
     }
   }

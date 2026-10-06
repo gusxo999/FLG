@@ -204,9 +204,9 @@ export interface EdgeMachinesPerBeltLine {
  * 한 줄이 맡는 자식·부모는 각각 **연속 구간**이다. 좌표를 한 번도 안 보고 교차 불가가 나온다.
  *
  * ## 팔 수는 여기서 유도된다
- * `팔 수 = ceil(그 줄이 그 머신에서 싣는/내리는 rate ÷ 팔 하나의 실효 처리량)`([armsFor]).
- * 인서터의 실효 처리량은 이미 **가장 빠른 벨트에서 접혀** 있으므로([makeBuildSpec]) 팔 하나가
- * 벨트 한 줄을 넘길 수 없다.
+ * `팔 수 = ceil(그 줄이 그 머신에서 싣는/내리는 rate ÷ 인서터 운반량)`([armsFor]).
+ * 인서터 운반량은 사용자가 정한 값 그대로다 — 줄에 실린 양이 벨트 한 줄의 상한을 안 넘으므로
+ * 그 줄의 팔이 옮기는 양도 안 넘는다(값을 깎아서가 아니라 줄이 지킨다).
  *
  * 이 함수는 간선당 [packModuleTree] 안에서 **한 번만** 불린다(사전 캐시) — 자식(출력 emit)과
  * 부모(입력 emit)는 그 결과 [Link] 객체를 그대로 참조하므로 짝이 어긋날 수 없다.
@@ -237,16 +237,15 @@ export function edgeLinkGroups(
   const inserter = inserterForReach(config.inserters, 1);
   if (!inserter) return undefined; // 팔을 모르면 지어내지 않는다.
 
-  // **한 줄이 머신 한 대에게 줄 수 있는 최대** — 그 면의 좌석 수 × 팔 하나.
+  // **머신이 한 면에 가진 좌석 수** — 한 줄이 머신 한 대와 주고받는 최대(좌석 수 × 인서터 운반량)는 붓기가 낸다.
   // 좌석 수는 [faceSeatArms] 가 낸다 — 여기서 다시 유도하지 않는다(2026-08-23).
   // `fluidRows = 0` 은 **일부러 낙관**이다: 이 함수는 간선 하나만 보고 돌아서 그 줄이 어느
   // 면에 앉을지(= 그 면의 파이프가 몇 칸을 먹었는지) 알 수 없다. 좁힐지는 계측이 답한다
   // (`tempPlanDocs/배선-형태/judgements.md` J2 — 실패 0건이면 영구 폐기).
-  const seatCap = (h: number) => faceSeatArms(h, 0) * inserter.throughput;
   const limits = {
     inserter,
-    fromSeat: seatCap(child.machine.h),
-    toSeat: seatCap(parent.machine.h),
+    fromFaceSeats: faceSeatArms(child.machine.h, 0),
+    toFaceSeats: faceSeatArms(parent.machine.h, 0),
   };
   const carries: LinkCarry[] = flows.map((f) => ({
     from: f.fromMachine,

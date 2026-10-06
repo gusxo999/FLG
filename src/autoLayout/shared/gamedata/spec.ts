@@ -25,7 +25,7 @@
 import type { Entity, GameDataLookup } from "../../../types/gameData";
 import type { ContainerWizardInput } from "../types";
 import { inserterReach, inserterThroughput } from "../arith/inserter";
-import { beltThroughput, laneCapOfTier } from "../arith/belt";
+import { beltThroughput } from "../arith/belt";
 
 /** 사용자가 고른 인서터 하나 — 이름 + 게임데이터에서 뽑은 능력치. */
 export interface SpecInserter {
@@ -136,7 +136,8 @@ export interface BuildSpec {
  * 실측 모드팩에서 fast 10/s 대 long-handed 1.2/s — **8배**.
  *
  * **"출처는 하나"는 그대로다.** 바뀐 것은 그 출처가 **스칼라에서 함수로** 넓어진 것뿐이다.
- * 세는 쪽(팔 개수·그릇·머신 대수)과 놓는 쪽(`emitModule`)이 같은 인서터를 본다.
+ * 세는 쪽(줄에 다는 수 · 머신 대수의 어림)과 놓는 쪽(`emitModule`)이 같은 인서터를 본다.
+ * 여러 줄에 걸친 몫을 세는 것은 [armLoadsOf] 이고, 그것도 줄마다 이 함수를 부른다.
  *
  * 수요나 처리량을 모르면 `undefined` — 지어내지 않는다.
  */
@@ -151,6 +152,73 @@ export function armsFor(
 
 /** 부동소수 여유 — 수요가 처리량의 정확한 배수일 때 팔이 하나 더 붙는 것을 막는다. */
 const EPS_ARMS = 1e-9;
+
+/**
+ * **벨트 한 줄이 머신 한 대와 주고받는 최대**(초당) — 둘 중 작은 쪽이다.
+ *
+ * ```
+ * 벨트 한 줄의 상한          그 줄에 실리는 양 전부가 이것을 못 넘는다([laneCapOfTier])
+ * 면 좌석 수 × 인서터 운반량   벨트 한 줄은 면 하나에 눕고, 머신이 그 면에 가진 칸은 정해져 있다([faceSeatArms])
+ * ```
+ *
+ * 인서터가 양을 정하는 자리는 **여기 하나**다 — 인서터가 느려서 둘째 줄이 첫째 줄보다 작을 때뿐이다.
+ * 그 밖에는 벨트가 정한다. `faceSeats` 가 `undefined` 면 그 끝이 모듈 밖이라 좌석이 없다(상한도 없다).
+ */
+export function maxRatePerMachinePerLine(
+  beltLineCap: number,
+  faceSeats: number | undefined,
+  inserter: SpecInserter,
+): number {
+  return Math.min(
+    beltLineCap > 0 ? beltLineCap : Infinity,
+    faceSeats === undefined ? Infinity : faceSeats * inserter.throughput,
+  );
+}
+
+/**
+ * **머신 한 대의 한 품목 몫을 인서터들이 어떻게 나눠 옮기나** — 인서터마다 옮기는 양(큰 것부터).
+ *
+ * 몫을 줄 단위(`maxPerLine` — [maxRatePerMachinePerLine])로 자르고, 줄마다 [armsFor] 개의 인서터를 단다.
+ * 붓기([createLinks])가 머신 혼자 쓰는 줄에 하는 일과 같은 셈이다 — 그래서 **머신 대수를 정하기 전의 어림과
+ * 줄에 실제로 다는 수가 같은 식에서 나온다.** 목록의 길이가 인서터 수이고, 앞에서 `k` 개의 합이 인서터 `k` 개가
+ * 옮기는 양이다(자리가 모자라 다 못 앉힐 때 머신이 몇 % 로 도는지가 여기서 나온다 — `module/arith/arms`).
+ *
+ * 줄마다 따로 올리므로, 벨트 한 줄의 상한이 인서터 운반량의 정수배가 아니면 통째로 올린 수보다 많다
+ * (인서터 12/s · 한 줄 15/s · 몫 30/s → 줄 둘에 `12 + 3` 씩 넷. 통째로 올리면 셋인데 그 셋으로는 못 싣는다).
+ *
+ * 몫이나 인서터 운반량을 모르면 `undefined` — 지어내지 않는다.
+ */
+export function armLoadsOf(
+  share: number | undefined,
+  maxPerLine: number,
+  inserter: SpecInserter | undefined,
+): number[] | undefined {
+  if (share === undefined || !Number.isFinite(share)) return undefined;
+  if (!inserter || !(inserter.throughput > 0)) return undefined;
+  const perLine = maxPerLine > 0 ? maxPerLine : Infinity;
+  const loads: number[] = [];
+  let left = Math.max(0, share);
+  do {
+    const onLine = Math.min(left, perLine);
+    let rest = onLine;
+    for (let i = armsFor(onLine, inserter)!; i > 0; i--) {
+      const load = Math.max(0, Math.min(inserter.throughput, rest));
+      loads.push(load);
+      rest -= load;
+    }
+    left -= onLine;
+  } while (left > EPS_ARMS);
+  return loads.sort((a, b) => b - a);
+}
+
+/** **몫 → 인서터 수** — [armLoadsOf] 의 길이. 모르면 `undefined`. */
+export function armsForShare(
+  share: number | undefined,
+  maxPerLine: number,
+  inserter: SpecInserter | undefined,
+): number | undefined {
+  return armLoadsOf(share, maxPerLine, inserter)?.length;
+}
 
 /**
  * **면 좌석의 유일한 출처** — 머신 한 대의 **한 면**에 팔을 몇 개까지 앉힐 수 있나.
@@ -212,13 +280,6 @@ export function makeBuildSpec(input: ContainerWizardInput, gameData: GameDataLoo
   }
   const belts = [...byThroughput.values()].sort((a, b) => b.throughput - a.throughput);
 
-  // **팔 하나가 실을 수 있는 양의 상한 `B`** — 가장 빠른 벨트의 **레인 하나**.
-  //
-  // 줄 전체가 아니라 레인인 이유: 인서터는 **먼 레인 하나에만** 떨군다
-  // (`docs/factorio/belt-lane-semantics.md` ①). 팔 하나가 아무리 빨라도 그 레인보다 많이
-  // 실을 수 없다. 벨트를 하나도 안 골랐으면 상한이 없다(0) — 지어내지 않는다.
-  const beltCeiling = laneCapOfTier(belts[0]);
-
   /**
    * **기본 벨트 — 이름과 저울은 함께 온다**(2026-08-24 사장님 확정).
    *
@@ -236,18 +297,17 @@ export function makeBuildSpec(input: ContainerWizardInput, gameData: GameDataLoo
   // 고른 인서터 전부 → reach 별로 **가장 빠른 것 하나씩**. reach 가 같으면 두 인서터가
   // 같은 depth 의 벨트를 집으므로 벨트를 한 줄 더 세워주지 못한다 — 더 빠른 쪽만 쓴다.
   //
-  // **처리량은 `B` 에서 접는다**(2026-08-22 사장님 확정, 용어사전 §D "배선 형태 셋" 물리 2):
-  // *팔 하나가 벨트 한 줄보다 많이 나를 수는 없다.* 접는 자리가 여기 **하나**여서
-  // 소비처(armsFor·maxInsertersPerBelt·requiredInserterCount)는 아무것도 안 바꿔도 된다.
-  // 안 접으면 `그릇 = floor(벨트 ÷ 인서터)` 가 1로 접혀 벨트가 텅 빈 채로 깔리고,
-  // *"인서터 처리량 무한"* 같은 입력이 링크를 통째로 0으로 만든다(2026-08-21 battery 실측).
+  // **운반량은 사용자가 정한 값 그대로다 — 벨트 값으로 깎지 않는다**(2026-10-06 사용자).
+  // *인서터 하나가 벨트 한 줄보다 많이 나를 수 없다* 는 사실은 **줄이 지킨다**: 줄에 실린 양이 벨트 한 줄의
+  // 상한을 안 넘으니([createLinks] 의 붓기) 그 줄의 인서터가 옮기는 양도 안 넘는다. 2026-08-22 ~ 10-06 에는 여기서
+  // `min(운반량, 벨트 한 줄의 상한)` 으로 깎아 넣었다 — 머신 대수를 어림하는 쪽이 벨트를 몰라서였고, 지금은 그쪽이
+  // 벨트 한 줄의 상한을 직접 받는다([armLoadsOf]).
   const byReach = new Map<number, SpecInserter>();
   for (const entityName of input.selectedInserters) {
     const entity = entityMap.get(entityName);
     const reach = inserterReach(entity);
     if (reach < 1) continue;
-    const raw = inserterThroughput(entity, input.inserterOverrides?.[entityName]);
-    const throughput = beltCeiling > 0 ? Math.min(raw, beltCeiling) : raw;
+    const throughput = inserterThroughput(entity, input.inserterOverrides?.[entityName]);
     const cur = byReach.get(reach);
     if (!cur || throughput > cur.throughput) byReach.set(reach, { entityName, reach, throughput });
   }

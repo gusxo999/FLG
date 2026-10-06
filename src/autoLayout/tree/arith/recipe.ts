@@ -170,7 +170,7 @@ export interface NodeMachineParams {
    *
    * 순환하지 않는다: 비율은 **전속력 기준 수요**로 정하고, 그렇게 앉힌 팔이 나르는 양이 곧
    * 실제 수요다 — 자기 자신과 일치한다. 그리고 팔 개수는 머신 수와 무관하므로
-   * ([requiredInserterCount]) 머신 수를 늘려도 비율이 안 바뀐다.
+   * (머신 한 대의 몫에서 나온다 — `shared/gamedata/spec.armLoadsOf`) 머신 수를 늘려도 비율이 안 바뀐다.
    */
   speedFraction?: number;
 }
@@ -217,7 +217,7 @@ export function perMachineItemsPerSec(
  *  - 출력: 제작 횟수 × [[productYield]] × productivityMultiplier.
  *
  * **수량을 모르면 `undefined`** 를 낸다. 호출부(`run/gamedata.nodeSpecsOf`)는 그 줄을 `lineRates` 에 아예
- * 안 넣고, `requiredInserterCount` 가 `rate === undefined` → **판정 보류(1개)** 한다.
+ * 안 넣고, 붓기는 양을 모르는 줄을 **만들지 않는다**(`module/arith/link.externalLineGroups`).
  */
 export function clusterLineRate(
   recipe: Recipe,

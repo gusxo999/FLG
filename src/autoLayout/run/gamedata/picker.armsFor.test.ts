@@ -2,8 +2,8 @@
  * **팔 개수의 출처는 하나여야 하고, 그 출처는 `깊이 → 처리량` 함수다**
  * ([armsFor], 2026-08-15 — 계획서 §16).
  *
- * 이 수를 세 곳이 쓴다 — 머신을 몇 대 놓을지([machineSpeedFraction]), 팔을 몇 개 놓을지
- * ([requiredInserterCount]), 한 벨트에 몇 개 앉힐지(그릇). 세 곳이 **각자 유도**하던 시절에
+ * 이 수를 두 곳이 쓴다 — 머신을 몇 대 놓을지([machineSpeedFraction])와 줄에 팔을 몇 개 달지(붓기 — [createLinks]).
+ * 예전엔 셋이었다(한 벨트에 몇 개 앉힐지 — 그릇 — 까지). 세 곳이 **각자 유도**하던 시절에
  * 규칙을 두 곳에서만 바꾸자 나머지 하나가 옛 값에 남아 서로 다른 속도를 믿었다(2026-07-23).
  * **"출처는 하나" 는 그대로다** — 바뀐 것은 그 출처가 **스칼라에서 함수로** 넓어진 것뿐이다.
  *
@@ -19,13 +19,15 @@
  *  - 빠르게 셈 → 팔 부족 → 배치는 "성공"이라 보고하고 **게임에 넣어야 안다**.
  */
 import { describe, it, expect } from "vitest";
-import { armsFor, faceSeatArms, inserterForReach, type SpecInserter } from "../../shared/gamedata/spec";
+import { armsFor, faceSeatArms, inserterForReach, type SpecBelt, type SpecInserter } from "../../shared/gamedata/spec";
 import { machineSpeedFraction } from "./picker";
 import type { Entity, Recipe } from "../../../UI/store/gameDataStore";
 
 /** 실측 모드팩 값 — fast 10/s, long-handed 1.2/s (8배 차이). */
 const FAST: SpecInserter = { entityName: "fast-inserter", reach: 1, throughput: 10 };
 const LONG: SpecInserter = { entityName: "long-handed-inserter", reach: 2, throughput: 1.2 };
+/** 익스프레스 45/s — 한 줄(레인 하나) 22.5/s. */
+const EXPRESS: SpecBelt[] = [{ entityName: "express-transport-belt", throughput: 45 }];
 
 describe("inserterForReach — 벨트 칸이 인서터를 지목한다", () => {
   it("reach 로 찾는다 — `clusterBeltDepth = 1 + reach` 의 역방향", () => {
@@ -111,25 +113,60 @@ describe("machineSpeedFraction — 자리가 넉넉하면 굶었다고 하지 �
   const SPEED = 4;
 
   it("7×7 머신에 팔 4개 — 14행이 있으니 100% 로 돈다 (undefined = 굶지 않음)", () => {
-    expect(machineSpeedFraction(krSand, pulveriser, SPEED, [FAST, LONG])).toBeUndefined();
+    expect(machineSpeedFraction(krSand, pulveriser, SPEED, [FAST, LONG], EXPRESS)).toBeUndefined();
   });
 
   it("긴팔이 목록에 있든 없든 답이 같다 — 이 함수는 **폴백(다이렉트)** 을 모델한다", () => {
-    const withLong = machineSpeedFraction(krSand, pulveriser, SPEED, [FAST, LONG]);
-    const without = machineSpeedFraction(krSand, pulveriser, SPEED, [FAST]);
+    const withLong = machineSpeedFraction(krSand, pulveriser, SPEED, [FAST, LONG], EXPRESS);
+    const without = machineSpeedFraction(krSand, pulveriser, SPEED, [FAST], EXPRESS);
     expect(withLong).toBe(without);
   });
 
   it("reach 1 을 하나도 안 고르면 답할 수 없다 — 좌석에 앉을 팔이 없다", () => {
-    expect(machineSpeedFraction(krSand, pulveriser, SPEED, [LONG])).toBeUndefined();
+    expect(machineSpeedFraction(krSand, pulveriser, SPEED, [LONG], EXPRESS)).toBeUndefined();
   });
 
   it("진짜로 자리가 모자라면 여전히 정직하게 비율을 낸다", () => {
     // 1×1 머신(좌석 2행)에 아주 빠른 레시피 → 팔이 2개를 넘는다.
     const tiny = { tile_height: 1, tile_width: 1 } as Entity;
-    const f = machineSpeedFraction(krSand, tiny, 20, [FAST]);
+    const f = machineSpeedFraction(krSand, tiny, 20, [FAST], EXPRESS);
     expect(f).toBeDefined();
     expect(f!).toBeLessThan(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **어림은 벨트를 함께 본다**(2026-10-06). 팔 수는 몫이 벨트 몇 줄에 나뉘느냐에 달렸다 — 줄마다 따로 올린다.
+// 예전엔 `팔 수 × 인서터 운반량 ≥ 몫` 으로 통째로 셌고, 벨트의 한도는 인서터 값에 미리 깎아 넣어 대신했다.
+// 벨트 한 줄의 상한이 인서터 운반량의 정수배가 아닐 때 그 셈이 줄에 실제로 다는 수보다 적었다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("machineSpeedFraction — 벨트 한 줄의 상한이 팔 수를 가른다", () => {
+  const assembler = { tile_height: 3, tile_width: 3 } as Entity; // W/E 두 면에 좌석 6행
+  /** 1초에 재료 30 → 산출 30. crafting_speed 1 → 초당 30 · 30. */
+  const heavy = {
+    name: "heavy",
+    energy_required: 1,
+    ingredients: [{ name: "ore", amount: 30, type: "item" }],
+    products: [{ name: "heavy", amount: 30, type: "item", probability: 1 }],
+  } as unknown as Recipe;
+  /** 벨트 30/s — 한 줄(레인 하나) 15/s. 몫 30/s 는 줄 둘에 15씩 실린다. */
+  const BELT30: SpecBelt[] = [{ entityName: "fast-transport-belt", throughput: 30 }];
+  const ins = (throughput: number): SpecInserter[] => [{ entityName: "i", reach: 1, throughput }];
+
+  it("인서터 12/s — 줄마다 `12 + 3` 둘씩 넷, 재료와 산출을 합쳐 여덟이라 6행에 다 못 앉는다 → 90%", () => {
+    // 통째로 세면 3 + 3 = 6 이라 *다 앉는다* 고 답했다(2026-10-06 실측: 배치는 8개를 놓으려고 위 · 아래 면까지 썼다).
+    // 셋씩만 앉으면 줄마다 12 + 12 + 3 = 27/s → 27 ÷ 30.
+    expect(machineSpeedFraction(heavy, assembler, 1, ins(12), BELT30)).toBeCloseTo(0.9, 9);
+  });
+
+  it("인서터가 벨트 한 줄보다 빠르면 줄마다 하나 — 넷이라 다 앉는다(대조군 · 값을 아무리 키워도 같다)", () => {
+    for (const tp of [15, 100, Infinity]) {
+      expect(machineSpeedFraction(heavy, assembler, 1, ins(tp), BELT30), `인서터 ${tp}/s`).toBeUndefined();
+    }
+  });
+
+  it("벨트 한 줄이 인서터 운반량의 정수배면 통째로 센 것과 같다(대조군) — 5/s 는 여섯씩, 셋만 앉아 50%", () => {
+    expect(machineSpeedFraction(heavy, assembler, 1, ins(5), BELT30)).toBeCloseTo(0.5, 9);
   });
 });
 

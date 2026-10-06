@@ -107,9 +107,9 @@ export const runLayeredWizard: RunContainerWizard = async (
           expanded,
           input.countMode.perTarget,
           recipeMap,
-          // 인서터를 함께 넘겨 **굶주림 보상**을 켠다 — 팔을 다 앉힐 자리가 없는 머신은
+          // 고른 인서터 · 벨트를 함께 넘겨 **굶주림 보상**을 켠다 — 팔을 다 앉힐 자리가 없는 머신은
           // 그만큼만 돌므로(speedFraction), 부족분만큼 머신이 더 놓인다.
-          makeMachineParamsLookup(input.selectedMachines, makeBuildSpec(input, gameData).inserters, gameData),
+          makeMachineParamsLookup(input.selectedMachines, makeBuildSpec(input, gameData), gameData),
         );
 
   if (!tree.recipeName) {
