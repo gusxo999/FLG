@@ -285,7 +285,7 @@ export function planModulePorts(
 }
 
 /**
- * **몸통을 계획에 옮겨 적는다** — 잠수 기록([DiveRecord] — `FaceTable.dives`)에서 그 줄의 주인 번호로 찾는다.
+ * **몸통을 계획에 옮겨 적는다** — 지하 횡단 기록([DiveRecord] — `FaceTable.dives`)에서 그 줄의 주인 번호로 찾는다.
  * 몸통이 없으면 계획을 그대로 돌려준다(오늘과 같은 지면 띠). 새 객체로 낸다 — 굳힌 좌석의 계획은 안 바꾼다.
  */
 function withTunnels(ctx: LinkFaceContext, p: LinkFacePlan | undefined): LinkFacePlan | undefined {
@@ -296,7 +296,7 @@ function withTunnels(ctx: LinkFaceContext, p: LinkFacePlan | undefined): LinkFac
 }
 
 /**
- * **gap 출구의 잠수를 계획에 적는다** — 출구 옆면(싣는 쪽 W · 집는 쪽 E)을 그 gap 에서 땅 위로 지나는 가장 깊은 깊이
+ * **gap 출구의 지하 횡단을 계획에 적는다** — 출구 옆면(싣는 쪽 W · 집는 쪽 E)을 그 gap 에서 땅 위로 지나는 가장 깊은 깊이
  * ([sideCrossingsFromPlans])가 있으면 `exitDive` 로 싣는다. 없으면 계획을 그대로 돌려준다(오늘 도형). 새 객체로 낸다.
  *
  * 종류는 좌석 때 자격으로 이미 받았다(`undergroundName` — `module/policy/link.tryLinkFace` ③′). 그 자격이 입력만으로 아는 상한을

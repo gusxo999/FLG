@@ -28,6 +28,19 @@ import type { PerimeterExitPlan } from "../../perimeter/types";
  *
  * **`ROW_GAP`(기둥 *안* 머신 간격)과 다르다** — 이건 모듈 *사이* 간격이다.
  */
+/**
+ * **행 채널의 가로선이 덮는 열** — 직진 반출이 그 행 채널을 세로로 꿰는지 보는 재료(수요 기준 — 배정에서 밀린 끝도 센다).
+ *
+ * 가로선은 언제나 열의 한쪽 변까지 뻗는다 — 서쪽으로 가는 끝(자식 쪽)은 `[0, x]`, 동쪽으로 가는 끝(부모 쪽)은 `[x, 동쪽 변]`.
+ * 그래서 두 수로 충분하다: 서쪽으로 가는 끝 중 **가장 동쪽 상자**와, 동쪽으로 가는 끝 중 **가장 서쪽 상자**.
+ */
+export interface RowChannelCover {
+  /** 서쪽으로 가는 가로선이 덮는 `[0, west]` — 없으면 -1. */
+  west: number;
+  /** 동쪽으로 가는 가로선이 덮는 `[east, 열의 동쪽 변]` — 없으면 `Infinity`. */
+  east: number;
+}
+
 export interface RowChannel {
   /** 이 행 채널이 속한 깊이(열). */
   depth: number;
@@ -250,9 +263,11 @@ export interface PackChannelGeometry {
   /**
    * **관측 — 채널 장부가 실제로 무엇을 했나.** 깊이마다의 [ChannelGeometryPlan] 을 더한 것.
    * `crossingYields` = 완전 교차에서 땅 위를 내준 경로 수 · `greedyChannels` = 지상 탐색이 해를 못 찾아 탐욕으로 간
-   * 채널 수 · `channels` = 그 분모(장부가 돈 채널 수) · `fluidDives` = 지하파이프로 건넌 유체 납품 수.
+   * 채널 수 · `channels` = 그 분모(장부가 돈 채널 수) · `fluidDives` = 지하파이프로 건넌 유체 납품 수 ·
+   * `exportDives` = 땅속으로 건넌 반출 수(지하벨트 · 지하파이프) · `widenedTracks` = 건너는 쪽에게 자리를 만들려고 끼운 트랙 수 ·
+   * `rowChannelCrossings` = **행 채널**에서 끝이 엇갈려 행을 못 받은 끝 수(그 납품은 계획을 접는다 — 행 채널의 지하 횡단 전까지).
    */
-  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number };
+  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number; exportDives: number; widenedTracks: number; rowChannelCrossings: number };
 }
 
 export interface PackResult {

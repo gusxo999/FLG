@@ -20,7 +20,7 @@ import { moduleExtent } from "../../module/shape/transform";
 import { planPerimeterExits } from "../policy";
 import type { ExitContext, PerimeterExitPlan, ExitPortInput, ExitEdge } from "../types";
 import { PERIMETER_MARGIN } from "../../shared/grid";
-import type { NodeSpec } from "../../tree/types/pack";
+import type { NodeSpec, RowChannelCover } from "../../tree/types/pack";
 
 /** marginNeeds 만큼 bbox 프레임을 넓힌다(상자 seat 자리 예약, ②가 소비). */
 export function expandBbox(
@@ -49,8 +49,8 @@ export function planExits(
    * **여기서 다시 계산하지 않고 받는다** — 같은 사실을 두 주체가 두 번 세면 언젠가 어긋난다.
    */
   orderByDepth: ReadonlyMap<number, readonly string[]>,
-  /** [rowChannelKey] → 그 행 채널의 가로 트랙이 덮는 **최대 로컬 x**(수요 기준). */
-  rowChannelReach: ReadonlyMap<string, number>,
+  /** 행 채널 신원(`tree/arith/pack.rowChannelIdOf`) → 그 행 채널의 가로선이 덮는 열(수요 기준). */
+  rowChannelCover: ReadonlyMap<string, RowChannelCover>,
 ): PerimeterExitPlan {
   // **열 요약은 모듈이 낸다** — 여기서 다시 훑지 않는다. `moduleWayOuts` 를 만드는 그
   // 계산이 함께 실어 보낸 값이라([fillModuleWayOuts]), 두 답이 같은 순간의 같은 몸통을
@@ -82,6 +82,7 @@ export function planExits(
           moduleId: s.id,
           localX: p.anchor.x - ext.x,
           role: p.line.role,
+          fluid: p.line.kind === "pipe" ? p.line.name : undefined,
           depth: s.depth,
           side: sideOf(p),
           anchorY: absPortY(s.id, p.anchor.y),
@@ -92,7 +93,7 @@ export function planExits(
     globalY: { min: gyMin, max: gyMax },
     maxDepth,
     grid: { orderByDepth, maxDepth },
-    rowChannelReach,
+    rowChannelCover,
     moduleBodyColumns,
   };
   return planPerimeterExits(ports, ctx);

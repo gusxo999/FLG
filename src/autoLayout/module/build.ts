@@ -231,7 +231,7 @@ function layFluidLines(input: ModuleInput, body: ModuleBody, sheet: ModuleSheet,
 function finishModule(input: ModuleInput, body: ModuleBody, sheet: ModuleSheet, plan: ModulePortPlan): GeneratedModule {
   resolveBeltTermini({
     termini: sheet.termini, beltItems: sheet.beltItems, undergroundBelts: input.undergroundBelts, merges: sheet.beltMerges,
-    cells: sheet.cells, // 잠수 입출구 — 종착이 같은 열 앞쪽의 같은 종류를 피한다(T4)
+    cells: sheet.cells, // 지하 횡단 입출구 — 종착이 같은 열 앞쪽의 같은 종류를 피한다(T4)
   });
   const bodyColumns = fillModuleWayOuts(body.machines, sheet.cells, [...sheet.inputPorts, ...sheet.outputPorts]);
   return {

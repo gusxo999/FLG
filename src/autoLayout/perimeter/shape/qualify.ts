@@ -12,7 +12,8 @@
  */
 
 import type { PortFace } from "../../shared/types";
-import { regionsAlong, reachesOutside, rowChannelKey } from "./rays";
+import { regionsAlong, reachesOutside } from "./rays";
+import { rowChannelIdOf } from "../../tree/arith/pack";
 import type { ExitContext, ExitEdge, ExitOption, ExitPortInput } from "../types";
 
 /**
@@ -67,12 +68,9 @@ export function directOptionOf(p: ExitPortInput, e: ExitEdge, ctx: ExitContext, 
     //    남는 질문은 하나 — *"내가 설 그 한 열이 비었나?"*
     //    통로를 넓혀도 안 풀린다(가로줄을 더 줘도 내 세로 열은 그대로 밟힌다).
     if (r.kind === "rowChannel") {
-      const reach = Math.max(
-        r.above === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "above", r.above)) ?? -1,
-        r.below === undefined ? -1 : ctx.rowChannelReach.get(rowChannelKey(r.depth, "below", r.below)) ?? -1,
-      );
-      // 가로 트랙이 `[0, reach]` 를 덮는다 → 밟는다.
-      if (p.localX <= reach) return no(e, `행채널관통(d${r.depth})`);
+      // 가로선이 `[0, west]`(서쪽으로 가는 끝)나 `[east, 동쪽 변]`(동쪽으로 가는 끝)을 덮는다 → 그 안이면 밟는다.
+      const cover = ctx.rowChannelCover.get(rowChannelIdOf(r));
+      if (cover && (p.localX <= cover.west || p.localX >= cover.east)) return no(e, `행채널관통(d${r.depth})`);
     }
   }
   return { exitEdge: e, exitMode: { kind: "direct" }, wayOut: e };

@@ -82,7 +82,7 @@ export function gapRowsFromPlans(count: number, plans: (LinkFacePlan | undefined
 
 /**
  * **gap 벨트가 어느 옆면으로 빠져나가나** — 그 면의 좌석 줄(d1)과 그 바깥 줄(d2)을 포트 끝
- * (인서터·상자)이 먹는다는 뜻이다. 출구가 잠수하면([LinkFacePlan.exitDive]) d1 은 지하벨트 입출구가 먹는다 — 같은 칸이다.
+ * (인서터·상자)이 먹는다는 뜻이다. 출구가 지하 횡단하면([LinkFacePlan.exitDive]) d1 은 지하벨트 입출구가 먹는다 — 같은 칸이다.
  *
  * 왜 이 값이 필요한가 — **트렁크 파이프와 자리를 다투기 때문이다.** 점프하지 않는 파이프는
  * 좌석 줄을 기둥 전체로 훑는데(`emitTrunkPipe` 의 d1 직선), gap 벨트의 포트 끝이 그 줄의 gap
@@ -127,7 +127,7 @@ export function gapExitSidesFromPlans(
  * 반환: `${면}:${gap}` → 그 gap 에서 그 면을 땅 위로 지나는 **가장 깊은 깊이**. 지나는 것이 없으면 키가 없다.
  * 벨트를 공유한 줄(`sharesBelt`)은 자기 칸이 없어 안 센다 — 첫 줄의 도형이 이미 셌다.
  *
- * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
+ * 누가 들어가나의 기준은 docs/auto-layout/common/layout-models.md §3.5(두점 라우팅 제4조 ③ — 상대가 많은 쪽 · 매체마다 규칙)다.
  */
 export function sideCrossingsFromPlans(
   rowsPerMachine: number,
@@ -162,7 +162,7 @@ export function sideCrossingsFromPlans(
 }
 
 /**
- * **gap 출구가 옆면에서 건널 수 있는 가장 깊은 깊이 — 입력만으로 아는 상한.** 출구의 잠수 자격이 이 값을 본다
+ * **gap 출구가 옆면에서 건널 수 있는 가장 깊은 깊이 — 입력만으로 아는 상한.** 출구의 지하 횡단 자격이 이 값을 본다
  * (`module/policy/link.tryLinkFace` ③′ — `trunk-blocked.md` §4.2).
  *
  * 옆면 칸이 gap 행을 지나는 깊이는 줄의 벨트 깊이([clusterBeltDepthsOf])이고, 그 면에 합류 쌍이 앉을 수 있으면(`merges`)
@@ -188,9 +188,9 @@ export function sideCrossBound(
  * 끊겨도 겹침도 미배치도 아니라 **아무도 못 알아챈다** — 2026-08-05 의 gap 벨트 사고와
  * 같은 종류다([gapExitSidesFromPlans]).
  *
- * **gap(N/S) 스필은 잠수할 때만 센다.** 잠수하지 않는 출구의 포트 끝은 옆면의 d1·d2 에 앉는데 [ClusterPipe] 는
+ * **gap(N/S) 스필은 지하 횡단할 때만 센다.** 지하 횡단하지 않는 출구의 포트 끝은 옆면의 d1·d2 에 앉는데 [ClusterPipe] 는
  * 최소 d3 이라 부딪히지 않는다. 그리고 *"그 면의 좌석 줄을 먹는다"* 는 사실은 [gapExitSidesFromPlans] 가 이미 따로
- * 전한다(점프 조건 ④) — 여기서 또 세면 답은 안 바뀌고 폭만 넓어진다. **잠수하는 출구**([LinkFacePlan.exitDive])는
+ * 전한다(점프 조건 ④) — 여기서 또 세면 답은 안 바뀌고 폭만 넓어진다. **지하 횡단하는 출구**([LinkFacePlan.exitDive])는
  * 포트 상자가 출구 옆면 d`exitDive + 3` 까지 나간다 — 합류 쌍의 비켜 가는 열(깊이 +2)을 건너면 그 옆면 줄들의 포트 끝보다
  * 깊어서 [ClusterPipe] 와 부딪힐 수 있다(`trunk-blocked.md` §4.2). 그래서 그 깊이를 출구 옆면(`gapExits` — 싣는 쪽 W ·
  * 집는 쪽 E)에 센다.

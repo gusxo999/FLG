@@ -81,8 +81,8 @@ export const en: Translations = {
     inserterHelp: 'Pick the inserters you want.',
     beltHelp: 'Pick the belts you want.',
     undergroundBeltHelp:
-      'Pick the underground belts you want (optional). Used to bypass when normal belts cannot route through tight spaces.',
-    pipeHelp: 'Pick the underground pipes you want (optional).',
+      'Pick the underground belts you want (required). Where two routes must cross, one of them passes under the other.',
+    pipeHelp: 'Pick the underground pipes you want (required). Without one, recipes that use fluids are not laid out.',
 
     noCandidates: 'No candidates available for {what}',
 

@@ -35,14 +35,16 @@
  */
 
 import type { ModulePort } from "../module/types/module";
-import type { Container, PlacedCell, PortPair } from "../shared/types";
+import type { Container, PlacedCell, PortPair, UndergroundCorridor } from "../shared/types";
 import { cellKey, faceVector, vectorToDirection , PERIMETER_MARGIN } from "../shared/grid";
 import { makeBeltCell, makeInserterCell, makeContainerCell, makePipeCell } from "../shared/cells/builder";
+import { emitFluidPath, emitItemPath } from "../shared/cells/path";
+import { isJumpAllowed, type DijkstraResult } from "../shared/route";
 import { moduleExtent } from "../module/shape/transform";
 import type { PackResult } from "../tree/types/pack";
 import { seatIsBeltFeeder } from "../module/shape/body";
 import type { ExitAssignment } from "./types";
-import { routePortToPerimeter, type Rect } from "./shape/router";
+import { routePortToPerimeter, undergroundCellsOf, type JumpPair, type Rect } from "./shape/router";
 import { collectPipeFlow, pipeFlowConflict, type PipeFlow, type PipeFlowPipe } from "../shared/pipeFlow";
 import { AUTO_LAYOUT_COORD_DUMP } from "../shared/flags";
 
@@ -51,6 +53,14 @@ export interface PerimeterPassConfig {
   inserterEntityName: string;
   /** 파이프 prototype — 유체 포트 반출에 쓴다. 유체가 없으면 안 쓰인다. */
   pipeEntityName?: string;
+  /** 지하벨트 · 지하파이프 — 통로 장부가 반출을 땅속으로 들여보냈을 때(`ExitAssignment.jumps`) 쓴다. */
+  undergroundBeltEntityName?: string;
+  undergroundPipeEntityName?: string;
+  /**
+   * 이미 깔린 지하 corridor(납품 · 모듈 종착) — 반출의 땅속 짝이 같은 줄 위에서 남과 갈리지 않나 깔기 전에 본다.
+   * 계획이 이미 봤으므로 걸리면 계획 밖의 무엇(탐색으로 내려간 납품 등)이 그 줄에 섰다는 뜻이다 — skip 하고 사유를 남긴다.
+   */
+  seedCorridors?: readonly UndergroundCorridor[];
   /**
    * [파이프 합류 가드](../shared/pipeFlow.ts) — **유체 이름별** 금지 칸 지도. 반출 파이프가
    * 남의 관망·남의 머신 유체 상자에 닿는 걸 막는다(파이프는 방향이 없어 닿으면 무조건 합쳐진다).
@@ -74,6 +84,8 @@ export interface ChestRelocation {
   origin: { x: number; y: number };
   /** 이 상자를 위해 깐 belt(라우팅 belt-following placed 에 트렁크 spine 뒤로 붙는다). */
   belts: PlacedCell[];
+  /** 이 상자의 반출이 깐 지하 corridor — 땅속으로 건넜을 때만 있다. */
+  corridors: UndergroundCorridor[];
 }
 
 export interface PerimeterPassResult {
@@ -102,6 +114,8 @@ export interface PerimeterPassResult {
   addedCells: PlacedCell[];
   /** 상자별 이사 결과(origin·belts). */
   relocations: ChestRelocation[];
+  /** 반출이 깐 지하 corridor 전부 — `run/emit` 이 Area 에 기록한다(납품의 corridor 와 같은 규약). */
+  corridors: UndergroundCorridor[];
 }
 
 /**
@@ -161,6 +175,71 @@ function layPipePath(
   const n = path.length - 1; // 무한파이프가 앉는 index
   const belts = path.slice(0, n).map((cell) => makePipeCell(cell, pipeEntityName, pair));
   return { belts, feeder: null, chestCell: makeContainerCell(chest, path[n]) };
+}
+
+/**
+ * 땅속 구간을 뺀 칸을 **체인**으로 — 이웃 칸은 땅 위 edge, 점프로 떨어진 칸은 점프 edge. 납품 방출과 같은 찍기
+ * (`emitItemPath` · `emitFluidPath`)가 이 체인을 받아 입구 · 출구의 방향과 corridor 를 정한다.
+ */
+function chainOf(cells: readonly { x: number; y: number }[], under: ReadonlySet<string>): DijkstraResult {
+  const kept = cells.filter((c) => !under.has(cellKey(c.x, c.y)));
+  const edges: DijkstraResult["edges"] = [];
+  for (let i = 0; i + 1 < kept.length; i++) {
+    const dx = kept[i + 1].x - kept[i].x;
+    const dy = kept[i + 1].y - kept[i].y;
+    const k = Math.abs(dx) + Math.abs(dy);
+    edges.push(k === 1 ? "surface" : { dx: Math.sign(dx), dy: Math.sign(dy), k });
+  }
+  return { cells: kept, edges, cost: kept.length };
+}
+
+/**
+ * [layBeltPath] 의 땅속판 — 통로 장부가 이 반출을 땅속으로 들여보냈다. 벨트 칸은 납품과 같은 찍기로 깔고(지하벨트의
+ * 입구 · 출구 · corridor), 피더 · 상자는 [layBeltPath] 그대로다. **흐름이 경로와 반대인 입력**은 체인을 뒤집어 깐다 —
+ * 입구는 흐름이 들어가는 쪽이다.
+ */
+function layBeltPathWithJumps(
+  path: { x: number; y: number }[],
+  trunkNeighbor: { x: number; y: number },
+  isInput: boolean,
+  chest: Container,
+  jumps: readonly JumpPair[],
+  config: PerimeterPassConfig,
+): { belts: PlacedCell[]; feeder: PlacedCell; chestCell: PlacedCell; corridors: UndergroundCorridor[] } {
+  const pair = pairFor(chest.id);
+  const n = path.length - 1;
+  const beltCells = path.slice(0, n - 1); // 0..n-2 — 피더(n-1) · 상자(n) 앞까지
+  const under = undergroundCellsOf(jumps);
+  // 마지막 벨트가 향할 곳 — 출력은 피더, 입력은 트렁크 헤드. emitItemPath 는 마지막 칸을 `-consumerOut` 으로 놓는다.
+  const ordered = isInput ? [...beltCells].reverse() : beltCells;
+  const last = ordered[ordered.length - 1];
+  const target = isInput ? trunkNeighbor : path[n - 1];
+  const emitted = emitItemPath(
+    chainOf(ordered, under),
+    pair,
+    { beltEntityName: config.beltEntityName, undergroundBeltEntityName: config.undergroundBeltEntityName },
+    { x: last.x - target.x, y: last.y - target.y },
+  );
+  const feederCell = path[n - 1];
+  const pickupTarget = isInput ? path[n] : path[n - 2];
+  const pickup = { x: Math.sign(pickupTarget.x - feederCell.x), y: Math.sign(pickupTarget.y - feederCell.y) };
+  const feeder = makeInserterCell(feederCell, pickup, config.inserterEntityName, pair);
+  return { belts: emitted.placed, feeder, chestCell: makeContainerCell(chest, path[n]), corridors: emitted.corridors };
+}
+
+/** [layPipePath] 의 땅속판 — 파이프 칸은 납품과 같은 찍기(지하파이프 입구 · 출구 · corridor), 끝에 무한파이프. */
+function layPipePathWithJumps(
+  path: { x: number; y: number }[],
+  chest: Container,
+  jumps: readonly JumpPair[],
+  config: PerimeterPassConfig,
+): { belts: PlacedCell[]; feeder: null; chestCell: PlacedCell; corridors: UndergroundCorridor[] } {
+  const n = path.length - 1;
+  const emitted = emitFluidPath(chainOf(path.slice(0, n), undergroundCellsOf(jumps)), pairFor(chest.id), {
+    pipeEntityName: config.pipeEntityName!,
+    undergroundPipeEntityName: config.undergroundPipeEntityName,
+  });
+  return { belts: emitted.placed, feeder: null, chestCell: makeContainerCell(chest, path[n]), corridors: emitted.corridors };
 }
 
 /** makeBeltCell/makeInserterCell 의 entityId 생성용 최소 PortPair. */
@@ -223,6 +302,8 @@ export function rePathToPerimeter(
   const droppedCellKeys = new Set<string>();
   const addedCells: PlacedCell[] = [];
   const relocations: ChestRelocation[] = [];
+  /** 반출이 깐 지하 corridor — 뒤 반출의 땅속 짝도 이것과 안 갈려야 한다. */
+  const corridors: UndergroundCorridor[] = [];
   /** 이 패스가 이미 깐 반출 파이프 — 뒤에 나가는 **다른 유체**가 여기 붙지 않게 한다. */
   const laidPipes: PipeFlowPipe[] = [];
   let relocated = 0;
@@ -275,7 +356,8 @@ export function rePathToPerimeter(
 
     // 예약 배정을 **그대로 재생**한다(탐색 없음).
     //
-    // 여기서 탐색 폴백을 두지 않는 것이 핵심이다. 예약은 [ModulePort.moduleWayOuts] 로
+    // 여기서 탐색 폴백을 두지 않는 것이 핵심이다 — **예외 하나**: 환승은 예약 트랙이 막혔거나 없으면
+    // [routePortToPerimeter] 가 진입 방향으로 트랙을 훑는다(결함으로 적혀 있다 — docs layout-models §3.5). 예약은 [ModulePort.moduleWayOuts] 로
     // "모듈 몸통에 안 막히는 방향"만 골라 배정하고([perimeterExitPlanner]), 채널 구간은
     // 장부가 비워두므로 — **예약된 경로는 항상 방출 가능**해야 한다(예약 철학).
     // 따라서 실패는 "탐색으로 우회할 일"이 아니라 **예약 불변식이 깨졌다는 신호**다.
@@ -285,9 +367,10 @@ export function rePathToPerimeter(
       face: port.face,
       perimeter,
       obstacles: occ,
-      hint: { exitEdge: asg.exitEdge, exitMode: asg.exitMode, trackX: asg.trackX },
+      hint: { exitEdge: asg.exitEdge, exitMode: asg.exitMode, trackX: asg.trackX, jumps: asg.jumps },
     });
     if (!res.ok) { fail(port.chest.id, `reservation not emittable: ${res.reason}`); continue; }
+    const jumps = res.jumps ?? [];
 
     const isFluid = port.line.kind === "pipe";
     // layBeltPath 입력 = [anchor, ...외곽경로]. anchor(옛 상자 자리)만 비운다 — seat 인서터는
@@ -312,6 +395,17 @@ export function rePathToPerimeter(
 
     const isInput = port.line.role === "input";
     if (isFluid && !config.pipeEntityName) { fail(port.chest.id, "no pipe prototype"); continue; }
+    if (jumps.length > 0) {
+      // 땅속으로 건넌다 — 그 매체의 지하 prototype 이 있어야 하고(위저드가 필수로 받는다 — 없으면 계획이 안 들여보낸다),
+      // 같은 줄 위의 남의 짝과 갈리면 안 된다(같은 무리만 — 지하벨트끼리 · 지하파이프끼리).
+      const ugName = isFluid ? config.undergroundPipeEntityName : config.undergroundBeltEntityName;
+      if (!ugName) { fail(port.chest.id, `no underground prototype for planned jumps`); continue; }
+      const kind: UndergroundCorridor["kind"] = isFluid ? "pipe" : "belt";
+      const sameKind = [...(config.seedCorridors ?? []), ...corridors].filter((c) => c.kind === kind);
+      const clash = jumps.find((j) => !isJumpAllowed(j.from.x, j.from.y, j.to.x, j.to.y, sameKind));
+      if (clash) { fail(port.chest.id, `jump pairing (${clash.from.x},${clash.from.y})→(${clash.to.x},${clash.to.y})`); continue; }
+    }
+    const under = undergroundCellsOf(jumps);
 
     // [파이프 합류 가드] — 이 반출 파이프가 **이으면 안 될 것**에 닿는지 깔기 전에 본다.
     // 두 출처를 겹쳐 본다: (1) 배치 시점의 지도(남의 트렁크·남의 머신 유체 상자), (2) 이
@@ -320,18 +414,25 @@ export function rePathToPerimeter(
     // 걸리면 그 상자만 skip — 로컬 ring 에 트렁크째 남으므로 물류는 정상이다(회귀 0).
     if (isFluid) {
       const fluid = port.line.name;
+      // 땅속 칸은 파이프가 아니다 — 닿을 것이 없다.
+      const surface = path.filter((c) => !under.has(cellKey(c.x, c.y)));
       const hit =
-        (config.pipeFlow ? pipeFlowConflict(path, config.pipeFlow.get(fluid) ?? EMPTY_PIPE_FLOW) : null) ??
-        pipeFlowConflict(path, collectPipeFlow({ fluidName: fluid, pipes: laidPipes, machines: [] }));
+        (config.pipeFlow ? pipeFlowConflict(surface, config.pipeFlow.get(fluid) ?? EMPTY_PIPE_FLOW) : null) ??
+        pipeFlowConflict(surface, collectPipeFlow({ fluidName: fluid, pipes: laidPipes, machines: [] }));
       if (hit) {
         fail(port.chest.id, `pipe merge guard: ${fluid} @(${hit.cell.x},${hit.cell.y}) [${hit.rule}]`);
         continue;
       }
     }
 
-    const { belts, feeder, chestCell } = isFluid
-      ? layPipePath(path, port.chest, config.pipeEntityName!)
-      : layBeltPath(path, trunkHead, isInput, port.chest, config);
+    const laid =
+      jumps.length > 0
+        ? isFluid
+          ? layPipePathWithJumps(path, port.chest, jumps, config)
+          : layBeltPathWithJumps(path, trunkHead, isInput, port.chest, jumps, config)
+        : { ...(isFluid ? layPipePath(path, port.chest, config.pipeEntityName!) : layBeltPath(path, trunkHead, isInput, port.chest, config)), corridors: [] };
+    const { belts, feeder, chestCell } = laid;
+    corridors.push(...laid.corridors);
 
     // ── 설명 축적(모듈 그래프 미변형) ──
     // 옛 chest ghost(@anchor)·feeder(@anchor−fv) 는 떼어낼 좌표로, 새 belt/feeder/chest 셀은
@@ -340,7 +441,7 @@ export function rePathToPerimeter(
     droppedCellKeys.add(cellKey(anchor.x, anchor.y)); // 옛 상자 ghost.
     if (stripSeat) droppedCellKeys.add(cellKey(seat.x, seat.y)); // 피더 좌석도 belt 로 대체.
     addedCells.push(...belts, ...(feeder ? [feeder] : []), chestCell);
-    if (isFluid) for (const c of path) laidPipes.push({ x: c.x, y: c.y, fluid: port.line.name });
+    if (isFluid) for (const c of path) if (!under.has(cellKey(c.x, c.y))) laidPipes.push({ x: c.x, y: c.y, fluid: port.line.name });
     for (const b of belts) occ.add(cellKey(b.x, b.y));
     if (feeder) occ.add(cellKey(feeder.x, feeder.y));
     occ.add(cellKey(chestCell.x, chestCell.y));
@@ -349,10 +450,11 @@ export function rePathToPerimeter(
       chestId: port.chest.id,
       origin: { x: chestCell.x, y: chestCell.y },
       belts,
+      corridors: laid.corridors,
     });
     relocated += 1;
   }
 
-  return { ok: true, relocated, skipped, skips, reason: lastReason, droppedCellKeys, addedCells, relocations };
+  return { ok: true, relocated, skipped, skips, reason: lastReason, droppedCellKeys, addedCells, relocations, corridors };
 }
 

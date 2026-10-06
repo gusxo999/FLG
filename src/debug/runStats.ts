@@ -99,7 +99,7 @@ export interface ChannelLedgerCounters {
    * 장부가 실제로 한 일 — 완전 교차에서 땅 위를 내준 경로 수 · 탐욕으로 간 채널 수와 그 분모(채널 수).
    * 탐욕 채널은 완전 교차를 먼저 푼 뒤에는 드물어야 한다 — 0 이 아니면 폭 · 예산 · 다른 유체의 인접이다.
    */
-  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number };
+  ledger: { channels: number; greedyChannels: number; crossingYields: number; fluidDives: number; exportDives: number; widenedTracks: number; rowChannelCrossings: number };
 }
 
 /** 반출 — [modulePerimeterPass.rePathToPerimeter] 의 카운터 그대로. */
@@ -202,13 +202,13 @@ export interface FaceDepthCounters {
   seatPickSouth: number;
   seatPickFiltered: number;
   /**
-   * **잠수** — 막힌 칸을 땅속으로 비켜 간 후보 수(`AUTO_LAYOUT_LINK_DIVE`). 앉은 **후보** 기준이다(받기 전).
+   * **지하 횡단** — 막힌 칸을 땅속으로 비켜 간 후보 수(`AUTO_LAYOUT_LINK_DIVE`). 앉은 **후보** 기준이다(받기 전).
    *
    * ```
-   * diveOwn     도착한 줄이 남의 포트(못) 밑으로 잠수했다
-   * diveYield   먼저 앉은 줄이 도착한 줄의 포트에게 그 행을 땅속으로 내줬다(비켜 주기)
-   * diveNoType  잠수로 풀릴 막힘이었는데 지하벨트가 없다(안 골랐거나 그 줄의 운반량을 못 감당한다)
-   * diveEnd     잠수로 풀릴 막힘인데 입출구가 끝 칸(포트가 붙는 칸 · 집는 쪽의 종착 칸)에 걸린다 — 문법의 경계
+   * diveOwn     도착한 줄이 남의 포트(못) 밑으로 지하 횡단했다
+   * diveYield   먼저 앉은 줄이 도착한 줄의 포트에게 그 행을 땅속으로 내줬다
+   * diveNoType  지하 횡단으로 풀릴 막힘이었는데 지하벨트가 없다(안 골랐거나 그 줄의 운반량을 못 감당한다)
+   * diveEnd     지하 횡단으로 풀릴 막힘인데 입출구가 끝 칸(포트가 붙는 칸 · 집는 쪽의 종착 칸)에 걸린다 — 문법의 경계
    * ```
    *
    * `diveNoType` 은 **이름표로 안 낸다** — 지하벨트를 안 고른 판은 오늘과 바이트가 같아야 해서다. 경계는 여기서 본다.
@@ -222,7 +222,7 @@ export interface FaceDepthCounters {
    *
    * ```
    * gapExits     앉은 gap 줄 중 출구가 이웃 머신 사이(진짜 gap)로 나가는 수 — 분모
-   * exitDives    그중 옆면을 건너 잠수한 수(`LinkFacePlan.exitDive`)
+   * exitDives    그중 옆면을 건너 지하 횡단한 수(`LinkFacePlan.exitDive`)
    * exitRefused  옆면을 건널 지하벨트가 없어 gap 출구를 거절한 **후보** 수 — 이름표 `지하벨트없음` · `사거리초과`
    * ```
    *

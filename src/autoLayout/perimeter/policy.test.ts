@@ -24,7 +24,7 @@ const ctx3 = (): ExitContext => ({
     orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]),
     maxDepth: 2,
   },
-  rowChannelReach: new Map(), // 행 채널 수요 없음 = 관통이 언제나 열려 있다
+  rowChannelCover: new Map(), // 행 채널 수요 없음 = 관통이 언제나 열려 있다
   // 열마다 모듈 하나뿐인 픽스처라 세로 광선이 남의 모듈을 만날 일이 없다.
   moduleBodyColumns: new Map(),
 });
@@ -87,7 +87,7 @@ describe("planPerimeterExits", () => {
         orderByDepth: new Map([[0, ["root"]], [1, ["sib0", "sib1"]]]), // sib0 위, sib1 아래
         maxDepth: 1,
       },
-      rowChannelReach: new Map(),
+      rowChannelCover: new Map(),
       // **요약이 없으면 막힌 것으로 친다** — 이 검사는 그 보수 갈래다.
       moduleBodyColumns: new Map(),
     };
@@ -125,14 +125,14 @@ describe("planPerimeterExits", () => {
 
   it("**관통** — 세로 직진이 행 채널의 가로 트랙을 밟으면 직진이 아니다", () => {
     // 행 채널은 **가로줄**을 파는데 세로 직진은 세로로 지난다 → **살 게 없다.**
-    // 남는 질문은 하나 — *"내가 설 그 한 열이 비었나?"* 가로 트랙은 전부
-    // *상자 → 열의 서쪽 변(로컬 0)* 이라 구간이 `[0, x2]` 다.
+    // 남는 질문은 하나 — *"내가 설 그 한 열이 비었나?"* 자식 쪽 끝의 가로선은
+    // *상자 → 열의 서쪽 변(로컬 0)* 이라 `[0, x]` 를 덮는다.
     const ctx: ExitContext = {
       globalY: { min: 0, max: 9 },
       maxDepth: 2,
       grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
       // d1 의 **북쪽** 행 채널을 지나는 납품이 로컬 x 0..5 를 덮는다.
-      rowChannelReach: new Map([["1:below:d1", 5]]),
+      rowChannelCover: new Map([["1::d1", { west: 5, east: Infinity }]]),
       moduleBodyColumns: new Map(),
     };
     const inside = planPerimeterExits(
@@ -149,13 +149,35 @@ describe("planPerimeterExits", () => {
     expect(outside.exitEdge).toBe("N");
   });
 
+  it("**관통** — 부모 쪽 끝의 가로선은 **동쪽**으로 뻗는다: 상자 동쪽은 밟고 서쪽은 지난다", () => {
+    // 부모 쪽 끝은 자식에게서 받는 열 채널(이 열의 **동쪽**)에서 상자까지 온다 — `[x, 열의 동쪽 변]` 을 덮는다.
+    // 2026-10-02 까지 이것도 `[0, x]` 로 적어 동쪽은 놓치고 서쪽은 괜히 막았다.
+    const ctx: ExitContext = {
+      globalY: { min: 0, max: 9 },
+      maxDepth: 2,
+      grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
+      rowChannelCover: new Map([["1::d1", { west: -1, east: 5 }]]),
+      moduleBodyColumns: new Map(),
+    };
+    const east = planPerimeterExits(
+      [p({ id: "e", role: "input", depth: 1, side: "N", anchorY: 0, localX: 7 })],
+      ctx,
+    ).assignments[0];
+    expect(east.exitMode).toEqual({ kind: "channel", depth: 1 }); // 가로선 위 — 밟는다 → 환승
+    const west = planPerimeterExits(
+      [p({ id: "w", role: "input", depth: 1, side: "N", anchorY: 0, localX: 3 })],
+      ctx,
+    ).assignments[0];
+    expect(west.exitMode).toEqual({ kind: "direct" }); // 상자 서쪽 — 가로선이 없다
+  });
+
   it("관통 검사는 **그 통로의 수요만** 본다 — 반대쪽 행 채널은 상관없다", () => {
     const ctx: ExitContext = {
       globalY: { min: 0, max: 9 },
       maxDepth: 2,
       grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
       // **남쪽** 행 채널에만 수요가 있다.
-      rowChannelReach: new Map([["1:above:d1", 9]]),
+      rowChannelCover: new Map([["1:d1:", { west: 9, east: Infinity }]]),
       moduleBodyColumns: new Map(),
     };
     const north = planPerimeterExits(
@@ -267,7 +289,7 @@ describe("직진 장부 — 자리를 안 사는 경로도 등록은 해야 한�
     globalY: { min: 0, max: 9 },
     maxDepth: 2,
     grid: { orderByDepth: new Map([[0, ["d0"]], [1, ["d1"]], [2, ["d2"]]]), maxDepth: 2 },
-    rowChannelReach: new Map(),
+    rowChannelCover: new Map(),
     moduleBodyColumns: new Map(),
   });
 
@@ -326,7 +348,7 @@ describe("직진 장부 — 자리를 안 사는 경로도 등록은 해야 한�
       globalY: { min: 0, max: 9 },
       maxDepth: 0,
       grid: { orderByDepth: new Map([[0, ["d0"]]]), maxDepth: 0 },
-      rowChannelReach: new Map(),
+      rowChannelCover: new Map(),
       moduleBodyColumns: new Map(),
     };
     const plan = planPerimeterExits(
@@ -368,7 +390,7 @@ describe("모듈 정밀 판정 — 블랙박스에게 「네 열이 비었나」
     globalY: { min: 0, max: 12 },
     maxDepth: 1,
     grid: { orderByDepth: new Map([[0, ["root"]], [1, ["sib0", "sib1"]]]), maxDepth: 1 },
-    rowChannelReach: new Map(),
+    rowChannelCover: new Map(),
     moduleBodyColumns: new Map([["sib0", new Set(sib0Body)], ["sib1", new Set(sib0Body)]]),
   });
 
@@ -440,7 +462,7 @@ describe("막힌 상자 계측 — **강등이 못 세는 것**을 센다", () =
       ),
       maxDepth,
     },
-    rowChannelReach: new Map(),
+    rowChannelCover: new Map(),
     moduleBodyColumns: new Map(), // 요약 없음 = 막힌 것으로 친다
   });
 
@@ -479,7 +501,7 @@ describe("막힌 상자 계측 — **강등이 못 세는 것**을 센다", () =
       globalY: { min: 0, max: 12 },
       maxDepth: 0,
       grid: { orderByDepth: new Map([[0, ["d0"]]]), maxDepth: 0 },
-      rowChannelReach: new Map(),
+      rowChannelCover: new Map(),
       moduleBodyColumns: new Map(),
     };
     const plan = planPerimeterExits(

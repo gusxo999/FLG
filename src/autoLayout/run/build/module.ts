@@ -181,6 +181,10 @@ function runModulePipeline(args: ModulePipelineArgs): ModulePipelineResult {
         inserterEntityName: options.inserterEntityName,
         pipeEntityName: options.pipeEntityName, // 유체 포트는 파이프로 반출한다.
         pipeFlow: pipeFlowByFluid, // [파이프 합류 가드] — 반출 파이프가 밟으면 안 되는 칸.
+        // 통로 장부가 반출을 땅속으로 들여보냈으면 그 매체의 지하 prototype 으로 건넌다 — 깔린 짝과 안 갈리게 본다.
+        undergroundBeltEntityName: options.undergroundBeltEntityName,
+        undergroundPipeEntityName: options.undergroundPipeEntityName,
+        seedCorridors: [...terminusCorridors, ...deliveryRes.corridors],
       })
     : null;
   if (perim) recordPerimeterStats(perim);

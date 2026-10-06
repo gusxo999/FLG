@@ -108,7 +108,7 @@ describe("세 방향이 다 막히면 — 지하벨트 종착", () => {
     expect(slowestUnderground([{ entityName: "u", throughput: 1, maxDistance: 0 }])).toBeUndefined();
   });
 
-  // T4 — 종착 입구는 짝이 없어야 한다. 같은 열 앞쪽(흐름 방향) 사거리 안에 같은 종류의 지하(잠수 입출구)가 있으면
+  // T4 — 종착 입구는 짝이 없어야 한다. 같은 열 앞쪽(흐름 방향) 사거리 안에 같은 종류의 지하(지하 횡단 입출구)가 있으면
   // 그 출구와 짝이 되어 물건이 샌다 → 그 종류는 건너뛴다(trunk-blocked §4).
   const diveMouth = (y: number, name: string): PlacedCell => ({
     x: 5, y, cell: { ...makeBeltCell({ x: 5, y }, 8, name, pair()).cell, entityType: EntityType.UndergroundBelt, undergroundType: "output" },
@@ -124,7 +124,7 @@ describe("세 방향이 다 막히면 — 지하벨트 종착", () => {
     return { cell, merges };
   };
 
-  it("T4 — 앞쪽 사거리 안에 같은 종류의 잠수 출구가 있으면 **다음 종류**로 세운다", () => {
+  it("T4 — 앞쪽 사거리 안에 같은 종류의 지하 횡단 출구가 있으면 **다음 종류**로 세운다", () => {
     const { cell } = withCells([diveMouth(8, "underground-belt")]); // 3칸 앞 — 느린 쪽 사거리(4) 안
     expect(cell.cell.entityType).toBe(EntityType.UndergroundBelt);
     expect(cell.cell.entityName).toBe("fast-underground-belt");

@@ -99,7 +99,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
   //     가능. 항상 계산해 PackResult 에 싣고, 실제 폭/마진 반영은 reservePerimeterExits 게이트.
   //     환승 출구가 먹는 트랙은 통로 장부(planChannels)가 배정하고, 그 결과에서 폭이 나온다.
   const exitPlan = planExits(
-    specs, oriented, topY, pairing.pairedChestIds, tree.maxDepth, absPortY, tree.orderByDepth, rows.reach,
+    specs, oriented, topY, pairing.pairedChestIds, tree.maxDepth, absPortY, tree.orderByDepth, rows.cover,
   );
   const channels = planChannels(pairing.deliverySeeds, exitPlan, spanYOf(specs, topY, oriented), tree.maxDepth, config);
   // ⑧ 가로 자리 — 열 폭 + 채널 폭 → colX → 절대 배치
@@ -118,6 +118,7 @@ export function packModuleTree(specs: NodeSpec[], config: PackConfig): PackResul
     channelStartX: columns.channelStartX,
     rawBbox,
     reserveTracks: config.reservePerimeterExits === true,
+    rowChannelCrossings: rows.dropped.length,
   });
   const bbox = config.reservePerimeterExits ? expandBbox(rawBbox, exitPlan.marginNeeds) : rawBbox;
   return {
@@ -304,8 +305,10 @@ function recordLinkForms(tree: TreeIndex, links: EdgeLinks, config: PackConfig):
       [...linkCache].flatMap(([childId, groups]) => {
         const child = byId.get(childId);
         const parent = child?.parentId ? byId.get(child.parentId) : undefined;
+        // 머신 index 는 모듈-로컬이다 — 어느 모듈의 머신인지 함께 넘겨야 간선끼리 섞여 세지지 않는다.
         return groups.map((group) => ({
           group, fromCount: child?.count ?? 0, toCount: parent?.count ?? 0,
+          fromScope: childId, toScope: child?.parentId,
         }));
       }),
       // **분모는 레인이다** — 줄 하나가 쓸 수 있는 것은 벨트의 절반뿐이므로

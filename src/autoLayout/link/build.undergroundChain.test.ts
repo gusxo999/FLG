@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { packModuleTree } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "./build";
+import { plannedChainsOf } from "./ledger";
 import type { IoLine } from "../module/types/line";
 
 /**
@@ -41,7 +42,7 @@ const config: PackConfig = {
   // **모듈도 같은 지하벨트를 고른다** — gap 출구는 옆면의 세로 벨트를 건너야 할 수 있어 지하벨트가 있어야 앉는다
   // (`trunk-blocked.md` §4.2). 없으면 머신 사이 gap 이 안 열려 모듈 모양이 달라지고, 이 시험의 전제(지하 횡단)가 흔들린다.
   // 사거리는 납품과 모듈이 **같은 값**이라야 한 종류다 — 바닐라 `underground-belt` 의 5(2026-09-25 전엔 납품만 4 였다.
-  // 모듈의 gap 출구 자격은 옆면 깊이 3 + 합류 열 2 = 5 를 보므로 4 면 싣는 쪽 gap 이 안 열린다).
+  // 모듈의 gap 출구 자격은 레인 합류를 켜면 옆면 깊이 3 + 합류 열 2 = 5 를 보므로 4 면 싣는 쪽 gap 이 안 열린다 — 꺼짐(기본)이면 3 이다).
   beltMaxUndergroundDistance: 5,
   undergroundBelts: [{ entityName: "underground-belt", throughput: 40, maxDistance: 5 }],
 };
@@ -76,9 +77,9 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
     expect(kinds).toContain("undergroundCrossing");
   });
 
-  it("예약이 전부 계획한다 — 탐색 폴백 0", () => {
+  it("만든 계획을 하나도 안 버린다 — 방출에서 막힌 계획 0", () => {
     // 버그가 있던 시절: 계획은 다 있는데(noPlan 0) 일부가 fallback 이었다.
-    // 되돌아 걷는 사슬 **하나**가 멀쩡한 이웃까지 끌고 떨어졌다 — 그래서 **폴백 0** 이 신호다.
+    // 되돌아 걷는 사슬 **하나**가 멀쩡한 이웃까지 끌고 떨어졌다 — 그래서 *"계획이 방출에서 막혔다"* 가 신호다.
     //
     // **개수를 못 박지 않는다**(2026-09-04) — 레인 합류가 기본으로 켜지면서 같은 품목
     // 두 줄이 납품 하나로 접혀 6 → 3 이 됐다. 그건 이 테스트가 겨눈 결함과 **무관한
@@ -86,8 +87,9 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
     // **계획 = 납품 수**로 잰다.
     expect(p.deliveries.length).toBeGreaterThan(0);
     expect(delivery.failures).toBe(0);
-    expect(delivery.dijkstraFallback).toBe(0);
-    expect(delivery.planned).toBe(p.deliveries.length);
+    const discarded = delivery.chainMisses.filter((m) => m.reason.startsWith("chain-"));
+    expect(discarded).toEqual([]);
+    expect(delivery.planned).toBeGreaterThan(0);
   });
 
   it("계획된 사슬은 같은 칸을 두 번 밟지 않는다 (되돌아 걷기 금지)", () => {
@@ -102,3 +104,20 @@ describe("지하 횡단 사슬 — 모서리 점프를 앞 구간이 먹지 않�
     }
   });
 });
+
+  it("지하 출구는 꺾이는 칸에 없다 — 나간 방향 그대로 나간다", () => {
+    // 지하벨트 출구는 제 방향으로만 내놓는다 — 꺾이는 칸의 출구는 경로의 다음 칸이 아니라 그 옆으로 내놓는 끊긴 길이다.
+    // 2026-10-02 까지 장부엔 이 규칙이 없어 그런 계획이 방출됐다(`channel/ledger/geometry.placeWithJumps`). 벨트 입구는
+    // 꺾이는 칸에 설 수 있다 — 옆 싣기로 한 레인을 받고, 줄 하나는 원래 한 레인이다.
+    const { plannedChains } = plannedChainsOf(p, 5, 0);
+    let jumps = 0;
+    for (const chain of plannedChains.values()) {
+      const dir = (i: number) => `${Math.sign(chain.cells[i + 1].x - chain.cells[i].x)},${Math.sign(chain.cells[i + 1].y - chain.cells[i].y)}`;
+      chain.edges.forEach((e, i) => {
+        if (e === "surface") return;
+        jumps += 1;
+        if (chain.edges[i + 1] === "surface") expect(dir(i + 1), "출구 직진").toBe(dir(i));
+      });
+    }
+    expect(jumps).toBeGreaterThan(0);
+  });

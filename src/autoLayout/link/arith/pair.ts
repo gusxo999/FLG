@@ -35,6 +35,11 @@ export interface DeliverySeed {
   fromRowChannel?: RowChannelEntry;
   /** 부모 쪽 끝의 행 채널 접근(있으면). */
   toRowChannel?: RowChannelEntry;
+  /**
+   * **계획을 접은 사유** — 있으면 통로가 이 납품을 그리지 않고 사유를 남긴다(`eligible` 도 거짓이다). 지금은 하나다: 행 채널을
+   * 지나야 하는데 행을 못 받았다 — 같은 쪽에서 반대 방향으로 엇갈린 끝(`channel/ledger/row.planRowChannel` 의 완전 교차).
+   */
+  noPlan?: "row-channel-crossing";
 }
 
 /**
@@ -56,14 +61,22 @@ export interface RowChannelNeed {
   anchorY: number;
   face: ModulePort["face"];
   /**
-   * 이 끝이 행 채널에서 달릴 **가로 구간**(모듈-로컬 x). 상자에서 그 열의 **서쪽 변**까지다 —
-   * 세로 채널이 서쪽에 있으므로((E) 자기 깊이 안에서만 달린다).
-   *
-   * 같은 깊이의 모듈은 전부 `colX[depth]` 에 **왼쪽 정렬**되므로, 로컬 x 로 비교해도
-   * 절대 x 로 비교한 것과 겹침 판정이 같다. `colX` 는 이 단계보다 뒤에 정해진다.
+   * 상자의 **모듈-로컬 x**. 같은 깊이의 모듈은 전부 `colX[depth]` 에 **왼쪽 정렬**되므로, 로컬 x 로 비교해도 절대 x 로
+   * 비교한 것과 답이 같다. `colX` 는 이 단계보다 뒤에 정해진다.
    */
-  x1: number;
-  x2: number;
+  x: number;
+  /**
+   * **가로선이 뻗는 쪽** — 이 끝이 이어지는 열 채널이 있는 쪽이다((E) 자기 깊이 열 안에서만 달린다).
+   *
+   * ```
+   * W   자식 쪽 끝(:out)   부모에게 보내는 열 채널은 이 열의 서쪽 — 가로선이 [0, x]
+   * E   부모 쪽 끝(:in)    자식에게서 받는 열 채널은 이 열의 동쪽 — 가로선이 [x, 열의 동쪽 변]
+   * ```
+   *
+   * > **2026-10-02 까지 두 끝 다 `x1: 0`(서쪽 변)으로 적었다.** 방출은 부모 쪽을 열 채널에서 상자까지 동쪽 → 서쪽으로
+   * > 긋는다(`link/shape.buildPlannedChain`) — 행 채널의 순서와 반출이 읽는 도달이 부모 쪽에서 거꾸로였다(docs/auto-layout/channel/channel-geometry-reservation.md §10.3).
+   */
+  toward: "W" | "E";
 }
 
 /** [pairDeliveries] 의 답 — **좌표가 없다.** 절대 행은 세로 자리 단계가 채운다. */
@@ -116,6 +129,23 @@ export function pairDeliveries(
     pairs.forEach(({ out, inp }, i) => {
       pairedChestIds.add(out.chest.id);
       pairedChestIds.add(inp.chest.id);
+      const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
+      // **레인 합류 — 납품은 하나뿐이다.**
+      //
+      // 두 줄은 **모듈 출구에서 이미 한 벨트로 합쳐졌고**(`emitOutputLinks` 의 합류 칸),
+      // 부모도 한 벨트로 받는다(`seatOnSharedBelt`). 양끝이 각각 **한 칸**이므로 그 사이를
+      // 잇는 물리 경로도 하나다 — 뒤에 온 줄은 납품을 **안 만든다**.
+      //
+      // 채널이 두 경로를 만나게 하던 옛 안(`mergeTail`)은 이것으로 대체됐다: 합류를 자리가
+      // 규칙적인 **출구**에서 계산하면 채널이 그 사실을 아예 몰라도 된다.
+      //
+      // **행 채널 수요보다 먼저 본다** — 2026-10-02 까지 수요를 먼저 적어, 납품을 안 만드는 줄이 앞 줄과 **같은 칸에서**
+      // 행 하나를 더 받았다(행 채널이 한 줄 넓어졌다). 행 채널이 끝의 방향을 읽게 되자 같은 칸의 두 끝은 서로의 가로선을
+      // 덮는 완전 교차가 됐고, 동률 깨기가 **진짜 납품의 끝**을 뺄 수 있었다.
+      if (inp.sharedLineId !== undefined) {
+        if (mergeDoneFor.has(inp.sharedLineId)) return;
+        mergeDoneFor.add(inp.sharedLineId);
+      }
       // **행 채널을 지나야 하는 끝** — 포트가 기둥 끝(N/S)이면 상자가 기둥 밖에 있어
       // 세로 채널 벽을 **직접 못 마주 본다**. 자기 깊이 열 안에서 가로로 달려 벽까지 가야
       // 하고, 그 가로 구간이 **행 채널의 트랙**이다((E) — 세로 채널을 안 가로지른다).
@@ -126,33 +156,20 @@ export function pairDeliveries(
         const ownerId = who === "out" ? s.id : s.parentId!;
         const ownerExt = moduleExtent(oriented.get(ownerId)!.module);
         rowChannelNeeds.push({
-          id: `${deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId })}:${who}`,
+          id: `${dkey}:${who}`,
           nodeId: ownerId,
           depth: who === "out" ? s.depth : s.depth - 1,
           portY: 0, // ← 6단계가 채운다
           anchorY: port.anchor.y,
           face: port.face,
-          x1: 0, // 열의 서쪽 변
-          x2: port.anchor.x - ownerExt.x, // 상자의 로컬 x
+          x: port.anchor.x - ownerExt.x, // 상자의 로컬 x
+          toward: who === "out" ? "W" : "E",
         });
       }
       // **행 채널을 지나는 끝은 진입 행이 곧 출발/도착 행이다.** 세로 채널은 그 행이 포트의
       // 것인지 행 채널 트랙의 것인지 안 가린다(Step 0 확인) — 그래서 여기서 바꿔 넘기면 끝이다.
       // **행 채널 접근은 아직 모른다** — 배정(5a-2)이 이 루프보다 뒤다. 여기선 포트 행으로 두고,
       // 배정이 끝난 뒤 그 자리에서 `startY`/`endY` 와 `fromRowChannel`/`toRowChannel` 를 덮어쓴다.
-      const dkey = deliveryKey({ fromId: s.id, toId: s.parentId!, item: product, seq: i, linkId: out.linkId });
-      // **레인 합류 — 납품은 하나뿐이다.**
-      //
-      // 두 줄은 **모듈 출구에서 이미 한 벨트로 합쳐졌고**(`emitOutputLinks` 의 합류 칸),
-      // 부모도 한 벨트로 받는다(`seatOnSharedBelt`). 양끝이 각각 **한 칸**이므로 그 사이를
-      // 잇는 물리 경로도 하나다 — 뒤에 온 줄은 납품을 **안 만든다**.
-      //
-      // 채널이 두 경로를 만나게 하던 옛 안(`mergeTail`)은 이것으로 대체됐다: 합류를 자리가
-      // 규칙적인 **출구**에서 계산하면 채널이 그 사실을 아예 몰라도 된다.
-      if (inp.sharedLineId !== undefined) {
-        if (mergeDoneFor.has(inp.sharedLineId)) return;
-        mergeDoneFor.add(inp.sharedLineId);
-      }
       deliverySeeds.push({
         depth: s.depth,
         key: dkey,

@@ -72,7 +72,7 @@ export interface LinkFacePlan {
    * **옛 탭 기하가 이것이었다** — 유산이 아니라 관통의 올바른 기하였고, 아이템 방출을 한
    * 경로로 합치면서(§19-④) 함께 지워졌다.
    *
-   * **잠수를 켜면 "못 건넌다" 가 한 겹 풀린다**(`AUTO_LAYOUT_LINK_DIVE`) — 관통 줄이 인서터가 없는 행을 땅속으로
+   * **지하 횡단을 켜면 "못 건넌다" 가 한 겹 풀린다**(`AUTO_LAYOUT_LINK_DIVE`) — 관통 줄이 인서터가 없는 행을 땅속으로
    * 내줄 수 있어, 얕은 줄의 옆 포트가 그 위에 선다(`docs/auto-layout/module/trunk-blocked.md` §4.1). 자기 상자를
    * 가두는 문제는 그대로라(관통의 인서터 행은 못 내준다) 기둥 끝 규칙은 안 바뀐다.
    *
@@ -134,8 +134,8 @@ export interface LinkFacePlan {
    */
   sharesBelt?: boolean;
   /**
-   * **이 줄이 면 좌석표에서 쓰는 주인 번호** — 받기(`commitLinkFace`)가 적는다. 잠수 기록(`FaceTable.dives`)을 찾는 열쇠다.
-   * 먼저 앉은 줄의 몸통은 **나중에** 온 줄이 늘리므로(비켜 주기) 최종값은 장부에 있고, 계획은 이 번호로 찾아간다.
+   * **이 줄이 면 좌석표에서 쓰는 주인 번호** — 받기(`commitLinkFace`)가 적는다. 지하 횡단 기록(`FaceTable.dives`)을 찾는 열쇠다.
+   * 먼저 앉은 줄의 몸통은 **나중에** 온 줄이 늘리므로(먼저 앉은 줄의 지하 횡단) 최종값은 장부에 있고, 계획은 이 번호로 찾아간다.
    */
   owner?: number;
   /**
@@ -152,7 +152,7 @@ export interface LinkFacePlan {
    */
   undergroundName?: string;
   /**
-   * **gap 출구의 잠수 — gap 전용.** 출구 옆면을 땅 위로 지나는 가장 깊은 깊이(`arith/face.sideCrossingsFromPlans`).
+   * **gap 출구의 지하 횡단 — gap 전용.** 출구 옆면을 땅 위로 지나는 가장 깊은 깊이(`arith/face.sideCrossingsFromPlans`).
    * 있으면 출구가 옆면 d1 에서 d`exitDive + 1` 까지 땅속으로 가고, 포트는 그 바깥에 선다(`shape/body` 의 gap 길).
    * 없으면 오늘 도형 그대로다(포트 인서터 d1 · 상자 d2).
    *
@@ -163,11 +163,11 @@ export interface LinkFacePlan {
 }
 
 /**
- * **잠수의 제안** — 묻기(`tryLinkFace`)가 셌고 받기(`commitLinkFace`)가 그대로 적는다. 창구 안의 사정이라 영수증에는 없다.
- * (`docs/auto-layout/module/trunk-blocked.md` §1 · §4 — 누가 잠수하나 · 잠수가 서는 조건)
+ * **지하 횡단의 제안** — 묻기(`tryLinkFace`)가 셌고 받기(`commitLinkFace`)가 그대로 적는다. 창구 안의 사정이라 영수증에는 없다.
+ * (`docs/auto-layout/module/trunk-blocked.md` §1 · §4 — 누가 지하 횡단하나 · 지하 횡단이 서는 조건)
  */
 export interface DiveOffer {
-  /** 이 줄이 잠수할 수 있으면 그 종류 — 몸통이 없어도 든다(뒤에 온 줄에게 비켜 줄 수 있게). */
+  /** 이 줄이 지하 횡단할 수 있으면 그 종류 — 몸통이 없어도 든다(뒤에 온 줄에게 비켜 줄 수 있게). */
   readonly dive?: SpecUndergroundBelt;
   /** 비켜 줄 줄(표의 주인) → 그 줄의 새 몸통 전체. */
   readonly yields?: ReadonlyMap<number, ReadonlyArray<readonly [number, number]>>;
@@ -217,7 +217,7 @@ export interface DepthShortage {
    */
   blockedPort?: Array<readonly [number, number]>;
   /**
-   * **잠수로 풀릴 막힘인데 사거리를 넘었다** — 막은 것이 전부 포트(그 밑으로 지나갈 수 있다)였고 인서터 행도 아니었는데,
+   * **지하 횡단으로 풀릴 막힘인데 사거리를 넘었다** — 막은 것이 전부 포트(그 밑으로 지나갈 수 있다)였고 인서터 행도 아니었는데,
    * 입구에서 출구까지가 고른 지하벨트의 사거리보다 길다. 이름표는 `사거리초과`(경계를 화면에).
    */
   diveRange?: boolean;
@@ -301,7 +301,7 @@ export interface LinkFaceContext {
    * 미리 센 수를 그대로 썼다(결함 A).
    */
   inserters?: readonly SpecInserter[];
-  /** 고를 수 있는 지하벨트 — 잠수의 종류가 여기서 나온다(`module/policy/underground`). 없으면 잠수하지 않는다. */
+  /** 고를 수 있는 지하벨트 — 지하 횡단의 종류가 여기서 나온다(`module/policy/underground`). 없으면 지하 횡단하지 않는다. */
   undergroundBelts?: readonly SpecUndergroundBelt[];
 }
 
@@ -412,7 +412,7 @@ export interface SeatAnswer {
 
 /**
  * **영수증** — 받은 자리. 면 · 깊이 · 끝과 창구 안 번호뿐이다. 인서터 행 · 도형은 창구 안의 사정이라 안 싣는다 —
- * 그래서 창구가 제 자리를 나중에 다듬어도(비켜 주기) 링크 쪽이 쥔 것은 낡지 않는다.
+ * 그래서 창구가 제 자리를 나중에 다듬어도(먼저 앉은 줄의 지하 횡단) 링크 쪽이 쥔 것은 낡지 않는다.
  */
 export interface SeatReceipt {
   readonly id: number;

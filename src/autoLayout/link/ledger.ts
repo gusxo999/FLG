@@ -9,6 +9,7 @@
 import type { PlacedCell, UndergroundCorridor } from "../shared/types";
 import type { DijkstraResult } from "../shared/route";
 import { cellKey } from "../shared/grid";
+import { corridorBetween } from "../shared/cells/path";
 import type { DeliverySpec, PackResult } from "../tree/types/pack";
 import { deliveryKey } from "./policy/edge";
 import { buildPlannedChain, stripKeys } from "./shape";
@@ -75,6 +76,19 @@ export function plannedChainsOf(pack: PackResult, maxJump: number, maxJumpPipe: 
   for (const [k, chain] of plannedChains)
     reservedDelivery.set(k, new Set(chain.cells.map((c) => cellKey(c.x, c.y))));
   return { plannedChains, chainMisses, reservedDelivery, reservedExport };
+}
+
+/**
+ * **반출이 땅속으로 건너는 곳** — 벨트 반출의 점프를 corridor 로(`ExitAssignment.jumps` — 통로 장부가 계획했다).
+ *
+ * 반출은 납품보다 **나중에** 깔리지만 자리는 계획에서 이미 섰다. 탐색으로 내려간 납품이 그 줄 위에 지하벨트를 놓으면
+ * 반출의 입구가 남의 출구와 짝이 된다 — 그래서 점프 검사용 장부에 **씨앗으로** 넣는다(결과 corridor 에는 안 섞는다).
+ * 파이프 반출은 뺀다 — 유체 납품엔 탐색이 없고(결정 D3), 계획끼리의 짝은 통로 장부가 이미 봤다.
+ */
+export function exportJumpCorridors(pack: PackResult, blockGroup: string): UndergroundCorridor[] {
+  return pack.exitPlan.assignments.flatMap((a) =>
+    a.fluid !== undefined ? [] : (a.jumps ?? []).map((j) => corridorBetween(j.from, j.to, "belt", blockGroup)),
+  );
 }
 
 /** **ⓓ 장부** — 이 실행이 깐 것과 계수. 뒤 납품이 피하고, 결과로 나간다. */

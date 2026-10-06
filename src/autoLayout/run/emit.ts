@@ -40,9 +40,11 @@ export function candidateOf(facts: CandidateFacts): CandidateLeaf {
   const droppedKeys = perim?.droppedCellKeys ?? new Set<string>();
   const relocOrigin = new Map<string, { x: number; y: number }>();
   const relocBelts = new Map<string, typeof deliveryRes.cells>();
+  const relocCorridors = new Map<string, UndergroundCorridor[]>();
   for (const r of perim?.relocations ?? []) {
     relocOrigin.set(r.chestId, r.origin);
     relocBelts.set(r.chestId, r.belts);
+    relocCorridors.set(r.chestId, r.corridors);
   }
 
   // Area — internal/external.
@@ -90,7 +92,8 @@ export function candidateOf(facts: CandidateFacts): CandidateLeaf {
   // 납품 경로 지하 corridor — Area 인덱스에 기록해 이후 라우팅(드래그 재라우팅 등)이 같은
   // 직선 위 페어링 절단을 피하게 한다. placed 와 같은 직접-기록 규약(비-이중-commit:
   // 이 candidate 의 routings 는 commitRouting 을 타지 않는다).
-  internal.undergroundCorridors.push(...terminusCorridors, ...deliveryRes.corridors);
+  // 반출이 땅속으로 건넌 corridor 도 같은 규약이다.
+  internal.undergroundCorridors.push(...terminusCorridors, ...deliveryRes.corridors, ...(perim?.corridors ?? []));
 
   // Routing 객체 — 선/IO 라벨/드래그 그룹 복원(옛 routings=[] 한계 해소). 끝점은 실제
   //    컨테이너 id(머신 = `${모듈id}-m0`, 유지된 상자). placed = 납품 경로 belt 셀(직선 폴백 가능).
@@ -139,9 +142,11 @@ export function candidateOf(facts: CandidateFacts): CandidateLeaf {
       const chestPort = mkPort(chest.id, origin, port?.face ?? "N");
       const placed = [...(port?.cells ?? []), ...(relocBelts.get(chest.id) ?? [])]; // 트렁크 spine + 이사 belt → belt-following 선.
       const kind = isFluid ? ("fluid" as const) : ("item" as const);
+      // 반출이 땅속으로 건넌 corridor(표시 · 수정 모드 정리용 사본 — area 기록이 원본).
+      const corridors = (relocCorridors.get(chest.id) ?? []).map((c) => ({ ...c, range: [c.range[0], c.range[1]] as [number, number] }));
       // raw 입력: 상자→머신(input), 루트 출력: 머신→상자(output). 포트 메타는 머신 끝점 쪽.
-      if (chest.role === "input") routings.push({ id: makeId("r"), kind, from: chestPort, to: machine, placed, corridors: [], toPortMeta: port?.meta });
-      else routings.push({ id: makeId("r"), kind, from: machine, to: chestPort, placed, corridors: [], fromPortMeta: port?.meta });
+      if (chest.role === "input") routings.push({ id: makeId("r"), kind, from: chestPort, to: machine, placed, corridors, toPortMeta: port?.meta });
+      else routings.push({ id: makeId("r"), kind, from: machine, to: chestPort, placed, corridors, fromPortMeta: port?.meta });
     }
   }
 

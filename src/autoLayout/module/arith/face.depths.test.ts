@@ -38,7 +38,7 @@ describe("linkFaceDepths — 링크가 옆면에서 먹는 가장 깊은 칸", (
     expect(linkFaceDepths([[plan("S", 2, 3)]], { W: [[plan("S", 2, 3)]] })).toEqual({});
   });
 
-  it("**잠수하는 gap 출구는 센다** — 포트 상자가 출구 옆면 d`exitDive + 3` 까지 나간다(`trunk-blocked.md` §4.2)", () => {
+  it("**지하 횡단하는 gap 출구는 센다** — 포트 상자가 출구 옆면 d`exitDive + 3` 까지 나간다(`trunk-blocked.md` §4.2)", () => {
     // 옆면 d4(합류의 비켜 가는 열)를 건너면 상자는 d7 — 그 면 줄들의 포트 끝(d4)보다 깊다
     const dived = { ...plan("S", 2), exitDive: 4 };
     expect(linkFaceDepths([[plan("W", 2), dived]], { W: [[dived]] })).toEqual({ W: 7 });

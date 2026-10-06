@@ -31,7 +31,7 @@
 import { deliveryKey } from "../tree/build";
 import type { PackResult } from "../tree/types/pack";
 import type { DeliveryConfig, DeliveryResult } from "./types";
-import { buildOccupancy, deliveryResultOf, openDeliveryLedger, plannedChainsOf, recordRoute } from "./ledger";
+import { buildOccupancy, deliveryResultOf, exportJumpCorridors, openDeliveryLedger, plannedChainsOf, recordRoute } from "./ledger";
 import { searchBoundsOf } from "./shape";
 import { chooseRoute, fluidFirst, pipeReachOf, undergroundGateOf } from "./policy/delivery";
 
@@ -50,6 +50,8 @@ export function routeDeliveryRoutes(pack: PackResult, config: DeliveryConfig): D
   const ordered = fluidFirst(pack.deliveries);
   // ⓓ 한 납품씩 — 계획 → 막히면 탐색 → 탐색도 막히면 예약 무시. 깐 칸은 뒤 납품이 피한다
   const laid = openDeliveryLedger(config);
+  // 반출이 땅속으로 건너는 곳 — 탐색으로 내려간 납품이 그 줄 위의 짝을 가르지 않게(씨앗).
+  laid.ledger.push(...exportJumpCorridors(pack, gate.blockGroup));
   for (const delivery of ordered) {
     // 신원을 여기서 찍는다 — 이 루프만이 "이 결과가 어느 납품 경로의 것인지" 를 안다.
     const k = deliveryKey(delivery);

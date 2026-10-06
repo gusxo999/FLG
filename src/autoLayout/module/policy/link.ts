@@ -46,7 +46,7 @@ import {
  *   seat-blocked   내 **좌석 칸**이 남에게 먹혔다
  *   span-blocked   좌석은 비었는데 **그 사이를 잇는 구간**이 막혔다
  *   port-blocked   구간은 지나는데 **포트 칸**이 막혔다
- *   dive-range     잠수로 풀릴 막힘인데 **사거리**를 넘었다(`AUTO_LAYOUT_LINK_DIVE`) · gap 출구를 건널 지하벨트의 사거리가 모자라다
+ *   dive-range     지하 횡단으로 풀릴 막힘인데 **사거리**를 넘었다(`AUTO_LAYOUT_LINK_DIVE`) · gap 출구를 건널 지하벨트의 사거리가 모자라다
  *   no-underground gap 출구가 옆면을 건널 **지하벨트가 없다**(안 골랐다 · 그 줄의 운반량을 못 감당한다)
  * ```
  *
@@ -59,7 +59,7 @@ import {
  * | 교착 | 해소자 | 지금 |
  * |---|---|---|
  * | `span-blocked` | [resolveSpanBlock] → [splitLinkAtRows] | ✅ 사다리 1단 |
- * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 잠수(비켜 주기)가 푼다. 남의 **포트**면 아직 없다(`tempPlanDocs/링크-좌석/judgements.md` J-포트막힘) |
+ * | `port-blocked` | (없음) | ⛔ 구간막힘과 같은 처방이 통할 자리인데 안 만들었다 — 남의 **벨트**면 지하 횡단(먼저 앉은 줄의 지하 횡단)가 푼다. 남의 **포트**면 아직 없다(`tempPlanDocs/링크-좌석/judgements.md` J-포트막힘) |
  * | `dive-range` | (없음) | ⛔ 더 긴 지하벨트를 고르는 것이 처방이다(위저드 단계) |
  * | `no-underground` | (없음) | ⛔ 지하벨트를 고르는 것이 처방이다(위저드 벨트 단계) |
  * | `seat-blocked` | (없음) | ⛔ gap·다이렉트의 몫 |
@@ -164,7 +164,7 @@ export function rungFixStep(shortages: Map<string, DepthShortage[]>): "belt" | "
  * ④ 끝     포트가 기둥 끝에 서나 · 줄이 어느 쪽으로 흐르나(깊이를 안 본다) [endOf]
  * ⑤ 후보   깊이마다 팔 수 — 팔 적은 것 → 얕은 것                          [depthCandidates]
  * ⑤′ 행    머신마다 몇 번째 좌석에                                        [seatRowsOf]
- * ⑤″ 잠수  막힌 칸을 땅속으로 비켜 가나 — 도착한 줄 · 먼저 앉은 줄          [diveRelief]
+ * ⑤″ 지하 횡단  막힌 칸을 땅속으로 비켜 가나 — 도착한 줄 · 먼저 앉은 줄          [diveRelief]
  * ⑥ 자리   좌석 → 구간 → 포트 칸. 못 들면 사유를 남기고 다음 후보          [fitOnFace]
  * ```
  */
@@ -251,7 +251,7 @@ export function tryLinkFace(
   // ⑤ 후보 — 팔 적은 것 → 얕은 것
   const table = seatTableOf(ctx, face);
   const flowToSouth = flowEnd(end) === "S";
-  // ⑤″ 잠수할 수 있는 줄인가 — 합류 쌍은 안 한다(도형이 두 줄에 걸려 있다). 종류는 운반량이 정한다(T1)
+  // ⑤″ 지하 횡단할 수 있는 줄인가 — 합류 쌍은 안 한다(도형이 두 줄에 걸려 있다). 종류는 운반량이 정한다(T1)
   const diver = AUTO_LAYOUT_LINK_DIVE && group.sharedLineId === undefined;
   const dive = diver ? diveUnderground(ctx.undergroundBelts, groupRate(group)) : undefined;
   for (const cand of depthCandidates(ctx, group, side, face, preferDepth)) {
@@ -262,11 +262,11 @@ export function tryLinkFace(
       flowToSouth,
       depth: d,
       // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸(합류 쌍이면 합류 도형)이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다).
-      // 잠수하면 먼저 앉은 줄이 비켜 줄 수 있는 칸(soft · 몸통)도 빈 것으로 본다 — 정확한 판정은 ⑤″ 가 한다
+      // 지하 횡단하면 먼저 앉은 줄이 비켜 줄 수 있는 칸(soft · 몸통)도 빈 것으로 본다 — 정확한 판정은 ⑤″ 가 한다
       portClear: (row) => splitByTable(endCells({ clusterBeltDepth: d, ...ends }, [row, row], outRowOf(table, end)), table)
         .inside.every(([r, dd]) => depthClear(table, dd, r, r) || (dive !== undefined && yieldable(table, r, dd))),
     });
-    // ⑤″ 잠수 — 막힌 칸을 땅속으로 비켜 가나(도착한 줄 · 먼저 앉은 줄)
+    // ⑤″ 지하 횡단 — 막힌 칸을 땅속으로 비켜 가나(도착한 줄 · 먼저 앉은 줄)
     const relief = diver ? diveRelief(ctx, table, d, slotIndex, side, end, dive) : undefined;
     // ⑥ 자리 — 좌석 → 구간 → 포트 칸. 막히면 사유를 남기고 다음 후보
     const fit = fitOnFace(ctx, face, { ...cand, slotIndex }, ends, why, relief);
@@ -373,16 +373,16 @@ export function seatRowsOf(
 }
 
 /**
- * **③′ gap 출구의 잠수 자격** — 출구가 옆면을 건너야 할 수 있으면 그 사거리까지 닿는 지하벨트를 여기서 고른다.
+ * **③′ gap 출구의 지하 횡단 자격** — 출구가 옆면을 건너야 할 수 있으면 그 사거리까지 닿는 지하벨트를 여기서 고른다.
  *
  * gap 벨트는 기둥의 옆 변(싣는 쪽 W · 집는 쪽 E)으로 나가는데, 그 변을 여러 머신을 맡은 옆면 줄이 gap 행까지 지나며 달린다.
- * **gap 줄이 잠수한다** — 먼저 앉은 줄의 도형을 뒤에 온 줄이 바꾸지 않고, 교차를 만든 쪽이 값을 치른다(`trunk-blocked.md` §4.2).
+ * **gap 줄이 지하 횡단한다** — 먼저 앉은 줄의 도형을 뒤에 온 줄이 바꾸지 않고, 교차를 만든 쪽이 값을 치른다(`trunk-blocked.md` §4.2).
  * 누가 실제로 건너는지는 옆면 줄이 **나중에** 올 수 있어 지금 모른다 — 그래서 자격은 **입력만으로 아는 상한**
- * ([sideCrossBound])으로 보고, 실제 잠수 길이는 다 앉힌 뒤 확정 배정에서 유도한다(`arith/face.sideCrossingsFromPlans`).
- * 잠수는 옆면 d1 에서 상한 바로 바깥까지다 — 사거리는 상한 이상이어야 한다.
+ * ([sideCrossBound])으로 보고, 실제 지하 횡단 길이는 다 앉힌 뒤 확정 배정에서 유도한다(`arith/face.sideCrossingsFromPlans`).
+ * 지하 횡단은 옆면 d1 에서 상한 바로 바깥까지다 — 사거리는 상한 이상이어야 한다.
  *
  * ```
- * undefined   잠수가 필요 없다 — 기둥 끝(이웃 머신이 없다)이거나 그 옆면에 줄이 못 앉는다(상한 0)
+ * undefined   지하 횡단이 필요 없다 — 기둥 끝(이웃 머신이 없다)이거나 그 옆면에 줄이 못 앉는다(상한 0)
  * 종류        이 종류로 앉는다(`LinkFacePlan.undergroundName`)
  * none/range  못 앉는다 — 사유를 남긴다([DepthShortage.exitUnderground])
  * ```
@@ -411,25 +411,25 @@ function yieldable(table: FaceTable, row: number, depth: number): boolean {
 }
 
 /**
- * **⑤″ 잠수 — 막힌 칸을 땅속으로 비켜 가나.** 누가 잠수하나 · 잠수가 서나(T1~T4)의 집은 여기 하나다.
+ * **⑤″ 지하 횡단 — 막힌 칸을 땅속으로 비켜 가나.** 누가 지하 횡단하나 · 지하 횡단이 서나(T1~T4)의 집은 여기 하나다.
  *
  * ```
  * 도착한 줄  내 구간 안 남의 칸이 **전부 포트**(그 밑으로 지나간다)이고 내 인서터 행이 아니면 그 행을 몸통으로.
  *           남의 벨트(belt · soft · tunnel)는 못 건넌다 — 한 열에 두 줄의 구간이 겹치는 것이다(안 들인다)
  * 먼저 앉은 줄 내 포트 칸이 그 줄의 soft(인서터가 안 닿는 벨트)면 그 줄이 그 행을 몸통으로 바꾼다 — 자리 · 인서터 · 포트는
- *           그대로다(비켜 주기 ≠ 양보). 이미 몸통인 칸(tunnel)은 그냥 빈 칸이다
+ *           그대로다(철회가 아니다 — 지면 청구만 준다). 이미 몸통인 칸(tunnel)은 그냥 빈 칸이다
  * ```
  *
  * 몸통은 막힌 행에서 선다([tunnelBodies] — 입출구가 겹치면 합친다). 서는 조건은 [tunnelFault] 가 잰다:
  * T2 몸통이 인서터 행이 아니다 · T3 입출구가 구간 안쪽 · 물리 거리(gap 폭 포함 — [tunnelLength])가 사거리 안.
  * 입출구가 끝 칸(포트가 붙는 칸 · 집는 쪽의 종착 칸)에 걸려 못 서면 **센다**(`diveEnd`) — 이름표는 구간막힘 그대로다.
- * T1(지하 종류)은 부르는 쪽이 `dive` 로 준다. 없으면 잠수하지 않고, 잠수로 풀렸을 막힘이면 **센다**(`diveNoType`) —
+ * T1(지하 종류)은 부르는 쪽이 `dive` 로 준다. 없으면 지하 횡단하지 않고, 지하 횡단으로 풀렸을 막힘이면 **센다**(`diveNoType`) —
  * 이름표로는 안 낸다(지하벨트를 안 고른 판은 오늘과 바이트가 같아야 한다).
- * T4(종착 입구가 잠수 출구와 짝이 된다)는 종착이 종류를 고를 때 지킨다(`module/policy/underground`).
+ * T4(종착 입구가 지하 횡단 출구와 짝이 된다)는 종착이 종류를 고를 때 지킨다(`module/policy/underground`).
  *
  * **장부는 안 바꾼다** — 센 몸통을 제안에 싣고, 받기(`commitLinkFace`)가 적는다. 규칙은 `trunk-blocked.md` §1 · §4.
  *
- * 누가 들어가나의 기준을 고치기 전에 tempPlanDocs/두점-잇기/judgements.md(J-잠수기준)를 본다 — 아직 안 고른 판단이 있다.
+ * 누가 들어가나의 기준은 docs/auto-layout/common/layout-models.md §3.5(두점 라우팅 제4조 ③ — 상대가 많은 쪽 · 매체마다 규칙)다.
  */
 function diveRelief(
   ctx: LinkFaceContext,

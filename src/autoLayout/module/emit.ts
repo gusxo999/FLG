@@ -52,13 +52,13 @@ import {
 } from "./shape/body";
 
 /**
- * **길 한 칸 → 셀** — 지상 벨트, 또는 잠수 입출구([RouteCell.ug])면 지하벨트. 지하의 방향은 흐름 방향이다
+ * **길 한 칸 → 셀** — 지상 벨트, 또는 지하 횡단 입출구([RouteCell.ug])면 지하벨트. 지하의 방향은 흐름 방향이다
  * (입구 · 출구 모두 — `shared/cells/path.emitItemPath` 와 같은 규약). 종류는 배정이 고른 것([LinkFacePlan.undergroundName]).
  */
 function routeCellOf(c: RouteCell, beltName: string, undergroundName: string | undefined, pair: PortPair): PlacedCell {
   const dir = vectorToDirection(c.v.x, c.v.y);
   if (!c.ug) return makeBeltCell(c.at, dir, beltName, pair);
-  if (!undergroundName) throw new Error(`잠수 입출구 (${c.at.x},${c.at.y}) 에 지하벨트 종류가 없다 — 배정이 몸통만 싣고 종류를 빠뜨렸다`);
+  if (!undergroundName) throw new Error(`지하 횡단 입출구 (${c.at.x},${c.at.y}) 에 지하벨트 종류가 없다 — 배정이 몸통만 싣고 종류를 빠뜨렸다`);
   return makeUndergroundBeltCell(c.at, dir, c.ug, undergroundName, pair);
 }
 
@@ -361,7 +361,7 @@ export function emitOutputLinks(args: {
     const { portPair, seatCell, chestAt } = followed ?? made;
     const chest = made.chest;
     // ⓕ 검사 — 길 · 포트 칸이 비었나. 발동하면 그 "구성상"이 틀린 것이다. gap 포트가 옆면 벨트를 만나던 자리(D8)는
-    // 출구 잠수가(`trunk-blocked.md` §4.2), 합류 이끄는 줄의 기둥 밖 주행(D9)은 묻기의 합류 도형이 닫았다(work-kinds §7)
+    // 출구 지하 횡단이(`trunk-blocked.md` §4.2), 합류 이끄는 줄의 기둥 밖 주행(D9)은 묻기의 합류 도형이 닫았다(work-kinds §7)
     const blocked = route.path.some((c) => occupancy.has(cellKey(c.at.x, c.at.y)));
     if (blocked || (!followed && (occupancy.has(cellKey(seatCell.x, seatCell.y)) || occupancy.has(cellKey(chestAt.x, chestAt.y))))) {
       recordFaceDepthStats({ netTrips: 1 }); // ← 발동하면 그 "구성상"이 틀린 것이다

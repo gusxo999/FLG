@@ -63,6 +63,12 @@ export function admitBuildSpec(options: BuildSpec): LayoutIssue[] {
   if (options.inserters.length === 0) {
     issues.push(fail("no-inserter", "게임데이터", "reach 1 이상 인서터를 하나도 안 골랐다 — 팔 처리량을 모른다", { fixStep: "inserter" }));
   }
+  // **지하벨트는 필수다**(2026-10-01 사용자 — 두점 라우팅). 두 벨트가 반드시 만나면(끝이 엇갈리면) 한쪽이 지하벨트로
+  // 건너야 풀린다 — 통로를 넓혀도 엇갈림은 안 풀린다. 고른 것이 없으면 그 만남을 풀 길이 없다.
+  // `undergroundBelts` 는 처리량 · 사거리가 확인된 것만 담는다([makeBuildSpec]) — 이름만 있는 것은 안 친다.
+  if (options.undergroundBelts.length === 0) {
+    issues.push(fail("no-underground-belt", "입력", "지하벨트를 하나도 안 골랐다 — 경로가 반드시 만나면 한쪽이 지하벨트로 건넌다(필수)", { fixStep: "belt" }));
+  }
   return issues;
 }
 
@@ -103,6 +109,13 @@ export function admitFluidTrunks(nodes: readonly ResolvedNode[], options: BuildS
     }
     if (!options.pipeEntityName) {
       issues.push(fail('no-pipe-entity', '입력', '빌드 스펙에서 파이프를 선택하지 않음',
+        { carrier: 'fluid', fixStep: 'pipe', target: { recipeName: at } }));
+      continue;
+    }
+    // **지하파이프는 필수다 — 안 골랐으면 유체 레시피를 쓰지 않는다**(2026-10-01 사용자 — 두점 라우팅). 반드시 만나는
+    // 경로에서 파이프는 지하파이프로 건너고, 만나지 않아도 땅속이 좋다. 사거리 2 미만은 건널 수 없으니 안 고른 것과 같다.
+    if (!options.undergroundPipeEntityName || (options.pipeMaxUndergroundDistance ?? 0) < 2) {
+      issues.push(fail('no-underground-pipe', '입력', `${at}: 지하파이프를 안 골라 유체 레시피를 쓸 수 없다(필수)`,
         { carrier: 'fluid', fixStep: 'pipe', target: { recipeName: at } }));
       continue;
     }

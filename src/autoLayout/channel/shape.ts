@@ -94,9 +94,16 @@ export function settleDeliveryRows(
       if (tb) { seed.toRowChannel = tb; seed.endY = tb.row; }
       // **행 채널이 필요한데 못 받았으면 계획을 접는다.** 그 끝의 `startY` 는 여전히 포트 행이고,
       // 포트는 기둥 **밖**에 있어 계단꼴의 가로 진입이 모듈 몸통을 지난다. 그리면 반드시
-      // 막히므로 **애초에 안 그린다** — 장부는 폭만 예약하고 라우터가 탐색으로 잇는다.
+      // 막히므로 **애초에 안 그린다** — 사유를 남기고 방출이 잇는다. 못 받는 길은 하나다: 행 채널의
+      // 완전 교차(`channel/ledger/row.planRowChannel` 의 `dropped`).
+      //
+      // > 2026-10-02 까지 `eligible` 만 껐다 — 그러면 [materializeChannelGeometry] 가 *스필* 로 읽고 되꺾기(ㄱ자)를
+      // > 그렸고, 그 가로가 모듈 몸통을 지났다. 그 전엔 행 채널이 모든 끝에 행을 줘서 이 갈래가 안 돌았다.
       const wantsRowChannel = (w: "out" | "in") => rowChannelNeeds.some((n) => n.id === `${seed.key}:${w}`);
-      if ((!fb && wantsRowChannel("out")) || (!tb && wantsRowChannel("in"))) seed.eligible = false;
+      if ((!fb && wantsRowChannel("out")) || (!tb && wantsRowChannel("in"))) {
+        seed.eligible = false;
+        seed.noPlan = "row-channel-crossing";
+      }
     }
   }
 }
@@ -111,7 +118,7 @@ export function settleDeliveryRows(
 export function materializeChannelGeometry(args: {
   geometryPlans: Map<number, ChannelGeometryPlan>;
   deliverySeeds: {
-    depth: number; key: string; eligible: boolean; fluid?: string;
+    depth: number; key: string; eligible: boolean; fluid?: string; noPlan?: string;
     /** 합류의 멈춤 행을 여기서 유도한다(`mergeTail`) — 계획이 쓴 것과 **같은 행**이라야 한다. */
     startY: number; endY: number;
     fromRowChannel?: RowChannelEntry; toRowChannel?: RowChannelEntry;
@@ -121,6 +128,8 @@ export function materializeChannelGeometry(args: {
   channelStartX: (d: number) => number;
   rawBbox: { x: number; y: number; w: number; h: number };
   reserveTracks: boolean;
+  /** 행 채널에서 끝이 엇갈려 행을 못 받은 끝 수(`channel/ledger/assign.rowChannelsOf`) — 관측으로만 싣는다. */
+  rowChannelCrossings?: number;
 }): PackChannelGeometry {
   const { geometryPlans, deliverySeeds, exitPlan, placements, channelStartX, rawBbox, reserveTracks } = args;
   const deliveries = new Map<string, DeliveryDirective>();
@@ -128,6 +137,11 @@ export function materializeChannelGeometry(args: {
   for (const seed of deliverySeeds) {
     // 행 채널 접근은 도형과 무관하게 붙는다 — 세로 채널은 진입 행만 받고 출처를 안 묻는다.
     const rcEntries = { fromRowChannel: seed.fromRowChannel, toRowChannel: seed.toRowChannel };
+    if (seed.noPlan) {
+      // 앞 단계가 계획을 접었다([settleDeliveryRows]) — 사유를 그대로 싣는다. 되꺾기로 그리면 모듈 몸통을 지난다.
+      skips.push({ key: seed.key, reason: seed.noPlan });
+      continue;
+    }
     if (!seed.eligible) {
       // **계단꼴이 못 그리는 기하 → 되꺾기로 계획한다**(2026-08-17). 대개 부모 입력이 반대
       // 면으로 스필한 경우다. 여태 여기서 조용히 빠져 dijkstra 가 맡았고, 그 폴백이 남의
@@ -198,14 +212,25 @@ export function materializeChannelGeometry(args: {
       const anchor = { x: port.anchor.x, y: port.anchor.y };
       if (a.exitMode.kind === "channel") {
         const plan = geometryPlans.get(a.exitMode.depth)?.exports.get(a.id);
-        if (plan?.kind !== "elbow") continue; // fallback — 예약 없음(스캔·skip 유지)
-        const trackX = channelStartX(a.exitMode.depth) + 1 + plan.track;
+        if (plan?.kind !== "elbow" && plan?.kind !== "undergroundCrossing") continue; // fallback — 예약 없음(스캔·skip 유지)
+        const depth = a.exitMode.depth;
+        const tx = (t: number) => channelStartX(depth) + 1 + t;
+        const trackX = tx(plan.track);
         a.exitEdge = plan.exitEdge; // 해소 사다리 ①에서 뒤집혔을 수 있다
         a.trackX = trackX;
         exitPlan.marginNeeds[plan.exitEdge] = true;
+        // **땅속 구간은 예약하지 않는다** — 그 칸 위는 건넌 상대의 자리다. 입구 · 출구는 땅 위 칸이라 예약한다.
+        const under = new Set<string>();
+        if (plan.kind === "undergroundCrossing") {
+          a.jumps = plan.jumps.map((j) => ({ from: { x: tx(j.fromCol), y: j.fromRow }, to: { x: tx(j.toCol), y: j.toRow } }));
+          for (const j of a.jumps) for (const c of segment(j.from, j.to)) under.add(`${c.x},${c.y}`);
+          for (const j of a.jumps) under.delete(`${j.to.x},${j.to.y}`);
+        }
         const corner = { x: trackX, y: anchor.y };
-        addSeg(anchor, corner);
-        addSeg(corner, { x: trackX, y: seatRow(plan.exitEdge) });
+        for (const c of [...segment(anchor, corner), ...segment(corner, { x: trackX, y: seatRow(plan.exitEdge) })]) {
+          const k = `${c.x},${c.y}`;
+          if (!under.has(k)) reservedExportCells.add(k);
+        }
       } else if (a.exitEdge === "N" || a.exitEdge === "S") {
         addSeg(anchor, { x: anchor.x, y: seatRow(a.exitEdge) });
       } else {
@@ -220,6 +245,9 @@ export function materializeChannelGeometry(args: {
     greedyChannels: plans.filter((p) => p.greedy).length,
     crossingYields: plans.reduce((n, p) => n + p.crossingYields, 0),
     fluidDives: plans.reduce((n, p) => n + p.fluidDives, 0),
+    exportDives: plans.reduce((n, p) => n + p.exportDives, 0),
+    widenedTracks: plans.reduce((n, p) => n + p.widenedTracks, 0),
+    rowChannelCrossings: args.rowChannelCrossings ?? 0,
   };
   return { deliveries, reservedExportCells, skips, ledger };
 }
@@ -361,7 +389,7 @@ const wallColOf = (wall: ChannelWall, capCol: number): number => (wall === "E" ?
  *
  * > **정정(2026-10-01).** 예전엔 밴드 밖 **한 칸**(`yMin − 1`)으로 적어 실제 주행보다 한 행 짧았다. 그 행에는 바깥 행 채널
  * > (`marginN` · `marginS`)의 트랙이 선다 — 그 행을 지나는 납품과의 만남을 도형이 못 봤다. 옛 같은 쪽 판정은 그 너머를
- * > 통째로 *"안쪽"* 으로 쳐서 우연히 덮었고, 완전 교차 판정이 도형을 따르면서 드러났다(계획 두점-잇기 Step 1).
+ * > 통째로 *"안쪽"* 으로 쳐서 우연히 덮었고, 완전 교차 판정이 도형을 따르면서 드러났다(channel-geometry-reservation.md §4.2).
  */
 export const edgeRowOf = (edge: NsEdge, ctx: Pick<GeometryContext, "yMin" | "yMax">): number =>
   edge === "N" ? ctx.yMin - PERIMETER_MARGIN : ctx.yMax + PERIMETER_MARGIN;
@@ -526,6 +554,26 @@ export function staircaseCells(d: DeliveryInput, track: number, capCol: number):
   const step = d.endY >= d.startY ? 1 : -1;
   for (let r = d.startY; r !== d.endY + step; r += step) push(track, r); // 세로 주행
   for (let c = track; c >= -1; c--) push(c, d.endY); // 가로 진출(→W벽)
+  return cells;
+}
+
+/**
+ * 반출 한꺾임꼴을 **셀 순서열**로 편다: 상자가 마주 본 벽 → 트랙(가로) → 세로 주행 → 바깥 변의 seat 행. 코너 중복 없음.
+ * [elbowShape] 와 같은 칸이다 — 순서가 방출의 순서(상자 쪽 → 바깥)와 같아 점프의 입구 · 출구가 그대로 옮겨진다.
+ */
+export function exportCells(x: ExportInput, track: number, exit: NsEdge, ctx: Pick<GeometryContext, "yMin" | "yMax">, capCol: number): Cell[] {
+  const cells: Cell[] = [];
+  const push = (col: number, row: number) => {
+    const last = cells[cells.length - 1];
+    if (last && last.col === col && last.row === row) return;
+    cells.push({ col, row });
+  };
+  const wall = wallColOf(x.entryWall, capCol);
+  const dc = track >= wall ? 1 : -1;
+  for (let c = wall; c !== track + dc; c += dc) push(c, x.entryY); // 가로 진입
+  const edge = edgeRowOf(exit, ctx);
+  const dr = edge >= x.entryY ? 1 : -1;
+  for (let r = x.entryY; r !== edge + dr; r += dr) push(track, r); // 세로 주행 → seat 행
   return cells;
 }
 

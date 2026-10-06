@@ -33,6 +33,19 @@ export interface Rect {
 
 export type Pt = { x: number; y: number };
 
+/** 땅속으로 건너는 곳 하나 — 입구(`from`) · 출구(`to`), 경로 순서(상자 쪽 → 바깥). 둘 다 땅 위 칸이다. */
+export type JumpPair = { from: Pt; to: Pt };
+
+/** 땅속 구간의 칸 — 입구 · 출구는 빼고 그 사이만. 점유를 안 본다(그 위는 건넌 상대의 자리다). */
+export function undergroundCellsOf(jumps: readonly JumpPair[]): Set<string> {
+  const under = new Set<string>();
+  for (const j of jumps) {
+    for (const c of segment(j.from, j.to)) under.add(cellKey(c.x, c.y));
+    under.delete(cellKey(j.to.x, j.to.y));
+  }
+  return under;
+}
+
 /** production 재현용 힌트 — exitPlan 이 정한 배정. */
 export interface RouteHint {
   exitEdge: ExitEdge;
@@ -43,6 +56,11 @@ export interface RouteHint {
    * 막혀 있으면(예약 밖 점유) 기존 스캔으로 폴백.
    */
   trackX?: number;
+  /**
+   * 통로 장부가 계획한 **땅속 구간**(`ExitAssignment.jumps`) — `trackX` 와 함께 온다. 있으면 예약 트랙을 그 점프째 재생한다.
+   * 땅속 칸은 점유를 안 본다.
+   */
+  jumps?: readonly JumpPair[];
 }
 
 export interface RouteRequest {
@@ -66,8 +84,10 @@ export type RouteResult =
       exitEdge: ExitEdge;
       /** 상자(외부 물류 접점)가 앉는 셀 = path 마지막. */
       seat: Pt;
-      /** anchor 다음 셀 ~ seat 까지의 belt 경로(anchor 제외, seat 포함). */
+      /** anchor 다음 셀 ~ seat 까지의 belt 경로(anchor 제외, seat 포함). 땅속 칸도 순서대로 들어 있다. */
       path: Pt[];
+      /** 이 경로가 땅속으로 건너는 곳 — 예약 트랙을 점프째 재생했을 때만 있다. */
+      jumps?: readonly JumpPair[];
     }
   | { ok: false; reason: string };
 
@@ -97,12 +117,14 @@ function tryNS(
   edgeY: number,
   occ: Set<string>,
   xOffsets: number[],
+  under?: ReadonlySet<string>,
 ): { seat: Pt; path: Pt[] } | null {
   for (const m of xOffsets) {
     const corner: Pt = { x: anchor.x + m, y: anchor.y };
     const seat: Pt = { x: corner.x, y: edgeY };
     const path = [...segment(anchor, corner), ...segment(corner, seat)];
-    if (path.length > 0 && checkFree(path, occ)) return { seat, path };
+    const surface = under ? path.filter((c) => !under.has(cellKey(c.x, c.y))) : path;
+    if (path.length > 0 && checkFree(surface, occ)) return { seat, path };
   }
   return null;
 }
@@ -160,6 +182,14 @@ function routeWithHint(req: RouteRequest, hint: RouteHint, maxJog: number): Rout
   // 상자가 코너 어깨에 앉은 경우에도 예약된 트랙을 그대로 재생한다. face 가 가로(fv.x≠0)면
   // trackX 실패 시 그 방향으로 스캔 폴백. trackX 도 face 방향도 없으면(N/S 면 + 미배정) 진입
   // 방향을 정할 수 없어 거부(로컬 ring 유지 = skip-on-failure).
+  // **땅속으로 건너는 예약** — 그 트랙을 점프째 재생한다. 입구 · 출구가 경로 위에 있어야 한다(같은 트랙 · 같은 꺾임).
+  // 막혔으면 아래 훑기로 — 땅 위로만 간다(docs layout-models §3.5 3부 ②).
+  if (hint.trackX !== undefined && hint.jumps && hint.jumps.length > 0) {
+    const res = tryNS(anchor, edgeCoord(edge, perimeter), occ, [hint.trackX - anchor.x], undergroundCellsOf(hint.jumps));
+    const onPath = (p: Pt) => res!.path.some((c) => c.x === p.x && c.y === p.y);
+    if (res && hint.jumps.every((j) => onPath(j.from) && onPath(j.to)))
+      return { ok: true, exitEdge: edge, seat: res.seat, path: res.path, jumps: hint.jumps };
+  }
   const offsets: number[] = [];
   if (hint.trackX !== undefined) offsets.push(hint.trackX - anchor.x);
   if (fv.x !== 0) {

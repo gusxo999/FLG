@@ -45,6 +45,9 @@ const DATA: GameData = {
       inserter_pickup_position: { x: 0, y: -1 }, inserter_rotation_speed: 0.014 } as unknown as Entity,
     { name: 'transport-belt', type: 'transport-belt', tile_width: 1, tile_height: 1,
       belt_speed: 0.03125 } /* 바닐라 노랑 = 15/s */ as unknown as Entity,
+    // **지하벨트는 필수다**(2026-10-02) — 안 고르면 파이프라인이 진입에서 거절한다(`no-underground-belt`).
+    { name: 'underground-belt', type: 'underground-belt', tile_width: 1, tile_height: 1,
+      belt_speed: 0.03125, max_underground_distance: 5 } as unknown as Entity,
   ],
   recipes: [
     recipe('target-item', 'crafting', [item('sub-a'), item('sub-b')], [item('target-item')]),
@@ -70,7 +73,7 @@ const input = (targetRecipe = 'target-item'): ContainerWizardInput => ({
   selectedInserters: ['inserter'],
   selectedBelts: ['transport-belt'],
   selectedUndergroundPipes: [],
-  selectedUndergroundBelts: [],
+  selectedUndergroundBelts: ['underground-belt'],
   externalPortsDefault: 'top-left',
 });
 

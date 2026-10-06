@@ -545,7 +545,13 @@ export const emptyBeltFormCounters = (): BeltFormCounters => ({
 });
 
 export function summarizeBeltForms(
-  entries: ReadonlyArray<{ group: Link; fromCount: number; toCount: number }>,
+  /**
+   * `fromScope`/`toScope` 는 **그 끝의 머신 index 가 어느 모듈의 것인가**를 가르는 불투명 토큰이다 — 모듈 여럿의
+   * 줄을 한 번에 넘길 때만 준다(머신 index 는 모듈-로컬이라 모듈이 다르면 같은 번호가 다른 머신이다). 파싱하지 않는다.
+   */
+  entries: ReadonlyArray<{
+    group: Link; fromCount: number; toCount: number; fromScope?: string; toScope?: string;
+  }>,
   /** 벨트 이름 → 초당 처리량. 모르면 `undefined`(그 줄은 `unknown` 으로 센다). */
   throughputOf: (entityName: string | undefined) => number | undefined,
 ): BeltFormCounters {
@@ -612,7 +618,7 @@ export function readLinkRole(group: Link): "input" | "output" {
  * **벨트 줄당 머신 수의 상한** `g_max` — 벨트 한 줄이 맡을 수 있는 머신 수(TR1).
  *
  * ```
- * g_max = min(N, ⌊벨트 처리량 ÷ 머신 하나의 몫⌋)
+ * g_max = min(N, ⌊벨트 한 줄(레인)의 운반량 ÷ 머신 하나의 몫⌋)
  * ```
  *
  * **이건 상한일 뿐 실제 값(식에서 `g`)이 아니다.** 자리(깊이 예산)가 여기서 더 깎는다 —

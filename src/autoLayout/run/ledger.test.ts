@@ -1,6 +1,6 @@
 /**
  * **모듈 지하벨트의 되읽기** — 입구마다 흐름 방향 사거리 안에서 짝을 찾는다(`terminusCorridorsOf`).
- * 잠수(짝 있는 입구)는 [입구, 출구] 만, 종착(짝 없는 입구)은 사거리 끝까지 잡는다 — 잠수 입구를 종착으로 읽으면
+ * 지하 횡단(짝 있는 입구)는 [입구, 출구] 만, 종착(짝 없는 입구)은 사거리 끝까지 잡는다 — 지하 횡단 입구를 종착으로 읽으면
  * 사거리 끝까지 과잉 예약된다(`docs/auto-layout/module/belt-terminus.md` §4).
  */
 import { describe, it, expect } from "vitest";
@@ -18,7 +18,7 @@ const ug = (x: number, y: number, t: "input" | "output", name = "underground-bel
 const packOf = (cells: PlacedCell[]) => ({ placements: [{ module: { cells } }] }) as unknown as PackResult;
 
 describe("모듈 지하벨트 되읽기", () => {
-  it("짝 있는 입구(잠수)는 [입구, 출구] · 짝 없는 입구(종착)는 사거리 끝까지", () => {
+  it("짝 있는 입구(지하 횡단)는 [입구, 출구] · 짝 없는 입구(종착)는 사거리 끝까지", () => {
     const corridors = terminusCorridorsOf(
       packOf([ug(0, 0, "input"), ug(0, 3, "output"), ug(5, 0, "input")]),
       () => 5,

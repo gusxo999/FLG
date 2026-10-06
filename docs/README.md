@@ -57,7 +57,7 @@ docs/
 
 | 문서 | 주제 |
 |------|------|
-| [layout-models](auto-layout/common/layout-models.md) | **모델 넷이 각자 무엇을 그릴 수 있나** — 좌표계 · 고정/자유 · 도형 · **경계**. 새 능력을 넣기 전에 *"이건 어느 모델의 일인가"* 를 여기서 답한다 |
+| [layout-models](auto-layout/common/layout-models.md) | **모델 넷이 각자 무엇을 그릴 수 있나** — 좌표계 · 고정/자유 · 도형 · **경계**. 새 능력을 넣기 전에 *"이건 어느 모델의 일인가"* 를 여기서 답한다. §3.5 **두점 라우팅** — 경로가 만나면 누가 갖나(규칙 하나 · 판정하는 자리 · 결함 · 구멍) |
 | [code-folders](auto-layout/common/code-folders.md) | **폴더가 무엇을 말하나** — 두 축(계층 × 관심사) · 현재 트리 · 검증 명령. **auto-layout 코드를 건드리기 전에 먼저 읽는다** |
 | [work-kinds](auto-layout/common/work-kinds.md) | **일의 종류 여덟** — 결정하는 넷(셈·장부·도형·정책) + 결정하지 않는 넷(타입·어댑터·찍기·조율) · 표식 둘. **파일이 커졌을 때 *어디서* 자를지**를 여기서 답한다 — 47파일 전수 분류로 *"크다 = 섞였다"* 를 실측했다 |
 | [pipeline-lifecycle](auto-layout/common/pipeline-lifecycle.md) | **무엇이 언제 정해지나** — 시대 여섯 · 각 시대가 볼 수 있는 것 · 장부의 낟알. *"이 값은 어느 단계가 답하나"* 를 여기서 답한다. **layout-models 가 공간 축이면 이건 시간 축**. 고리처럼 보이는 자리를 끊는 **처방 셋**(§8) |

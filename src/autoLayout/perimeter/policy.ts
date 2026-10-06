@@ -225,7 +225,7 @@ function directRayOf(o: ExitOption, p: ExitPortInput): DirectRay | null {
  *
  * > **그래서 자격이 「상태 있는 술어」가 된다.** [enumerateOptions] 자체는 여전히 순수하고
  * > 순서와 무관하지만, **어느 후보가 확정되나**는 앞선 상자의 선택에 달린다. 되먹임은
- * > 아니다 — 한 번 훑고 끝나고, 자격의 입력(순번·로컬 x·`rowChannelReach`)은 전부 배정보다
+ * > 아니다 — 한 번 훑고 끝나고, 자격의 입력(순번·로컬 x·`rowChannelCover`)은 전부 배정보다
  * > 먼저 확정되며, 확정된 직진은 뒤에서 다시 안 고쳐진다.
  *
  * ## 순회는 **후보가 적은 상자부터**
@@ -298,7 +298,7 @@ export function planPerimeterExits(ports: ReadonlyArray<ExitPortInput>, ctx: Exi
     .sort((a, b) => a.p.id.localeCompare(b.p.id))
     .map(({ p, options }): ExitAssignment => {
       const c = chosenById.get(p.id)!;
-      return { id: p.id, role: p.role, options, exitEdge: c.exitEdge, exitMode: c.exitMode, entry: c.entry };
+      return { id: p.id, role: p.role, fluid: p.fluid, options, exitEdge: c.exitEdge, exitMode: c.exitMode, entry: c.entry };
     });
 
   // 계측은 **`id` 순**으로 낸다 — 순회 순서(후보 수)가 새어 나가지 않게(출력 안정).

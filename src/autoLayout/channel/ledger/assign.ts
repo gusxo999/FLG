@@ -14,8 +14,8 @@ import { channelWidthFromTracks, type Interval } from "./tracks";
 import { planChannelGeometry } from "./geometry";
 import type { ChannelGeometryPlan, DeliveryInput, ExportInput } from "../types";
 import type { PerimeterExitPlan } from "../../perimeter/types";
-import { rowChannelKey } from "../../perimeter/shape/rays";
-import type { PackConfig, RowChannel } from "../../tree/types/pack";
+import { rowChannelIdOf } from "../../tree/arith/pack";
+import type { PackConfig, RowChannel, RowChannelCover } from "../../tree/types/pack";
 import type { DeliverySeed, RowChannelNeed } from "../../link/arith/pair";
 
 /**
@@ -29,11 +29,13 @@ import type { DeliverySeed, RowChannelNeed } from "../../link/arith/pair";
 export function rowChannelsOf(
   orderByDepth: ReadonlyMap<number, readonly string[]>,
   rowChannelNeeds: readonly RowChannelNeed[],
-): { rowChannels: RowChannel[]; reach: Map<string, number> } {
+): { rowChannels: RowChannel[]; cover: Map<string, RowChannelCover>; dropped: string[] } {
   // 3b) **행 채널의 신원** — 깊이 · 순번 · 이웃. 자리(`top`/`bottom`)는 5단계가 채운다.
   //
   //     **마진도 행 채널이다** — 이웃이 없을 뿐, 거기로 나가는 경로들이 행을 다투는 것은 같다.
   const rowChannels: RowChannel[] = [];
+  const cover = new Map<string, RowChannelCover>();
+  const dropped: string[] = [];
   for (const [depth, ids] of orderByDepth) {
     const first = ids[0];
     const last = ids[ids.length - 1];
@@ -67,7 +69,7 @@ export function rowChannelsOf(
       // 그 경로는 행 채널의 **아래** 변에서 올라온다. `S` 면은 거울이다. 이 한 값이 교차를
       // 없애는 순서를 정한다([planRowChannel] 의 전순서).
       (byRowChannel.get(rowChannel) ?? byRowChannel.set(rowChannel, []).get(rowChannel)!).push({
-        id: n.id, x1: n.x1, x2: n.x2, side: n.face === "N" ? "bottom" : "top",
+        id: n.id, x: n.x, toward: n.toward, side: n.face === "N" ? "bottom" : "top",
       });
     }
     // 수요가 없는 행 채널도 하한(`ROW_CHANNEL_MIN`)만큼은 선다 — `planRowChannel([])` 이 그 값이다.
@@ -76,17 +78,23 @@ export function rowChannelsOf(
       const plan = planRowChannel(crossings);
       rowChannel.height = plan.height;
       rowChannel.tracks = plan.tracks;
+      // 끝이 엇갈려 행을 못 받은 끝 — 트랙이 없으니 그 납품은 계획을 접는다([settleDeliveryRows] 의 *"행 채널이 필요한데 못 받았으면"*).
+      dropped.push(...plan.dropped);
+    }
+
+    // **행 채널 관통 판정의 재료** — 가로선이 덮는 열(`RowChannelCover`). 세로 직진이 그 열을 밟는지 반출의 자격이 본다
+    // (`layoutRegions` 의 ③ 관통). **행 채널 하나에 열쇠 하나**([rowChannelIdOf]) — 받는 쪽이 만든 쪽의 규약을 몰라도 된다.
+    // 수요 기준이라 보수적이다(배정에서 밀린 끝도 그 자리를 원했다).
+    for (const [rowChannel, crossings] of byRowChannel) {
+      const c: RowChannelCover = { west: -1, east: Infinity };
+      for (const x of crossings) {
+        if (x.toward === "W") c.west = Math.max(c.west, x.x);
+        else c.east = Math.min(c.east, x.x);
+      }
+      cover.set(rowChannelIdOf(rowChannel), c);
     }
   }
-
-  // **행 채널 관통 판정의 재료** — 가로 트랙이 덮는 최대 로컬 x. 세로 직진이 그 열을
-  // 밟는지 판정하는 데 쓴다(`layoutRegions` 의 ③ 관통). 수요 기준이라 보수적이다.
-  const rowChannelReach = new Map<string, number>();
-  for (const n of rowChannelNeeds) {
-    const k = rowChannelKey(n.depth, n.face === "N" ? "below" : "above", n.nodeId);
-    rowChannelReach.set(k, Math.max(rowChannelReach.get(k) ?? -1, n.x2));
-  }
-  return { rowChannels, reach: rowChannelReach };
+  return { rowChannels, cover, dropped };
 }
 
 /** 채널 폭 하한(셀). 단일 납품 경로(트랙 1)도 이 폭은 확보 — 옛 COLUMN_GAP 동치(좁아지지 않음). */
@@ -128,7 +136,7 @@ export function planChannels(
         // 포트는 **환승 후보 자체가 안 만들어진다**(`wayOut` 이 W/E 일 때만 도니까).
         // 아래 가드는 그 불변식을 타입에 알려 주는 것뿐이다 — 참이 될 수 없다.
         if (!a.entry || (a.exitEdge !== "N" && a.exitEdge !== "S")) continue;
-        exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge });
+        exps.push({ id: a.id, entryY: a.entry.y, entryWall: a.entry.wall, preferredExit: a.exitEdge, fluid: a.fluid });
       }
     }
     geometryPlans.set(

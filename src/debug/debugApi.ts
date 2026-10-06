@@ -327,7 +327,7 @@ const flags = defineGroup('flags', {
   },
   linkDive: {
     usage: '(true|false)',
-    desc: '화면에 버튼이 없는 플래그 — 잠수(막힌 칸을 지하벨트로 비켜 가기 · 먼저 앉은 줄이 비켜 주기). 기본 ON. '
+    desc: '화면에 버튼이 없는 플래그 — 지하 횡단(막힌 칸을 지하벨트로 건너기 · 먼저 앉은 줄이 그 행을 땅속으로 내주기 포함). 기본 ON. '
       + '끄거나 지하벨트를 안 고르면 옛 동작이다',
     fn: (v: boolean) => {
       setAutoLayoutLinkDive(v);

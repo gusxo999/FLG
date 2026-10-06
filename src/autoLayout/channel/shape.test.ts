@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { routeShape, type ChannelEndpoint } from "./shape";
+import { materializeChannelGeometry, routeShape, settleDeliveryRows, type ChannelEndpoint } from "./shape";
+import type { DeliverySeed, RowChannelNeed } from "../link/arith/pair";
+import type { RowChannel } from "../tree/types/pack";
+import type { PerimeterExitPlan } from "../perimeter/types";
 import { PERIMETER_MARGIN } from "../shared/grid";
 
 // 채널 세로 범위 [0,9] · 가상 E벽 열 = capCol
@@ -49,5 +52,39 @@ describe("routeShape — 납품과 반출은 같은 도형이다", () => {
     const s = routeShape(wall(-PERIMETER_MARGIN, "E"), edge("N"), 3, ctx, CAP);
     expect(s.v).toEqual([{ col: 3, r1: -PERIMETER_MARGIN, r2: -PERIMETER_MARGIN }]);
     expect(s.h).toHaveLength(1);
+  });
+});
+
+describe("행을 못 받은 끝 — 계획을 접고 사유를 남긴다", () => {
+  // 행 채널의 완전 교차(같은 쪽 · 반대 방향으로 엇갈린 끝)는 한 끝이 행을 못 받는다(`channel/ledger/row.planRowChannel`).
+  // 2026-10-02 까지 그 납품은 `eligible` 만 꺼져 *스필* 로 읽혔고, 되꺾기(ㄱ자)를 받아 그 가로가 모듈 몸통을 지났다.
+  const seed = (): DeliverySeed => ({
+    depth: 1, key: "c→p:x#0", startY: 0, endY: 0, fromId: "c", toId: "p", fromAnchorY: 4, toAnchorY: 2, eligible: true,
+  });
+  const need: RowChannelNeed = { id: "c→p:x#0:out", nodeId: "c", depth: 1, portY: 0, anchorY: 4, face: "S", x: 1, toward: "W" };
+  const rowChannel = (tracks: Map<string, number>): RowChannel =>
+    ({ depth: 1, index: 0, kind: "marginS", top: 10, bottom: 12, above: "c", height: 3, tracks }) as RowChannel;
+  const emptyExits: PerimeterExitPlan = { assignments: [], marginNeeds: { N: false, S: false, W: false, E: false }, demotions: [], blocked: [], noSideWayOut: 0 } as unknown as PerimeterExitPlan;
+  const materialize = (s: DeliverySeed) =>
+    materializeChannelGeometry({
+      geometryPlans: new Map(), deliverySeeds: [s], exitPlan: emptyExits, placements: [],
+      channelStartX: () => 0, rawBbox: { x: 0, y: 0, w: 1, h: 1 }, reserveTracks: false,
+    });
+
+  it("행을 못 받으면 도형 없이 `row-channel-crossing` 으로 포기한다", () => {
+    const s = seed();
+    settleDeliveryRows({ deliverySeeds: [s], rowChannelNeeds: [need] }, [rowChannel(new Map())], (_id, y) => y);
+    expect(s.noPlan).toBe("row-channel-crossing");
+    const g = materialize(s);
+    expect(g.deliveries.has(s.key)).toBe(false);
+    expect(g.skips).toEqual([{ key: s.key, reason: "row-channel-crossing" }]);
+  });
+
+  it("행을 받으면 그 행이 출발 행이다(대조군)", () => {
+    const s = seed();
+    settleDeliveryRows({ deliverySeeds: [s], rowChannelNeeds: [need] }, [rowChannel(new Map([[need.id, 1]]))], (_id, y) => y);
+    expect(s.noPlan).toBeUndefined();
+    expect(s.fromRowChannel).toEqual({ row: 11 });
+    expect(s.startY).toBe(11);
   });
 });

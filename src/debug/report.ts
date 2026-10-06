@@ -137,11 +137,11 @@ export function buildReport(): string {
         + (fl.seatPickSouth + fl.seatPickFiltered > 0
           ? ` · 행 고르기(S흐름 ${fl.seatPickSouth} · 거름 ${fl.seatPickFiltered})` : '')
         + (fl.diveOwn + fl.diveYield + fl.diveNoType + fl.diveEnd > 0
-          ? ` · 잠수(도착 ${fl.diveOwn} · 비켜 주기 ${fl.diveYield}`
+          ? ` · 지하 횡단(도착 ${fl.diveOwn} · 먼저 앉은 줄 ${fl.diveYield}`
             + `${fl.diveNoType > 0 ? ` · **지하벨트 없음 ${fl.diveNoType}**` : ''}`
             + `${fl.diveEnd > 0 ? ` · 끝 칸에 걸림 ${fl.diveEnd}` : ''})` : '')
         + (fl.gapExits + fl.exitRefused > 0
-          ? ` · gap 출구(잠수 ${fl.exitDives}/${fl.gapExits}${fl.exitRefused > 0 ? ` · **거절 ${fl.exitRefused}**` : ''})` : '')
+          ? ` · gap 출구(지하 횡단 ${fl.exitDives}/${fl.gapExits}${fl.exitRefused > 0 ? ` · **거절 ${fl.exitRefused}**` : ''})` : '')
         + (fl.endsCoarse > 0 ? ` · **끝 낟알로 잃음 ${fl.endsCoarse}**` : '')
         + (fl.endsDisagree > 0 ? ` · **장부 어긋남 ${fl.endsDisagree}**` : '')
         + (fl.netTrips > 0 ? `  ← **안전망 ${fl.netTrips}회**(포트 칸이 장부에 없다)` : ''),
@@ -276,7 +276,8 @@ export function buildReport(): string {
   if (cl) {
     const byReason = new Map<string, number>();
     for (const s of cl.skips) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
-    const did = ` · 완전교차 양보 ${cl.ledger.crossingYields} · 유체 지하 ${cl.ledger.fluidDives} · 탐욕 채널 ${cl.ledger.greedyChannels}/${cl.ledger.channels}`;
+    const did = ` · 완전교차 양보 ${cl.ledger.crossingYields} · 유체 지하 ${cl.ledger.fluidDives} · 반출 지하 ${cl.ledger.exportDives} · 끼운 트랙 ${cl.ledger.widenedTracks} · 탐욕 채널 ${cl.ledger.greedyChannels}/${cl.ledger.channels}`
+      + (cl.ledger.rowChannelCrossings > 0 ? ` · **행 채널 엇갈림 ${cl.ledger.rowChannelCrossings}**` : '');
     out.push(
       line(
         '납품장부',

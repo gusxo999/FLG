@@ -214,7 +214,7 @@ function checkReach(view: LayoutView): Violation[] {
       // 포트에 닿는다(`trunk-blocked.md` §4.2 — `module/shape/body.gapExitDive`). 이 줄 위에 지하벨트 입구 · 출구가 함께 있으면
       // 둘 사이의 칸은 트렁크가 땅속으로 지나는 칸이라 채워져 있을 필요가 없다.
       // 짝은 이 줄을 따라 누운 것만 — 방향이 줄과 나란하고(W/E 포트면 동·서, N/S 면 남·북 — 16방향 인코딩) 서로 같다.
-      // 포트 칸(`p` — 라우팅이 머신에 닿는 끝점 `tapAnchor`)도 본다 — 잠수하면 먼 입출구가 곧 그 칸이다.
+      // 포트 칸(`p` — 라우팅이 머신에 닿는 끝점 `tapAnchor`)도 본다 — 지하 횡단하면 먼 입출구가 곧 그 칸이다.
       const along = face === 'W' || face === 'E' ? [4, 12] : [0, 8];
       const mouths = [...between, { x: p.x, y: p.y }]
         .map((c) => view.cells.get(cellKey(c.x, c.y)))

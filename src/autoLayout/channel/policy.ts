@@ -22,35 +22,44 @@ export interface ExitSides {
   exitOf: Map<string, NsEdge>;
   /**
    * **완전 교차로 땅 위를 내준 납품** → 그 상대 하나(관측용 — 같은 순위에서 내줬으면 상대가 여럿일 수 있다).
-   * 아이템은 ③ 지하 횡단의 후보이고, 유체는 계획을 여기서 폴백으로 받는다(오늘 유체는 땅속으로 못 간다).
+   * 들어갈 수 있는 쪽([DiveAbility])은 ③ 지하 횡단의 후보이고, 못 들어가는 유체는 계획을 여기서 폴백으로 받는다.
    */
   yieldedDeliveries: Map<string, string>;
-  /** 땅 위를 내준 반출 — 폴백 계획(물러남)을 여기서 적는다. 상자는 방출에서 트랙을 훑는다. */
+  /**
+   * 땅 위를 내준 반출 — 들어갈 수 있으면 ③ 지하 횡단의 후보다. 못 들어가면 폴백 계획(물러남)을 여기서 적는다 — 상자는
+   * 방출에서 트랙을 훑는다.
+   */
   yieldedExports: Set<string>;
   surfaceDels: DeliveryInput[];
 }
 
 /**
  * **땅속으로 갈 수 있나**를 정하는 것 — 매체마다 지하 사거리(`GeometryContext.maxJump` · `maxJumpPipe`), 그리고 한 번
- * 들어가 봤다가 못 건넌 유체(`noDive` — [planChannelGeometry] 가 다시 돌릴 때 넘긴다).
+ * 들어가 봤다가 못 건넌 경로(`noDive` — [planChannelGeometry] 가 다시 돌릴 때 넘긴다).
  *
  * 아이템 납품은 언제나 들어갈 수 있는 쪽으로 친다(사거리가 없으면 ③ 지하 단계가 못 건너 폴백한다 — 2026-10-01 이전과 같다).
- * 유체는 지하파이프를 고른 판(`maxJumpPipe ≥ 2`)에서만 들어간다 — 짝 규칙은 ③ 이 장부(corridor)로 본다.
- * 반출 벨트는 방출기가 땅 위로만 깔아 아직 못 들어간다(`perimeter/shape/router` — 계획 두점-잇기 Step 5).
+ * 파이프 경로(유체 납품 · 파이프 반출)는 지하파이프를 고른 판(`maxJumpPipe ≥ 2`)에서, 벨트 반출은 지하벨트를 고른 판
+ * (`maxJump ≥ 2`)에서 들어간다 — 짝 규칙은 ③ 이 장부(corridor)로 본다. 반출이 들어가는 것은 2026-10-02 부터다(그 전엔
+ * 방출기가 반출을 땅 위로만 깔았다).
  */
 export interface DiveAbility {
+  maxJump: number;
   maxJumpPipe: number;
   noDive: ReadonlySet<string>;
 }
 
-/** 땅속으로 들어갈 차례 — **유체 파이프가 먼저**다(지하파이프는 많이 쓸수록 좋다). 앞에 있을수록 먼저 들어간다. */
+/**
+ * 벨트 × 파이프가 반드시 만나 **상대 수가 같을 때** 들어갈 차례 — 파이프가 먼저다(잠정 — 지금은 무엇이 들어가든 차이가 없다).
+ * 상대 수가 다르면 상대가 많은 쪽이 들어간다([loserOf] — docs layout-models §3.5 두점 라우팅 제4조 ③).
+ */
 const MEDIUM_DIVE_ORDER = ["pipe", "belt"] as const;
 const mediumOf = (r: SurfaceRoute): (typeof MEDIUM_DIVE_ORDER)[number] =>
-  r.kind === "delivery" && r.d.fluid !== undefined ? "pipe" : "belt";
+  (r.kind === "delivery" ? r.d.fluid : r.x.fluid) !== undefined ? "pipe" : "belt";
 
 /**
- * **실패 비용**(`docs/auto-layout/common/priority-ordering.md` P10) — 아무도 땅속으로 못 갈 때 **땅 위를 잃는** 쪽은 이 값이
- * 큰 쪽이다. 유체는 잃으면 트리가 거절되고, 반출은 상자가 안에 남고, 아이템은 방출의 탐색이 회수한다.
+ * **실패 비용**(`docs/auto-layout/common/priority-ordering.md` P10) — **아무도 땅속으로 못 갈 때** 땅 위를 잃는 쪽은 이 값이
+ * 큰 쪽이다. 유체는 잃으면 트리가 거절되고, 반출은 상자가 안에 남고, 아이템은 방출의 탐색이 회수한다. 모델은 그때
+ * *계획이 넓힌다* 다(docs layout-models §3.5 제4조 ④) — 이 값은 그것이 서기 전의 오늘 동작이다.
  */
 const lossRank = (r: SurfaceRoute): number =>
   r.kind === "delivery" ? (r.d.fluid !== undefined ? 0 : 2) : 1;
@@ -67,8 +76,8 @@ type SurfaceRoute =
  * 차례   유체끼리 → 유체 × 반출 → 유체 × 아이템 → 아이템 × 반출 → 반출끼리 → 아이템끼리. 무리 안은 id 순
  *   ① 반출이 끼었으면 진출 변을 뒤집어 본다 — 뒤집은 변에서 납품을 새로 안 가둘 때만. 반출끼리 생긴 엇갈림은
  *      반출끼리 차례에서 다시 뒤집어 푼다(거기서는 반출도 새로 안 가둘 때만)
- *   ② 누가 땅속으로 가나 — 들어갈 수 있는 쪽 중 매체(유체 파이프 > 벨트) → 같은 매체면 완전 교차 상대가 많은 쪽
- *      (남은 후보 중에서 세고, 하나 빼면 다시 센다) → 동률은 id 뒤쪽
+ *   ② 누가 땅속으로 가나 — 들어갈 수 있는 쪽 중 완전 교차 상대가 많은 쪽(남은 후보 중에서 세고, 하나 빼면 다시 센다)
+ *      → 벨트 × 파이프가 같으면 파이프 → 동률은 id 뒤쪽
  *   ③ 아무도 못 들어가면 실패 비용(P10)이 낮은 쪽이 땅 위를 잃는다 — 같은 순위면 ②의 상대 수 · id
  * ```
  *
@@ -76,7 +85,7 @@ type SurfaceRoute =
  * §10.2 정리 3: 순환이 하나라도 있으면 어떤 폭에서도 해가 없다). 남은 충돌은 폭 · 다른 유체의 인접뿐이고 탐색이 본다.
  *
  * > **내력.** `settleExitSides` 였다 — 반출 × 납품만 미리 보는 같은 쪽 판정 두 라운드(유체 · 아이템). 납품끼리 · 반출끼리의
- * > 완전 교차는 탐색이 모든 폭에서 실패해야 알았고, 그러면 채널 전체가 탐욕 배정으로 갔다(2026-10-01 계획 두점-잇기 Step 1).
+ * > 완전 교차는 탐색이 모든 폭에서 실패해야 알았고, 그러면 채널 전체가 탐욕 배정으로 갔다(2026-10-01 · docs/auto-layout/channel/channel-geometry-reservation.md §4.4).
  */
 export function settleFullCrossings(
   deliveries: ReadonlyArray<DeliveryInput>,
@@ -86,14 +95,14 @@ export function settleFullCrossings(
   deliveryPlans: Map<string, DeliveryPlan>,
   exportPlans: Map<string, ExportPlan>,
   ctx: Pick<GeometryContext, "yMin" | "yMax">,
-  dive: DiveAbility = { maxJumpPipe: 0, noDive: new Set() },
+  dive: DiveAbility = { maxJump: 0, maxJumpPipe: 0, noDive: new Set() },
 ): ExitSides {
   const exitOf = new Map<string, NsEdge>(exports_.map((x) => [x.id, x.preferredExit]));
   /** 땅속으로 갈 수 있나([DiveAbility]). */
   const canDive = (r: SurfaceRoute): boolean => {
-    if (r.kind !== "delivery") return false;
-    if (r.d.fluid === undefined) return true;
-    return dive.maxJumpPipe >= 2 && !dive.noDive.has(r.id);
+    if (dive.noDive.has(r.id)) return false;
+    if (r.kind === "delivery" && r.d.fluid === undefined) return true;
+    return mediumOf(r) === "pipe" ? dive.maxJumpPipe >= 2 : dive.maxJump >= 2;
   };
   const yieldedDeliveries = new Map<string, string>();
   const yieldedExports = new Set<string>();
@@ -110,7 +119,7 @@ export function settleFullCrossings(
     [...deliveries.map(asDel), ...exports_.map(asExp)].filter((r) => !yielded(r));
 
   /**
-   * 땅 위를 내준다 — 들어갈 수 있는 납품은 ③ 지하 횡단의 후보로 간다. 못 들어가는 유체 · 반출은 폴백 계획을 여기서 받는다
+   * 땅 위를 내준다 — 들어갈 수 있는 경로는 ③ 지하 횡단의 후보로 간다. 못 들어가는 유체 · 반출은 폴백 계획을 여기서 받는다
    * (적어 두지 않으면 ②③ 이 그 경로를 건너뛰어 계획이 비어 버린다).
    */
   const yieldSurface = (loser: SurfaceRoute, winner: SurfaceRoute): void => {
@@ -121,6 +130,7 @@ export function settleFullCrossings(
       return;
     }
     yieldedExports.add(loser.id);
+    if (canDive(loser)) return;
     const toFluid = winner.kind === "delivery" && winner.d.fluid !== undefined;
     exportPlans.set(loser.id, { kind: "fallback", reason: toFluid ? "yielded-to-fluid" : "yielded-to-export" });
   };
@@ -156,13 +166,17 @@ export function settleFullCrossings(
     });
 
   /**
-   * ② · ③ — 쌍 하나에서 누가 땅 위를 내주나. 들어갈 수 있는 쪽이 있으면 매체 순(유체 파이프 먼저) → 상대 수 → id 뒤쪽,
-   * 없으면 실패 비용이 낮은 쪽 → 상대 수 → id 뒤쪽.
+   * ② · ③ — 쌍 하나에서 누가 땅 위를 내주나. 둘 다 들어갈 수 있으면 상대가 많은 쪽 → (매체가 다르면) 파이프 → id 뒤쪽,
+   * 아무도 못 들어가면 실패 비용이 낮은 쪽 → 상대 수 → id 뒤쪽.
    */
   const loserOf = (a: SurfaceRoute, b: SurfaceRoute): SurfaceRoute => {
     const divers = [a, b].filter(canDive);
     if (divers.length === 1) return divers[0];
     if (divers.length === 2) {
+      // **상대 수가 먼저다** — 여럿과 엇갈린 쪽이 들어가면 만남이 한꺼번에 풀린다. 매체는 상대 수가 같을 때만 본다.
+      const pa = partnersIn(a, live());
+      const pb = partnersIn(b, live());
+      if (pa !== pb) return pa > pb ? a : b;
       const ma = MEDIUM_DIVE_ORDER.indexOf(mediumOf(a));
       const mb = MEDIUM_DIVE_ORDER.indexOf(mediumOf(b));
       if (ma !== mb) return ma < mb ? a : b;
@@ -238,8 +252,8 @@ export function settleFullCrossings(
 export type SurfaceItem = { id: string; candidates: (t: number) => Shape | null; max: number; fluid?: string };
 
 /**
- * **② 후보 — 실패 비용 순.** 유체 납품(지하로 못 도망간다 — 실패 = 트리 전체 실패) → 반출(실패해도 상자가
- * 로컬 ring 에 남는다) → 아이템 납품(실패하면 지하 횡단이 회수한다). 탐욕 폴백에서 앞선 것이 자리를 먼저
+ * **② 후보 — 실패 비용 순.** 유체 납품(실패 = 트리 전체 실패) → 반출(실패하면 방출이 트랙을 훑고, 그래도 못 나가면
+ * 상자가 로컬 ring 에 남는다) → 아이템 납품(실패하면 지하 횡단이 회수한다). 탐욕 폴백에서 앞선 것이 자리를 먼저
  * 가지므로 이 순서가 곧 *"누가 지상을 먼저 갖나"* 다.
  */
 export function surfaceItemsOf(
@@ -263,7 +277,8 @@ export function surfaceItemsOf(
   for (const x of exports_) {
     if (yieldedExports.has(x.id)) continue;
     const exit = exitOf.get(x.id)!;
-    items.push({ id: x.id, candidates: (t) => elbowShape(x, t, exit, ctx, capCol), max: cap });
+    // 파이프 반출도 유체다 — 다른 유체와 닿기만 해도 만난다(halo). 2026-10-02 까지 장부는 반출 파이프를 벨트로 봤다.
+    items.push({ id: x.id, candidates: (t) => elbowShape(x, t, exit, ctx, capCol), max: cap, fluid: x.fluid });
   }
   for (const d of surfaceDels) if (d.fluid === undefined) items.push(delItem(d));
   return items;

@@ -152,7 +152,7 @@ export function tunnelLength(
 }
 
 /**
- * gap 에 그룹이 하나 더 앉으면 **이미 선 터널 중 사거리를 넘는 것이 생기나** — 옆면(W/E)의 잠수 기록을 전부 본다.
+ * gap 에 그룹이 하나 더 앉으면 **이미 선 터널 중 사거리를 넘는 것이 생기나** — 옆면(W/E)의 지하 횡단 기록을 전부 본다.
  */
 function breaksTunnel(ctx: LinkFaceContext, extra: { face: "N" | "S"; mi: number }): boolean {
   for (const face of ["W", "E"] as const) {
@@ -170,7 +170,7 @@ function breaksTunnel(ctx: LinkFaceContext, extra: { face: "N" | "S"; mi: number
  *
  * 맨 위 머신의 N · 맨 아래 머신의 S 는 이웃이 없어 출구 행이 기둥 **밖**이다. 포트(인서터 d1 · 상자 d2)는 출구 옆면
  * (싣는 쪽 W · 집는 쪽 E)의 기둥 밖 칸에 선다 — 그 면의 기둥 끝 포트 · 합류 칸과 **같은 주소**다(`끝:오프셋:깊이`).
- * 그래서 두 줄의 다툼을 장부 하나가 본다. 진짜 gap 의 출구는 표에 gap 행이 없어 여기 못 오르고, 잠수가 푼다
+ * 그래서 두 줄의 다툼을 장부 하나가 본다. 진짜 gap 의 출구는 표에 gap 행이 없어 여기 못 오르고, 지하 횡단이 푼다
  * (`arith/face.sideCrossingsFromPlans`).
  */
 function columnEndExit(
@@ -272,12 +272,12 @@ export function fitOnFace(
   end: Pick<LinkFacePlan, "portEnd" | "exitEnd" | "mergeRole">,
   why?: DepthShortage[],
   /**
-   * **잠수가 푼 칸** — 정책이 센 것([diveRelief] — `module/policy/link`). 여기서는 그 칸을 빈 것으로 볼 뿐이다.
+   * **지하 횡단이 푼 칸** — 정책이 센 것([diveRelief] — `module/policy/link`). 여기서는 그 칸을 빈 것으로 볼 뿐이다.
    *
    * ```
    * tunnels   이 줄의 몸통 — 그 행의 내 깊이 칸은 안 본다(땅속이다)
-   * freed     비켜 주기로 빌 칸(`${행}|${깊이}`) — 포트 칸 검사에서 빈 것으로 본다
-   * range     잠수로 풀릴 막힘인데 사거리를 넘었다 — 못 앉으면 사유에 싣는다
+   * freed     먼저 앉은 줄의 지하 횡단으로 빌 칸(`${행}|${깊이}`) — 포트 칸 검사에서 빈 것으로 본다
+   * range     지하 횡단으로 풀릴 막힘인데 사거리를 넘었다 — 못 앉으면 사유에 싣는다
    * ```
    */
   relief?: { tunnels?: ReadonlyArray<readonly [number, number]>; freed?: ReadonlySet<string>; range?: boolean },
@@ -339,7 +339,7 @@ export function fitOnFace(
   // 한쪽 줄이 통째로 사라진다(`emitModule` 의 *"구성상 발생 안 함"* 안전망).
   // **합류 쌍이면 합류 도형 전부다**([endCells]) — 이끄는 줄은 기둥 밖까지 달리고 따르는 줄은 깊이 +2 로 비켜 간다.
   // 포트 두 칸만 보면 그 길이 지나는 남의 칸을 청구가 덮어 쓴다(work-kinds §7 D9).
-  // 비켜 주기로 빌 칸(`relief.freed`)은 빈 것으로 본다 — 그 줄이 그 행을 땅속으로 내준다.
+  // 먼저 앉은 줄의 지하 횡단으로 빌 칸(`relief.freed`)은 빈 것으로 본다 — 그 줄이 그 행을 땅속으로 내준다.
   const claim = splitByTable(endCells({ clusterBeltDepth, portEnd, exitEnd, mergeRole }, span, outRowOf(table, end)), table);
   const hitPort = claim.inside.filter(([r, d]) => !depthClear(table, d, r, r) && !relief?.freed?.has(`${r}|${d}`));
   if (hitPort.length > 0) {
@@ -394,7 +394,7 @@ export function commitLinkFace(
     for (const k of exit.keys) band.add(k);
     ctx.outside.set(exit.exitFace, band);
   }
-  // **비켜 주기가 먼저다** — 먼저 앉은 줄이 그 행을 땅속으로 내줘야 내 포트가 설 칸이 빈다. 몸통은 묻기가 셌다.
+  // **먼저 앉은 줄의 지하 횡단이 먼저다** — 먼저 앉은 줄이 그 행을 땅속으로 내줘야 내 포트가 설 칸이 빈다. 몸통은 묻기가 셌다.
   for (const [who, bodies] of cand.yields ?? []) giveRows(table, who, bodies);
   const owner = takeOwner(table);
   // 머신 index 오름차순으로 온다([seatRowsOf]) — 방출 순서가 결정적이어야 한다.
@@ -422,7 +422,7 @@ export function commitLinkFace(
     const seatRows = new Set<number>();
     for (const [mi, slots] of cand.slotIndex) for (const s of slots) seatRows.add(rowIndex(table, mi, s));
     /**
-     * **칸의 종류**([FaceCellKind]) — 잠수할 수 있는 줄(`dive`)만 인서터가 안 닿는 행의 벨트를 `soft` 로 적는다.
+     * **칸의 종류**([FaceCellKind]) — 지하 횡단할 수 있는 줄(`dive`)만 인서터가 안 닿는 행의 벨트를 `soft` 로 적는다.
      * 그런 줄만 나중에 비켜 줄 수 있다. 나머지는 전부 단단하다(`belt`) — 오늘 그대로다.
      */
     const kindOf = (c: { kind: string; depth: number; t: number }): FaceCellKind => {
@@ -465,7 +465,7 @@ export function commitLinkFace(
     set.add(cand.portEnd);
     ctx.ends.set(cand.face, set);
   }
-  // 잠수의 제안(`dive` · `yields`)은 계획에 안 싣는다 — 받기가 적었고, 몸통의 최종값은 장부에 있다([LinkFacePlan.owner]).
+  // 지하 횡단의 제안(`dive` · `yields`)은 계획에 안 싣는다 — 받기가 적었고, 몸통의 최종값은 장부에 있다([LinkFacePlan.owner]).
   const { dive: _dive, yields: _yields, ...plan } = cand;
   return {
     ...plan,

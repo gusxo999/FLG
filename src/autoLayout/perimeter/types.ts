@@ -13,6 +13,7 @@
  */
 
 import type { PortFace } from "../shared/types";
+import type { RowChannelCover } from "../tree/types/pack";
 
 export type ExitEdge = "N" | "S" | "W" | "E";
 
@@ -50,6 +51,8 @@ export interface ExitPortInput {
    */
   localX: number;
   role: "input" | "output";
+  /** 유체 이름 — 파이프 포트면 있다. 반출도 경로라 매체가 땅속의 뜻 · 만남을 정한다(통로 장부의 `ExportInput.fluid`). */
+  fluid?: string;
   depth: number;
   /** 포트가 붙은 모듈 *변* (anchor vs 머신 bbox). */
   side: ExitEdge;
@@ -74,9 +77,9 @@ export interface ExitPortInput {
  * 장부가 앞 후보를 **강등**시킬 수 있으므로, planner 가 하나로 못박지 않고 후보를 남겨
  * 장부가 고르게 한다(스도쿠: 제약 센 곳부터 — 그래서 순회도 `options.length` 순이다).
  *
- * **「양보」라고 쓰지 않는다.** 그 용어는 *이미 잡은 주인이 비켜 주는 것*(철회·선점)을
- * 뜻하고 그건 자리마다 `owner` 가 있어야 성립한다. 여기서 일어나는 것은 **아직 확정 안 된
- * 후보를 건너뛰는 것**뿐이라 철회가 없다 — 그것이 **후보 강등**이다.
+ * 진 쪽이 **후보**를 내준다 — 양보(용어사전 *양보* — 진 쪽이 무엇을 내주는 것의 총칭)의 한 종류인 **후보 강등**이다.
+ * 이미 잡은 자리를 내놓는 **철회**(자리마다 `owner` 가 있어야 성립한다)와는 다르다 — 여기서 일어나는 것은 아직
+ * 확정 안 된 후보를 건너뛰는 것뿐이다.
  *
  * 실제로 강등시키는 장부는 오늘 하나다 — **직진 장부**([DirectRay]). 뒤에 다른 제약이
  * 후보 강등을 요구하면 같은 자리에 붙는다.
@@ -112,16 +115,15 @@ export interface ExitContext {
   /** 광선이 훑을 격자 — **좌표가 없다**. 순번과 깊이뿐이다([layoutRegions]). */
   grid: LayoutGrid;
   /**
-   * [rowChannelKey] → 그 행 채널의 **가로 트랙이 덮는 최대 로컬 x**. 수요가 없으면 없다.
+   * 행 채널 신원(`tree/arith/pack.rowChannelIdOf`) → 그 행 채널의 **가로선이 덮는 열**([RowChannelCover]). 수요가 없으면 없다.
    *
-   * 세로 직진이 행 채널을 **관통**할 때 밟는지 판정하는 데 쓴다(계획서 §2.4 ③).
-   * 가로 트랙은 전부 *상자 → 그 열의 서쪽 변(로컬 0)* 까지 뻗으므로 구간이 `[0, x2]` 이고,
-   * 그래서 **최댓값 하나**면 충분하다.
+   * 세로 직진이 행 채널을 **관통**할 때 밟는지 판정하는 데 쓴다([[exit-ray]] §3 ③). 가로선은 열의 한쪽 변까지 뻗는다 —
+   * 자식 쪽 끝은 서쪽(`[0, west]`), 부모 쪽 끝은 동쪽(`[east, 열의 동쪽 변]`). 만든 쪽(통로)이 행 채널 하나에 값 하나를 적고,
+   * 여기서는 **그 신원으로 한 번** 찾는다 — 만든 쪽의 속 규약을 모른다.
    *
-   * **수요를 본다(배정이 아니라).** 배정에서 밀린 경로도 그 자리를 원했으므로,
-   * 보수적으로 세는 쪽이 맞다.
+   * **수요를 본다(배정이 아니라).** 배정에서 밀린 경로도 그 자리를 원했으므로, 보수적으로 세는 쪽이 맞다.
    */
-  rowChannelReach: ReadonlyMap<string, number>;
+  rowChannelCover: ReadonlyMap<string, RowChannelCover>;
   /**
    * 모듈 id → 그 모듈의 **몸통이 먹는 로컬 열**([GeneratedModule.bodyColumns]).
    *
@@ -138,6 +140,8 @@ export interface ExitContext {
 export interface ExitAssignment {
   id: string;
   role: "input" | "output";
+  /** 유체 이름 — 파이프 반출이면 있다([ExitPortInput.fluid]). */
+  fluid?: string;
   /**
    * 쓸 수 있는 출구 후보들(선호 순, 전부 wayOuts 를 만족). 아래 평평한 필드
    * (exitEdge/exitMode/entry)가 **확정**이고, 겹치는 것이 없으면 `options[0]` 이다.
@@ -159,6 +163,11 @@ export interface ExitAssignment {
    * ⑥C(perimeterRouter)가 스캔 없이 그대로 재생한다.
    */
   trackX?: number;
+  /**
+   * **땅속으로 건너는 곳**(절대 좌표 · 상자 쪽 → 바깥 순) — 통로 장부가 이 반출을 완전 교차에서 들여보냈으면 있다
+   * (`channel/types.ExportPlan` 의 `undergroundCrossing`). 방출이 입구 · 출구에 지하벨트 · 지하파이프를 깔고 그 사이를 비운다.
+   */
+  jumps?: { from: { x: number; y: number }; to: { x: number; y: number } }[];
 }
 
 /**

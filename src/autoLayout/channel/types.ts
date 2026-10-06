@@ -26,11 +26,11 @@ export interface DeliveryInput {
   /**
    * 유체 이름. `undefined` = 아이템(벨트).
    *
-   * 유체는 두 가지가 다르다(docs/auto-layout-wizard.fluid-delivery-reservation.md):
+   * 유체는 두 가지가 다르다(docs/auto-layout/channel/fluid-delivery-reservation.md):
    *  - **인접 금지** — 파이프는 닿기만 하면 이어진다. *다른* 유체와는 겹침뿐 아니라
    *    4-인접도 충돌이다. 같은 유체끼리는 닿아도 합법이라 겹침만 본다.
-   *  - **지하로 못 도망간다** — 지하파이프 페어링 절단이 별개 제약이라 v1 에선 유체에
-   *    지하 횡단을 안 쓴다. 대신 **지상 우선권**을 준다(배정 순서 맨 앞).
+   *  - **땅속은 지하파이프로** — 지하파이프의 짝은 종류와 무관하게 같은 줄에서 끊기므로 장부가 파이프 짝을 따로 센다
+   *    (`channel/ledger/geometry.crossUnderground`). 누가 들어가나는 docs/auto-layout/common/layout-models.md §3.5 제4조 ③.
    */
   fluid?: string;
 }
@@ -45,6 +45,13 @@ export interface ExportInput {
   entryWall: ChannelWall;
   /** 선호 진출 변(가까운 N/S) — 해소 사다리 ①이 뒤집을 수 있다. */
   preferredExit: NsEdge;
+  /**
+   * 유체 이름 — 파이프 반출이면 있다. `undefined` = 벨트 반출.
+   *
+   * 반출도 경로라 매체가 값을 정한다([DeliveryInput.fluid] 와 같다) — 땅속으로 가면 지하벨트 · 지하파이프 중 무엇이고 사거리가
+   * 얼마인가, 다른 유체에 닿기만 해도 만나는가(인접). 2026-10-02 까지 장부는 반출 파이프를 벨트로 봤다.
+   */
+  fluid?: string;
 }
 
 export interface GeometryContext {
@@ -54,16 +61,15 @@ export interface GeometryContext {
   /**
    * 지하벨트 점프 거리 상한(입구↔출구 셀 거리). 0(기본) = 지하 불가 = 지상만.
    *
-   * **아이템 납품에만 쓴다.** 반출 경로는 [perimeterRouter] 가 지상 belt 로만 깔기 때문에
-   * 지하로 갈 수 없다. 유체 납품은 [maxJumpPipe] 를 쓴다.
+   * **벨트 경로가 쓴다** — 아이템 납품 · 벨트 반출. 파이프 경로(유체 납품 · 파이프 반출)는 [maxJumpPipe] 를 쓴다.
    * 누가 땅 위를 먼저 갖나는 이 값이 아니라 실패 비용(`priority-ordering` P10 — 유체 → 반출 → 아이템)이,
    * 완전 교차에서 누가 땅속으로 가나는 해소 사다리(`channel/policy.settleFullCrossings`)가 정한다.
    */
   maxJump?: number;
   /**
-   * 지하파이프 점프 거리 상한 — **유체 납품**이 완전 교차에서 땅속으로 갈 때 쓴다. 0(기본) = 지하파이프를 안 골랐다 =
-   * 유체는 땅속으로 못 간다(그때는 실패 비용 순서로 땅 위를 먼저 갖는다). [link/types.DeliveryConfig] 의
-   * `pipeMaxUndergroundDistance` 와 **같아야** 한다 — 장부가 계획한 점프를 방출기가 그대로 깐다.
+   * 지하파이프 점프 거리 상한 — **파이프 경로**(유체 납품 · 파이프 반출)가 완전 교차에서 땅속으로 갈 때 쓴다. 0(기본) =
+   * 지하파이프를 안 골랐다 = 파이프는 땅속으로 못 간다. [link/types.DeliveryConfig] 의 `pipeMaxUndergroundDistance` 와
+   * **같아야** 한다 — 장부가 계획한 점프를 방출기가 그대로 깐다.
    */
   maxJumpPipe?: number;
   /** 폭만 예약할 잔여 세로 구간(부적격 납품 경로·미지원 반출 등) — trackCount 에만 반영. */
@@ -121,6 +127,17 @@ export type DeliveryPlan =
 
 export type ExportPlan =
   | { kind: "elbow"; track: number; exitEdge: NsEdge }
+  | {
+      /**
+       * 땅속으로 건너는 한꺾임꼴 — 완전 교차에서 이 반출이 들어갔다(docs/auto-layout/common/layout-models.md §3.5 제4조 ③).
+       * 반출은 바깥으로 가는 납품이라 [DeliveryPlan] 의 `undergroundCrossing` 과 같은 일이다 — 점프는 가로 진입이나 세로
+       * 주행 위에서 남의 선을 건넌다. 방출(`perimeter/late`)이 이 점프를 그대로 깐다.
+       */
+      kind: "undergroundCrossing";
+      track: number;
+      exitEdge: NsEdge;
+      jumps: Jump[];
+    }
   | { kind: "fallback"; reason: string };
 
 export interface ChannelGeometryPlan {
@@ -134,4 +151,11 @@ export interface ChannelGeometryPlan {
   greedy: boolean;
   /** **관측** — 땅속으로 건넌 유체 납품 수(지하파이프). 유체가 먼저 들어가는 사다리가 실제로 돌았나를 센다. */
   fluidDives: number;
+  /** **관측** — 땅속으로 건넌 반출 수(지하벨트 · 지하파이프). 반출이 들어가는 사다리가 실제로 돌았나를 센다. */
+  exportDives: number;
+  /**
+   * **관측** — 건너는 쪽에게 자리를 만들려고 끼운 트랙 수(계획이 넓힌다 — docs layout-models §3.5 제4조 ④). 지금 판의 어느
+   * 트랙으로도 못 건넌 경로가 새 열로 건넜다. 폭(`trackCount`)은 그만큼 는다.
+   */
+  widenedTracks: number;
 }

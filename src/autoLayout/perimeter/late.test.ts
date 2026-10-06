@@ -3,7 +3,7 @@ import { packModuleTree, moduleExtent } from "../tree/build";
 import type { NodeSpec, PackConfig } from "../tree/types/pack";
 import { routeDeliveryRoutes } from "../link/build";
 import { rePathToPerimeter } from "./late";
-import { PERIMETER_MARGIN, faceVector } from "../shared/grid";
+import { PERIMETER_MARGIN, faceVector, vectorToDirection } from "../shared/grid";
 import { seatIsBeltFeeder } from "../module/shape/body";
 import type { IoLine } from "../module/types/line";
 import { EntityType } from "../../types/layout";
@@ -240,5 +240,59 @@ describe("rePathToPerimeter", () => {
       expect(seen.has(k), `중복 ${k}`).toBe(false);
       seen.add(k);
     }
+  });
+});
+
+describe("땅속으로 건너는 반출 — 장부가 계획한 점프를 그대로 깐다", () => {
+  // 통로 장부가 완전 교차에서 반출을 들여보내면 배정에 점프가 실려 온다(`ExitAssignment.jumps`). 여기선 그 상황을 손으로 만든다 —
+  // leaf 의 원료 입력 상자(N 면 · 바깥 N 변으로 곧장)가 지나는 칸 하나에 남의 벨트를 놓고, 그 칸을 땅속으로 건너는 점프를 준다.
+  const setup = (withJumps: boolean) => {
+    const pack = packModuleTree(specs, { ...config, reservePerimeterExits: true });
+    const delivery = routeDeliveryRoutes(pack, { beltEntityName: "transport-belt" });
+    const id = "leaf-input-rawC-0";
+    const port = pack.placements.flatMap((pl) => pl.module.inputPorts).find((p) => p.chest.id === id)!;
+    const asg = pack.exitPlan.assignments.find((a) => a.id === id)!;
+    const { x, y } = port.anchor;
+    // 상자 쪽에서 바깥(N)으로: (x, y-1) 입구 · (x, y-2) 남의 벨트 · (x, y-3) 출구
+    Object.assign(asg, {
+      exitMode: { kind: "channel", depth: 2 },
+      exitEdge: "N",
+      trackX: x,
+      jumps: withJumps ? [{ from: { x, y: y - 1 }, to: { x, y: y - 3 } }] : undefined,
+    });
+    const blocker = { x, y: y - 2, cell: delivery.cells[0]?.cell } as (typeof delivery.cells)[number];
+    const res = rePathToPerimeter(pack, delivery.strippedChestIds, [...delivery.cells, blocker], {
+      beltEntityName: "transport-belt",
+      inserterEntityName: "inserter",
+      undergroundBeltEntityName: "underground-belt",
+    });
+    return { res, id, x, y };
+  };
+
+  it("남의 칸 밑을 지하벨트 한 쌍으로 건너고, 그 칸에는 아무것도 안 놓는다", () => {
+    const { res, id, x, y } = setup(true);
+    expect(res.skips.map((s) => s.chestId)).not.toContain(id);
+    const rel = res.relocations.find((r) => r.chestId === id)!;
+    const ug = rel.belts.filter((b) => b.cell.entityType === EntityType.UndergroundBelt);
+    expect(ug.map((b) => `${b.x},${b.y}`).sort()).toEqual([`${x},${y - 1}`, `${x},${y - 3}`].sort());
+    expect(rel.belts.some((b) => b.x === x && b.y === y - 2), "땅속 칸").toBe(false);
+    expect(rel.corridors).toHaveLength(1);
+    expect(res.corridors).toEqual(rel.corridors);
+  });
+
+  it("입력 상자는 흐름이 바깥 → 트렁크다 — 입구는 바깥 쪽 칸, 둘 다 트렁크 쪽(S)을 본다", () => {
+    const { res, id, x, y } = setup(true);
+    const rel = res.relocations.find((r) => r.chestId === id)!;
+    const at = (yy: number) => rel.belts.find((b) => b.x === x && b.y === yy)!.cell;
+    expect(at(y - 3).undergroundType).toBe("input");
+    expect(at(y - 1).undergroundType).toBe("output");
+    const south = vectorToDirection(0, 1);
+    expect(at(y - 3).direction).toBe(south);
+    expect(at(y - 1).direction).toBe(south);
+  });
+
+  it("점프가 없으면 그 칸에 막혀 상자가 안에 남는다(대조군)", () => {
+    const { res, id } = setup(false);
+    expect(res.skips.map((s) => s.chestId)).toContain(id);
   });
 });

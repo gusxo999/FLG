@@ -214,15 +214,19 @@ describe("P4-4d — 지하파이프가 없으면 교차에서 유체가 지상, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2026-10-01 — 지하파이프를 고르면 유체가 먼저 밑으로 (계획 두점-잇기 Step 2)
+// 2026-10-01 — 지하파이프를 고르면 유체가 먼저 밑으로 (docs/auto-layout/common/layout-models.md §3.5 제4조 ③)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("지하파이프를 고르면 교차에서 유체가 밑으로 — 장부부터 방출까지", () => {
   // 부모 하나가 석탄 · 철판(아이템) · 가스(유체)를 받는다. 형제 셋이 한 열 채널을 지나는데, 가스 납품이 아이템 납품과
   // 끝이 엇갈린다(완전 교차). 지하파이프가 있으면 가스가 들어가고, 계획 그대로 지하파이프 한 쌍으로 깔린다.
   //
-  // 이 형상은 합성 스윕(부모 · 형제 수 × 포트 순서, 216 트리)에서 골랐다 — 실측 픽스처 32 개에는 유체가 낀 완전 교차가
+  // 이 형상은 합성 스윕(부모 · 형제 수 × 포트 순서)에서 골랐다 — 실측 픽스처 32 개에는 유체가 낀 완전 교차가
   // 한 건도 없었다. 모듈 생성이 바뀌어 아래 전제가 깨지면 기대값을 낮추지 말고 형상을 다시 고른다.
+  //
+  // **2026-10-02 다시 골랐다**(부모 2 · 형제 1 · 1 · 1 — 옛 형상은 부모 1 · 형제 1 · 2 · 2). 옛 형상의 가스는 지하파이프 **출구가
+  // 꺾이는 칸**에 섰다 — 지하파이프는 땅 위 쪽 한 방향으로만 이어지므로 실제로는 끊긴 관이었다. 장부가 꺾이는 칸에 입구 ·
+  // 출구를 두지 않게 되자(`channel/ledger/geometry.placeWithJumps`) 그 형상에선 가스가 들어갈 자리가 없어졌다.
   const twoFaceTrunk = (side: "W" | "E", role: "input" | "output") => ({
     ...fluidTrunk(side),
     lines: [{ name: "gas", role, side, fluidboxOffset: 0, rank: 0, boxIndex: 0 }],
@@ -232,10 +236,10 @@ describe("지하파이프를 고르면 교차에서 유체가 밑으로 — 장�
   });
   const userLines = [inL("coal"), inL("iron"), inFluidL("gas"), outL("plastic")];
   const specs: NodeSpec[] = [
-    { id: "user", depth: 0, machine: M, count: 1, lines: userLines, ...rates(userLines), fluidTrunk: twoFaceTrunk("E", "input") },
+    { id: "user", depth: 0, machine: M, count: 2, lines: userLines, ...rates(userLines), fluidTrunk: twoFaceTrunk("E", "input") },
     { id: "gasmaker", depth: 1, parentId: "user", machine: M, count: 1, lines: [inL("water-item"), outFluidL("gas")], ...rates([inL("water-item")]), fluidTrunk: twoFaceTrunk("W", "output") },
-    { id: "coalmaker", depth: 1, parentId: "user", machine: M, count: 2, lines: [inL("ore"), outL("coal")], ...rates([inL("ore"), outL("coal")]) },
-    { id: "ironmaker", depth: 1, parentId: "user", machine: M, count: 2, lines: [inL("ore2"), outL("iron")], ...rates([inL("ore2"), outL("iron")]) },
+    { id: "coalmaker", depth: 1, parentId: "user", machine: M, count: 1, lines: [inL("ore"), outL("coal")], ...rates([inL("ore"), outL("coal")]) },
+    { id: "ironmaker", depth: 1, parentId: "user", machine: M, count: 1, lines: [inL("ore2"), outL("iron")], ...rates([inL("ore2"), outL("iron")]) },
   ];
   const config = (pipeReach: number): PackConfig => ({
     inserterEntityName: "inserter",
@@ -244,6 +248,7 @@ describe("지하파이프를 고르면 교차에서 유체가 밑으로 — 장�
     belts: [{ entityName: "transport-belt", throughput: 40 }],
     reservePerimeterExits: true,
     pipeMaxUndergroundDistance: pipeReach,
+    beltMaxUndergroundDistance: 4,
   });
   const gasPlan = (p: ReturnType<typeof packModuleTree>) =>
     [...p.channelGeometry.deliveries.entries()].find(([k]) => k.includes("gas"))?.[1];
@@ -269,6 +274,14 @@ describe("지하파이프를 고르면 교차에서 유체가 밑으로 — 장�
     expect(res.failures).toBe(0);
     const gas = res.routes.find((r) => r.item === "gas")!;
     expect(gas.ok).toBe(true);
-    expect(gas.cells.filter((c) => c.cell.entityType === EntityType.PipeUnderground)).toHaveLength(2);
+    const ugs = gas.cells.filter((c) => c.cell.entityType === EntityType.PipeUnderground);
+    expect(ugs).toHaveLength(2);
+    // **한 쌍이 땅 위 관과 곧게 이어진다** — 입구 뒤 · 출구 앞 칸이 같은 축 위의 이 관이다(꺾이는 칸에 서면 끊긴다).
+    const [a, b] = ugs;
+    const d = { x: Math.sign(b.x - a.x), y: Math.sign(b.y - a.y) };
+    expect(a.x === b.x || a.y === b.y).toBe(true);
+    const has = (x: number, y: number) => gas.cells.some((c) => c.x === x && c.y === y);
+    expect(has(a.x - d.x, a.y - d.y), "입구 뒤").toBe(true);
+    expect(has(b.x + d.x, b.y + d.y), "출구 앞").toBe(true);
   });
 });

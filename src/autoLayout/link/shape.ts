@@ -43,6 +43,27 @@ function onSegment(
 }
 
 /**
+ * 꼭짓점 열에서 **방향이 꺾이는 점만** 남긴다 — 앞 점과 같은 점, 앞뒤로 같은 방향이 이어지는 점은 뺀다.
+ *
+ * 계단꼴의 세 꼭짓점은 늘 꺾이지 않는다: 출발 행과 도착 행이 같으면(가로로 곧장 열 채널을 건너는 경로)
+ * 둘째 꼭짓점이 첫째와 겹치고, 트랙이 그 직선 위의 *지나가는 점* 이 된다. 지하 횡단의 점프가 그 점에서
+ * 시작해 같은 방향으로 넘어가면, 걸음은 점프 뒤에 그 점까지 **되돌아** 걸었다 — 같은 칸을 두 번 지나며
+ * 건넌 상대의 트랙(점프 밑 칸)을 지상으로 밟고, 계획이 제 상대에게 막혔다(2026-10-02 합성 스윕 48건).
+ */
+function turningPoints(pts: readonly { x: number; y: number }[]): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (last && last.x === p.x && last.y === p.y) continue;
+    const prev = out[out.length - 2];
+    if (prev && Math.sign(last.x - prev.x) === Math.sign(p.x - last.x) && Math.sign(last.y - prev.y) === Math.sign(p.y - last.y))
+      out.pop();
+    out.push({ ...p });
+  }
+  return out;
+}
+
+/**
  * 한 납품 경로가 떼는 셀 좌표 — 양끝 chest(ghost) + **좌석이 belt→belt 피더인 끝의 인서터.**
  *
  * 포트 모양에 따라 좌석의 운명이 갈린다([seatIsBeltFeeder]): 링크/트렁크 포트의 좌석은
@@ -167,11 +188,8 @@ export function buildPlannedChain(delivery: DeliverySpec, g: DeliveryDirective):
       // 계단꼴의 세 꼭짓점을 순서대로 걷되, 점프 입구를 만나면 지상 대신 지하로 건넌다.
       // 장부가 낸 점프는 계단꼴 위에 순서대로 놓여 있으므로(같은 셀 순서열에서 뽑았다)
       // 여기서 재정렬하지 않는다 — 어긋나면 아래 연속성 검증이 잡아 폴백시킨다.
-      const corners = [
-        { x: g.trackX, y: s.y },
-        { x: g.trackX, y: e.y },
-        { ...e },
-      ];
+      // 꺾이는 점만 걷는다 — 지나가는 점을 남기면 그 점을 넘는 점프 뒤에 되돌아 걷는다([turningPoints]).
+      const corners = turningPoints([s, { x: g.trackX, y: s.y }, { x: g.trackX, y: e.y }, e]).slice(1);
       const jumps = [...g.jumps];
       const walkTo = (target: { x: number; y: number }) => {
         for (;;) {

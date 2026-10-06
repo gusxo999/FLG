@@ -436,14 +436,14 @@ export function chooseRoute(
     for (const [k2, cells] of reservedDelivery) if (k2 !== k) for (const c of cells) extra.add(c);
     route = routeOneDelivery(delivery, base, deliveryBelts, ledger, maxJump, blockGroup, config, bounds, extra);
     if (!route.ok && extra.size > 0) {
-      // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(납품 경로 실패 = 트리 전체
-      // 폴백이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
+      // 예약이 길을 전부 막은 극단 케이스 — 예약 없이 재시도(납품 경로 실패 = 이 트리
+      // 거절이므로, 반출 skip-on-failure 보다 훨씬 비싼 회귀를 피한다).
       //
       // **이 재시도는 남의 예약을 밟는다. 그 대가가 연쇄한다**(2026-07-22 조사):
       // 밟힌 계획은 다음 차례에 막혀 자기도 탐색으로 내려가고, 그 탐색이 또 예약을
       // 밟을 수 있다. 관측된 사슬 — 계획 없던 납품 경로 하나가 두 납품 경로를 더 끌고 내려갔다.
-      // 그래도 **의도된 거래**다: 여기서 물러나면 납품 경로 실패 → 트리 전체가 옛 경로로
-      // 떨어져 훨씬 크게 잃는다. 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
+      // 그래도 **의도된 거래**다: 여기서 물러나면 납품 경로 실패 → 이 트리가 거절돼
+      // 훨씬 크게 잃는다(옛 경로 폴백은 2026-07-25 에 지워졌다). 줄이려면 예약을 "막힘"이 아니라 "비싼 칸"으로 줘서
       // **최소한만 밟게** 해야 하는데, 그건 라우터 비용 모델을 바꾸는 별개 작업이다.
       route = routeOneDelivery(delivery, base, deliveryBelts, ledger, maxJump, blockGroup, config, bounds);
       laid.reservationOverrun += 1;

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { packModuleTree } from "./build";
+import { packModuleTree, deliveryKey } from "./build";
 import type { NodeSpec, PackConfig } from "./types/pack";
 import { routeDeliveryRoutes } from "../link/build";
 import type { IoLine } from "../module/types/line";
@@ -194,5 +194,24 @@ describe("레인 합류 — 납품은 하나뿐이다", () => {
     expect(on.delivery.failures, "실패 0").toBe(0);
     expect(on.delivery.dijkstraFallback, "탐색 폴백 0").toBe(0);
     expect(on.delivery.planned).toBe(1);
+  });
+});
+
+describe("레인 합류 — 행 채널도 납품 하나만 본다", () => {
+  /**
+   * 자식의 두 줄은 기둥 끝(S)의 **한 칸**에서 나간다. 납품을 안 만드는 줄이 행 채널 수요를 따로 적으면, 같은 칸에서 행을
+   * 하나 더 받는다(행 채널이 한 줄 넓어진다). 행 채널이 끝의 방향을 읽으면 같은 칸의 두 끝은 서로의 가로선을 덮는
+   * 완전 교차라, 동률 깨기가 **진짜 납품의 끝**을 뺄 수 있다(2026-10-02 대조 시험 `item-deep-heavy` — 납품의 행이 빠져
+   * 계획이 모듈 몸통을 지났다).
+   */
+  it("수요는 실제 납품의 끝뿐이다 — 끄면 각자의 끝(대조군)", () => {
+    const keysOf = (r: ReturnType<typeof run>) => new Set(r.pack.deliveries.map(deliveryKey));
+    const needOwners = (r: ReturnType<typeof run>) => r.pack.rowChannelNeeds.map((n) => n.id.replace(/:(out|in)$/, ""));
+    const on = run(true);
+    expect(on.pack.rowChannelNeeds.length, "한 칸에서 나가는 납품 하나").toBe(1);
+    expect(needOwners(on).every((k) => keysOf(on).has(k))).toBe(true);
+    const off = run(false);
+    expect(off.pack.deliveries.length, "각자 가면 납품 둘").toBe(2);
+    expect(needOwners(off).every((k) => keysOf(off).has(k))).toBe(true);
   });
 });

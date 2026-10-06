@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { planChannelGeometry } from "./geometry";
 import {
-  conflicts, deliveryEnds, elbowShape, exportEnds, fullCrossing, placedOf, staircaseShape, type RouteEnds,
+  conflicts, deliveryEnds, elbowShape, exportCells, exportEnds, fullCrossing, placedOf, staircaseShape, type RouteEnds,
 } from "../shape";
 import type { DeliveryInput, ExportInput, GeometryContext, NsEdge } from "../types";
 import { packModuleTree, deliveryKey } from "../../tree/build";
@@ -158,30 +158,111 @@ describe("planChannelGeometry — 지상 배정", () => {
     if (x.kind === "elbow") expect(x.exitEdge).toBe("S"); // N → S 뒤집힘
   });
 
-  it("§4.4 해소 사다리 ② — 뒤집기가 다른 납품을 가두면 지하 횡단으로", () => {
+  describe("§4.4 해소 사다리 ② — 뒤집기가 다른 납품을 가두면 지하 횡단으로", () => {
     // dA 는 N 진출에 갇히고, dB 가 S 뒤집기를 막는다(뒤집으면 dB 가 갇힘).
     const dels: DeliveryInput[] = [
       { id: "dA", startY: 3, endY: 7 },
       { id: "dB", startY: 8, endY: 9 },
     ];
     const exps: ExportInput[] = [{ id: "x", entryY: 5, entryWall: "E", preferredExit: "N" }];
-    const plan = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4 });
-    const a = plan.deliveries.get("dA")!;
-    expect(a.kind).toBe("undergroundCrossing");
-    if (a.kind === "undergroundCrossing") {
-      // 반출과 완전 교차라 땅 위를 내주고 지하로 건넌다 — 점프 하나, 입구·출구는 축이 같고 거리 ≥ 2.
-      expect(a.jumps.length).toBeGreaterThanOrEqual(1);
-      for (const j of a.jumps) {
+    /** 점프 하나하나가 직선이고 거리가 [2, reach] 안인가. */
+    const jumpsOk = (jumps: { fromCol: number; fromRow: number; toCol: number; toRow: number }[], reach: number) => {
+      expect(jumps.length).toBeGreaterThanOrEqual(1);
+      for (const j of jumps) {
         const sameAxis = j.fromCol === j.toCol || j.fromRow === j.toRow;
         const dist = Math.abs(j.toCol - j.fromCol) + Math.abs(j.toRow - j.fromRow);
         expect(sameAxis, "지하벨트는 직선이다").toBe(true);
         expect(dist).toBeGreaterThanOrEqual(2);
-        expect(dist).toBeLessThanOrEqual(4);
+        expect(dist).toBeLessThanOrEqual(reach);
       }
-    }
-    expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
-    const x = plan.exports.get("x")!;
-    if (x.kind === "elbow") expect(x.exitEdge).toBe("N"); // 뒤집기 기각됨
+    };
+
+    it("반출과 납품은 동등하다 — 상대 수가 같으면 id 뒤쪽(반출)이 땅속으로", () => {
+      // 반출은 바깥으로 가는 납품이다(docs layout-models §3.5 제4조 ②). 2026-10-02 까지는 반출이 땅속으로 못 가 납품이 건넜다.
+      const plan = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4 });
+      const x = plan.exports.get("x")!;
+      expect(x.kind).toBe("undergroundCrossing");
+      if (x.kind === "undergroundCrossing") {
+        expect(x.exitEdge).toBe("N"); // 뒤집기 기각됨
+        jumpsOk(x.jumps, 4);
+        // 점프는 반출 자신의 칸 위에 있고, 끝의 피더 · 상자(마지막 두 칸)에는 안 닿는다.
+        const cells = exportCells(exps[0], x.track, "N", ctx, 100).map((c) => `${c.col},${c.row}`);
+        for (const j of x.jumps) {
+          for (const k of [`${j.fromCol},${j.fromRow}`, `${j.toCol},${j.toRow}`]) {
+            expect(cells.indexOf(k), k).toBeGreaterThan(0);
+            expect(cells.indexOf(k), k).toBeLessThan(cells.length - 2);
+          }
+        }
+      }
+      expect(plan.deliveries.get("dA")!.kind).toBe("staircase");
+      expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
+      expect(plan.exportDives).toBe(1);
+    });
+
+    it("반출이 못 들어가면 납품이 건넌다(대조군 — 파이프 반출 · 지하파이프 없음)", () => {
+      const plan = planChannelGeometry(dels, [{ ...exps[0], fluid: "water" }], { ...ctx, maxJump: 4, maxJumpPipe: 0 });
+      const a = plan.deliveries.get("dA")!;
+      expect(a.kind).toBe("undergroundCrossing");
+      if (a.kind === "undergroundCrossing") jumpsOk(a.jumps, 4);
+      expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
+      const x = plan.exports.get("x")!;
+      expect(x.kind).toBe("elbow");
+      if (x.kind === "elbow") expect(x.exitEdge).toBe("N");
+      expect(plan.exportDives).toBe(0);
+    });
+  });
+
+  describe("반출이 땅속으로 — 상대 수 · 못 건너면 돌아온다", () => {
+    // W벽에서 들어와 N 으로 나가는 반출 x 는 세로가 행 5 · 6 · 8 · 9 를 다 지난다 — 납품 dB(5→8) · dC(6→9)와 각각 완전 교차다.
+    // dB 와 dC 는 끝 순서가 같아 서로 안 엇갈린다. 그래서 x 의 상대가 둘, 납품은 하나씩이다. S 로 뒤집으면 dD(22→24)를 가두므로
+    // 뒤집기(사다리 ①)로는 안 풀린다.
+    const dels: DeliveryInput[] = [
+      { id: "dB", startY: 5, endY: 8 },
+      { id: "dC", startY: 6, endY: 9 },
+      { id: "dD", startY: 22, endY: 24 },
+    ];
+    const exps: ExportInput[] = [{ id: "x", entryY: 20, entryWall: "W", preferredExit: "N" }];
+    const wide = { yMin: 0, yMax: 25 };
+
+    it("상대가 많은 반출이 들어간다 — 둘이 한꺼번에 풀린다", () => {
+      const plan = planChannelGeometry(dels, exps, { ...wide, maxJump: 5 });
+      expect(plan.exports.get("x")!.kind).toBe("undergroundCrossing");
+      expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
+      expect(plan.deliveries.get("dC")!.kind).toBe("staircase");
+      expect(plan.exportDives).toBe(1);
+    });
+
+    it("사거리가 모자라면 트랙을 끼워 건넌다 — 두 납품 사이 새 열에서는 한 칸씩 건넌다(계획이 넓힌다)", () => {
+      // dB · dC 의 트랙은 붙어 있다. 그 바깥 어느 트랙에서도 x 는 붙은 두 행(5 · 6 또는 8 · 9)을 한 번에 건너야 하는데 사거리 2 로는
+      // 못 건넌다. 둘 **사이**에 열을 끼우면 x 는 dB 의 가로 진입(행 5)과 dC 의 가로 진출(행 9)을 따로따로 건넌다.
+      const plan = planChannelGeometry(dels, exps, { ...wide, maxJump: 2 });
+      expect(plan.exports.get("x")!.kind).toBe("undergroundCrossing");
+      expect(plan.widenedTracks).toBe(1);
+      expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
+      expect(plan.deliveries.get("dC")!.kind).toBe("staircase");
+    });
+
+    it("어디에 끼워도 못 건너면 땅 위로 돌아오고 납품이 건넌다 — 다시 배정", () => {
+      // 상대 셋의 가로선이 행 2–5 에 빽빽하다 — x 의 세로가 어느 자리에 서도 붙은 두 행 이상을 한 번에 건너야 한다.
+      // 납품은 x 의 세로 한 칸씩만 건너면 된다. S 로 뒤집으면 dE 를 가둔다.
+      const dense: DeliveryInput[] = [
+        { id: "dB", startY: 2, endY: 3 },
+        { id: "dC", startY: 3, endY: 4 },
+        { id: "dD", startY: 4, endY: 5 },
+        { id: "dE", startY: 22, endY: 24 },
+      ];
+      const plan = planChannelGeometry(dense, exps, { ...wide, maxJump: 2 });
+      expect(plan.exports.get("x")!.kind).toBe("elbow");
+      for (const id of ["dB", "dC", "dD"]) expect(plan.deliveries.get(id)!.kind).toBe("undergroundCrossing");
+      expect(plan.exportDives).toBe(0);
+    });
+
+    it("아무도 못 들어가면 오늘처럼 실패 비용 — 반출은 땅 위를 갖고 아이템이 폴백(대조군)", () => {
+      const plan = planChannelGeometry(dels, exps, { ...wide, maxJump: 0 });
+      expect(plan.exports.get("x")!.kind).toBe("elbow");
+      expect(plan.deliveries.get("dB")!.kind).toBe("fallback");
+      expect(plan.deliveries.get("dC")!.kind).toBe("fallback");
+    });
   });
 
   it("§5-3 완전 교차(끝 순서 엇갈림) — 지상 해법 없음 → fallback 마킹(감지·로그)", () => {
@@ -212,6 +293,46 @@ describe("planChannelGeometry — 지상 배정", () => {
     expect(plan.greedy).toBe(false); // 남은 셋은 탐색이 푼다 — 예전엔 채널 전체가 탐욕으로 갔다
   });
 
+  describe("꺾이는 칸의 지하 입구 · 출구", () => {
+    // 지하벨트 · 지하파이프 출구는 제 방향으로만 내놓는다 — 꺾이는 칸의 출구는 끊긴 길이다. 지하파이프는 입구도 꺾인 쪽과
+    // 안 이어진다. 지하벨트 입구는 옆에서 받으면 한 레인만 받는데(옆 싣기) 줄 하나는 원래 한 레인이라 그대로 둔다.
+
+    it("출구가 꺾이는 칸에만 서는 트랙뿐이면 트랙을 끼워 다른 자리로 건넌다", () => {
+      // 셋(아래에서 위로 가는 납품)의 출발 행 17 · 18 · 19 가 dA 의 도착 행(20) 바로 위다. 셋이 서쪽 트랙을 먼저 받으므로 남은
+      // 트랙의 dA 는 셋의 가로 진입을 도착 행 바로 앞까지 건너야 한다 — 출구가 dA 가 꺾이는 칸(트랙 · 행 20)에 서야 해서 못 건넌다.
+      // 셋보다 **서쪽**에 열을 끼우면 dA 는 셋의 가로 진출(행 2 · 3 · 4)을 건넌다 — 출구가 곧은 칸(행 5)에 선다.
+      const dels: DeliveryInput[] = [
+        { id: "dA", startY: 1, endY: 20 },
+        { id: "dB", startY: 17, endY: 2 },
+        { id: "dC", startY: 18, endY: 3 },
+        { id: "dD", startY: 19, endY: 4 },
+      ];
+      const plan = planChannelGeometry(dels, [], { yMin: 0, yMax: 25, maxJump: 5 });
+      const a = plan.deliveries.get("dA")!;
+      expect(a.kind).toBe("undergroundCrossing");
+      expect(plan.widenedTracks).toBe(1);
+      if (a.kind === "undergroundCrossing") for (const j of a.jumps) expect(j.toRow, "출구는 도착 행(꺾이는 칸)이 아니다").not.toBe(20);
+      for (const id of ["dB", "dC", "dD"]) expect(plan.deliveries.get(id)!.kind).toBe("staircase");
+    });
+
+    it("입구만 꺾이는 칸이면 벨트는 건너고 파이프는 못 건넌다(대조군)", () => {
+      // 셋의 출발 행(2 · 3 · 4)이 dA 의 출발 행(1) 바로 아래다 — 지하 입구가 dA 가 꺾이는 칸(트랙 · 행 1)에 서야 한다.
+      const dels = (fluid?: string): DeliveryInput[] => [
+        { id: "dA", startY: 1, endY: 20, fluid },
+        { id: "dB", startY: 2, endY: 5 },
+        { id: "dC", startY: 3, endY: 6 },
+        { id: "dD", startY: 4, endY: 7 },
+      ];
+      const belt = planChannelGeometry(dels(), [], { yMin: 0, yMax: 25, maxJump: 5 });
+      expect(belt.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      expect(belt.widenedTracks, "벨트는 꺾이는 칸 입구로 그대로 건넌다").toBe(0);
+      // 유체 dA 는 그 자리에선 못 건넌다 — 셋보다 서쪽에 열을 끼워 셋의 가로 진출을 건넌다.
+      const pipe = planChannelGeometry(dels("water"), [], { yMin: 0, yMax: 25, maxJump: 5, maxJumpPipe: 10 });
+      expect(pipe.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
+      expect(pipe.widenedTracks).toBe(1);
+    });
+  });
+
   it("반출 × 반출 완전 교차 — 진출 변을 뒤집어 둘 다 땅 위에 남는다", () => {
     // 같은 E벽에서 위 상자는 S 로 · 아래 상자는 N 으로 — 반드시 만난다. 하나를 뒤집으면 풀린다.
     const exps: ExportInput[] = [
@@ -230,7 +351,7 @@ describe("planChannelGeometry — 지상 배정", () => {
     expect(plan.crossingYields).toBe(0);
   });
 
-  describe("유체가 먼저 땅속으로 — 지하파이프를 고른 판(두점-잇기 Step 2)", () => {
+  describe("누가 땅속으로 가나 — 지하파이프를 고른 판(layout-models §3.5 제4조 ③)", () => {
     // 유체 dA 는 E벽 맨 위 · W벽 맨 아래 — 아이템 dB 와 완전 교차다.
     const crossing: DeliveryInput[] = [
       { id: "dA", startY: 1, endY: 20, fluid: "water" },
@@ -238,11 +359,26 @@ describe("planChannelGeometry — 지상 배정", () => {
     ];
     const wide = { yMin: 0, yMax: 25, maxJump: 5 };
 
-    it("유체 × 아이템 — 유체가 지하파이프로 건너고 아이템은 땅 위에 남는다", () => {
+    it("유체 × 아이템 — 상대 수가 같으면 유체가 지하파이프로 건너고 아이템은 땅 위에 남는다", () => {
       const plan = planChannelGeometry(crossing, [], { ...wide, maxJumpPipe: 10 });
       expect(plan.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
       expect(plan.deliveries.get("dB")!.kind).toBe("staircase");
       expect(plan.fluidDives).toBe(1);
+    });
+
+    it("유체 × 아이템 — 아이템의 상대가 더 많으면 아이템이 건넌다(매체보다 상대 수가 먼저)", () => {
+      // I 는 F · J · K 셋과 엇갈리고 F 는 I 하나와만 엇갈린다. 매체를 먼저 보면 F 가 들어가고 I 는 J · K 와의 만남이 남는다 —
+      // 상대가 많은 I 가 들어가면 셋이 한꺼번에 풀린다(docs layout-models §3.5 두점 라우팅 제4조 ③ 벨트 × 파이프).
+      const dels: DeliveryInput[] = [
+        { id: "I", startY: 10, endY: 30 },
+        { id: "F", startY: 20, endY: 5, fluid: "water" },
+        { id: "J", startY: 12, endY: 3 },
+        { id: "K", startY: 14, endY: 1 },
+      ];
+      const plan = planChannelGeometry(dels, [], { yMin: 0, yMax: 35, maxJump: 5, maxJumpPipe: 10 });
+      expect(plan.deliveries.get("F")!.kind).toBe("staircase");
+      expect(plan.fluidDives).toBe(0);
+      expect(plan.deliveries.get("I")!.kind).not.toBe("staircase");
     });
 
     it("지하파이프가 없으면 오늘처럼 — 유체가 땅 위를 갖고 아이템이 건넌다", () => {
@@ -252,8 +388,8 @@ describe("planChannelGeometry — 지상 배정", () => {
       expect(plan.fluidDives).toBe(0);
     });
 
-    it("유체 × 반출 — 뒤집기가 막히면 유체가 건너고 반출은 물러나지 않는다", () => {
-      // dB 가 반출의 S 뒤집기를 막는다(뒤집으면 dB 가 갇힌다) — 예전엔 반출이 유체에 물러났다.
+    it("유체 × 반출 — 들어갈 수 있는 쪽이 건넌다: 둘 다면 파이프 · 유체가 못 들어가면 반출 · 아무도 못 들어가면 반출이 물러난다", () => {
+      // dB 가 반출의 S 뒤집기를 막는다(뒤집으면 dB 가 갇힌다). 상대 수는 하나씩이다.
       const dels: DeliveryInput[] = [
         { id: "dA", startY: 3, endY: 7, fluid: "water" },
         { id: "dB", startY: 8, endY: 9 },
@@ -264,22 +400,28 @@ describe("planChannelGeometry — 지상 배정", () => {
       const x = withPipe.exports.get("x")!;
       expect(x.kind).toBe("elbow");
       if (x.kind === "elbow") expect(x.exitEdge).toBe("N");
+      // 유체가 못 들어가면 반출이 지하벨트로 건넌다 — 2026-10-02 까지는 반출이 유체에 물러났다(상자가 방출에서 트랙을 훑었다).
       const noPipe = planChannelGeometry(dels, exps, { ...ctx, maxJump: 4, maxJumpPipe: 0 });
-      expect(noPipe.exports.get("x")).toEqual({ kind: "fallback", reason: "yielded-to-fluid" });
+      expect(noPipe.exports.get("x")!.kind).toBe("undergroundCrossing");
+      expect(noPipe.deliveries.get("dA")!.kind).toBe("staircase");
+      // 아무도 못 들어가면 실패 비용(P10) — 반출이 땅 위를 잃는다. 모델은 그때 계획이 넓힌다(제4조 ④ — 아직 없다).
+      const none = planChannelGeometry(dels, exps, { ...ctx, maxJump: 0, maxJumpPipe: 0 });
+      expect(none.exports.get("x")).toEqual({ kind: "fallback", reason: "yielded-to-fluid" });
     });
 
     it("유체가 못 건너면 땅 위로 돌아오고 상대가 건넌다 — 다시 배정", () => {
-      // 나란한 아이템 둘(dB · dC)의 가로선 두 행을 유체가 한 번에 건너야 한다 — 사거리 2 로는 못 건넌다.
+      // 아이템 셋의 가로선이 행 2–5 에 빽빽하다 — 유체의 세로가 어느 자리에 서도(트랙을 끼워도) 붙은 두 행 이상을 한 번에 건너야
+      // 해서 사거리 2 로는 못 건넌다. 아이템은 유체의 세로 한 칸씩만 건너면 된다.
       const dels: DeliveryInput[] = [
         { id: "dA", startY: 1, endY: 20, fluid: "water" },
-        { id: "dB", startY: 5, endY: 8 },
-        { id: "dC", startY: 6, endY: 9 },
+        { id: "dB", startY: 2, endY: 3 },
+        { id: "dC", startY: 3, endY: 4 },
+        { id: "dD", startY: 4, endY: 5 },
       ];
       const short = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 2 });
       expect(short.deliveries.get("dA")!.kind).toBe("staircase");
       expect(short.fluidDives).toBe(0);
-      expect(short.deliveries.get("dB")!.kind).toBe("undergroundCrossing");
-      expect(short.deliveries.get("dC")!.kind).toBe("undergroundCrossing");
+      for (const id of ["dB", "dC", "dD"]) expect(short.deliveries.get(id)!.kind).toBe("undergroundCrossing");
       const long = planChannelGeometry(dels, [], { ...wide, maxJumpPipe: 10 });
       expect(long.deliveries.get("dA")!.kind).toBe("undergroundCrossing");
       expect(long.fluidDives).toBe(1);
@@ -321,6 +463,56 @@ describe("planChannelGeometry — 지상 배정", () => {
     const plan = planChannelGeometry(dels, [], ctx);
     for (const d of dels) expect(plan.deliveries.get(d.id)!.kind).not.toBe("fallback");
     expect(plan.trackCount).toBe(3);
+  });
+
+  it("넓혀도 계획끼리 안 겹친다 — 끼운 트랙이 쌓인 경로 · 점프를 함께 옮긴다(작은 판 난수 전수)", () => {
+    // 계획을 칸으로 되펴서(땅속 칸 제외) 서로 안 겹치나 · 점프가 사거리 안인가를 본다. 칸은 실제 열(-1 … 폭)만 센다 — E벽 너머는
+    // 가상 열이다.
+    let seed = 7;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed % n);
+    let widened = 0;
+    for (let round = 0; round < 300; round++) {
+      const n = 4 + rnd(3);
+      const used = new Set<string>();
+      const dels: DeliveryInput[] = [];
+      for (let i = 0; i < n; i++) {
+        let sy = 0, ey = 0;
+        do { sy = 1 + rnd(14); ey = 1 + rnd(14); } while (sy === ey || used.has(`s${sy}`) || used.has(`e${ey}`));
+        used.add(`s${sy}`); used.add(`e${ey}`);
+        dels.push({ id: `d${i}`, startY: sy, endY: ey });
+      }
+      const reach = 3;
+      const plan = planChannelGeometry(dels, [], { yMin: 0, yMax: 15, maxJump: reach });
+      widened += plan.widenedTracks;
+      const T = plan.trackCount;
+      const cellsOfPlan = (d: DeliveryInput): Set<string> | null => {
+        const g = plan.deliveries.get(d.id)!;
+        if (g.kind !== "staircase" && g.kind !== "undergroundCrossing") return null;
+        const t = g.track;
+        const seq: [number, number][] = [];
+        for (let c = T; c >= t; c--) seq.push([c, d.startY]);
+        const step = d.endY >= d.startY ? 1 : -1;
+        for (let r = d.startY + step; r !== d.endY + step; r += step) seq.push([t, r]);
+        for (let c = t - 1; c >= -1; c--) seq.push([c, d.endY]);
+        const under = new Set<string>();
+        if (g.kind === "undergroundCrossing")
+          for (const j of g.jumps) {
+            expect(Math.abs(j.toCol - j.fromCol) + Math.abs(j.toRow - j.fromRow), "사거리").toBeLessThanOrEqual(reach);
+            const dc = Math.sign(j.toCol - j.fromCol), dr = Math.sign(j.toRow - j.fromRow);
+            for (let c = j.fromCol + dc, r = j.fromRow + dr; c !== j.toCol || r !== j.toRow; c += dc, r += dr) under.add(`${c},${r}`);
+          }
+        return new Set(seq.map(([c, r]) => `${c},${r}`).filter((k) => !under.has(k)));
+      };
+      const sets = dels.map(cellsOfPlan);
+      for (let i = 0; i < sets.length; i++)
+        for (let j = i + 1; j < sets.length; j++) {
+          const a = sets[i], b = sets[j];
+          if (!a || !b) continue;
+          const hit = [...a].find((k) => b.has(k));
+          expect(hit, `${JSON.stringify(dels)} ${dels[i].id}×${dels[j].id}`).toBeUndefined();
+        }
+    }
+    expect(widened, "넓히기가 실제로 돌았다").toBeGreaterThan(0);
   });
 
   it("결정성 — 같은 입력이면 같은 배정 (§9 불변식 c)", () => {

@@ -107,7 +107,8 @@ gamedata 어댑터 (prototype·게임데이터 해석)
 
 **옛 `planner/` 폴더가 그 주체의 이름이었다.** 폴더가 없어져도 규율은 그대로다 — 오늘 그
 주체는 **`run/build/` 의 뼈대 둘**이고, 관심사 폴더는 그 뼈대가 순서대로 부르는 단계다.
-저장소에 남은 탐색은 **하나**(`shared/route.dijkstraWithJumps` — 납품 사다리의 탐색 칸)뿐이다.
+저장소에 남은 탐색은 **둘**이다 — 납품 사다리의 탐색 칸(`shared/route.dijkstraWithJumps`)과 반출 방출의 트랙 훑기
+(`perimeter/shape/router`). 둘 다 계획이 못 본 만남의 자국이라 없애야 할 것이다([[layout-models]] §3.5).
 
 ## 정직하게 잃는 것 — 트리는 실행 순서를 말하지 않는다
 
@@ -133,7 +134,7 @@ autoLayout/
 │   ├ gamedata/tree.ts           어댑터 — 트리 + 게임데이터 → NodeSpec · 유체 머신 · 사거리
 │   ├ gamedata/picker.ts         어댑터 — 머신 픽커 · 머신 파라미터 조회
 │   ├ policy.ts                  정책 — 받을지 물릴지 · 처방 (**LayoutIssue 를 짓는 곳**)
-│   ├ ledger.ts                  장부 — 유체 관망 · 모듈 지하벨트 구간(종착 · 잠수)
+│   ├ ledger.ts                  장부 — 유체 관망 · 모듈 지하벨트 구간(종착 · 지하 횡단)
 │   ├ emit.ts                    찍기 — CandidateLeaf(Area · Routing) · 실패 그림
 │   └ *.test.ts                  통합 시험 셋 — 한 관심사가 아니라 **한 번의 실행**을 잰다
 ├ tree/                        무엇을 몇 대 · 트리를 어떻게 앉히나
@@ -148,7 +149,7 @@ autoLayout/
 │   ├ shape/                     도형 — body(머신 좌표 위) · link(순번 축 · **계획과 방출의 단일 출처**) ·
 │   │                                  cluster · transform · ways(내 몸통에 안 막히는 방향)
 │   ├ policy/                    정책 — port(단일 진입점 뼈대) · seat(좌석 창구 · 나머지 줄) · link · trunk
-│   │                                    · underground(지하 종류 — 잠수 · 종착)
+│   │                                    · underground(지하 종류 — 지하 횡단 · 종착)
 │   ├ build.ts                   조율 — generateModule 뼈대
 │   ├ emit.ts                    찍기 — **이 관심사에서 셀을 만드는 유일한 파일**
 │   ├ late.ts                    늦은 결정 — 흐름의 끝 칸 · 지하 종착(종류는 policy/underground)

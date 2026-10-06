@@ -223,6 +223,8 @@ flg.report()                                            // ✓ 앱이 쓰는 그
 
 ```
 벨트·인서터를 하나도 안 골랐다   → runModulePipeline 진입에서 거절 (no-belt · no-inserter)
+지하벨트를 안 골랐다             → 진입에서 거절 (no-underground-belt — 필수, 2026-10-02)
+지하파이프를 안 골랐다           → 유체 레시피 노드를 거절 (no-underground-pipe — 필수, 2026-10-02)
 줄의 초당 개수를 모른다          → ModulePortPlan.unpourableLines → 모듈의 unroutedLines
 ```
 

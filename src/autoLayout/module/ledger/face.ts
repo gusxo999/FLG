@@ -44,7 +44,7 @@
  * 요구하는 것이 그것 하나다(`docs/auto-layout/module/trunk-assignment.md` §15 ㉢) — 장부 셋을 순서대로
  * 밀던 옛 모양으로는 되돌릴 방법이 없었다.
  *
- * ## 칸의 종류와 잠수 기록 — 줄이 땅속으로 비켜 갈 때(`AUTO_LAYOUT_LINK_DIVE`)
+ * ## 칸의 종류와 지하 횡단 기록 — 줄이 땅속으로 비켜 갈 때(`AUTO_LAYOUT_LINK_DIVE`)
  *
  * 주인만으로는 *"이 칸 밑으로 지나갈 수 있나"* 를 못 답한다. 그래서 칸마다 **종류**를 곁들인다([FaceCellKind]).
  * 주인이 줄 하나를 뜻하는 것은 그대로이고, 종류는 그 칸이 **땅 위에 무엇을 세우나**다:
@@ -56,10 +56,10 @@
  * tunnel  합친 몸통 사이의 행 — 땅 위엔 아무것도 없지만 열은 그 줄의 것이다
  * ```
  *
- * 종류가 없는 칸은 `belt` 로 읽는다(가장 보수적). 잠수를 들이지 않는 판에서는 아무도 종류를 안 읽는다.
+ * 종류가 없는 칸은 `belt` 로 읽는다(가장 보수적). 지하 횡단을 들이지 않는 판에서는 아무도 종류를 안 읽는다.
  * **벨트 밑으로는 아무도 안 들어간다** — 한 열에서 두 줄의 구간은 안 겹친다([depthClear] 가 칸으로 막는다). 몸통 위에
  * 남의 벨트를 들이는 것(얹기)은 `tempPlanDocs/링크-좌석/judgements.md` J-모양문법 의 몫이다.
- * **잠수 기록**([DiveRecord])은 줄마다 몸통 구간이다 — 먼저 앉은 줄이 **나중에** 비켜 주므로 최종값은 장부에 있다.
+ * **지하 횡단 기록**([DiveRecord])은 줄마다 몸통 구간이다 — 먼저 앉은 줄이 **나중에** 비켜 주므로 최종값은 장부에 있다.
  * 규칙은 `docs/auto-layout/module/trunk-blocked.md` §1 · §4.
  */
 
@@ -73,7 +73,7 @@ export const SEAT_DEPTH = 1;
 export type FaceCellKind = "belt" | "soft" | "port" | "tunnel";
 
 /**
- * **줄 하나의 잠수 기록** — 잠수할 수 있는 줄만 갖는다(지하 종류를 받은 줄).
+ * **줄 하나의 지하 횡단 기록** — 지하 횡단할 수 있는 줄만 갖는다(지하 종류를 받은 줄).
  *
  * `bodies` 는 땅속 행 구간(닫힘)들이고 입구 · 출구는 그 바로 앞뒤 행이다(흐름 방향은 계획이 안다 — 칸은 같다).
  * `span` 은 그 줄의 벨트 구간 — 입출구가 구간 **안쪽**에만 설 수 있어서 든다.
@@ -99,7 +99,7 @@ export interface FaceTable {
   readonly cells: Map<string, FaceCellOwner>;
   /** `${행}|${깊이}` → 그 칸의 종류(머리말 §칸의 종류). 없으면 `belt`. */
   readonly kinds: Map<string, FaceCellKind>;
-  /** 주인 → 잠수 기록. 잠수할 수 있는 줄만 있다. */
+  /** 주인 → 지하 횡단 기록. 지하 횡단할 수 있는 줄만 있다. */
   readonly dives: Map<number, DiveRecord>;
   /** 다음 그룹에게 줄 순번 — 주인을 구분해야 [groupsOn] 을 셀 수 있다. */
   nextOwner: number;
@@ -259,25 +259,25 @@ function releaseCell(t: FaceTable, row: number, depth: number): void {
  */
 export function giveRows(t: FaceTable, owner: number, bodies: ReadonlyArray<readonly [number, number]>): void {
   const rec = t.dives.get(owner);
-  if (!rec) throw new Error(`비켜 주기 — 주인 ${owner} 는 잠수 기록이 없다`);
+  if (!rec) throw new Error(`먼저 앉은 줄의 지하 횡단 — 주인 ${owner} 는 지하 횡단 기록이 없다`);
   const d = rec.depth;
   const seat = new Set(rec.seatRows);
   /** 옛 입출구 — 몸통을 합치면 그 행도 땅속이 된다. */
   const oldMouths = new Set(rec.bodies.flatMap(([a, b]) => [a - 1, b + 1]));
   for (const [a, b] of bodies) {
     for (let r = a; r <= b; r++) {
-      if (seat.has(r)) throw new Error(`비켜 주기 — 행 ${r} 는 주인 ${owner} 의 인서터 행이다(몸통이 될 수 없다)`);
+      if (seat.has(r)) throw new Error(`먼저 앉은 줄의 지하 횡단 — 행 ${r} 는 주인 ${owner} 의 인서터 행이다(몸통이 될 수 없다)`);
       const c = cellAt(t, r, d);
       if (c && c.owner === owner) {
         if (c.kind !== "soft" && c.kind !== "tunnel" && !oldMouths.has(r))
-          throw new Error(`비켜 주기 — (${r}, d${d}) 는 주인 ${owner} 의 ${c.kind} 칸이다(soft 만 내준다)`);
+          throw new Error(`먼저 앉은 줄의 지하 횡단 — (${r}, d${d}) 는 주인 ${owner} 의 ${c.kind} 칸이다(soft 만 내준다)`);
         // 땅 위엔 아무것도 없지만 열은 여전히 그 줄의 것이다 — 남의 벨트가 들어오지 않게 tunnel 로 남긴다
         t.kinds.set(key(r, d), "tunnel");
       }
     }
     for (const m of [a - 1, b + 1]) {
       const c = cellAt(t, m, d);
-      if (!c || c.owner !== owner) throw new Error(`비켜 주기 — 입출구 (${m}, d${d}) 가 주인 ${owner} 의 칸이 아니다`);
+      if (!c || c.owner !== owner) throw new Error(`먼저 앉은 줄의 지하 횡단 — 입출구 (${m}, d${d}) 가 주인 ${owner} 의 칸이 아니다`);
       t.kinds.set(key(m, d), "belt");
     }
   }

@@ -60,12 +60,12 @@
  * [run/ledger](../run/ledger.ts) 가 **놓인 셀에서 되읽는다** — 사거리는
  * 게임데이터(`max_underground_distance`)에 있고, 모듈은 회전·평행이동을 거쳐 절대 좌표가
  * 되므로 구간을 여기서 만들면 그 변환을 따라가야 한다. 셀에서 되읽으면 위치·방향·이름이
- * 이미 변환된 뒤라 **되읽기가 곧 정답**이다. 모듈 안의 지하벨트는 둘이다 — 여기 종착과 잠수 입출구(`emit`) —
+ * 이미 변환된 뒤라 **되읽기가 곧 정답**이다. 모듈 안의 지하벨트는 둘이다 — 여기 종착과 지하 횡단 입출구(`emit`) —
  * 되읽기는 입구마다 짝을 찾아 둘을 가른다(`run/ledger.terminusCorridorsOf`).
  *
  * ## 종착의 종류 — T4
  *
- * 종착은 짝 없는 입구다. 같은 열 앞쪽(흐름 방향) 사거리 안에 **같은 종류의** 잠수 입출구가 있으면 짝이 되어 물건이
+ * 종착은 짝 없는 입구다. 같은 열 앞쪽(흐름 방향) 사거리 안에 **같은 종류의** 지하 횡단 입출구가 있으면 짝이 되어 물건이
  * 샌다. 그래서 종류는 `module/policy/underground.terminusUnderground` 가 고른다 — 가장 느린 것부터, 걸리는 종류는
  * 건너뛰고, 다 걸리면 세울 종착이 없는 것과 같다(`docs/auto-layout/module/belt-terminus.md` §4).
  */
@@ -77,7 +77,7 @@ import { makeUndergroundBeltCell } from "../shared/cells/builder";
 import { EntityType } from "../../types/layout";
 import { recordBeltTerminus } from "../../debug/runStats";
 import type { BeltMerge, BeltTerminus } from "./types/module";
-// **종착의 종류는 잠수와 한 자리에서 고른다** — T4(같은 종류가 앞에 있으면 짝이 된다) 때문에 서로를 알아야 한다.
+// **종착의 종류는 지하 횡단과 한 자리에서 고른다** — T4(같은 종류가 앞에 있으면 짝이 된다) 때문에 서로를 알아야 한다.
 import { terminusUnderground } from "./policy/underground";
 
 /**
@@ -93,7 +93,7 @@ export function resolveBeltTermini(o: {
   /** 못 피한 끝 칸이 여기 쌓인다(호출자가 [GeneratedModule] 로 실어 올린다). */
   merges: BeltMerge[];
   /**
-   * 이 모듈이 놓은 셀 — **잠수 입출구**를 찾는다(T4). 종착 입구 앞쪽 사거리 안에 같은 종류의 지하가 있으면
+   * 이 모듈이 놓은 셀 — **지하 횡단 입출구**를 찾는다(T4). 종착 입구 앞쪽 사거리 안에 같은 종류의 지하가 있으면
    * 그 종류는 안 쓴다 — 짝이 되어 물건이 샌다(`docs/auto-layout/module/trunk-blocked.md` §4).
    */
   cells?: readonly PlacedCell[];

@@ -47,6 +47,17 @@ export function treeIndexOf(specs: readonly NodeSpec[]): TreeIndex {
   return { byId, childIdsByParent, orderByDepth, maxDepth };
 }
 
+/**
+ * **행 채널의 신원** — 깊이와 위 · 아래 이웃 모듈(마진은 한쪽이 없다). 행 채널을 만드는 쪽(`channel/ledger/assign`)과 반출의
+ * 광선(`perimeter/shape/rays` 의 `rowChannel` 영역)이 같은 열쇠로 같은 행 채널을 부른다 — 트리의 순번만으로 정해지는 이름이라
+ * 트리 셈에 둔다.
+ *
+ * > **내력.** 반출 쪽이 한쪽 이웃 열쇠(`rowChannelKey(깊이, 위|아래, 모듈)`)로 두 번 찾아 최댓값을 냈다 — 만든 쪽의 속 규약을
+ * > 받는 쪽이 알았고, 그 열쇠 함수가 반출에 있어 통로가 반출을 런타임으로 불렀다(2026-10-02).
+ */
+export const rowChannelIdOf = (r: { depth: number; above?: string; below?: string }): string =>
+  `${r.depth}:${r.above ?? ""}:${r.below ?? ""}`;
+
 /** 부모 입력 중 자식-공급인 품목 집합. */
 export function childFedItems(
   tree: TreeIndex,
