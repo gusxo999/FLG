@@ -180,6 +180,9 @@ export function edgeUnits(edge: EdgeSeating): SeatUnit[] {
  * ③ 같으면 오늘 순서    부르는 쪽이 안정 정렬로 지킨다(간선 DFS 전위 · 간선 안 순서)
  * ```
  *
+ * 흘러야 하는 끝이 정해진 줄([Link.requiredEnd])은 따로 앞세우지 않는다 — 그 줄은 기둥 끝을 청구하지 않아
+ * (`module/policy/link.endOf`) 선착순으로 다툴 끝자리가 없다.
+ *
  * **방문 수가 합류 쌍보다 먼저다**(2026-09-24 사용자). 간선 안에서는 쌍이 먼저였지만(오늘 순서), 간선을 넘으면
  * 쌍의 명분(*"대안이 없다"*)이 약하다 — 쌍은 도형이 안 서면 짝을 풀고 따로 앉을 수 있지만, 관통 줄은 다른 면
  * (gap)으로도 못 간다. 쌍을 앞세우면 방문 수 1 인 쌍이 방문 수 4 인 관통 줄의 깊이를 먼저 먹었다(대조 실측).
@@ -231,6 +234,17 @@ export function seatUnit(edge: EdgeSeating, unit: SeatUnit): void {
 
   while (queue.length > 0) {
     const g = queue.shift()!;
+    // **흘러야 하는 끝이 정해진 줄이 그 끝으로는 못 앉으면 — 방향을 내려놓는다.**
+    //
+    // 그 끝([Link.requiredEnd])은 두 줄을 쓰는 머신을 맨 끝에 세우려는 것이고, 못 지키면 그 머신이 한 줄에서 앞에 선다 —
+    // 받는 머신이 모자랄 수 있다. 그래도 **못 앉아 배치가 통째로 실패하는 것보다는 낫다**: 방향 없이 앉으면 이 단계가 생기기
+    // 전과 같은 배치이고, 어긴 사실은 판정이 센다(`tree/build.recordSplitMachines` — 보고서의 `맨 끝 아님` · `방향을 내려놓은 줄`).
+    // 묻기는 장부를 안 바꾸므로 미리 물어봐도 된다. 양끝이 같은 객체를 보므로 제자리에서 지운다(짝을 풀 때와 같은 방식).
+    if (g.requiredEnd !== undefined
+      && (!fromDesk.ask(g, "from", "near").offer || !toDesk.ask(g, "to", "near").offer)) {
+      g.requiredEnd = undefined;
+      g.inwardPort = undefined;
+    }
     // **놓기 전에 둘 다 물어본다** — 묻기는 장부를 안 건드린다(원자성의 전제다). 면은 창구가 고른다(near = 선호 면).
     // 합류 쌍은 **양쪽 줄 다** 기둥 끝 포트로 앉힌다(따르는 줄은 포트를 안 갖지만, 같은 끝·
     // 같은 `topT` 규약을 써야 방출이 합류 칸을 계산할 수 있다).

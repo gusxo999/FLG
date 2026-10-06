@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Link, LinkCarry } from "../types/line";
-import { endThatPutsLast, lastMachineOn, shareOnLine, splitMachinesOf, standingOf } from "./lineOrder";
+import { endThatPutsLast, lastMachineOn, requiredEndsOf, shareOnLine, splitMachinesOf, standingOf } from "./lineOrder";
 
 /** 적재 목록에서 줄을 짓는다 — 팔 수는 판정이 안 보므로 전부 1 로 둔다. */
 const line = (carries: LinkCarry[], item = "x"): Link => ({
@@ -131,5 +131,85 @@ describe("standingOf — 두 줄을 쓰는 머신이 어디에 섰나", () => {
     const m = splitMachinesOf(even, "from")[0];
     expect(standingOf(m, even, "from", () => "N").standing).toBe("lastOnSmaller");
     expect(standingOf(m, even, "from", () => "S").standing).toBe("lastOnSmaller");
+  });
+});
+
+describe("requiredEndsOf — 줄마다 어느 끝으로 흘러야 두 줄을 쓰는 머신이 맨 끝에 서나", () => {
+  /** 결정을 그대로 적용해 판정까지 본다. */
+  const standingsAfter = (lines: Link[], side: "from" | "to") => {
+    const ends = requiredEndsOf(lines, side);
+    return splitMachinesOf(lines, side).map((sm) => standingOf(sm, lines, side, (i) => ends.get(i)?.end ?? "N").standing);
+  };
+
+  it("주는 쪽 — 두 줄이 그 머신을 향해 마주 흐른다(윗줄은 아래로 · 아랫줄은 위로)", () => {
+    // 자식 1 이 줄 0(자식 0 과) · 줄 1(자식 2 와)을 쓴다. 자식 2 는 줄 1 만 쓴다.
+    const lines = [
+      line([{ from: 0, to: 0, rate: 10 }, { from: 1, to: 1, rate: 2 }]),
+      line([{ from: 1, to: 2, rate: 8 }, { from: 2, to: 3, rate: 4 }]),
+    ];
+    const ends = requiredEndsOf(lines, "from");
+    // 싣는 쪽에서는 맨 끝 머신이 곧 포트가 서는 머신이다 — 두 줄이 그 머신에서 한 깊이를 나눠 쓴다(`portMachineShared`).
+    expect(ends.get(0)).toEqual({ end: "S", reason: "last", contested: false, portMachineShared: true });
+    expect(ends.get(1)).toEqual({ end: "N", reason: "last", contested: false, portMachineShared: true });
+    expect(standingsAfter(lines, "from")).toEqual(["lastOnAll"]);
+  });
+
+  it("받는 쪽 — 두 줄이 바깥 끝에서 들어와 그 머신에서 끝난다(윗줄은 위에서 · 아랫줄은 아래에서)", () => {
+    // 부모 1 이 줄 0(부모 0 과) · 줄 1(부모 2 와)에서 받는다.
+    const lines = [
+      line([{ from: 0, to: 0, rate: 6 }, { from: 0, to: 1, rate: 4 }]),
+      line([{ from: 1, to: 1, rate: 2 }, { from: 1, to: 2, rate: 6 }]),
+    ];
+    const ends = requiredEndsOf(lines, "to");
+    // 집는 쪽에서는 포트가 바깥 끝의 머신에 선다 — 그 머신은 한 줄만 쓴다. 포트 머신에서 안쪽부터 앉을 일이 없다.
+    expect(ends.get(0)).toEqual({ end: "N", reason: "last", contested: false, portMachineShared: false });
+    expect(ends.get(1)).toEqual({ end: "S", reason: "last", contested: false, portMachineShared: false });
+    expect(standingsAfter(lines, "to")).toEqual(["lastOnAll"]);
+  });
+
+  it("그런 머신이 안 쓰는 줄에는 답이 없다 — 부르는 쪽의 기본을 따른다", () => {
+    const lines = [
+      line([{ from: 0, to: 0, rate: 5 }, { from: 1, to: 0, rate: 5 }]),
+      line([{ from: 2, to: 1, rate: 5 }, { from: 3, to: 1, rate: 5 }]),
+    ];
+    expect(requiredEndsOf(lines, "from").size).toBe(0);
+    expect(requiredEndsOf(lines, "to").size).toBe(0);
+  });
+
+  it("혼자 쓰는 줄은 함께 쓰는 줄에서 멀어지는 끝으로 — 몫이 아니라 자리 때문이다", () => {
+    // 자식 1 이 줄 0 을 자식 0 과 함께, 줄 1 을 혼자 쓴다. 줄 1 이 아래 줄이라 아래 끝으로 붙인다.
+    const lines = [
+      line([{ from: 0, to: 0, rate: 10 }, { from: 1, to: 0, rate: 4 }]),
+      line([{ from: 1, to: 1, rate: 6 }]),
+    ];
+    const ends = requiredEndsOf(lines, "from");
+    expect(ends.get(0)).toEqual({ end: "S", reason: "last", contested: false, portMachineShared: true });
+    expect(ends.get(1)).toEqual({ end: "S", reason: "aside", contested: false, portMachineShared: false });
+  });
+
+  describe("한 줄의 양끝에 두 줄을 쓰는 머신이 서면 — 한 대만 맨 끝이 된다", () => {
+    it("그 줄이 몫이 작은 줄인 머신이 먼저다", () => {
+      // 가운데 줄: 자식 1 은 8(큰 쪽 — 작은 쪽 2 는 줄 0), 자식 2 는 4(작은 쪽 — 큰 쪽 6 은 줄 2).
+      const lines = [
+        line([{ from: 0, to: 0, rate: 10 }, { from: 1, to: 1, rate: 2 }]),
+        line([{ from: 1, to: 2, rate: 8 }, { from: 2, to: 3, rate: 4 }]),
+        line([{ from: 2, to: 4, rate: 6 }]),
+      ];
+      const mid = requiredEndsOf(lines, "from").get(1)!;
+      expect(mid.contested).toBe(true);
+      expect(mid.end).toBe("S"); // 자식 2 쪽으로 흐른다
+      expect(standingsAfter(lines, "from")).toEqual(["lastOnSmaller", "lastOnAll"]);
+    });
+
+    it("둘 다 그 줄이 몫이 작은 줄이면 방향으로는 못 푼다 — 한 대는 앞에 선다", () => {
+      // 자식 9/s 다섯 → 부모 5/s 아홉의 가운데 줄: 자식 1 은 3(큰 쪽 6 은 줄 0), 자식 3 은 3(큰 쪽 6 은 줄 2).
+      const lines = [
+        line([{ from: 0, to: 0, rate: 9 }, { from: 1, to: 1, rate: 6 }]),
+        line([{ from: 1, to: 2, rate: 3 }, { from: 2, to: 3, rate: 9 }, { from: 3, to: 4, rate: 3 }]),
+        line([{ from: 3, to: 5, rate: 6 }, { from: 4, to: 6, rate: 9 }]),
+      ];
+      expect(requiredEndsOf(lines, "from").get(1)?.contested).toBe(true);
+      expect(standingsAfter(lines, "from").sort()).toEqual(["lastOnAll", "notLast"]);
+    });
   });
 });

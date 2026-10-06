@@ -452,6 +452,9 @@ export function splitLinkAtRows(
       // **토막은 더 이상 그 줄이 아니다** — 짝은 *"이 줄과 저 줄이 한 벨트"* 라는 약속인데
       // 쪼개진 토막은 실린 양도 맡는 머신도 달라져 그 약속을 못 지킨다. 떼어 낸다.
       sharedLineId: undefined,
+      // 흘러야 하는 끝도 떼어 낸다 — 그 값은 *이 줄이 맡은 머신들* 에서 유도된 것인데 토막은 맡는 머신이 다르다.
+      requiredEnd: undefined,
+      inwardPort: undefined,
     };
   });
 }

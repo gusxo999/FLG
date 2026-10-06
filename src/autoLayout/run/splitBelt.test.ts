@@ -23,7 +23,8 @@ const ENTITIES: Entity[] = [
   E({ name: "belt", type: "transport-belt", tile_width: 1, tile_height: 1, belt_speed: 0.0625 }), // 30/s — 한 줄 15/s
   E({ name: "underground", type: "underground-belt", tile_width: 1, tile_height: 1, belt_speed: 0.0625, max_underground_distance: 7 }),
 ];
-const OVERRIDES = { inserter: { throughput: 100 } };
+/** 인서터 운반량 — 사용자가 정한 값(보정). 기준은 100/s 다. */
+const overridesOf = (inserterThroughput: number) => ({ inserter: { throughput: inserterThroughput } });
 
 const item = (name: string, amount: number) => ({ name, amount, type: "item" as const });
 const recipe = (name: string, ins: [string, number], out: number): Recipe =>
@@ -39,7 +40,8 @@ interface Board {
 }
 
 /** 자식 한 대가 `childShare`/s 를 내고 부모 한 대가 `parentShare`/s 를 쓴다. 완제품 목표는 `total`/s. */
-async function board(childShare: number, parentShare: number, total: number): Promise<Board> {
+async function board(childShare: number, parentShare: number, total: number, inserterThroughput = 100): Promise<Board> {
+  const OVERRIDES = overridesOf(inserterThroughput);
   const data: GameData = {
     entities: ENTITIES,
     recipes: [recipe("mid", ["raw", childShare], childShare), recipe("final", ["mid", parentShare], parentShare)],
@@ -104,37 +106,56 @@ describe("split belt 할당량 — 판정과 가동률을 함께", () => {
     expect(r.childWorst).toBe(100);
   });
 
-  it("주는 쪽 — 자식 10/s 셋 → 부모 6/s 다섯: 자식 둘이 몫이 작은 줄에서 맨 앞이라 부모가 모자란다", async () => {
-    // 붓기 12 · 12 · 6. 자식 1 은 줄마다 2 · 8, 자식 2 는 4 · 6 을 맡는데 둘 다 작은 쪽 줄에서 먼저 싣는다 —
-    // 반반 나누면 5 · 5 를 실어 그 줄의 다른 자식이 실을 자리를 먹는다.
+  it("주는 쪽 — 자식 10/s 셋 → 부모 6/s 다섯: 두 줄을 쓰는 자식이 몫이 작은 줄의 맨 끝에 서서 전부 100%", async () => {
+    // 붓기 12 · 12 · 6. 자식 1 은 줄마다 2 · 8, 자식 2 는 4 · 6 을 맡는다. 방향을 안 붙이던 때는 둘 다 몫이 작은 줄에서
+    // 먼저 실어(반반이면 5 · 5) 그 줄의 다른 자식이 실을 자리를 먹었고, 부모 한 대가 67% 였다(2026-10-06).
+    // 가운데 줄은 양끝에 두 줄을 쓰는 자식이 서 있어 한 대만 맨 끝이 된다 — 몫이 작은 쪽(자식 2)이 받는다.
     const r = await board(10, 6, 30);
     expect(r.machines).toEqual({ child: 3, parent: 5 });
-    expect(standings(r)).toEqual({ from: [2, 0, 0, 2], to: [0, 0, 0, 0] });
-    expect(r.parentWorst).toBeLessThan(100);
+    expect(standings(r)).toEqual({ from: [2, 1, 1, 0], to: [0, 0, 0, 0] });
+    expect(r.parentWorst).toBe(100);
+    expect(r.childWorst).toBe(100);
   });
 
-  it("받는 쪽 — 자식 7/s 여섯 → 부모 6/s 일곱: 부모 하나가 몫이 작은 줄에서 먼저 집어 같은 줄의 끝 부모가 모자란다", async () => {
-    // 줄마다 자식 둘(14/s). 부모 2 는 2 · 4, 부모 4 는 4 · 2 를 받는다. 부모 4 가 2 를 받을 줄에서 맨 앞이다.
+  it("받는 쪽 — 자식 7/s 여섯 → 부모 6/s 일곱: 두 줄에서 받는 부모가 몫이 작은 줄의 맨 끝에 서서 전부 100%", async () => {
+    // 줄마다 자식 둘(14/s). 부모 2 는 2 · 4, 부모 4 는 4 · 2 를 받는다. 방향을 안 붙이던 때는 부모 4 가 2 를 받을 줄에서
+    // 맨 앞이라 3 을 집었고, 그 줄 끝의 부모가 83% 였다. 사용자가 낸 고침이 이 방향이다 — *"벨트 방향을 부모 7 → 부모 6 → 부모 5 로"*.
     const r = await board(7, 6, 42);
     expect(r.machines).toEqual({ child: 6, parent: 7 });
-    expect(standings(r)).toEqual({ from: [0, 0, 0, 0], to: [2, 0, 1, 1] });
-    expect(r.parentWorst).toBeLessThan(100);
+    expect(standings(r)).toEqual({ from: [0, 0, 0, 0], to: [2, 1, 1, 0] });
+    expect(r.parentWorst).toBe(100);
+    expect(r.childWorst).toBe(100);
   });
 
-  it("한 줄의 같은 편 양끝 — 자식 9/s 다섯 → 부모 5/s 아홉: 가운데 줄의 양끝에 두 줄을 쓰는 자식이 선다", async () => {
-    // 줄 셋(15씩). 자식 1 은 6 · 3, 자식 3 은 3 · 6 — 둘 다 가운데 줄을 쓴다. 한 줄의 맨 끝은 편마다 하나뿐이라
-    // 방향만으로는 둘을 다 맨 끝에 세울 수 없다(끊는 자리를 바꿔야 풀린다).
+  it("한 줄의 같은 편 양끝 — 자식 9/s 다섯 → 부모 5/s 아홉: 방향으로는 못 푼다 — 받는 머신이 아직 모자란다", async () => {
+    // 줄 셋(15씩). 자식 1 은 6 · 3, 자식 3 은 3 · 6 — 둘 다 가운데 줄이 **몫이 작은 줄**이다. 한 줄의 맨 끝은 편마다
+    // 하나뿐이라 한 대는 그 줄에서 앞에 선다. 줄을 끊는 자리를 바꿔야 풀린다.
     const r = await board(9, 5, 45);
     expect(r.machines).toEqual({ child: 5, parent: 9 });
-    expect(standings(r)).toEqual({ from: [2, 0, 1, 1], to: [0, 0, 0, 0] });
+    expect(standings(r)).toEqual({ from: [2, 1, 0, 1], to: [0, 0, 0, 0] });
     expect(r.parentWorst).toBeLessThan(100);
   });
 
-  it("몫이 벨트 한 줄보다 큰 머신 — 자식 24/s 둘 → 부모 24/s 둘: 남는 조각이 다른 쌍과 한 줄에 섞인다", async () => {
-    // 붓기 15 · 15 · 15 · 3. 한 대가 혼자 두 줄 이상을 쓰는데 그중 한 줄을 이웃과 함께 쓴다.
+  it("몫이 벨트 한 줄보다 큰 머신 — 자식 24/s 둘 → 부모 24/s 둘: 판정은 한 대씩 앞에 섰다고 하는데 가동률은 100% 다", async () => {
+    // 붓기 15 · 15 · 15 · 3 — 둘째 줄을 자식 둘 · 부모 둘이 함께 쓰고, 그 줄의 양끝에 두 줄을 쓰는 머신이 선다(편마다 한 대는 앞).
+    // **판정과 가동률이 어긋나는 판이다.** 주는 쪽과 받는 쪽이 같은 모양으로 갈려 있어, 앞에 선 자식이 더 실은 만큼을
+    // 앞에 선 부모가 더 집는다 — 줄마다의 양은 계획(15 · 9 + 6 · 15 · 3)과 다르게 흐르지만(12 · 12 + 8 · 8 · 8) 총량이 맞는다.
+    // 그 줄이 20/s 를 나르는 것은 두 자식이 서로 다른 레인에 싣기 때문이고, 꺾이는 칸에서 어느 레인에 떨어지는지는
+    // 게임에서 확인하지 않은 가정이다(`docs/analysis/flow-model.md` §4).
     const r = await board(24, 24, 48);
     expect(r.machines).toEqual({ child: 2, parent: 2 });
     expect(standings(r)).toEqual({ from: [2, 1, 0, 1], to: [2, 1, 0, 1] });
-    expect(r.parentWorst).toBeLessThan(100);
+    expect(r.parentWorst).toBe(100);
+    // 대조군 — 방향을 준 줄이 전부 그 방향으로 앉았다.
+    expect(r.split!.from.dropped + r.split!.to.dropped).toBe(0);
+  });
+
+  it("방향을 못 지키면 내려놓고 앉는다 — 같은 판을 인서터 12/s 로: 배치는 서고, 내려놓은 줄을 센다", async () => {
+    // 인서터가 벨트 한 줄(15/s)보다 느리면 줄마다 팔이 둘씩 들어 좌석이 빡빡해진다. 흘러야 하는 끝으로는 자리가 안 나는
+    // 줄이 생기고, 그 줄은 방향 없이(이 단계가 생기기 전의 규칙으로) 앉는다 — 못 앉아 배치가 통째로 실패하지 않는다.
+    const r = await board(24, 24, 48, 12);
+    expect(r.ok).toBe(true);
+    expect(r.split!.from.dropped).toBeGreaterThan(0);
+    expect(r.split!.to.dropped).toBeGreaterThan(0);
   });
 });

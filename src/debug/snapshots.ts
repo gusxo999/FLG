@@ -215,6 +215,8 @@ export function diffDigests(before: LayoutDigest, after: LayoutDigest): string {
       num(`두 줄 머신 ${label}`, bs[side].split, as[side].split, counters);
       num(`두 줄 머신 ${label} 모든 줄 맨 끝`, bs[side].lastOnAll, as[side].lastOnAll, counters);
       num(`두 줄 머신 ${label} 맨 끝 아님`, bs[side].notLast, as[side].notLast, counters);
+      num(`두 줄 머신 ${label} 양끝에서 부딪힌 줄`, bs[side].contestedLines ?? 0, as[side].contestedLines ?? 0, counters);
+      num(`두 줄 머신 ${label} 방향을 내려놓은 줄`, bs[side].dropped ?? 0, as[side].dropped ?? 0, counters);
     }
   }
   if (counters.length) lines.push('카운터', ...counters);

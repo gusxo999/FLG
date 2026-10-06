@@ -46,7 +46,7 @@ import { edgeResult, openEdge, seatInOrder, seatLinkEdge, type EdgeSeatResult, t
 import { faceDepthsOf } from "../module/arith/face";
 import { linkDepthNeed, type LinkDepthNeed } from "../module/arith/depth";
 import { summarizeBeltForms } from "../module/arith/link";
-import { emptySplitMachineCounters, splitMachinesOf, standingOf } from "../module/arith/lineOrder";
+import { emptySplitMachineCounters, requiredEndsOf, splitMachinesOf, standingOf } from "../module/arith/lineOrder";
 import { flowEnd } from "../module/arith/trunk";
 import { laneCapOfTier } from "../shared/arith/belt";
 import { AUTO_LAYOUT_LINK_LADDER, AUTO_LAYOUT_LINK_ORDER } from "../shared/flags";
@@ -193,6 +193,9 @@ function seatTree(
     if (!child || !parent) continue;
     edges.push({ s: s as NodeSpec & { parentId: string }, child, parent, groups });
   }
+  // 흘러야 하는 끝이 정해진 줄 · 편 — 좌석이 그 끝을 못 지켜 내려놓으면 값이 지워진다(뒤에서 견줘 센다).
+  const directed = edges.flatMap((e) => e.groups.flatMap((g) =>
+    (["from", "to"] as const).filter((side) => g.requiredEnd?.[side] !== undefined).map((side) => ({ g, side }))));
   if (AUTO_LAYOUT_LINK_ORDER) {
     // **순서 규칙** — 모든 간선의 단위를 모아 한 줄로 세운다. 앉히는 순서와 적는 순서가 다르다
     const open: EdgeSeating[] = edges.map((e) => openEdge(e.child, e.parent, e.groups, { split: AUTO_LAYOUT_LINK_LADDER }));
@@ -204,7 +207,7 @@ function seatTree(
   }
 
   recordLinkNeed(specs, firstInputs, outOf, inOf);
-  recordSplitMachines(specs, outOf, inOf);
+  recordSplitMachines(specs, outOf, inOf, directed);
 
   // 창구를 닫아 **값으로 굳힌다** — `generateModule` 이 보는 `input.outputLinks` 와 **같은 순서**여야
   // 방출이 index 로 짝을 찾는다.
@@ -276,8 +279,11 @@ function recordSplitMachines(
   specs: readonly NodeSpec[],
   outOf: ReadonlyMap<string, { links: Link[]; seats: (SeatReceipt | undefined)[] }>,
   inOf: ReadonlyMap<string, { links: Link[]; seats: (SeatReceipt | undefined)[] }>,
+  /** 좌석 앞에 흘러야 하는 끝이 정해져 있던 줄 · 편. */
+  directed: ReadonlyArray<{ g: Link; side: "from" | "to" }>,
 ): void {
   const counters = { from: emptySplitMachineCounters(), to: emptySplitMachineCounters() };
+  for (const { g, side } of directed) if (g.requiredEnd?.[side] === undefined) counters[side].dropped += 1;
   const who: string[] = [];
   const num = (v: number): string => String(Number(v.toFixed(2)));
   for (const s of specs) {
@@ -286,6 +292,7 @@ function recordSplitMachines(
         const seat = book.seats[i];
         return seat ? flowEnd(seat) : undefined;
       };
+      for (const d of requiredEndsOf(book.links, side).values()) if (d.contested) counters[side].contestedLines += 1;
       for (const sm of splitMachinesOf(book.links, side)) {
         const { standing, perLine } = standingOf(sm, book.links, side, flowEndOf);
         counters[side].split += 1;

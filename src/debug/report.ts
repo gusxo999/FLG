@@ -134,6 +134,8 @@ export function buildReport(): string {
           + (c.notLast > 0 ? ` · **맨 끝 아님 ${c.notLast}**` : '')
           + (c.unknown > 0 ? ` · 방향 모름 ${c.unknown}` : '')
           + ')'
+          + (c.contestedLines > 0 ? ` · 양끝에서 부딪힌 줄 ${c.contestedLines}` : '')
+          + (c.dropped > 0 ? ` · **방향을 내려놓은 줄 ${c.dropped}**` : '')
         : undefined;
     out.push(sub(
       '두 줄 이상을 남과 함께 쓰는 머신 — '

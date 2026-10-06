@@ -261,6 +261,7 @@ export function tryLinkFace(
     const slotIndex = seatRowsOf(table, face, cand.arms, side, {
       flowToSouth,
       depth: d,
+      inward: group.inwardPort?.[side] === true,
       // 그 행이 포트 쪽 끝 행(topT)이 되면 설 포트 칸(합류 쌍이면 합류 도형)이 비었나 — 표 안의 칸만 본다(기둥 밖은 끝 장부가 본다).
       // 지하 횡단하면 먼저 앉은 줄이 비켜 줄 수 있는 칸(soft · 몸통)도 빈 것으로 본다 — 정확한 판정은 ⑤″ 가 한다
       portClear: (row) => splitByTable(endCells({ clusterBeltDepth: d, ...ends }, [row, row], outRowOf(table, end)), table)
@@ -335,6 +336,15 @@ export function seatRowsOf(
     depth?: number;
     /** 그 행이 포트 쪽 끝 행이 되면 설 포트 칸이 비었나(자리-2). 없으면 안 본다. */
     portClear?: (row: number) => boolean;
+    /**
+     * **포트가 서는 머신에서는 구간 안쪽 행부터 앉는다** — 자리-1 의 반대다. 그 머신이 이웃 줄도 쓰는 줄([Link.inwardPort])만 쓴다.
+     *
+     * 두 줄을 쓰는 머신은 이웃한 두 줄의 경계에 서고, 싣는 쪽에서 그 머신을 두 줄 모두의 맨 끝에 세우면 **두 줄이 그 머신을
+     * 향해 마주 흐른다** — 그 머신이 두 줄 모두의 포트 머신이다. 자리-1 대로면 윗줄은 그 머신의 맨 아래 행에, 아랫줄은 맨 위
+     * 행에 앉아 두 벨트가 같은 깊이에서 엇갈린다. 안쪽부터 앉으면 윗줄이 위 행 · 아랫줄이 아래 행을 받아 안 겹친다.
+     * 한 머신짜리 줄에는 안쪽이 없다 — 자리-1 그대로다.
+     */
+    inward?: boolean;
   },
 ): Map<number, number[]> {
   const isGap = face === "N" || face === "S";
@@ -354,8 +364,9 @@ export function seatRowsOf(
     }
     const p = pick!;
     const free = freeSeatRows(table, mi);
-    // 자리-1 — 포트 쪽 끝부터
-    let rows = p.flowToSouth ? [...free].reverse() : free;
+    // 자리-1 — 포트 쪽 끝부터. 흘러야 하는 끝이 정해진 줄은 포트 머신에서만 거꾸로(구간 안쪽부터 — `inward`)
+    const inward = p.inward === true && mi === portMi && sorted.length > 1;
+    let rows = p.flowToSouth !== inward ? [...free].reverse() : free;
     // 자리-2 — 내 깊이 칸이 남의 것인 행은 거른다
     if (p.depth !== undefined) {
       const d = p.depth;
@@ -364,8 +375,15 @@ export function seatRowsOf(
     // 자리-2 — 끝 머신에서는 포트 칸이 막히는 행을 포트 쪽 끝 행으로 쓰지 않는다
     // (그보다 포트 쪽에 있는 행은 쓰면 그 행이 끝 행이 되므로 함께 건너뛴다)
     if (mi === portMi && p.portClear) {
-      const at = rows.findIndex((s) => p.portClear!(rowIndex(table, mi, s)));
-      rows = at < 0 ? [] : rows.slice(at);
+      if (inward) {
+        // 안쪽부터 k 개를 앉히면 그중 **마지막** 행이 포트 쪽 끝 행이다 — 그 행의 포트 칸이 비는 첫 자리를 찾는다
+        let at = 0;
+        while (at + k <= rows.length && !p.portClear(rowIndex(table, mi, rows[at + k - 1]))) at += 1;
+        rows = at + k <= rows.length ? rows.slice(at) : [];
+      } else {
+        const at = rows.findIndex((s) => p.portClear!(rowIndex(table, mi, s)));
+        rows = at < 0 ? [] : rows.slice(at);
+      }
     }
     out.set(mi, rows.slice(0, k).sort((a, b) => a - b));
   }
@@ -602,6 +620,17 @@ function endOf(
 ): LinkEnd {
   const spanning = spansAllMachines(group, side, ctx.count) || forceEnd === true;
   const endsTaken = ctx.ends.get(face);
+  // **흘러야 하는 끝이 있는 줄**([Link.requiredEnd] — 두 줄을 쓰는 머신이 이 줄의 맨 끝에 서는 방향)은 그 끝으로 흐르고,
+  // **기둥 끝을 청구하지 않는다** — 관통이어도 포트가 옆에 선다(구간 줄과 같은 도형).
+  //
+  // 기둥 끝 포트는 그 줄을 행의 차례 **밖**(기둥 위 · 아래)으로 내보낸다. 한 간선의 줄들은 양쪽 모듈에서 같은 차례로 서 있어
+  // (윗줄이 위 행) 납품끼리 안 건너는데, 싣는 쪽은 위 끝 · 집는 쪽은 아래 끝처럼 편마다 끝이 다르면 그 줄 하나가 나머지를 전부
+  // 가로지른다(2026-10-06 실측: 자식 24/s 둘 → 부모 24/s 둘 에서 납품 넷 중 하나가 길을 못 찾았다). 옆 포트는 차례를 지킨다.
+  // 관통 줄이 끝을 못 받았을 때의 오늘 저하(옆 포트)와 같은 도형이고, 대가도 같다 — 더 깊은 관통 줄이 있으면 상자가 갇힐 수
+  // 있어 그 후보는 포트 칸 검사에서 떨어진다.
+  // 합류 쌍의 끝(`preferEnd`)과는 같이 오지 않는다 — 짝지어진 줄은 이 값을 안 받는다(`link/policy/direction`).
+  const required = preferEnd === undefined ? group.requiredEnd?.[side] : undefined;
+  if (required && (face === "W" || face === "E")) return { spanning: false, portEnd: undefined, exitEnd: required };
   // **선호 끝이 있으면 그것부터**. 없으면 오늘처럼 N 먼저 — 그 경우
   // 후보 순서가 `["N","S"]` 로 같아지므로 **한 칸도 안 달라진다**.
   const want = preferEnd ?? group.end?.[side];

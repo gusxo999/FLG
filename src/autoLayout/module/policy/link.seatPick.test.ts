@@ -65,6 +65,51 @@ describe("seatRowsOf — 켜면 규칙 둘", () => {
   });
 });
 
+describe("seatRowsOf — 흘러야 하는 끝이 정해진 줄은 포트 머신에서 구간 안쪽부터 앉는다(`inward`)", () => {
+  // 머신 둘(0 · 1), 머신마다 세 행.
+  const two = new Map([[0, 1], [1, 1]]);
+
+  it("아래로 흐르는 줄 — 포트 머신(아래 머신)에서 맨 위 행에 앉는다. 자리-1 이면 맨 아래 행이다", () => {
+    const t = makeFaceTable(3, 2);
+    expect(seatRowsOf(t, "W", two, "from", { flowToSouth: true, inward: true })).toEqual(new Map([[0, [2]], [1, [0]]]));
+    // 대조군 — 자리-1: 두 머신 다 아래부터
+    expect(seatRowsOf(t, "W", two, "from", { flowToSouth: true })).toEqual(new Map([[0, [2]], [1, [2]]]));
+  });
+
+  it("위로 흐르는 줄 — 포트 머신(위 머신)에서 맨 아래 행에 앉는다", () => {
+    const t = makeFaceTable(3, 2);
+    expect(seatRowsOf(t, "W", two, "from", { flowToSouth: false, inward: true })).toEqual(new Map([[0, [2]], [1, [0]]]));
+    expect(seatRowsOf(t, "W", two, "from", { flowToSouth: false })).toEqual(new Map([[0, [0]], [1, [0]]]));
+  });
+
+  it("두 줄이 한 머신을 향해 마주 흘러도 그 머신의 행이 안 엇갈린다 — 윗줄이 위 행 · 아랫줄이 아래 행", () => {
+    // 머신 셋. 윗줄은 머신 0 · 1 을 아래로, 아랫줄은 머신 1 · 2 를 위로 — 둘 다 머신 1 이 포트 머신이다.
+    const t = makeFaceTable(3, 3);
+    const upper = seatRowsOf(t, "W", new Map([[0, 1], [1, 1]]), "from", { flowToSouth: true, inward: true });
+    const lower = seatRowsOf(t, "W", new Map([[1, 1], [2, 1]]), "from", { flowToSouth: false, inward: true });
+    // 표를 안 바꿨으니 둘 다 빈 표에서 고른 답이다 — 그래도 머신 1 에서 윗줄(행 0)이 아랫줄(행 2)보다 위다.
+    expect(upper.get(1)).toEqual([0]);
+    expect(lower.get(1)).toEqual([2]);
+    // 대조군 — 자리-1 이면 거꾸로다: 윗줄이 머신 1 의 맨 아래 행, 아랫줄이 맨 위 행에 앉아 두 벨트가 엇갈린다.
+    expect(seatRowsOf(t, "W", new Map([[0, 1], [1, 1]]), "from", { flowToSouth: true }).get(1)).toEqual([2]);
+    expect(seatRowsOf(t, "W", new Map([[1, 1], [2, 1]]), "from", { flowToSouth: false }).get(1)).toEqual([0]);
+  });
+
+  it("한 머신짜리 줄에는 안쪽이 없다 — 자리-1 그대로", () => {
+    const t = makeFaceTable(3, 1);
+    expect(seatRowsOf(t, "W", one(1), "from", { flowToSouth: true, inward: true })).toEqual(new Map([[0, [2]]]));
+  });
+
+  it("포트 칸이 막힌 행은 끝 행으로 안 쓴다 — 안쪽부터 앉힌 것 중 포트 쪽 끝 행을 본다", () => {
+    // 아래로 흐르는 줄 · 포트 머신(머신 1)에 팔 둘. 안쪽부터면 그 머신의 행 0 · 1 이고 끝 행은 1(표의 행 4)이다.
+    // 그 행의 포트 칸이 막혔으면 한 칸 민다.
+    const t = makeFaceTable(3, 2);
+    const arms = new Map([[0, 1], [1, 2]]);
+    const rows = seatRowsOf(t, "W", arms, "from", { flowToSouth: true, inward: true, portClear: (r) => r !== 4 });
+    expect(rows.get(1)).toEqual([1, 2]);
+  });
+});
+
 describe("걸러서 모자라면 — 좌석막힘으로 떨어진다", () => {
   it("좌석 수는 되는데 받은 행이 모자라면 막힌 좌석을 사유로 남긴다", () => {
     setAutoLayoutSeatPick(true);

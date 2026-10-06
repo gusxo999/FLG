@@ -152,15 +152,114 @@ export function standingOf(
   return { standing: onlyTheBiggest ? "lastOnSmaller" : "notLast", perLine };
 }
 
-/** 한 편의 계수기 — `split` 이 분모다(나머지 넷의 합). */
+/** [requiredEndsOf] 가 줄 하나 · 한 편에 낸 답. */
+export interface LineEndDecision {
+  /** 이 끝으로 흘러야 한다. */
+  end: "N" | "S";
+  /**
+   * 왜 그 끝인가.
+   *
+   * ```
+   * last    그 끝으로 흘러야 두 줄 이상을 쓰는 머신이 이 줄의 맨 끝에 선다
+   * aside   그런 머신이 **혼자** 쓰는 줄이다 — 몫과는 무관하고 자리 때문이다. 그 머신의 다른 줄이 위에 있으면 아래 끝,
+   *         아래에 있으면 위 끝으로 흘러야 좌석이 그 줄의 바깥쪽 행에 앉아 두 줄의 벨트가 한 깊이에서 안 겹친다
+   * ```
+   */
+  reason: "last" | "aside";
+  /**
+   * **한 줄의 같은 편 양끝에 두 줄 이상을 쓰는 머신이 섰다** — 맨 끝 자리는 편마다 하나뿐이라 둘 다 맨 끝에 세울 수 없다.
+   * 방향으로는 못 푼다(줄을 끊는 자리를 바꿔야 풀린다). `end` 는 그중 한 대를 고른 것이다.
+   */
+  contested: boolean;
+  /**
+   * **포트가 서는 머신도 두 줄 이상을 쓰는 머신이다** — 그 머신에서 이 줄과 이웃 줄이 한 깊이를 나눠 쓴다.
+   * 이 줄은 그 머신에서 **구간 안쪽 행부터** 앉아야 이웃 줄의 벨트와 안 엇갈린다(`module/policy/link.seatRowsOf` 의 `inward`).
+   * 포트는 흐름이 향하는 끝의 머신에 선다 — 싣는 쪽에서는 맨 끝 머신이 곧 포트 머신이고, 집는 쪽에서는 맨 앞 머신이다.
+   */
+  portMachineShared: boolean;
+}
+
+/**
+ * **두 줄 이상을 쓰는 머신을 맨 끝에 세우려면 줄마다 어느 끝으로 흘러야 하나** — 한 모듈의 한 편.
+ *
+ * 줄을 양(누가 얼마)으로만 알던 것에 **방향**을 붙이는 자리다 — 방향은 새 입력이 아니라 양에서 유도된다:
+ * 두 줄을 쓰는 머신은 이웃한 두 줄의 경계에 서므로(구간의 끝), 그 머신 쪽으로 흐르면 그 머신이 맨 끝이다([endThatPutsLast]).
+ *
+ * 답이 없는 줄은 Map 에 없다 — 그런 머신이 안 쓰는 줄이다. 그 줄의 방향은 부르는 쪽의 기본을 따른다.
+ *
+ * **줄의 순서가 곧 위아래다** — 받은 목록은 붓기 순서이고, 붓기는 머신을 위에서 아래로 훑으므로 뒤의 줄이 아래 줄이다
+ * (`module/arith/link.createLinks` — *"한 줄이 맡는 머신은 각각 연속 구간이다"*).
+ *
+ * ## 한 줄의 양끝에서 부딪히면 — 누구를 맨 끝에 세우나
+ *
+ * ```
+ * ① 그 줄이 **몫이 가장 큰 줄이 아닌** 머신 먼저     몫이 작은 줄에서 앞에 서면 그 줄에 계획보다 많이 싣는다(집는다)
+ * ② 같으면 반반으로 나눴을 때 계획보다 더 많이 넘치는 머신 먼저   `몫의 합 ÷ 줄 수 − 이 줄의 몫` 이 큰 쪽
+ * ③ 같으면 머신 index 가 작은 쪽
+ * ```
+ *
+ * ①②는 *한 머신의 인서터들이 몫을 반반 나눈다* 는 가정(`docs/analysis/flow-model.md` §4 (c))에 기댄다 — 부딪힌 줄에서만 쓴다.
+ */
+export function requiredEndsOf(lines: ReadonlyArray<Link>, side: LineSide): Map<number, LineEndDecision> {
+  interface Demand { machine: number; end: "N" | "S"; notBiggest: boolean; excess: number }
+  const demands = new Map<number, Demand[]>();
+  /** 혼자 쓰는 줄 → 그 머신의 함께 쓰는 줄에서 멀어지는 끝. */
+  const aside = new Map<number, "N" | "S">();
+  for (const sm of splitMachinesOf(lines, side)) {
+    const shares = sm.lines.map((i) => shareOnLine(lines[i], side, sm.machine) ?? 0);
+    const biggest = Math.max(...shares);
+    const even = shares.reduce((sum, v) => sum + v, 0) / shares.length;
+    const sharedLines = sm.lines.filter((i) => lines[i][side].size > 1);
+    sm.lines.forEach((i, k) => {
+      const end = endThatPutsLast(lines[i], side, sm.machine);
+      if (end === "any") {
+        // 혼자 쓰는 줄 — 어느 끝이든 맨 끝이다. 함께 쓰는 줄들이 전부 한쪽에 있을 때만 그 반대쪽으로 붙인다.
+        if (sharedLines.every((j) => j < i)) aside.set(i, "S");
+        else if (sharedLines.every((j) => j > i)) aside.set(i, "N");
+        return;
+      }
+      if (end === undefined) return; // 구간의 가운데 — 어느 끝으로 흘러도 맨 끝이 못 된다
+      const list = demands.get(i) ?? demands.set(i, []).get(i)!;
+      list.push({ machine: sm.machine, end, notBiggest: shares[k] < biggest - SHARE_EPS, excess: even - shares[k] });
+    });
+  }
+  const out = new Map<number, LineEndDecision>();
+  for (const [i, end] of aside) out.set(i, { end, reason: "aside", contested: false, portMachineShared: false });
+  for (const [i, ds] of demands) {
+    const contested = ds.some((d) => d.end !== ds[0].end);
+    const winner = [...ds].sort(
+      (a, b) => Number(b.notBiggest) - Number(a.notBiggest) || b.excess - a.excess || a.machine - b.machine,
+    )[0];
+    // 포트 머신 = 흐름이 향하는 끝의 머신. 이 줄에 끝을 요구한 머신들(= 이 줄을 남과 함께 쓰는 두-줄 머신) 가운데 있나.
+    const ms = machinesOnSide(lines[i], side);
+    const portMachine = winner.end === "S" ? ms[ms.length - 1] : ms[0];
+    out.set(i, {
+      end: winner.end, reason: "last", contested,
+      portMachineShared: ds.some((d) => d.machine === portMachine),
+    });
+  }
+  return out;
+}
+
+/** 한 편의 계수기 — `split` 이 분모다(판정 넷의 합). */
 export interface SplitMachineCounters {
   split: number;
   lastOnAll: number;
   lastOnSmaller: number;
   notLast: number;
   unknown: number;
+  /**
+   * **양끝에 두 줄 이상을 쓰는 머신이 선 줄 수**([LineEndDecision.contested]) — 방향으로는 둘 다 맨 끝에 못 세운다.
+   * 머신이 아니라 **줄**을 센다. 0 이 아니면 줄을 끊는 자리를 바꿔야 풀린다.
+   */
+  contestedLines: number;
+  /**
+   * **방향을 내려놓은 줄 수** — 흘러야 하는 끝이 정해졌는데 그 끝으로는 앉을 자리가 없어 오늘 규칙으로 앉은 줄
+   * (`link/policy/seat.seatUnit`). 0 이 아니면 그 줄을 쓰는 머신이 `맨 끝 아님` 으로 남을 수 있다.
+   */
+  dropped: number;
 }
 
 export const emptySplitMachineCounters = (): SplitMachineCounters => ({
-  split: 0, lastOnAll: 0, lastOnSmaller: 0, notLast: 0, unknown: 0,
+  split: 0, lastOnAll: 0, lastOnSmaller: 0, notLast: 0, unknown: 0, contestedLines: 0, dropped: 0,
 });

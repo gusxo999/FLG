@@ -10,10 +10,12 @@
  * 줄          baseLinks          간선마다 edgeLinkGroups 한 번 + 끝을 얹는다
  * 레인 짝     shareLanePairs     같은 간선의 두 줄을 한 벨트의 좌/우 레인에   (LANE_MERGE)
  * 다시 붓기   repourOverflowing  넘치는 부모의 링크 입력만 g = 1 로          (LINK_DIRECT)
+ * 방향        directSplitLines   두 줄을 쓰는 머신이 맨 끝에 서게 줄마다 흘러야 하는 끝  (`./direction`)
  * ```
  *
  * 순서가 곧 답이다 — 끝이 줄보다 앞이라야 생성이 한 번이고(되먹임 A 제거), 레인 짝이 좌석보다
- * 앞이라야 배정이 공유를 보고 한 벨트를 잡는다. 그 순서를 [edgeLinksOf] 하나가 쥔다.
+ * 앞이라야 배정이 공유를 보고 한 벨트를 잡는다. 방향은 **붓기가 다 끝난 뒤**라야 한다 — 누가 두 줄을 쓰는지는
+ * 최종 줄 목록에서 나온다. 그 순서를 [edgeLinksOf] 하나가 쥔다.
  *
  * ## 납품 경로 하나가 놓이는 사다리 — `deliveryRoute.routeDeliveryRoutes` 가 한 납품씩 부른다
  *
@@ -60,6 +62,7 @@ import { dijkstraWithJumps } from "../../shared/route";
 import { faceDepthsOf } from "../../module/arith/face";
 import { linkDepthNeed } from "../../module/arith/depth";
 import { edgeLinkGroups } from "./edge";
+import { directSplitLines } from "./direction";
 import { finishChain, finishFluidChain } from "../emit";
 import { plannedChainClear, type DeliveryLedger, type PlannedChains } from "../ledger";
 import type { Bounds } from "../shape";
@@ -85,6 +88,8 @@ export function edgeLinksOf(tree: TreeIndex, specs: readonly NodeSpec[], config:
   shareLanePairs(linkCache, config);
   const links = { productOf, lineEndsById, linkCache };
   repourOverflowing(tree, specs, config, links);
+  // 줄이 다 정해진 뒤 · 좌석 앞 — 양만 알던 줄에 흘러야 하는 끝을 붙인다
+  directSplitLines(linkCache);
   return links;
 }
 
