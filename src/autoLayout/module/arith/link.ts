@@ -36,7 +36,7 @@ import {
   armsFor, armsForShare, faceSeatArms, inserterForReach, maxRatePerMachinePerLine, type SpecBelt, type SpecInserter,
 } from "../../shared/gamedata/spec";
 import { determineBeltCount, laneCapOfTier } from "../../shared/arith/belt";
-import { chooseCuts, hasContestedLine, splitCount } from "./cut";
+import { chooseCutsWithinLines, cutFromTop, hasLineSplitAtBothEnds, linesTakingTwoSmallShares, splitCount } from "./cut";
 
 /**
  * **이 줄에 실린 초당 총량** — 적재 목록의 합. 목록이 없으면 `undefined`(지어내지 않는다).
@@ -74,8 +74,8 @@ export interface LinkLimits {
   toFaceSeats?: number;
   /**
    * **받는 머신의 면을 다른 재료 품목과 나눠 쓴다** — 받는 머신이 벨트로 받는 재료가 이 품목 말고도 있다.
-   * 참이면 붓기가 끊는 자리를 다시 고를 때 받는 머신을 **새로 가르지 않는다**: 갈린 머신은 인서터가 하나 더 드는데,
-   * 다른 품목이 그 면의 좌석을 얼마나 쓰는지를 이 함수는 모른다. 안 주면 혼자 쓰는 것으로 본다.
+   * 참이면 붓기가 끊는 자리를 다시 정할 때 **줄을 늘리지 않고 받는 머신을 새로 가르지 않는다**: 줄 하나 · 갈린 머신 하나마다
+   * 그 면의 좌석이 더 드는데, 다른 품목이 얼마를 쓰는지를 이 함수는 모른다. 안 주면 혼자 쓰는 것으로 본다.
    */
   toFaceShared?: boolean;
 }
@@ -195,7 +195,6 @@ export function createLinks(
           toSeat - rateOn(cur, "to", f.to),
         );
         // 넘치는 쪽은 줄을 남과 나눠 쓰지 않는다(위 `mergeFrom`/`mergeTo`).
-        // 이 자리(줄을 남과 나눠 쓰나)를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-벨트냐-머신이냐).
         const wouldMix =
           (!mergeFrom && others(cur, "from", f.from)) ||
           (!mergeTo && others(cur, "to", f.to));
@@ -236,37 +235,45 @@ export function createLinks(
     }
   }
 
-  // **끊는 자리를 다시 고른다** — 위 붓기는 *줄이 찬 곳* 에서 끊는다. 그 결과 한 줄의 양끝에 두 줄을 쓰는 머신이 서면
-  // (위 · 아래 경계가 같은 편을 연달아 가른다) 방향으로는 한 대만 맨 끝이 된다. 줄들에 남는 자리가 있으면 **같은 줄 수로**
-  // 그런 줄이 없는 끊는 자리를 찾는다([chooseCuts]). 못 찾으면 붓기 그대로다 — 줄을 늘릴지는 여기서 정하지 않는다
-  // (`tempPlanDocs/split-belt-할당량/judgements.md` J-벨트냐-머신이냐).
+  // **끊는 자리를 다시 정한다** — 위 붓기는 *줄이 찬 곳* 에서 끊는다. 그 경계가 머신 한 대의 몫을 가르면 그 머신의 작은 몫은
+  // *그 줄에 남는 만큼* 으로만 정해지는데, **한 줄이 위 경계와 아래 경계 양쪽에서 작은 몫을 받으면** 정해지지 않는다 — 받는 머신이
+  // 모자란다(`./cut` 머리말). 그런 줄이 있으면 위에서부터 다시 끊는다([cutFromTop]): 가득 채우되, 위에서 작은 몫을 받은 줄은
+  // 아래에서 또 받지 않게 방문하는 머신을 덜어 낸다. 덜어 낸 머신을 다음 줄이 맡으므로 **줄이 하나 늘 수 있다**(2026-10-08
+  // 사용자 — *"벨트 +1 로 해결하도록하겠습니다"*). 둘은 안 늘린다 — 그 안에 못 끊으면 붓기 그대로다.
   //
   // 손대는 것은 좁다 — 흐름이 통째로 한 줄에 실린 붓기뿐이다. 흐름 하나가 줄 여럿에 걸쳤거나(몫이 벨트 한 줄보다 큰 머신)
-  // 전용 줄이 걸린 붓기(`mergeFrom`/`mergeTo`)는 그대로 둔다. 그런 줄이 없는 붓기도 그대로다 — 다른 답을 낼 이유가 없다.
+  // 전용 줄이 걸린 붓기(`mergeFrom`/`mergeTo`)는 그대로 둔다. 그런 줄이 없는 붓기도 그대로다 — 같은 규칙이 같은 자리에서 끊는다.
   const whole = lines.reduce((sum, l) => sum + l.carries.length, 0) === flows.length;
   if (whole && mergeFrom && mergeTo && lines.length > 1) {
     const cutsNow: number[] = [];
     for (let k = 0, at = 0; k + 1 < lines.length; k++) cutsNow.push((at += lines[k].carries.length));
-    if (hasContestedLine(flows, cutsNow)) {
-      const tierOf = (k: number) => tiers[Math.min(k, tiers.length - 1)];
-      const found = chooseCuts(flows, lines.length, { capOf: (k) => laneCapOfTier(tierOf(k)), fromSeat, toSeat });
-      // **받는 머신의 면을 다른 품목과 나눠 쓰면, 받는 머신을 새로 가르는 답은 안 받는다**([LinkLimits.toFaceShared]).
-      // 갈린 머신마다 인서터가 하나 더 드는데 다른 품목이 그 면의 좌석을 얼마나 쓰는지를 여기서는 모른다 —
-      // 받는 쪽 가름이 붓기보다 늘면 좌석이 모자랄 수 있다([chooseCuts] 머리말).
-      const addsToSplits = found !== undefined && splitCount(flows, found, "to") > splitCount(flows, cutsNow, "to");
-      const cuts = found && !(limits.toFaceShared && addsToSplits) ? found : undefined;
-      if (cuts) {
-        const bounds = [0, ...cuts, flows.length];
-        lines.length = 0;
-        for (let k = 0; k + 1 < bounds.length; k++) {
-          const part = flows.slice(bounds[k], bounds[k + 1]);
-          lines.push({
-            cap: laneCapOfTier(tierOf(k)),
-            used: part.reduce((sum, f) => sum + f.rate, 0),
-            belt: tierOf(k).entityName,
-            carries: part.map((f) => ({ from: f.from, to: f.to, rate: f.rate })),
-          });
-        }
+    const tierOf = (k: number) => tiers[Math.min(k, tiers.length - 1)];
+    const cutLimits = { capOf: (k: number) => laneCapOfTier(tierOf(k)), fromSeat, toSeat };
+    let cuts: number[] | undefined;
+    if (limits.toFaceShared) {
+      // **받는 머신의 면을 다른 품목과 나눠 쓰면 옛 조건 그대로다**([LinkLimits.toFaceShared]) — 같은 줄 수 안에서만 다시 끊고,
+      // 받는 머신을 새로 가르는 답은 안 받는다. 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 다른 품목이
+      // 얼마를 쓰는지를 여기서는 모른다 — 아는 자리는 좌석이다.
+      // 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-나눠-쓰는-면).
+      if (hasLineSplitAtBothEnds(flows, cutsNow)) {
+        const found = chooseCutsWithinLines(flows, lines.length, cutLimits);
+        const addsToSplits = found !== undefined && splitCount(flows, found, "to") > splitCount(flows, cutsNow, "to");
+        cuts = found && !addsToSplits ? found : undefined;
+      }
+    } else if (linesTakingTwoSmallShares(flows, cutsNow).length > 0) {
+      cuts = cutFromTop(flows, lines.length + 1, cutLimits);
+    }
+    if (cuts) {
+      const bounds = [0, ...cuts, flows.length];
+      lines.length = 0;
+      for (let k = 0; k + 1 < bounds.length; k++) {
+        const part = flows.slice(bounds[k], bounds[k + 1]);
+        lines.push({
+          cap: laneCapOfTier(tierOf(k)),
+          used: part.reduce((sum, f) => sum + f.rate, 0),
+          belt: tierOf(k).entityName,
+          carries: part.map((f) => ({ from: f.from, to: f.to, rate: f.rate })),
+        });
       }
     }
   }

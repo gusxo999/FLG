@@ -5,8 +5,9 @@
  *
  * 머신 한 대가 한 품목에 벨트 줄을 둘 이상 쓰면([[split belt]]), 줄마다 얼마를 싣고 집는지를 인서터는 정해 주지
  * 않는다(`docs/용어사전.md` §split belt 할당량 문제). 정해 주는 것은 **벨트 위의 순서**다 — 앞선 머신이 먼저 싣고
- * 먼저 집으므로, 맨 끝 머신은 벨트에 남은 것만 갖는다(`docs/analysis/flow-model.md` §2.1). 그래서 두 줄을 쓰는
- * 머신이 그 줄들에서 **맨 끝**에 서 있으면 그 머신의 몫은 줄의 구조가 정한다.
+ * 먼저 집으므로, 맨 끝 머신은 벨트에 남은 것만 갖는다(`docs/analysis/flow-model.md` §2.1). 그 머신의 인서터들은 제 몫의
+ * 반을 옮기려 하고 남은 것이 그보다 적을 때만 덜 옮기므로(같은 문서 §2.3), 두 줄을 쓰는 머신이 **몫이 작은 줄에서 맨 끝**에
+ * 서 있으면 그 줄의 몫은 남은 양이 정하고 나머지가 다른 줄로 간다. 그 자리를 줄마다 한 대만 원하게 만드는 것은 끊는 자리다(`./cut`).
  *
  * ## 맨 끝은 편마다 다르게 읽는다
  *
@@ -102,8 +103,8 @@ export function splitMachinesOf(lines: ReadonlyArray<Link>, side: LineSide): Spl
  * **두 줄 이상을 쓰는 머신이 어디에 섰나.**
  *
  * ```
- * lastOnAll       그 줄들 **모두에서** 맨 끝 — 몫을 벨트가 정한다(인서터가 몫을 어떻게 나누든 같다)
- * lastOnSmaller   몫이 가장 큰 줄 하나만 빼고 맨 끝 — 인서터가 몫을 반반 나누고 막힌 쪽이 다른 쪽으로 넘어간다면 맞는다
+ * lastOnAll       그 줄들 **모두에서** 맨 끝
+ * lastOnSmaller   몫이 가장 큰 줄 하나만 빼고 맨 끝 — **지킬 것은 여기까지다.** 작은 몫은 그 줄에 남은 양이 정하고 나머지는 큰 줄로 간다
  * notLast         몫이 작은 줄에서도 맨 끝이 아니다 — 그 줄에서 계획보다 많이 싣는다(집는다)
  * unknown         방향을 모르는 줄이 끼어 있다(그 줄이 못 앉았다)
  * ```
@@ -167,8 +168,9 @@ export interface LineEndDecision {
    */
   reason: "last" | "aside";
   /**
-   * **한 줄의 같은 편 양끝에 두 줄 이상을 쓰는 머신이 섰다** — 맨 끝 자리는 편마다 하나뿐이라 둘 다 맨 끝에 세울 수 없다.
-   * 방향으로는 못 푼다(줄을 끊는 자리를 바꿔야 풀린다). `end` 는 그중 한 대를 고른 것이다.
+   * **이 줄의 맨 끝 자리를 두 머신이 다툰다** — 같은 편의 양끝에 선 두 머신이 **둘 다 작은 몫을 이 줄에 뒀다.** 맨 끝 자리는
+   * 편마다 하나뿐이라 한 대는 앞에 서서 계획보다 많이 옮긴다. 방향으로는 못 푼다 — 끊는 자리가 풀어야 한다(`./cut`).
+   * 양끝에 섰어도 작은 몫을 둔 머신이 하나뿐이면 다툼이 아니다 — 그 머신이 맨 끝에 서면 된다. `end` 는 아래 차례로 고른 것이다.
    */
   contested: boolean;
   /**
@@ -190,7 +192,7 @@ export interface LineEndDecision {
  * **줄의 순서가 곧 위아래다** — 받은 목록은 붓기 순서이고, 붓기는 머신을 위에서 아래로 훑으므로 뒤의 줄이 아래 줄이다
  * (`module/arith/link.createLinks` — *"한 줄이 맡는 머신은 각각 연속 구간이다"*).
  *
- * ## 한 줄의 양끝에서 부딪히면 — 누구를 맨 끝에 세우나
+ * ## 한 줄의 양끝에 그런 머신이 서면 — 누구를 맨 끝에 세우나
  *
  * ```
  * ① 그 줄이 **몫이 가장 큰 줄이 아닌** 머신 먼저     몫이 작은 줄에서 앞에 서면 그 줄에 계획보다 많이 싣는다(집는다)
@@ -198,7 +200,8 @@ export interface LineEndDecision {
  * ③ 같으면 머신 index 가 작은 쪽
  * ```
  *
- * ①②는 *한 머신의 인서터들이 몫을 반반 나눈다* 는 가정(`docs/analysis/flow-model.md` §4 (c))에 기댄다 — 부딪힌 줄에서만 쓴다.
+ * ①②는 *한 머신의 인서터들이 몫을 반반 나눈다* 는 가정(`docs/analysis/flow-model.md` §4 (c))에 기댄다. ① 이 가르는 것이 보통이다 —
+ * 끊는 자리가 줄마다 작은 몫을 하나만 두게 정하므로(`./cut`) 그 머신이 곧 맨 끝이다. 둘 다 작은 몫을 그 줄에 뒀을 때만 ②③ 까지 간다.
  */
 export function requiredEndsOf(lines: ReadonlyArray<Link>, side: LineSide): Map<number, LineEndDecision> {
   interface Demand { machine: number; end: "N" | "S"; notBiggest: boolean; excess: number }
@@ -226,7 +229,8 @@ export function requiredEndsOf(lines: ReadonlyArray<Link>, side: LineSide): Map<
   const out = new Map<number, LineEndDecision>();
   for (const [i, end] of aside) out.set(i, { end, reason: "aside", contested: false, portMachineShared: false });
   for (const [i, ds] of demands) {
-    const contested = ds.some((d) => d.end !== ds[0].end);
+    const small = ds.filter((d) => d.notBiggest);
+    const contested = small.some((d) => d.end !== small[0].end);
     const winner = [...ds].sort(
       (a, b) => Number(b.notBiggest) - Number(a.notBiggest) || b.excess - a.excess || a.machine - b.machine,
     )[0];
@@ -249,8 +253,8 @@ export interface SplitMachineCounters {
   notLast: number;
   unknown: number;
   /**
-   * **양끝에 두 줄 이상을 쓰는 머신이 선 줄 수**([LineEndDecision.contested]) — 방향으로는 둘 다 맨 끝에 못 세운다.
-   * 머신이 아니라 **줄**을 센다. 0 이 아니면 줄을 끊는 자리를 바꿔야 풀린다.
+   * **같은 편에서 작은 몫을 둘 받는 줄 수**([LineEndDecision.contested]) — 그 줄의 맨 끝 자리를 두 머신이 다툰다.
+   * 머신이 아니라 **줄**을 센다. 0 이 아니면 끊는 자리가 못 푼 줄이 남은 것이다(받는 면을 나눠 쓰는 간선 · 줄을 하나 더 줘도 못 끊은 붓기).
    */
   contestedLines: number;
   /**

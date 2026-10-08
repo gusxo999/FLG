@@ -269,7 +269,7 @@ function recordLinkNeed(
 }
 
 /**
- * **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — 모듈마다 · 편마다([standingOf]). **관측만 한다.**
+ * **두 줄 이상을 쓰는 머신이 몫이 작은 줄에서 맨 끝에 섰나** — 모듈마다 · 편마다([standingOf]). **관측만 한다.**
  *
  * 좌석 **뒤**에서 읽는다 — 줄이 어느 끝으로 흐르는지는 좌석이 확정한다(영수증의 `portEnd` · `exitEnd`). 붓기 직후의
  * 줄 목록만으로는 누가 맨 끝인지 모른다. 판정은 줄의 구조만 본 것이고 가동률은 깔린 그리드를 푼 것이라(`analysis/flow`),
@@ -298,8 +298,8 @@ function recordSplitMachines(
         counters[side].split += 1;
         counters[side][standing] += 1;
         // **다 지킨 머신은 이름을 안 남긴다** — 읽을 것은 어긴 자리다.
-        if (standing === "lastOnAll") continue;
-        const verdict = standing === "lastOnSmaller" ? "몫이 작은 줄에서만 맨 끝" : standing === "notLast" ? "**맨 끝 아님**" : "방향 모름(못 앉은 줄)";
+        if (standing === "lastOnAll" || standing === "lastOnSmaller") continue;
+        const verdict = standing === "notLast" ? "**맨 끝 아님**" : "방향 모름(못 앉은 줄)";
         who.push(
           `${s.id} ${side === "from" ? "싣는" : "집는"} 머신 ${sm.machine} [${sm.item}] — ${verdict} · 줄마다 몫 `
             + perLine.map((l) => `${num(l.share)}${l.last === undefined ? "(?)" : l.last ? "(맨 끝)" : "(앞)"}`).join(" · "),

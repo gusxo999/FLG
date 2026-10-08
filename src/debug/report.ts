@@ -124,7 +124,7 @@ export function buildReport(): string {
     ),
   );
 
-  // **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
+  // **두 줄 이상을 쓰는 머신이 몫이 작은 줄에서 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
   // 그런 머신이 없으면 안 찍는다. 찍혔는데 `맨 끝 아님` 이 없으면 다 지킨 것이다 — 가동률 줄과 함께 읽는다.
   const sb = stats.splitBelt;
   if (sb && sb.from.split + sb.to.split > 0) {
@@ -134,7 +134,7 @@ export function buildReport(): string {
           + (c.notLast > 0 ? ` · **맨 끝 아님 ${c.notLast}**` : '')
           + (c.unknown > 0 ? ` · 방향 모름 ${c.unknown}` : '')
           + ')'
-          + (c.contestedLines > 0 ? ` · 양끝에서 부딪힌 줄 ${c.contestedLines}` : '')
+          + (c.contestedLines > 0 ? ` · **작은 몫을 둘 받는 줄 ${c.contestedLines}**` : '')
           + (c.dropped > 0 ? ` · **방향을 내려놓은 줄 ${c.dropped}**` : '')
         : undefined;
     out.push(sub(

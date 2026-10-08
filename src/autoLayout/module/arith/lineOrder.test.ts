@@ -188,7 +188,7 @@ describe("requiredEndsOf — 줄마다 어느 끝으로 흘러야 두 줄을 쓰
   });
 
   describe("한 줄의 양끝에 두 줄을 쓰는 머신이 서면 — 한 대만 맨 끝이 된다", () => {
-    it("그 줄이 몫이 작은 줄인 머신이 먼저다", () => {
+    it("그 줄이 몫이 작은 줄인 머신이 먼저다 — 작은 몫을 둔 것이 한 대뿐이면 다툼이 아니다", () => {
       // 가운데 줄: 자식 1 은 8(큰 쪽 — 작은 쪽 2 는 줄 0), 자식 2 는 4(작은 쪽 — 큰 쪽 6 은 줄 2).
       const lines = [
         line([{ from: 0, to: 0, rate: 10 }, { from: 1, to: 1, rate: 2 }]),
@@ -196,12 +196,12 @@ describe("requiredEndsOf — 줄마다 어느 끝으로 흘러야 두 줄을 쓰
         line([{ from: 2, to: 4, rate: 6 }]),
       ];
       const mid = requiredEndsOf(lines, "from").get(1)!;
-      expect(mid.contested).toBe(true);
+      expect(mid.contested).toBe(false); // 그 줄의 맨 끝 자리가 필요한 것은 자식 2 뿐이다
       expect(mid.end).toBe("S"); // 자식 2 쪽으로 흐른다
       expect(standingsAfter(lines, "from")).toEqual(["lastOnSmaller", "lastOnAll"]);
     });
 
-    it("둘 다 그 줄이 몫이 작은 줄이면 방향으로는 못 푼다 — 한 대는 앞에 선다", () => {
+    it("둘 다 그 줄이 몫이 작은 줄이면 맨 끝 자리를 다툰다 — 방향으로는 못 풀고 한 대는 앞에 선다", () => {
       // 자식 9/s 다섯 → 부모 5/s 아홉의 가운데 줄: 자식 1 은 3(큰 쪽 6 은 줄 0), 자식 3 은 3(큰 쪽 6 은 줄 2).
       const lines = [
         line([{ from: 0, to: 0, rate: 9 }, { from: 1, to: 1, rate: 6 }]),

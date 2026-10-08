@@ -337,7 +337,7 @@ export interface BeltTerminusCounters {
 }
 
 /**
- * **두 줄 이상을 쓰는 머신이 그 줄들의 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
+ * **두 줄 이상을 쓰는 머신이 몫이 작은 줄에서 맨 끝에 섰나** — split belt 할당량 문제의 판정(`module/arith/lineOrder`).
  *
  * 편마다 센다 — 싣는 쪽(`from`)과 집는 쪽(`to`)은 맨 끝을 읽는 법이 다르다. `split` 이 분모다: **0 은 그런 머신이
  * 없다는 뜻이고**, `split > 0` 인데 `notLast = 0` 이면 다 지켰다는 뜻이다.
@@ -345,7 +345,7 @@ export interface BeltTerminusCounters {
 export interface SplitBeltCounters {
   from: SplitMachineCounters;
   to: SplitMachineCounters;
-  /** 모든 줄에서 맨 끝이 아닌 머신 — 누가 · 줄마다 몫과 자리. 앞에서 12개까지. */
+  /** 몫이 작은 줄에서 맨 끝이 아닌 머신 — 누가 · 줄마다 몫과 자리. 앞에서 12개까지. */
   who: ReadonlyArray<string>;
 }
 
