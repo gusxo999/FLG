@@ -36,7 +36,7 @@ import {
   armsFor, armsForShare, faceSeatArms, inserterForReach, maxRatePerMachinePerLine, type SpecBelt, type SpecInserter,
 } from "../../shared/gamedata/spec";
 import { determineBeltCount, laneCapOfTier } from "../../shared/arith/belt";
-import { chooseCutsWithinLines, cutFromTop, hasLineSplitAtBothEnds, linesTakingTwoSmallShares, splitCount } from "./cut";
+import { chooseCutsWithinLines, cutFromTop, hasLineSplitAtBothEnds, linesTakingTwoSmallShares, splitCount, type CutLimits } from "./cut";
 
 /**
  * **이 줄에 실린 초당 총량** — 적재 목록의 합. 목록이 없으면 `undefined`(지어내지 않는다).
@@ -78,6 +78,19 @@ export interface LinkLimits {
    * 그 면의 좌석이 더 드는데, 다른 품목이 얼마를 쓰는지를 이 함수는 모른다. 안 주면 혼자 쓰는 것으로 본다.
    */
   toFaceShared?: boolean;
+}
+
+/**
+ * **끊는 자리를 정할 때의 상한**([CutLimits]) — 붓기가 쓰는 것과 같은 식이다. 줄 순번이 티어 목록을 넘으면 마지막 티어다.
+ * 붓기 밖에서 끊는 자리를 정하는 곳(`link/policy` — 한 면을 나눠 쓰는 재료들을 함께 끊는다)도 이 값을 쓴다.
+ */
+export function cutLimitsOf(limits: Pick<LinkLimits, "tiers" | "inserter" | "fromFaceSeats" | "toFaceSeats">): CutLimits {
+  const { tiers, inserter } = limits;
+  return {
+    capOf: (k) => laneCapOfTier(tiers[Math.min(k, tiers.length - 1)]),
+    fromSeat: maxRatePerMachinePerLine(0, limits.fromFaceSeats, inserter),
+    toSeat: maxRatePerMachinePerLine(0, limits.toFaceSeats, inserter),
+  };
 }
 
 /**
@@ -248,13 +261,14 @@ export function createLinks(
     const cutsNow: number[] = [];
     for (let k = 0, at = 0; k + 1 < lines.length; k++) cutsNow.push((at += lines[k].carries.length));
     const tierOf = (k: number) => tiers[Math.min(k, tiers.length - 1)];
-    const cutLimits = { capOf: (k: number) => laneCapOfTier(tierOf(k)), fromSeat, toSeat };
+    const cutLimits = cutLimitsOf(limits);
     let cuts: number[] | undefined;
     if (limits.toFaceShared) {
-      // **받는 머신의 면을 다른 품목과 나눠 쓰면 옛 조건 그대로다**([LinkLimits.toFaceShared]) — 같은 줄 수 안에서만 다시 끊고,
-      // 받는 머신을 새로 가르는 답은 안 받는다. 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 다른 품목이
-      // 얼마를 쓰는지를 여기서는 모른다 — 아는 자리는 좌석이다.
-      // 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-나눠-쓰는-면).
+      // **받는 머신의 면을 다른 품목과 나눠 쓰면 여기서는 옛 조건 그대로다**([LinkLimits.toFaceShared]) — 같은 줄 수 안에서만
+      // 다시 끊고, 받는 머신을 새로 가르는 답은 안 받는다. 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 다른
+      // 품목이 얼마를 쓰는지를 여기서는 모른다. 그 면의 재료들을 함께 다시 끊는 일은 재료를 다 아는 쪽이 한다
+      // (`link/policy/delivery.groupSharedFaces`) — 거기서 못 끊은 면만 이 답으로 남는다.
+      // 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-함께-못-끊는-면).
       if (hasLineSplitAtBothEnds(flows, cutsNow)) {
         const found = chooseCutsWithinLines(flows, lines.length, cutLimits);
         const addsToSplits = found !== undefined && splitCount(flows, found, "to") > splitCount(flows, cutsNow, "to");

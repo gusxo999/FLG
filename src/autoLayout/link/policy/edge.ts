@@ -21,7 +21,8 @@
 
 import type { Link, LinkCarry } from "../../module/types/line";
 import type { GeneratedModule, ModulePort } from "../../module/types/module";
-import { createLinks } from "../../module/arith/link";
+import { createLinks, cutLimitsOf } from "../../module/arith/link";
+import type { CutLimits } from "../../module/arith/cut";
 import { allocateFlows, type Flow } from "../arith/flows";
 import { faceSeatArms, inserterForReach } from "../../shared/gamedata/spec";
 import { determineBeltCount } from "../../shared/arith/belt";
@@ -167,6 +168,9 @@ export function edgeFlows(
  * 자리가 모자란 쪽이 자기 `g` 를 말하면 반대쪽 `g` 는 **결과로** 정해진다 — 그래서 여기서
  * 받는 것은 `(어느 끝, 그 끝의 g)` 한 쌍이다.
  *
+ * > **2026-10-08 — 주는 곳이 둘 생겼다.** `./delivery.repourOverflowing`(플래그 뒤 · 넘치는 부모만 `g = 1`)과
+ * > `./delivery.groupSharedFaces`(한 면을 나눠 쓰는 재료들 — 받는 쪽 `g` 를 **줄마다의 목록**으로). 아래 절은 그 전의 기록이다.
+ *
  * ## 아직 아무도 안 준다 — 밸브만 먼저 뚫는다
  *
  * 오늘 호출부는 이 값을 **비워 둔다** → 흐름을 한 번에 붓는 옛 동작 그대로다(관통). 채울
@@ -180,8 +184,11 @@ export function edgeFlows(
 export interface EdgeMachinesPerBeltLine {
   /** 기준으로 삼는 끝 — `"from"` 은 자식 머신, `"to"` 는 부모 머신. */
   side: "from" | "to";
-  /** 그 끝의 머신 몇 대를 한 줄이 맡나. `1` = 다이렉트, `≥ N` = 관통. */
-  machinesPerBeltLine: number;
+  /**
+   * 그 끝의 머신 몇 대를 한 줄이 맡나. `1` = 다이렉트, `≥ N` = 관통.
+   * **목록이면 줄마다 다르다** — 위에서부터 `[3, 2, 2, 2]` 면 첫 줄이 3대, 나머지가 2대씩 방문한다(2026-10-08).
+   */
+  machinesPerBeltLine: number | readonly number[];
 }
 
 /**
@@ -232,28 +239,9 @@ export function edgeLinkGroups(
   if (child.lines.find((l) => l.role === "output" && l.name === item)?.kind !== "belt") {
     return undefined;
   }
-  const flows = edgeFlows(child, parent, item, config);
-  if (!flows || flows.length === 0) return undefined;
-  const inserter = inserterForReach(config.inserters, 1);
-  if (!inserter) return undefined; // 팔을 모르면 지어내지 않는다.
-
-  // **머신이 한 면에 가진 좌석 수** — 한 줄이 머신 한 대와 주고받는 최대(좌석 수 × 인서터 운반량)는 붓기가 낸다.
-  // 좌석 수는 [faceSeatArms] 가 낸다 — 여기서 다시 유도하지 않는다(2026-08-23).
-  // `fluidRows = 0` 은 **일부러 낙관**이다: 이 함수는 간선 하나만 보고 돌아서 그 줄이 어느
-  // 면에 앉을지(= 그 면의 파이프가 몇 칸을 먹었는지) 알 수 없다. 좁힐지는 계측이 답한다
-  // (`tempPlanDocs/배선-형태/judgements.md` J2 — 실패 0건이면 영구 폐기).
-  const limits = {
-    inserter,
-    fromFaceSeats: faceSeatArms(child.machine.h, 0),
-    toFaceSeats: faceSeatArms(parent.machine.h, 0),
-    // 부모가 벨트로 받는 재료가 이 품목 말고도 있나 — 있으면 그 면의 좌석을 나눠 쓴다.
-    toFaceShared: parent.lines.some((l) => l.role === "input" && l.kind === "belt" && l.name !== item),
-  };
-  const carries: LinkCarry[] = flows.map((f) => ({
-    from: f.fromMachine,
-    to: f.toMachine,
-    rate: f.rate,
-  }));
+  const poured = edgePourInput(child, parent, item, config);
+  if (!poured) return undefined;
+  const { carries, limits } = poured;
 
   // **붓는 일 자체는 [createLinks] 가 한다** — 이 저장소에서 [Link] 를 만드는 유일한 곳이다.
   // 여기가 하는 일은 그 앞뒤 셋뿐이다: ① 흐름을 계산하고(자식·부모를 **둘 다** 봐야 하므로
@@ -282,6 +270,52 @@ export function edgeLinkGroups(
 }
 
 /**
+ * **간선 하나를 붓는 데 드는 것** — 흐름 목록과 상한. [edgeLinkGroups] 와, 한 면을 나눠 쓰는 재료들을 함께 끊는 자리
+ * (`./delivery.groupSharedFaces`)가 같은 값을 쓴다. 유체 줄 · 흐름 0 · 인서터를 모르면 `undefined`.
+ */
+function edgePourInput(child: NodeSpec, parent: NodeSpec, item: string, config: PackConfig) {
+  const flows = edgeFlows(child, parent, item, config);
+  if (!flows || flows.length === 0) return undefined;
+  const inserter = inserterForReach(config.inserters, 1);
+  if (!inserter) return undefined; // 팔을 모르면 지어내지 않는다.
+
+  // **머신이 한 면에 가진 좌석 수** — 한 줄이 머신 한 대와 주고받는 최대(좌석 수 × 인서터 운반량)는 붓기가 낸다.
+  // 좌석 수는 [faceSeatArms] 가 낸다 — 여기서 다시 유도하지 않는다(2026-08-23).
+  // `fluidRows = 0` 은 **일부러 낙관**이다: 이 함수는 간선 하나만 보고 돌아서 그 줄이 어느
+  // 면에 앉을지(= 그 면의 파이프가 몇 칸을 먹었는지) 알 수 없다. 좁힐지는 계측이 답한다
+  // (`tempPlanDocs/배선-형태/judgements.md` J2 — 실패 0건이면 영구 폐기).
+  const limits = {
+    inserter,
+    fromFaceSeats: faceSeatArms(child.machine.h, 0),
+    toFaceSeats: faceSeatArms(parent.machine.h, 0),
+    // 부모가 벨트로 받는 재료가 이 품목 말고도 있나 — 있으면 그 면의 좌석을 나눠 쓴다.
+    toFaceShared: parent.lines.some((l) => l.role === "input" && l.kind === "belt" && l.name !== item),
+  };
+  const carries: LinkCarry[] = flows.map((f) => ({
+    from: f.fromMachine,
+    to: f.toMachine,
+    rate: f.rate,
+  }));
+  return { carries, limits };
+}
+
+/**
+ * **간선의 흐름과 끊는 자리의 상한** — 간선을 통째로 한 번에 부을 때의 것([edgeLinkGroups] 가 `perBeltLine` 없이 쓰는 티어).
+ */
+export function edgeCutInput(
+  child: NodeSpec,
+  parent: NodeSpec,
+  item: string,
+  config: PackConfig,
+): { flows: LinkCarry[]; limits: CutLimits } | undefined {
+  const poured = edgePourInput(child, parent, item, config);
+  if (!poured) return undefined;
+  const tiers = determineBeltCount(poured.carries.reduce((sum, c) => sum + c.rate, 0), config.belts ?? []);
+  if (tiers.length === 0) return undefined;
+  return { flows: poured.carries, limits: cutLimitsOf({ ...poured.limits, tiers }) };
+}
+
+/**
  * 흐름을 **한쪽 끝의 머신 `g` 대씩** 이어지는 묶음으로 자른다.
  *
  * **반대쪽도 저절로 연속이 된다** — [allocateFlows] 의 수열이 양끝 모두 단조라, 한쪽을
@@ -292,13 +326,16 @@ export function edgeLinkGroups(
  * 아니다 — 한 흐름이 줄 여럿에 실리는 [[split belt]] 그대로다.
  */
 function batchCarries(carries: readonly LinkCarry[], perBeltLine: EdgeMachinesPerBeltLine): LinkCarry[][] {
-  const machinesPerBeltLine = Math.max(1, Math.floor(perBeltLine.machinesPerBeltLine));
+  const given = perBeltLine.machinesPerBeltLine;
+  // 목록이면 줄마다 그 수만큼, 목록이 모자라면 마지막 수를 되풀이한다.
+  const sizeAt = (k: number): number =>
+    Math.max(1, Math.floor(typeof given === "number" ? given : given[Math.min(k, given.length - 1)] ?? 1));
   const machines = [...new Set(carries.map((c) => c[perBeltLine.side]))].sort(
     (a, b) => (a ?? 0) - (b ?? 0),
   );
   const parts: LinkCarry[][] = [];
-  for (let i = 0; i < machines.length; i += machinesPerBeltLine) {
-    const own = new Set(machines.slice(i, i + machinesPerBeltLine));
+  for (let i = 0, k = 0; i < machines.length; i += sizeAt(k), k++) {
+    const own = new Set(machines.slice(i, i + sizeAt(k)));
     // `filter` 가 순서를 지키므로 묶음 안의 흐름 수열도 단조 그대로다.
     const part = carries.filter((c) => own.has(c[perBeltLine.side]));
     if (part.length > 0) parts.push(part);

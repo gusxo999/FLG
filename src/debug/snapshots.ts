@@ -21,7 +21,8 @@ import { checkLayout } from './checkRules';
 import { cellHistogram } from './faceTable';
 import { machineBoxOf, type LayoutView } from './layoutView';
 import {
-  readRunStats, type BeltFormCounters, type DeliveryCounters, type PerimeterCounters, type SplitBeltCounters,
+  readRunStats, type BeltFormCounters, type DeliveryCounters, type PerimeterCounters, type SharedFaceCounters,
+  type SplitBeltCounters,
 } from './runStats';
 import { useAutoLayoutRunStore } from '../UI/store/autoLayoutRunStore';
 
@@ -55,6 +56,8 @@ export interface LayoutDigest {
   beltForms: BeltFormCounters | null;
   /** 두 줄 이상을 쓰는 머신의 자리. 2026-10-06 이전에 찍은 스냅샷에는 없다. */
   splitBelt?: SplitBeltCounters | null;
+  /** 한 면을 나눠 쓰는 재료들을 함께 다시 끊은 부모. 2026-10-08 이전에 찍은 스냅샷에는 없다. */
+  sharedFaces?: SharedFaceCounters;
   issues: string[];
   violations: string[];
   modules: Array<{
@@ -98,6 +101,7 @@ export function digestOf(view: LayoutView, label: string): LayoutDigest {
     perimeter: stats.perimeter,
     beltForms: stats.beltForms,
     splitBelt: stats.splitBelt,
+    sharedFaces: stats.sharedFaces,
     issues: run.issues.map((i) => `${i.severity}:${i.code}`).sort(),
     violations: checkLayout(view).map((v) => `${v.rule} ${v.detail}`).sort(),
     modules: view.modules
@@ -218,6 +222,10 @@ export function diffDigests(before: LayoutDigest, after: LayoutDigest): string {
       num(`두 줄 머신 ${label} 작은 몫을 둘 받는 줄`, bs[side].contestedLines ?? 0, as[side].contestedLines ?? 0, counters);
       num(`두 줄 머신 ${label} 방향을 내려놓은 줄`, bs[side].dropped ?? 0, as[side].dropped ?? 0, counters);
     }
+  }
+  if (before.sharedFaces && after.sharedFaces) {
+    num('나눠 쓰는 면 작은 몫을 둘 받는 줄이 있던 부모', before.sharedFaces.violating, after.sharedFaces.violating, counters);
+    num('나눠 쓰는 면 재료들을 함께 다시 끊음', before.sharedFaces.grouped, after.sharedFaces.grouped, counters);
   }
   if (counters.length) lines.push('카운터', ...counters);
 

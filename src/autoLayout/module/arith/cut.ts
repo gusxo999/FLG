@@ -44,10 +44,12 @@
  * 흐름은 안 쪼갠다 — 경계는 흐름과 흐름 사이에만 둔다. 흐름 하나가 줄 여럿에 걸친 붓기(몫이 벨트 한 줄보다 큰 머신)는
  * 여기서 다루지 않는다. 머신 한 대가 **세 줄**에 갈리는 끊기도 새로 만들지 않는다 — 인서터 셋이 몫을 어떻게 나누는지는 정한 적이 없다.
  *
- * ## 받는 면을 다른 재료와 나눠 쓰는 간선은 옛 조건 그대로다
+ * ## 받는 면을 다른 재료와 나눠 쓰는 간선 — 혼자서는 안 바꾸고, 재료들을 함께 끊는다
  *
- * 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 이 파일은 한 품목만 보므로 다른 품목이 얼마를 쓰는지 모른다.
- * 그런 간선은 맨 아래 「옛 조건」 의 두 함수가 그대로 맡는다(같은 줄 수 안에서만 다시 끊는다).
+ * 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 붓기는 한 품목만 보므로 다른 품목이 얼마를 쓰는지 모른다.
+ * 그래서 그런 간선의 붓기는 맨 아래 「옛 조건」 의 두 함수로 같은 줄 수 안에서만 다시 끊는다. 작은 몫을 둘 받는 줄이 남으면
+ * 그 면의 재료들을 **함께** 다시 끊는다([receiversPerLineTogether] — 부르는 곳은 재료를 다 아는 `link/policy/delivery`):
+ * 줄마다 방문하는 받는 머신 수를 재료들이 같이 쓴다.
  *
  * 여기엔 자리도 좌표도 없다 — 흐름 목록과 상한만 본다.
  */
@@ -208,16 +210,91 @@ export function cutFromTop(
   return cuts;
 }
 
+/** [receiversPerLineTogether] 가 재료 하나에 대해 받는 것. */
+export interface FlowsOnSharedFace {
+  flows: ReadonlyArray<LinkCarry>;
+  /** 이 재료가 쓸 수 있는 줄 수의 상한. */
+  maxLines: number;
+  limits: CutLimits;
+}
+
+/**
+ * **한 면을 나눠 쓰는 재료들이 받는 머신을 같은 묶음으로 방문한다** — 줄마다 방문하는 받는 머신 수를 위에서부터 정한다.
+ *
+ * 받는 머신의 한 면에 재료가 둘 이상 앉으면 재료마다 줄이 따로 서는데, 안쪽 세로줄에 선 줄의 출입구는 바깥 세로줄을 가로질러
+ * 나간다. **두 재료의 줄이 끝나는 자리가 다르면** 그 출입구가 남의 줄 한가운데를 지나야 한다(합성 판에서 좌석의 *구간막힘* 은
+ * 전부 그런 판에서 났다). 그래서 그런 면에서는 재료 하나만 따로 다시 끊지 않고, **줄마다 방문하는 받는 머신 수를 재료들이 함께
+ * 쓴다** — 한 재료가 한 대를 덜 방문해야 하면 다른 재료의 그 줄도 덜 방문한다.
+ *
+ * ```
+ * 받는 머신 경계에서만 끊는다     받는 머신은 안 갈린다(갈린 머신은 그 면의 좌석을 하나 더 쓴다) — 갈리는 것은 주는 머신뿐이다
+ * 줄마다 가장 많이 방문한다       모든 재료가 그 수를 실을 수 있고, 어느 재료의 줄도 작은 몫을 두 번 받지 않는 가장 큰 수
+ * ```
+ *
+ * [cutFromTop] 을 재료 여럿에 나란히 돌린 것이다 — 한 번 지나가며 정하고 되돌리지 않는다.
+ *
+ * @param receiverCount 받는 머신 수. 흐름의 `to` 는 `0 … receiverCount − 1` 이고 재료마다 받는 머신 전부에 댄다.
+ * @returns 줄마다 방문하는 받는 머신 수(위에서부터 · 합 = `receiverCount`). 어느 재료든 상한 안에 못 끊으면 `undefined`.
+ */
+export function receiversPerLineTogether(
+  materials: ReadonlyArray<FlowsOnSharedFace>,
+  receiverCount: number,
+): number[] | undefined {
+  /** 재료마다 — 받는 머신 `r` 의 몫이 시작하는 흐름 index(`receiverCount` 는 끝). */
+  const startOf = materials.map(({ flows }) => {
+    const at: number[] = [];
+    let i = 0;
+    for (let r = 0; r <= receiverCount; r++) {
+      while (i < flows.length && (flows[i].to ?? 0) < r) i += 1;
+      at.push(i);
+    }
+    return at;
+  });
+  const state = materials.map(() => ({ fromAbove: false, restEnd: 0 }));
+  const perLine: number[] = [];
+  let first = 0;
+  while (first < receiverCount) {
+    const line = perLine.length;
+    if (materials.some((m) => line + 1 > m.maxLines)) return undefined;
+    let count = 0;
+    let smalls: (SmallShare | undefined)[] = [];
+    for (let n = receiverCount - first; n >= 1 && count === 0; n--) {
+      const got: (SmallShare | undefined)[] = [];
+      const ok = materials.every((m, k) => {
+        const start = startOf[k][first];
+        const end = startOf[k][first + n];
+        if (end <= start || !fitsLine(m.flows, start, end, line, m.limits)) return false;
+        if (end === m.flows.length) { got.push(undefined); return true; }
+        if (end < state[k].restEnd) return false;
+        const s = smallShareAt(m.flows, start, end);
+        if (s.spansMore || (state[k].fromAbove && s.line === "upper")) return false;
+        got.push(s);
+        return true;
+      });
+      if (ok) { count = n; smalls = got; }
+    }
+    if (count === 0) return undefined;
+    perLine.push(count);
+    smalls.forEach((s, k) => {
+      state[k].fromAbove = s?.line === "lower";
+      state[k].restEnd = s?.splits ? s.restEnd : 0;
+    });
+    first += count;
+  }
+  return perLine;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 옛 조건 — 받는 면을 다른 재료와 나눠 쓰는 간선만 쓴다
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-나눠-쓰는-면).
+// 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-함께-못-끊는-면).
 //
 // 2026-10-06 의 조건이다: *한 줄의 위 · 아래 경계가 같은 편의 머신을 연달아 가르지 않는다*(두 줄을 쓰는 머신을 그 줄들
 // **모두**에서 맨 끝에 세우려던 것). 위 조건과 견주면 양쪽으로 어긋난다 — 멀쩡한 줄(작은 몫이 하나뿐인 줄)을 어겼다고 보고,
 // 주는 쪽 하나 · 받는 쪽 하나가 작은 몫을 한 줄에 둔 것은 못 본다. 그래도 나눠 쓰는 면에서는 이 조건이 다시 끊은 줄이 좌석에
-// 앉는 판이 많아서, 좌석이 끊는 자리를 고를 수 있게 될 때까지 그대로 둔다.
+// 앉는 판이 많다(붓기 그대로 두면 합성 83판 중 4판이 새로 못 선다). 재료들을 함께 끊는 쪽([receiversPerLineTogether])이
+// 못 끊은 면에서는 이 답이 그대로 남는다.
 
 /**
  * 줄 하나(`[j, i)` 의 흐름들)가 옛 조건을 지키나 — 위 · 아래 경계가 같은 편을 연달아 가르면서 그 편에 머신이 둘 이상이면 어긴다.

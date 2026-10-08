@@ -349,9 +349,23 @@ export interface SplitBeltCounters {
   who: ReadonlyArray<string>;
 }
 
+/**
+ * **한 면을 나눠 쓰는 재료들을 함께 다시 끊었나** — `link/policy/delivery.groupSharedFaces`.
+ *
+ * `violating` 이 분모다: 벨트로 받는 재료가 둘 이상이고 전부 자식이 대는 부모 가운데, 어느 재료의 줄에 *작은 몫을 둘 받는 줄* 이
+ * 있던 부모 수. `grouped` 는 그중 재료들이 부모를 같은 묶음으로 방문하게 다시 끊은 수다 — 둘이 다르면 못 끊은 부모가 있다
+ * (보고서의 `작은 몫을 둘 받는 줄` 이 그 줄을 가리킨다).
+ */
+export interface SharedFaceCounters {
+  violating: number;
+  grouped: number;
+}
+
 export interface RunStats {
   /** 이 통계가 시작된 시각(ms). 한 번도 안 돌았으면 null. */
   startedAt: number | null;
+  /** 한 면을 나눠 쓰는 재료들을 함께 다시 끊은 부모. 링크를 만들 때마다 덮어쓴다(안 돌았으면 전부 0). */
+  sharedFaces: SharedFaceCounters;
   /** 두 줄 이상을 쓰는 머신의 자리. 좌석 단계까지 갔으면 채워진다. */
   splitBelt: SplitBeltCounters | null;
   /**
@@ -398,6 +412,7 @@ const fresh = (): RunStats => ({
   startedAt: null, delivery: null, perimeter: null, exitPlan: null, channelLedger: null,
   rowChannels: null, beltForms: null, splitBelt: null,
   faceDepths: freshFaceDepths(), laneShare: freshLaneShare(), beltTermini: freshBeltTermini(),
+  sharedFaces: { violating: 0, grouped: 0 },
 });
 
 let current: RunStats = fresh();
@@ -456,6 +471,11 @@ export function resetBeltFormStats(): void {
  */
 export function recordBeltFormStats(c: BeltFormCounters): void {
   current.beltForms = current.beltForms ? mergeBeltFormCounters(current.beltForms, c) : c;
+}
+
+/** 한 면을 나눠 쓰는 재료들을 함께 다시 끊은 결과 — 링크를 만들 때 한 번 부른다. **0 이어도 적는다**(앞 실행의 수가 남지 않게). */
+export function recordSharedFaceStats(c: SharedFaceCounters): void {
+  current.sharedFaces = { ...c };
 }
 
 /**
@@ -531,6 +551,7 @@ export function readRunStats(): RunStats {
   return {
     startedAt: current.startedAt,
     laneShare: { ...current.laneShare },
+    sharedFaces: { ...current.sharedFaces },
     beltTermini: { ...current.beltTermini },
     beltForms: current.beltForms ? { ...current.beltForms } : null,
     splitBelt: current.splitBelt

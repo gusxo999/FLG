@@ -7,7 +7,9 @@
  */
 import { describe, it, expect } from "vitest";
 import type { LinkCarry } from "../types/line";
-import { chooseCutsWithinLines, cutFromTop, hasLineSplitAtBothEnds, linesTakingTwoSmallShares, splitCount } from "./cut";
+import {
+  chooseCutsWithinLines, cutFromTop, hasLineSplitAtBothEnds, linesTakingTwoSmallShares, receiversPerLineTogether, splitCount,
+} from "./cut";
 
 /** 자식 한 대가 `a`/s 를 내고 부모 한 대가 `b`/s 를 쓴다 — 위에서부터 채워 가는 흐름 목록(총량 `total`). */
 function flowsOf(a: number, b: number, total: number): LinkCarry[] {
@@ -155,6 +157,72 @@ describe("cutFromTop — 위에서부터 가득 채우고, 작은 몫을 또 받
     const flows = flowsOf(10, 6, 30);
     // 한 줄이 받는 머신 한 대에게 5/s 까지만 — 6/s 흐름을 통째로 실을 줄이 없다.
     expect(cutFromTop(flows, 9, { capOf: () => 15, fromSeat: Infinity, toSeat: 5 })).toBeUndefined();
+  });
+});
+
+describe("receiversPerLineTogether — 한 면을 나눠 쓰는 재료들이 받는 머신을 같은 묶음으로 방문한다", () => {
+  /** 재료 하나 — 자식 한 대 `a`/s, 부모 한 대 `b`/s, 부모 `parents` 대. 줄은 붓기보다 하나까지 는다. */
+  const material = (a: number, b: number, parents: number) => {
+    const flows = flowsOf(a, b, b * parents);
+    return { flows, limits: limits(), maxLines: pourCuts(flows).length + 2 };
+  };
+  /** 받는 머신 묶음대로 끊는 자리 — 재료 하나의 흐름에서. */
+  const cutsAt = (flows: LinkCarry[], perLine: number[]): number[] => {
+    const cuts: number[] = [];
+    let upTo = 0;
+    for (const n of perLine.slice(0, -1)) { upTo += n; cuts.push(flows.findIndex((f) => (f.to ?? 0) >= upTo)); }
+    return cuts;
+  };
+
+  it("부모 5+5/s 아홉 · 자식 9/s 와 5/s: 3 · 2 · 2 · 2 — 5/s 쪽은 혼자였다면 3 · 3 · 3 이지만 9/s 쪽을 따라 덜 방문한다", () => {
+    // 9/s 쪽은 부모를 셋씩 방문하면 가운데 줄이 작은 몫을 둘 받는다(위 cutFromTop 의 그 판). 5/s 쪽은 자식과 부모가 1:1 이라
+    // 어디서 끊어도 아무도 안 갈린다. 둘이 같은 부모 경계를 써야 서로의 출입구를 안 막는다 — 5/s 쪽도 3 · 2 · 2 · 2 다.
+    const nine = material(9, 5, 9);
+    const five = material(5, 5, 9);
+    const perLine = receiversPerLineTogether([nine, five], 9)!;
+    expect(perLine).toEqual([3, 2, 2, 2]);
+    expect(loads(nine.flows, cutsAt(nine.flows, perLine))).toEqual([15, 10, 10, 10]);
+    expect(loads(five.flows, cutsAt(five.flows, perLine))).toEqual([15, 10, 10, 10]);
+    for (const m of [nine, five]) {
+      const cuts = cutsAt(m.flows, perLine);
+      expect(linesTakingTwoSmallShares(m.flows, cuts)).toEqual([]);
+      expect(splitCount(m.flows, cuts, "to")).toBe(0); // 받는 머신은 안 갈린다
+    }
+  });
+
+  it("모든 재료의 조건을 함께 본다 — 자식 9/s 와 7/s, 10/s 와 9/s 도 3 · 2 · 2 · 2", () => {
+    for (const [a1, a2] of [[9, 7], [7, 9], [10, 9], [9, 9]]) {
+      const ms = [material(a1, 5, 9), material(a2, 5, 9)];
+      const perLine = receiversPerLineTogether(ms, 9)!;
+      expect(perLine, `${a1} · ${a2}`).toEqual([3, 2, 2, 2]);
+      for (const m of ms) expect(linesTakingTwoSmallShares(m.flows, cutsAt(m.flows, perLine)), `${a1} · ${a2}`).toEqual([]);
+    }
+  });
+
+  it("재료가 하나면 받는 머신 경계에서만 끊은 cutFromTop 과 같다", () => {
+    const nine = material(9, 5, 9);
+    const perLine = receiversPerLineTogether([nine], 9)!;
+    expect(cutsAt(nine.flows, perLine)).toEqual(cutFromTop(nine.flows, 4, limits()));
+  });
+
+  it("한 줄에 실을 수 있는 부모 수는 몫이 큰 재료가 정한다 — 부모가 6/s 와 5/s 를 쓰면 둘 다 한 줄에 두 대까지", () => {
+    // 6/s 쪽은 한 줄(15)에 부모 둘(12)까지다. 5/s 쪽은 셋(15)을 실을 수 있어도 같은 묶음을 쓴다.
+    const six = material(6, 6, 6);
+    const five = material(5, 5, 6);
+    expect(receiversPerLineTogether([six, { ...five, maxLines: 3 }], 6)).toEqual([2, 2, 2]);
+  });
+
+  it("어느 재료든 줄 수의 상한을 넘으면 답이 없다", () => {
+    const nine = material(9, 5, 9);
+    const five = material(5, 5, 9);
+    expect(receiversPerLineTogether([nine, { ...five, maxLines: 3 }], 9)).toBeUndefined();
+  });
+
+  it("받는 머신 경계만으로 못 끊는 판은 답이 없다 — 자식 7/s 여섯 → 부모 6/s 일곱(다른 재료는 5/s)", () => {
+    // 7/s 쪽은 부모 둘씩(12)까지인데, 셋째 줄을 어디서 끊어도 작은 몫을 둘 받는다. 부모를 갈라야 풀리는 판이다 — 여기서는 안 가른다.
+    const seven = material(7, 6, 7);
+    const nine = material(9, 5, 7);
+    expect(receiversPerLineTogether([seven, nine], 7)).toBeUndefined();
   });
 });
 

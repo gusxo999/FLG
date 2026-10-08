@@ -143,6 +143,14 @@ export function buildReport(): string {
     ));
     for (const w of sb.who) out.push(sub(`  ${w}`));
   }
+  // **한 면을 나눠 쓰는 재료들** — 작은 몫을 둘 받는 줄이 있던 부모와, 그중 재료들을 함께 다시 끊은 부모(`link/policy/delivery`).
+  const sf = stats.sharedFaces;
+  if (sf.violating > 0) {
+    out.push(sub(
+      `한 면을 나눠 쓰는 재료 — 작은 몫을 둘 받는 줄이 있던 부모 ${sf.violating} · 재료들을 함께 다시 끊음 ${sf.grouped}`
+        + (sf.grouped < sf.violating ? ` · **못 끊음 ${sf.violating - sf.grouped}**` : ''),
+    ));
+  }
 
   // **면 깊이** — 좌석표 계획. 읽는 법: `깊은줄` 은 긴팔이 값을 하는 정도이고(정상),
   // **`안전망 > 0` 이 유일한 경보**다 — 포트 칸 다툼이 배정을 빠져나가 방출까지 갔다는 뜻.

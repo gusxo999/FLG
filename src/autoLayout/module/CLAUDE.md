@@ -16,7 +16,8 @@ types/seat.ts     어디에 앉나        LinkFacePlan · LinkSeats · DepthShor
 types/module.ts   무엇을 받고 내나   ModuleInput · GeneratedModule · ModulePort · TrunkContext · BeltTerminus
 arith/trunk.ts   셈                 trunkEndKey · flowEnd · 유체 점프 예산 · 막힘 · 벨트 깊이 상한 · 유체 줄 조회
 arith/lineOrder.ts 셈               벨트 줄 위의 순서 — 누가 그 줄의 맨 끝인가 · 두 줄 이상을 쓰는 머신의 판정(split belt 할당량)
-arith/cut.ts      셈                벨트 줄을 어디서 끊나 — 위에서부터 가득 채우되 한 줄이 작은 몫을 두 번 받지 않는 자리(줄이 하나 늘 수 있다)
+arith/cut.ts      셈                벨트 줄을 어디서 끊나 — 위에서부터 가득 채우되 한 줄이 작은 몫을 두 번 받지 않는 자리(줄이 하나 늘 수 있다) ·
+                                     한 면을 나눠 쓰는 재료들은 줄마다 방문하는 받는 머신 수를 함께 쓴다
 ```
 
 **함수의 서명에만 쓰이는 타입은 옮기지 않는다**(`ModulePortPlan`·`LadderRung` 은 `policy/` 제자리,

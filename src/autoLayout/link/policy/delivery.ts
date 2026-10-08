@@ -10,6 +10,7 @@
  * 줄          baseLinks          간선마다 edgeLinkGroups 한 번 + 끝을 얹는다
  * 레인 짝     shareLanePairs     같은 간선의 두 줄을 한 벨트의 좌/우 레인에   (LANE_MERGE)
  * 다시 붓기   repourOverflowing  넘치는 부모의 링크 입력만 g = 1 로          (LINK_DIRECT)
+ * 면 맞추기   groupSharedFaces   한 면을 나눠 쓰는 재료들이 부모를 같은 묶음으로 방문하게
  * 방향        directSplitLines   두 줄을 쓰는 머신이 맨 끝에 서게 줄마다 흘러야 하는 끝  (`./direction`)
  * ```
  *
@@ -56,12 +57,13 @@ import { shareLanes } from "../../module/arith/link";
 import { portGeometry } from "../../module/shape/body";
 import { laneCapOfTier } from "../../shared/arith/belt";
 import { AUTO_LAYOUT_COORD_DUMP, AUTO_LAYOUT_LANE_MERGE, AUTO_LAYOUT_LINK_DIRECT } from "../../shared/flags";
-import { recordLaneShareStats } from "../../../debug/runStats";
+import { recordLaneShareStats, recordSharedFaceStats } from "../../../debug/runStats";
 import { cellKey, faceVector } from "../../shared/grid";
 import { dijkstraWithJumps } from "../../shared/route";
 import { faceDepthsOf } from "../../module/arith/face";
 import { linkDepthNeed } from "../../module/arith/depth";
-import { edgeLinkGroups } from "./edge";
+import { edgeCutInput, edgeLinkGroups } from "./edge";
+import { linesTakingTwoSmallShares, receiversPerLineTogether } from "../../module/arith/cut";
 import { directSplitLines } from "./direction";
 import { finishChain, finishFluidChain } from "../emit";
 import { plannedChainClear, type DeliveryLedger, type PlannedChains } from "../ledger";
@@ -88,6 +90,7 @@ export function edgeLinksOf(tree: TreeIndex, specs: readonly NodeSpec[], config:
   shareLanePairs(linkCache, config);
   const links = { productOf, lineEndsById, linkCache };
   repourOverflowing(tree, specs, config, links);
+  groupSharedFaces(tree, specs, config, links);
   // 줄이 다 정해진 뒤 · 좌석 앞 — 양만 알던 줄에 흘러야 하는 끝을 붙인다
   directSplitLines(linkCache);
   return links;
@@ -332,6 +335,74 @@ export function repourOverflowing(
       }
     }
   }
+}
+
+/**
+ * **한 면을 나눠 쓰는 재료들이 부모를 같은 묶음으로 방문하게 다시 붓는다.**
+ *
+ * 부모가 벨트로 받는 재료가 둘 이상이면 그 줄들이 부모의 한 면을 나눠 쓴다. 붓기는 재료 하나만 보므로 그런 간선의 끊는 자리를
+ * 혼자 바꾸지 않는다(`module/arith/link.createLinks` — 옛 조건 그대로). 그래서 *작은 몫을 둘 받는 줄* 이 남는다 — 받는 머신이
+ * 모자란다. 여기서 그 재료들을 **함께** 다시 끊는다: 줄마다 방문하는 부모 수를 재료들이 같이 쓴다
+ * (`module/arith/cut.receiversPerLineTogether`). 두 재료의 줄이 같은 부모 경계에서 끝나므로 서로의 출입구를 안 막고,
+ * 부모를 가르지 않으므로 그 면의 좌석도 더 안 쓴다.
+ *
+ * ```
+ * 손대는 부모    벨트로 받는 재료가 둘 이상이고 **전부 자식이 대는 것**이며, 그중 한 재료에 작은 몫을 둘 받는 줄이 있다
+ * 안 손대는 것   밖에서 오는 재료가 섞인 면(그 줄의 묶음은 모듈이 정한다) · 레인 합류의 짝 · 흐름 하나가 줄 여럿에 걸친 붓기
+ * 못 정하면      지금 그대로 둔다 — 재료마다 줄은 붓기보다 하나까지만 는다
+ * ```
+ *
+ * 적용은 이미 있는 손잡이로 한다 — 받는 쪽의 벨트 줄당 머신 수(`EdgeMachinesPerBeltLine`)를 줄마다의 목록으로 준다.
+ */
+export function groupSharedFaces(
+  tree: TreeIndex,
+  specs: readonly NodeSpec[],
+  config: PackConfig,
+  links: EdgeLinks,
+): void {
+  const { productOf, linkCache } = links;
+  const { byId, childIdsByParent } = tree;
+  const counted = { violating: 0, grouped: 0 };
+  for (const p of specs) {
+    const kids = (childIdsByParent.get(p.id) ?? [])
+      .map((id) => byId.get(id)!)
+      .filter((s) => (linkCache.get(s.id)?.length ?? 0) > 0);
+    if (kids.length < 2) continue;
+    const supplied = new Set(kids.map((s) => productOf.get(s.id)));
+    const beltInputs = p.lines.filter((l) => l.role === "input" && l.kind === "belt");
+    if (!beltInputs.every((l) => supplied.has(l.name))) continue;
+    if (kids.some((s) => linkCache.get(s.id)!.some((g) => g.sharedLineId !== undefined))) continue;
+
+    const inputs = kids.map((s) => {
+      const input = edgeCutInput(s, p, productOf.get(s.id)!, config);
+      const lines = linkCache.get(s.id)!;
+      const cutsNow: number[] = [];
+      for (let k = 0, at = 0; k + 1 < lines.length; k++) cutsNow.push((at += lines[k].carries?.length ?? 0));
+      const whole = lines.reduce((sum, l) => sum + (l.carries?.length ?? 0), 0) === input?.flows.length;
+      return input && whole ? { ...input, cutsNow } : undefined;
+    });
+    if (inputs.some((x) => x === undefined)) continue;
+    const known = inputs as NonNullable<(typeof inputs)[number]>[];
+    if (!known.some((x) => linesTakingTwoSmallShares(x.flows, x.cutsNow).length > 0)) continue;
+    counted.violating += 1;
+
+    const perLine = receiversPerLineTogether(
+      known.map((x) => ({ flows: x.flows, limits: x.limits, maxLines: x.cutsNow.length + 2 })),
+      p.count,
+    );
+    if (!perLine) continue;
+    const again = kids.map((s) =>
+      edgeLinkGroups(s, p, productOf.get(s.id)!, config, { side: "to", machinesPerBeltLine: perLine }),
+    );
+    // 묶음마다 한 줄이 나와야 한다 — 티어를 묶음마다 다시 세므로(느린 벨트가 골라질 수 있다) 어긋나면 지금 그대로 둔다
+    if (again.some((re) => re === undefined || re.length !== perLine.length)) continue;
+    kids.forEach((s, k) => {
+      const end = linkEndOf(tree, s);
+      linkCache.set(s.id, end ? again[k]!.map((g) => ({ ...g, end })) : again[k]!);
+    });
+    counted.grouped += 1;
+  }
+  recordSharedFaceStats(counted);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -165,3 +165,83 @@ describe("split belt 할당량 — 판정과 가동률을 함께", () => {
     expect(r.parentWorst).toBe(100);
   });
 });
+
+/**
+ * **한 면을 나눠 쓰는 재료들** — 부모가 벨트로 받는 재료가 둘이면 그 줄들이 부모의 한 면을 나눠 쓴다. 한 재료의 끊는 자리만
+ * 바꾸면 두 재료의 줄이 끝나는 자리가 어긋나 서로의 출입구를 막는다. 그래서 줄마다 방문하는 부모 수를 재료들이 함께 쓴다
+ * (`link/policy/delivery.groupSharedFaces`).
+ *
+ * 판: 원료 둘 → 중간재 둘 → 완제품. 인서터는 두 종류다(보통 · 긴 것) — 재료 둘이 부모 면의 두 깊이에 하나씩 앉는다.
+ */
+describe("split belt 할당량 — 한 면을 나눠 쓰는 재료 둘", () => {
+  beforeEach(() => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
+    });
+  });
+
+  const LONG = E({ name: "long-inserter", type: "inserter", tile_width: 1, tile_height: 1, inserter_pickup_position: { x: 0, y: -2 }, inserter_rotation_speed: 0.02 });
+  const OVERRIDES = { inserter: { throughput: 100 }, "long-inserter": { throughput: 100 } };
+
+  /** 자식A 한 대 `a1`/s · 자식B 한 대 `a2`/s, 부모 한 대가 둘 다 `b`/s 씩 쓴다. 부모 `parents` 대. */
+  async function boardOfTwo(a1: number, a2: number, b: number, parents: number) {
+    const data: GameData = {
+      entities: [...ENTITIES, LONG],
+      recipes: [
+        recipe("mid", ["raw", a1], a1),
+        recipe("mid2", ["raw2", a2], a2),
+        { name: "final", category: "test", energy_required: 1, enabled: true, ingredients: [item("mid", b), item("mid2", b)], products: [item("final", b)] } as Recipe,
+      ],
+    };
+    useGameDataStore.getState().setGameData(data);
+    const res = await runLayeredWizard({
+      targetRecipe: "final",
+      countMode: { perTarget: b * parents },
+      internalIngredients: new Set(["mid", "mid2"]),
+      selectedMachines: ["test-machine"],
+      selectedInserters: ["inserter", "long-inserter"],
+      selectedBelts: ["belt"],
+      selectedUndergroundPipes: [],
+      selectedUndergroundBelts: ["underground"],
+      inserterOverrides: OVERRIDES,
+      externalPortsDefault: "top-left",
+    });
+    const stats = readRunStats();
+    const leaf = res.tree.candidates[0];
+    if (!res.ok || !leaf) return { ok: false, stats, parentWorst: NaN };
+    const u = unifyLeaf(leaf);
+    let w = 0;
+    let h = 0;
+    for (const p of u.placed) { w = Math.max(w, p.x + 2); h = Math.max(h, p.y + 2); }
+    const grid = createEmptyGrid(w, h);
+    for (const p of u.placed) grid.cells[p.y * w + p.x] = p.cell;
+    const gd = useGameDataStore.getState();
+    const flow = analyzeLayout(grid, {
+      entityMap: gd.entityMap, recipeMap: gd.recipeMap, moduleMap: gd.moduleMap,
+      inserterOverrides: OVERRIDES, interiorBbox: u.internalBbox ?? null,
+    });
+    const parentWorst = Math.round(Math.min(1, ...flow.machines.filter((m) => m.recipe === "final").map((m) => m.u)) * 100);
+    return { ok: true, stats, parentWorst };
+  }
+
+  it("자식 9/s · 5/s → 부모 5+5/s 아홉: 두 재료가 부모를 3 · 2 · 2 · 2 로 함께 방문해 받는 머신이 전부 100%", async () => {
+    // 9/s 쪽은 부모를 셋씩 방문하면 가운데 줄이 작은 몫을 둘 받는다(부모 한 대 70%). 그 재료만 3 · 2 · 2 · 2 로 다시 끊으면
+    // 5/s 쪽(3 · 3 · 3)과 줄이 끝나는 자리가 어긋나 부모 면에서 못 앉았다. 둘을 함께 끊는다 — 5/s 쪽도 벨트가 한 줄 는다.
+    const r = await boardOfTwo(9, 5, 5, 9);
+    expect(r.ok).toBe(true);
+    expect(r.stats.sharedFaces).toEqual({ violating: 1, grouped: 1 });
+    expect(r.stats.splitBelt!.from.contestedLines + r.stats.splitBelt!.to.contestedLines).toBe(0);
+    expect(r.stats.splitBelt!.from.notLast + r.stats.splitBelt!.to.notLast).toBe(0);
+    expect(r.parentWorst).toBe(100);
+  });
+
+  it("대조군 — 자식 5/s · 5/s → 부모 5+5/s 여섯: 작은 몫을 둘 받는 줄이 없으면 손대지 않는다", async () => {
+    const r = await boardOfTwo(5, 5, 5, 6);
+    expect(r.ok).toBe(true);
+    expect(r.stats.sharedFaces).toEqual({ violating: 0, grouped: 0 });
+    expect(r.parentWorst).toBe(100);
+  });
+});
