@@ -36,7 +36,7 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 레시피나 유체 상자 배치를 실데이터 없이 시험하는 길이다([custom-recipe](docs/factorio/custom-recipe.md)).
 
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
-사유 카탈로그는 `layoutIssue.LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —
+사유 카탈로그는 `src/autoLayout/shared/issue.ts` 의 `LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —
 *어디가* 막혔는지와 *무엇을 고쳐야* 하는지가 문장에서 필드로 갈렸다),
 읽는 법은 [docs/변수명사전.md](docs/변수명사전.md).
 
@@ -44,8 +44,3 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
 npx vitest run                          # 기준선: 타입 0 · 82파일 1052테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
 ```
-
-## 프로젝트 메모리
-
-메모리는 Claude 자동 메모리 폴더에 있고 **세션마다 자동 로딩**되므로 따로 읽지 않는다.
-저장소 안에 사본은 없다(`docs/memory/` 정션은 존재하지 않는다).
