@@ -268,7 +268,7 @@ export function createLinks(
       // 다시 끊고, 받는 머신을 새로 가르는 답은 안 받는다. 줄이 늘거나 받는 머신이 새로 갈리면 그 면의 좌석을 더 쓰는데, 다른
       // 품목이 얼마를 쓰는지를 여기서는 모른다. 그 면의 재료들을 함께 다시 끊는 일은 재료를 다 아는 쪽이 한다
       // (`link/policy/delivery.groupSharedFaces`) — 거기서 못 끊은 면만 이 답으로 남는다.
-      // 이 자리를 고치기 전에 tempPlanDocs/split-belt-할당량/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-함께-못-끊는-면).
+      // 이 자리를 고치기 전에 tempPlanDocs/재료-둘-이상-부모/judgements.md 를 본다 — 아직 안 고른 판단이 있다(J-함께-못-끊는-면).
       if (hasLineSplitAtBothEnds(flows, cutsNow)) {
         const found = chooseCutsWithinLines(flows, lines.length, cutLimits);
         const addsToSplits = found !== undefined && splitCount(flows, found, "to") > splitCount(flows, cutsNow, "to");
