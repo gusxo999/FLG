@@ -30,7 +30,7 @@
  *
  * **지하 횡단(`AUTO_LAYOUT_LINK_DIVE`)가 들어와도 이 부등식은 참이다** — 몸통 행에 남이 세우는 것은 포트뿐이고 남의
  * 벨트(얹기)는 안 들였다(`docs/auto-layout/module/trunk-assignment.md` §4.2). 얹기를 들이면 여기부터 다시 센다 —
- * `tempPlanDocs/링크-좌석/judgements.md` J-모양문법.
+ * `tempPlanDocs/재료-둘-이상-부모/judgements.md` J-모양문법.
  *
  * ## 기본값은 **"공짜일 때만 관통"** (2026-09-01 사용자)
  *
@@ -186,7 +186,7 @@ export function planMachinesPerBeltLine(input: DepthBudgetInput): Map<string, nu
  * 주는 호출부가 없다(`edgeLinkGroups(…, perBeltLine?)` 는 언제나 비어 온다). **그래서 이
  * 함수가 `"free"` 가 아닌 값을 내는 모듈은 오늘 통째로 실패한다** — 그 사실이 곧 진단이다.
  *
- * **이 함수가 `"free"` 가 아닌 값을 내기 시작하면** `tempPlanDocs/부분-링크/judgements.md`
+ * **이 함수가 `"free"` 가 아닌 값을 내기 시작하면** `tempPlanDocs/재료-둘-이상-부모/judgements.md`
  * 의 **J14**(손잡이 기본값)를 본다 — *무엇을 자동으로 켤 것인가*의 근거가 거기다.
  * 분포는 `flg.report()` 의 **링크눈금** 줄이 낸다.
  *

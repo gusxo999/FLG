@@ -119,7 +119,7 @@ base_j(m) = Σ_{i<j, 같은 면} a_i(m)                유체 칸은 미리 차 
 > `OUT=["W","S","N"]` · `IN=["E","S","N"]` 이라 **반대 옆면이 없다**
 > ([policy/port.ts](../../../src/autoLayout/module/policy/port.ts)).
 > 넘어가는 것은 `planModulePorts` 가 앉히는 **모듈 자기 줄**뿐이다.
-> **이것이 미결 판단 J14 의 물음 ① 이다**(`tempPlanDocs/부분-링크/judgements.md`).
+> **이것이 미결 판단 J14 의 물음 ① 이다**(`tempPlanDocs/재료-둘-이상-부모/judgements.md`).
 
 ## 4. 낟알의 사다리 — 여섯 칸 중 **둘**만 쓰고 있다
 

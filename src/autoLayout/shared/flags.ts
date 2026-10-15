@@ -111,7 +111,7 @@ export function setAutoLayoutLaneMerge(v: boolean): void {
 
 /**
  * AUTO_LAYOUT_LINK_OPPOSITE_FACE — **링크 넘침이 반대 옆면을 본다**
- * (`tempPlanDocs/부분-링크/` §3 · `judgements.md` J14).
+ * (`tempPlanDocs/재료-둘-이상-부모/judgements.md` J14).
  *
  * 오늘 링크의 넘침 경로 `spillPair` 는 `OUT=["W","S","N"]` · `IN=["E","S","N"]` 이라
  * **반대 옆면이 없다.** 그래서 선호 면의 깊이가 차면 곧장 gap 으로 가고, gap 은 `g=1` 만
@@ -143,7 +143,7 @@ export function setAutoLayoutLinkOppositeFace(v: boolean): void {
 
 /**
  * AUTO_LAYOUT_LINK_DIRECT — **넘치는 부모의 링크 입력을 `g = 1` 로 내린다**
- * (`tempPlanDocs/부분-링크/` — 눈금 `"direct"`).
+ * (`linkDepthNeed` 의 눈금 `"direct"`).
  *
  * 밸브는 진작 뚫려 있었다(`edgeLinkGroups(…, perBeltLine?: EdgeMachinesPerBeltLine)`) — **주는 사람이
  * 없었을 뿐이다.** `true` 면 [linkDepthNeed] 가 `"free"` 가 아니라고 판정한 부모로 가는
@@ -175,7 +175,7 @@ export function setAutoLayoutLinkOppositeFace(v: boolean): void {
  *
  * **실패가 사라진 게 아니라 링크 입력에서 원료 입력으로 옮겨 갔다** — 포트를 낸 대가로
  * 면 자리를 먹어 *나머지 줄*이 못 앉는다. 그래서 이건 **최후 수단**이지 기본값 후보가
- * 아니다(`tempPlanDocs/부분-링크/judgements.md` J14).
+ * 아니다(`tempPlanDocs/재료-둘-이상-부모/judgements.md` J14).
  *
  * **그리고 이 플래그는 사다리가 아니다** — 넘치는 부모에 다이렉트를 **무조건** 적용한다.
  * *"반대 면으로 먼저 해 보고 그래도 안 되면"* 은 아직 아무도 안 만들었다.
@@ -206,7 +206,7 @@ export function setAutoLayoutLinkDirect(v: boolean): void {
  * **기본을 켰다**(2026-09-24 사용자 — *"셋다 켜주세요"*, 지하 횡단 · 순서 규칙과 함께). 대조(합성 32 픽스처)에서 이슈가 는
  * 픽스처는 없었고 성공한 배치의 질도 그대로였다. **다만 `AUTO_LAYOUT_LINK_DIRECT` 실험 판에서는 되던 배치 둘이 깨진다** —
  * 한 머신짜리 줄이 포트 쪽 끝(흐름 S 면 아래 행)에 앉아 여러 머신을 잇는 줄의 **머신 사이 통로**를 막는다
- * (`tempPlanDocs/링크-좌석/judgements.md` J-통로).
+ * (`tempPlanDocs/재료-둘-이상-부모/judgements.md` J-통로).
  *
  * **끄면 옛 동작 그대로다** — 기전: 꺼짐이면 `seatRowsOf` 가 옛 규칙(앞에서 k 개)을 낸다. 끄는 법은 `flg.flags.seatPick(false)`.
  */

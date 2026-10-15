@@ -297,7 +297,7 @@ export function shareLanePairs(linkCache: ReadonlyMap<string, Link[]>, config: P
  * **끄면 오늘 동작 그대로다** — 기전: 이 블록 전체가 안 돈다.
  * **레인 합류와 같이 켜지 않는다** — 짝짓기가 이미 `sharedLineId` 를 얹은 뒤라
  * 다시 부으면 그 신원이 사라진다. 둘을 함께 쓰려면 짝짓기를 이 뒤로 옮겨야 하고,
- * 그건 이 계획의 몫이 아니다(`부분-링크` 는 `벨트-레인` 을 안 건드린다).
+ * 그건 아직 안 했다.
  */
 export function repourOverflowing(
   tree: TreeIndex,

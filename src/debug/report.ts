@@ -181,7 +181,7 @@ export function buildReport(): string {
 
   // **링크 눈금** — 링크가 앉으려면 무엇을 풀어야 하나(`linkDepthNeed`).
   // 읽는 법: 오늘 코드는 `free` 밖에 못 하므로 **`free` 가 아닌 수 = 오늘 실패하는 모듈 수**다.
-  // `tempPlanDocs/부분-링크/` J14(손잡이 기본값)의 입력이 이 분포다.
+  // `tempPlanDocs/재료-둘-이상-부모/judgements.md` J14(손잡이 기본값)의 입력이 이 분포다.
   const ln = fl.linkNeed;
   const ln_who = fl.linkNeedWho;
   const needSum = ln['opposite-face'] + ln.direct + ln['depth-starved'];

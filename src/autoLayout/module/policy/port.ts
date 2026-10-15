@@ -238,7 +238,7 @@ export function planModulePorts(
   const pipe = pipeLinesOf(input);
   // ④ 나머지 줄 — 깊이 예산이 g 를 정하고, 링크와 같은 배분기로 앉힌다(자식-공급 먼저).
   // 링크 줄의 순서 규칙(방문 수)은 여기 안 닿는다 — 나머지 줄은 링크 뒤에 도착 순이다. 이 자리를 고치기 전에
-  // tempPlanDocs/링크-좌석/judgements.md J-나머지줄순서 를 본다 — 아직 안 고른 판단이 있다.
+  // tempPlanDocs/재료-둘-이상-부모/judgements.md J-나머지줄순서 를 본다 — 아직 안 고른 판단이 있다.
   const restLines = restLinesOf(input, linkedKeys);
   const seatedRest = seatRestLines(st, input, count, restLines);
   // ⑤′ 몸통 — 먼저 앉은 줄은 **나중에** 온 줄에게 비켜 준다. 그래서 몸통의 최종값은 다 앉힌 지금 장부에 있다
