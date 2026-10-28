@@ -1,0 +1,241 @@
+{
+ "title": "자원의 축 — 틈이 있는 기둥 하나를 한 장부로",
+ "prototypes": "kit.json",
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 2,
+   "name": "plant",
+   "recipe": "thing"
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "thing"
+  },
+  {
+   "x": 2,
+   "y": 0,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 2,
+   "y": 1,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 2,
+   "y": 2,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 4,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 2,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 3,
+   "y": 3,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 0,
+   "y": 6,
+   "name": "infinity-chest",
+   "supply": [
+    "gear"
+   ]
+  },
+  {
+   "x": 1,
+   "y": 6,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 4,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 5,
+   "y": 5,
+   "name": "inserter",
+   "dir": "S"
+  },
+  {
+   "x": 5,
+   "y": 7,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 3,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 3,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 4,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 3,
+   "text": "머신 0"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 1"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "text": "X 땅속 · A 땅 위 — 한 장부의 한 칸"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "text": "A — 위 머신에서도 아래 머신에서도 거리 2"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "text": "틈의 행 — 인서터 자리가 아니다"
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "text": "X"
+  }
+ ]
+}

@@ -1,0 +1,958 @@
+{
+ "title": "C8 판 6 — 다른 면 N",
+ "prototypes": "kit.json",
+ "recipes": [
+  {
+   "id": 300,
+   "name": "col-recipe",
+   "localised_name": "col-recipe",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "iron-gear-wheel",
+     "amount": 1,
+     "type": "item"
+    },
+    {
+     "name": "copper-cable",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "col-out",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  }
+ ],
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 5,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 11,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 12,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 14,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 15,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 11,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 18,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 8,
+   "y": 17,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 8,
+   "y": 15,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 19,
+   "name": "fast-underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "name": "fast-underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 8,
+   "y": 13,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 8,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 16,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 16,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 4,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 16,
+   "y": 3,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 17,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 18,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 20,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 21,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 22,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 22,
+   "y": 9,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 22,
+   "y": 8,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 17,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 18,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 20,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 21,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 22,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 23,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 24,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 25,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 26,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 27,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 28,
+   "y": 18,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 28,
+   "y": 17,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 28,
+   "y": 16,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 17,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 18,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 6,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 19,
+   "y": 5,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 17,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 18,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 20,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 21,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 22,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 23,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 24,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 25,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 26,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 27,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 28,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 29,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 30,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 31,
+   "y": 19,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 31,
+   "y": 18,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 31,
+   "y": 17,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 16,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 17,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 18,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 19,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 20,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 21,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 22,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 23,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 24,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 25,
+   "y": 16,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 25,
+   "y": 15,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 25,
+   "y": 14,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 6,
+   "text": "머신 1"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 2"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "text": "머신 3"
+  },
+  {
+   "x": 5,
+   "y": 15,
+   "text": "머신 4"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "text": "출입구 X1-1↓ — 다른 면 ↑(남쪽 레인)"
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "text": "출입구 X2-3↓ — 다른 면 ↑(남쪽 레인)"
+  },
+  {
+   "x": 9,
+   "y": 18,
+   "text": "출입구 X4-4↑ — 다른 면 ↑(남쪽 레인)"
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "text": "출입구 Y1-1↓ — 다른 면 ↑(남쪽 레인)"
+  },
+  {
+   "x": 9,
+   "y": 19,
+   "text": "출입구 Y1-3↑ — 다른 면 ↑(남쪽 레인) · 옆 입구 · 작은 몫 머신 1"
+  },
+  {
+   "x": 9,
+   "y": 16,
+   "text": "출입구 Y4-4↑ — 다른 면 ↑(남쪽 레인)"
+  }
+ ]
+}

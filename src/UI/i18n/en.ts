@@ -29,6 +29,28 @@ export const en: Translations = {
     autoLayoutTooltip: 'Automatically pack entities into a region (experimental)',
   },
 
+  cellNote: {
+    title: 'Cell notes',
+    add: 'Add note',
+    placeholder: 'Note for cell ({x},{y})',
+    remove: 'Delete this note',
+    empty: 'No notes',
+    list: 'Cell notes {count}',
+  },
+
+  layoutLink: {
+    copy: 'Copy Link',
+    copyTooltip: 'Copy the current layout as a link — the layout and the prototypes it uses go into the address',
+    copied: 'Layout link copied ({cells} cells · {chars} chars)',
+    copyFailed: 'Link copy failed. Check browser permissions.',
+    empty: 'Empty grid — no layout to copy',
+    missing: 'Names missing from game data: {names} — those cells draw but cannot be measured',
+    opened: 'Layout opened from a link',
+    notSaved: 'Changes in this tab are not saved',
+    back: 'Back to my layout',
+    openFailed: 'Could not open the layout link — {message}. Your layout is unchanged.',
+  },
+
   autoLayoutModal: {
     title: 'Auto Layout',
     subtitle:

@@ -22,14 +22,18 @@ import {
   isPipeCell,
   type PipeNetworkResult,
 } from '../../analysis/pipeNetwork';
+import { computeBeltNetworks } from '../../analysis/beltNetwork';
 import { summarizeRoutings, type ModuleInfo } from '../../autoLayout/module/inspect';
 import { overlaySource, overlayView, useAutoLayoutRunStore } from '../store/autoLayoutRunStore';
 import { useModuleInspectStore } from '../store/moduleInspectStore';
-import { centerAnchorOrigin, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';
+import { undergroundExitOf } from '../../analysis/flow/graph';
+import { centerAnchorOrigin, directionToVec, isInExternalArea, isOverwriteAllowed } from './pixi-draw-utils';
 import { drawPipeShape } from './pixi-draw-pipe';
 import { drawInteractionPoints } from './pixi-draw-entity';
+import { drawUndergroundBeltCover } from './pixi-draw-belt';
 import { drawFlowOverlay } from './pixi-draw-flow';
 import { currentFlow, useFlowStore } from '../store/flowStore';
+import { useCellNoteStore } from '../store/cellNoteStore';
 
 // ---------------------------------------------------------------------------
 // 그리드 보조 색상 상수
@@ -45,6 +49,10 @@ const EXTERNAL_OUTPUT_COLOR  = 0xff3333;  // 외부 출력 컨테이너 — 빨�
 const MODULE_BORDER_COLOR    = 0xffb020;  // 모듈 식별 테두리 — 앰버
 const MODULE_LABEL_COLOR     = 0xffd98a;  // 모듈 레시피 라벨
 const MODULE_PROBLEM_COLOR   = 0xff4444;  // 문제 있는 모듈 — 빨강(색만으로 안 가르고 채움+✗ 병행)
+const NOTE_COLOR             = 0x7dd3fc;  // 칸 설명 — 하늘색(모듈 앰버 · 문제 빨강 · 선택 노랑과 겹치지 않게)
+const NOTE_FOCUS_COLOR       = 0xffffff;  // 짚고 있는 칸의 설명 — 흰색
+const NOTE_MAX_CHARS         = 24;        // 캔버스에 쓰는 글의 길이 — 넘으면 줄이고 전문은 설명 창에서
+const NOTE_TEXT_MIN_TILE     = 20;        // 칸이 이보다 작으면 글을 안 쓴다(번호만) — 글자가 칸보다 커져 배치를 덮는다
 
 // ---------------------------------------------------------------------------
 // 공유 PIXI 오브젝트 — pixi-manager.ts 에서 프로퍼티를 직접 mutate
@@ -267,6 +275,12 @@ export function renderGrid() {
   const placedNames = collectPlacedEntityNames(cells);
   const { entityMap } = useGameDataStore.getState();
   const pipeNetworks: PipeNetworkResult = computePipeNetworks(grid, entityMap);
+  // 벨트 망 — 물건이 서로 넘어가는 벨트 · 지하벨트 · 분배기는 한 색(레인 합류 · 지하 짝 포함, 인서터는 제외).
+  const beltNetworks = computeBeltNetworks(grid, entityMap);
+  const beltNetworkColor = (i: number): number | undefined => {
+    const nid = beltNetworks.networkOf.get(i);
+    return nid === undefined ? undefined : beltNetworks.colorOf.get(nid);
+  };
 
   // 오버레이 운반체 — 모듈 테두리·이름표·포트·연결선·I/O 색이 전부 이것 하나를 본다.
   // 배치가 없으면 null 이고, 아래 블록들이 자연히 비활성이 된다.
@@ -315,6 +329,7 @@ export function renderGrid() {
     }
   }
 
+  const interactionPoints: { x: number; y: number; entityType: EntityType; entityName: string; direction: Direction }[] = [];
   for (let y = startY; y < endY; y++) {
     for (let x = startX; x < endX; x++) {
       const px   = x * scaledTile + offsetX;
@@ -336,7 +351,7 @@ export function renderGrid() {
           const nid = pipeNetworks.networkOf.get(cell.entityId)!;
           color = pipeNetworks.colorOf.get(nid) ?? getDynamicEntityColor(cell.entityName, placedNames);
         } else {
-          color = getDynamicEntityColor(cell.entityName, placedNames);
+          color = beltNetworkColor(y * width + x) ?? getDynamicEntityColor(cell.entityName, placedNames);
         }
 
         // 외부 컨테이너 I/O 색상 오버라이드
@@ -366,6 +381,14 @@ export function renderGrid() {
 
           gfx.rect(px + 1, py + 1, fw, fh).fill({ color });
 
+          // 지하벨트 입구 · 출구 — 덮개 쪽 반. 값이 없는 칸(손으로 놓은 것)은 그리지 않는다.
+          if (cell.entityType === EntityType.UndergroundBelt && cell.undergroundType) {
+            drawUndergroundBeltCover(
+              gfx, x, y, cell.direction, cell.undergroundType,
+              scaledTile, offsetX, offsetY,
+            );
+          }
+
           if (isSelected) {
             gfx.rect(px + 1, py + 1, fw, fh).stroke({ width: 2.5, color: 0xffee44, alpha: 1 });
           } else {
@@ -373,16 +396,22 @@ export function renderGrid() {
           }
 
           if (cell.entityName && scaledTile >= 16) {
-            drawInteractionPoints(
-              gfx,
-              x, y, cell.entityType, cell.entityName, cell.direction,
-              scaledTile, offsetX, offsetY,
-              0.55,
-            );
+            interactionPoints.push({ x, y, entityType: cell.entityType, entityName: cell.entityName, direction: cell.direction });
           }
         }
       }
     }
+  }
+
+  // 상호작용 점은 몸통을 다 그린 뒤에 — 인서터의 고리 · 화살표는 이웃 칸까지 뻗는데,
+  // 칸을 그리는 차례대로 그리면 뒤에 그려지는 이웃(오른쪽 · 아래)의 몸통이 덮는다.
+  for (const p of interactionPoints) {
+    drawInteractionPoints(
+      gfx,
+      p.x, p.y, p.entityType, p.entityName, p.direction,
+      scaledTile, offsetX, offsetY,
+      0.55,
+    );
   }
 
   // 오버레이 패스: 연결선 + I/O glow + 기계 하이라이트 + I/O 텍스트
@@ -705,6 +734,31 @@ export function renderGrid() {
     }
   }
 
+  // 지하벨트 터널 — 짝을 이룬 입구의 앞 변에서 출구의 뒤 변까지, 땅속으로 지나는 칸에 가는 선.
+  // 짝짓기는 흐름 검사와 같은 함수다. 사거리는 그 지하벨트의 것(지하파이프 선과 같다). 색은 그 벨트 망의 색.
+  {
+    const tunnelWidth = Math.max(1.5, scaledTile * 0.12);
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      if (c.entityType !== EntityType.UndergroundBelt || c.undergroundType !== 'input' || !c.isOrigin) continue;
+      const x = i % width;
+      const y = Math.floor(i / width);
+      const reach = c.entityName ? entityMap.get(c.entityName)?.max_underground_distance : undefined;
+      const exit = undergroundExitOf(grid, x, y, c, reach);
+      if (!exit) continue;
+      const v  = directionToVec(c.direction);
+      const x1 = (x + 0.5 + v.x * 0.5) * scaledTile + offsetX;
+      const y1 = (y + 0.5 + v.y * 0.5) * scaledTile + offsetY;
+      const x2 = (exit.x + 0.5 - v.x * 0.5) * scaledTile + offsetX;
+      const y2 = (exit.y + 0.5 - v.y * 0.5) * scaledTile + offsetY;
+      if (x1 === x2 && y1 === y2) continue; // 붙어 있는 짝 — 땅속 칸이 없다
+      gfx
+        .moveTo(x1, y1)
+        .lineTo(x2, y2)
+        .stroke({ width: tunnelWidth, color: beltNetworkColor(i) ?? getDynamicEntityColor(c.entityName, placedNames), alpha: 0.85 });
+    }
+  }
+
   if (gridOverlay !== 'none' && scaledTile >= 6) {
     // KNOWN ISSUE: 브라우저 줌 변경 시 일부 배율에서 그리드 선이 사라질 수 있음.
     // 원인: PixiJS resolution(초기화 시 고정)과 실제 devicePixelRatio가 일시적으로 불일치.
@@ -743,6 +797,92 @@ export function renderGrid() {
     gfx.rect(rx, ry, rw, rh)
        .fill({ color: 0xffee44, alpha: 0.15 })
        .stroke({ width: 1.5, color: 0xffee44, alpha: 0.9 });
+  }
+
+  // ── 칸 설명(`cellNoteStore`) — 사람과 AI 가 같은 칸을 가리키는 자리라 **맨 위에** 얹는다.
+  //
+  //    둘을 함께 지킨다: *글끼리 겹치지 않는다* 와 *글이 어느 칸의 것인지 보인다*. 그래서 칸 안에는 **번호를 늘** 찍고,
+  //    글은 **자리가 날 때만** 칸에 닿는 자리(위 → 아래 → 오른쪽 → 왼쪽 → 네 귀)에 번호를 붙여 쓴다. 이미 앉은 글이나
+  //    다른 설명 칸과 겹치는 자리는 건너뛰고, 자리가 없으면 글을 안 쓴다 — 번호가 목록(`CellNoteList`)과 이어 주므로
+  //    어느 칸의 설명인지는 잃지 않는다. 짚고 있는 칸(정보 모달 · 설명 창이 열린 칸)의 글을 먼저 앉히고 흰색으로 그린다.
+  const { notes, focus } = useCellNoteStore.getState();
+  if (notes.length > 0 && scaledTile >= 6) {
+    type Rect = { x: number; y: number; w: number; h: number };
+    const hit = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const cellRect = (n: { x: number; y: number }): Rect =>
+      ({ x: n.x * scaledTile + offsetX, y: n.y * scaledTile + offsetY, w: scaledTile, h: scaledTile });
+    const focused = (n: { x: number; y: number }) => focus.some((f) => f.x === n.x && f.y === n.y);
+    const noteGfx = new PIXI.Graphics();
+    gridContainer.addChild(noteGfx);
+    const texts: PIXI.Text[] = [];
+    const cells = notes.map(cellRect);
+
+    // ① 테두리 + 칸 안 왼쪽 위의 번호 — 칸마다 하나라 서로 겹치지 않는다.
+    notes.forEach((n, i) => {
+      const r = cells[i];
+      const color = focused(n) ? NOTE_FOCUS_COLOR : NOTE_COLOR;
+      noteGfx.rect(r.x, r.y, r.w, r.h).stroke({ width: focused(n) ? 3 : 2, color, alpha: 1 });
+      if (scaledTile < 12) return;
+      const num = new PIXI.Text({
+        text: String(i + 1),
+        style: { fontSize: Math.max(8, Math.floor(scaledTile * 0.3)), fill: BG_COLOR, fontWeight: 'bold' },
+      });
+      const bw = Math.max(num.width + 4, num.height);
+      noteGfx.rect(r.x, r.y, bw, num.height).fill({ color, alpha: 0.95 });
+      num.x = r.x + (bw - num.width) / 2;
+      num.y = r.y;
+      texts.push(num);
+    });
+
+    // ② 글 — 짚은 칸 먼저, 그다음 번호 순. 칸이 작아지면(축소) 글이 배치를 덮으므로 번호만 남긴다.
+    if (scaledTile >= NOTE_TEXT_MIN_TILE) {
+      const order = notes.map((n, i) => ({ n, i }))
+        .sort((a, b) => Number(focused(b.n)) - Number(focused(a.n)) || a.i - b.i);
+      const placed: Rect[] = [];
+      for (const { n, i } of order) {
+        const r = cells[i];
+        const body = n.text.length > NOTE_MAX_CHARS ? `${n.text.slice(0, NOTE_MAX_CHARS - 1)}…` : n.text;
+        const text = new PIXI.Text({
+          text: `${i + 1} ${body}`,
+          style: { fontSize: Math.max(9, Math.floor(scaledTile * 0.36)), fill: BG_COLOR, fontWeight: 'bold' },
+        });
+        const w = text.width + 6;
+        const h = text.height + 2;
+        const g = 2;
+        const midX = r.x + r.w / 2 - w / 2;
+        const midY = r.y + r.h / 2 - h / 2;
+        // 화면 가장자리의 칸이면 위 · 아래 자리는 옆으로, 왼쪽 · 오른쪽 자리는 위아래로 밀어 화면 안에 둔다 —
+        // 밀어도 칸의 열 · 행에 걸쳐 있어 그 칸의 글로 읽힌다. 그래도 화면 밖이면 그 자리는 버린다.
+        const W = app.screen.width;
+        const H = app.screen.height;
+        const clampX = (x: number) => Math.min(Math.max(x, 0), W - w);
+        const clampY = (y: number) => Math.min(Math.max(y, 0), H - h);
+        const spots: Rect[] = [
+          { x: clampX(midX), y: r.y - h - g, w, h },
+          { x: clampX(midX), y: r.y + r.h + g, w, h },
+          { x: r.x + r.w + g, y: clampY(midY), w, h },
+          { x: r.x - w - g, y: clampY(midY), w, h },
+          { x: r.x + r.w + g, y: r.y - h - g, w, h },
+          { x: r.x - w - g, y: r.y - h - g, w, h },
+          { x: r.x + r.w + g, y: r.y + r.h + g, w, h },
+          { x: r.x - w - g, y: r.y + r.h + g, w, h },
+        ];
+        const spot = spots.find((s) =>
+          s.x >= 0 && s.y >= 0 && s.x + s.w <= W && s.y + s.h <= H
+          && !placed.some((p) => hit(p, s)) && !cells.some((c, k) => k !== i && hit(c, s)));
+        if (!spot) {
+          text.destroy();
+          continue;
+        }
+        placed.push(spot);
+        noteGfx.rect(spot.x, spot.y, spot.w, spot.h)
+          .fill({ color: focused(n) ? NOTE_FOCUS_COLOR : NOTE_COLOR, alpha: 0.95 });
+        text.x = spot.x + 3;
+        text.y = spot.y + 1;
+        texts.push(text);
+      }
+    }
+    for (const t of texts) gridContainer.addChild(t);
   }
 
   // 자동 레이아웃 hover 미리보기 오버레이는 **없앴다**(2026-08-04). 후보 목록/트리 로그에

@@ -16,26 +16,43 @@ export function makeEmptyArea(kind: Area["kind"]): Area {
 
 // ─── 머신 픽커 ───────────────────────────────────────────────────────────────
 
+/**
+ * 레시피 하나를 돌릴 머신 — 고른 머신 중 그 레시피의 분류를 처리하는 것 가운데 **제작 속도가 가장 빠른 것**.
+ * 같으면 목록에서 먼저 적힌 것(2026-10-18 사용자 — *"가장 빠른 머신만 사용하는 게 방향"*, 속도는 제작 속도로 본다).
+ *
+ * 예전엔 목록에서 분류가 맞는 **첫** 머신이었다 — 위저드에서 클릭한 순서가 결과를 정하는 숨은 조건이었다
+ * (`docs/auto-layout/common/known-limits.md` §4). 세는 쪽([makeMachineParamsLookup])과 놓는 쪽([makeMachinePicker])이
+ * 이 함수 하나를 함께 부른다 — 둘이 다른 머신을 고르면 센 대수와 놓인 머신이 어긋난다.
+ */
+function machineForRecipe(
+  recipe: Recipe,
+  selectedMachines: ReadonlyArray<string>,
+  entityMap: GameDataLookup["entityMap"],
+): { name: string; entity: Entity } | undefined {
+  let best: { name: string; entity: Entity } | undefined;
+  for (const name of selectedMachines) {
+    const entity = entityMap.get(name);
+    if (!entity?.crafting_categories?.includes(recipe.category)) continue;
+    if (!best || (entity.crafting_speed ?? 1) > (best.entity.crafting_speed ?? 1)) best = { name, entity };
+  }
+  return best;
+}
+
 export function makeMachinePicker(
   input: ContainerWizardInput,
   gameData: GameDataLookup,
 ): (recipeName: string) => { name: string } | undefined {
   return (recipeName: string) => {
-    const state = gameData;
-    const recipe = state.recipeMap.get(recipeName);
+    const recipe = gameData.recipeMap.get(recipeName);
     if (!recipe) return undefined;
-    for (const name of input.selectedMachines) {
-      const ent = state.entityMap.get(name);
-      if (ent?.crafting_categories?.includes(recipe.category)) return { name };
-    }
-    return undefined;
+    const m = machineForRecipe(recipe, input.selectedMachines, gameData.entityMap);
+    return m ? { name: m.name } : undefined;
   };
 }
 
 /**
- * 처리량 카운트용 머신 파라미터 lookup. `makeMachinePicker` 와 동일하게
- * "선택된 머신 중 카테고리가 맞는 첫 머신" 을 고르고, 그 머신의 base crafting_speed 를
- * 반환한다. 모듈은 v1 미반영(productivityMultiplier=1).
+ * 처리량 카운트용 머신 파라미터 lookup. `makeMachinePicker` 와 같은 머신([machineForRecipe] — 가장 빠른 것)을
+ * 고르고, 그 머신의 base crafting_speed 를 반환한다. 모듈은 v1 미반영(productivityMultiplier=1).
  *
  * **`carriers`(고른 인서터 · 벨트)를 주면 [굶주림 보상]이 켜진다.** 인서터 팔을 다 앉힐 자리(면 좌석 행)가
  * 없으면 머신은 그만큼만 돌므로, 그 비율을 `speedFraction` 으로 함께 낸다 →
@@ -54,32 +71,28 @@ export function makeMachineParamsLookup(
   // lookup 은 노드마다 여러 번 불린다(countForDemand + buildThroughput) — 경고는 조합당 한 번만.
   const warned = new Set<string>();
   return (recipeName: string) => {
-    const state = gameData;
-    const recipe = state.recipeMap.get(recipeName);
+    const recipe = gameData.recipeMap.get(recipeName);
     if (!recipe) return undefined;
-    for (const name of selectedMachines) {
-      const ent = state.entityMap.get(name);
-      if (ent?.crafting_categories?.includes(recipe.category)) {
-        const craftingSpeed = ent.crafting_speed ?? 1;
-        const speedFraction = carriers?.inserters.length
-          ? machineSpeedFraction(recipe, ent, craftingSpeed, carriers.inserters, carriers.belts)
-          : undefined;
-        if (speedFraction !== undefined && !warned.has(recipeName)) {
-          warned.add(recipeName);
-          // 사용자에게 알려야 하는 사실: **인프라가 모자라 머신이 굶는다.** 배치는 그만큼
-          // 머신을 더 놓아 총 생산량은 맞추지만, 머신 하나하나는 놀고 있다.
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[autoLayout] 인프라 부족 — ${recipeName} 을(를) ${name} 으로 돌리면 ` +
-              `${Math.round(speedFraction * 100)}% 로만 돕니다. ` +
-              `인서터가 이 머신의 재료·산출을 다 못 나릅니다(머신 둘레에 팔을 다 앉힐 자리가 없음). ` +
-              `부족분은 머신을 더 놓아 보상합니다 — 더 빠른 인서터를 고르면 머신이 줄어듭니다.`,
-          );
-        }
-        return { craftingSpeed, productivityMultiplier: 1, speedFraction };
-      }
+    const m = machineForRecipe(recipe, selectedMachines, gameData.entityMap);
+    if (!m) return undefined;
+    const { name, entity: ent } = m;
+    const craftingSpeed = ent.crafting_speed ?? 1;
+    const speedFraction = carriers?.inserters.length
+      ? machineSpeedFraction(recipe, ent, craftingSpeed, carriers.inserters, carriers.belts)
+      : undefined;
+    if (speedFraction !== undefined && !warned.has(recipeName)) {
+      warned.add(recipeName);
+      // 사용자에게 알려야 하는 사실: **인프라가 모자라 머신이 굶는다.** 배치는 그만큼
+      // 머신을 더 놓아 총 생산량은 맞추지만, 머신 하나하나는 놀고 있다.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[autoLayout] 인프라 부족 — ${recipeName} 을(를) ${name} 으로 돌리면 ` +
+          `${Math.round(speedFraction * 100)}% 로만 돕니다. ` +
+          `인서터가 이 머신의 재료·산출을 다 못 나릅니다(머신 둘레에 팔을 다 앉힐 자리가 없음). ` +
+          `부족분은 머신을 더 놓아 보상합니다 — 더 빠른 인서터를 고르면 머신이 줄어듭니다.`,
+      );
     }
-    return undefined;
+    return { craftingSpeed, productivityMultiplier: 1, speedFraction };
   };
 }
 

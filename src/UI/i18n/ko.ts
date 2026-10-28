@@ -27,6 +27,28 @@ export const ko = {
     autoLayoutTooltip: '지정한 영역에 엔티티를 자동 배치 (실험 기능)',
   },
 
+  cellNote: {
+    title: '칸 설명',
+    add: '설명 추가',
+    placeholder: '({x},{y}) 칸에 대한 설명',
+    remove: '이 설명 지우기',
+    empty: '설명이 없습니다',
+    list: '칸 설명 {count}',
+  },
+
+  layoutLink: {
+    copy: '링크 복사',
+    copyTooltip: '지금 배치를 링크로 복사 — 배치와 거기 쓰인 프로토타입이 주소에 들어갑니다',
+    copied: '배치 링크를 복사했습니다 (칸 {cells}개 · {chars}자)',
+    copyFailed: '링크 복사 실패. 브라우저 권한을 확인하세요.',
+    empty: '빈 그리드 — 복사할 배치가 없습니다',
+    missing: '게임데이터에 없는 이름이 있습니다: {names} — 그 칸은 그려지지만 가동률을 못 잽니다',
+    opened: '링크로 연 배치',
+    notSaved: '이 탭에서 바꾼 것은 저장되지 않습니다',
+    back: '원래 배치로',
+    openFailed: '배치 링크를 열지 못했습니다 — {message}. 원래 배치는 그대로입니다.',
+  },
+
   autoLayoutModal: {
     title: '레이아웃 자동완성',
     subtitle: '레시피와 사용 엔티티를 단계별로 선택하면 필요한 머신 수가 자동 산출되어 그리드에 배치됩니다.',

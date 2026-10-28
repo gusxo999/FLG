@@ -168,31 +168,42 @@ export function isBeltLike(t: EntityType | undefined): boolean {
 
 const MAX_UNDERGROUND_FALLBACK = 8;
 
+/**
+ * 지하벨트 입구 (x,y) 의 짝(출구) 칸. 없으면 null.
+ * 흐름 방향 `reach` 칸 안에서 같은 방향·같은 이름의 최근접 출구. 사이에 또 다른 입구가 나오면 페어가 끊긴 것.
+ * 흐름 그래프(`nextOf`)와 화면의 지하벨트 터널 선이 같은 짝짓기를 쓴다.
+ */
+export function undergroundExitOf(
+  grid: Readonly<LayoutGrid>, x: number, y: number, c: GridCell,
+  reach = MAX_UNDERGROUND_FALLBACK,
+): { x: number; y: number } | null {
+  const v = dirVec(c.direction);
+  for (let k = 1; k <= reach; k++) {
+    const nx = x + v.x * k;
+    const ny = y + v.y * k;
+    const nc = getCell(grid, nx, ny);
+    if (!nc || nc.entityType !== EntityType.UndergroundBelt) continue;
+    if (nc.entityName !== c.entityName || nc.direction !== c.direction) continue;
+    if (nc.undergroundType === 'input') return null;
+    return { x: nx, y: ny };
+  }
+  return null;
+}
+
 /** 벨트류 칸의 다음(하류) 칸 좌표. 지하 입구는 페어 출구로 점프. 없으면 null. */
 function nextOf(grid: LayoutGrid, x: number, y: number, c: GridCell): { x: number; y: number } | null {
+  if (c.entityType === EntityType.UndergroundBelt && c.undergroundType === 'input') return undergroundExitOf(grid, x, y, c);
   const v = dirVec(c.direction);
-  if (c.entityType === EntityType.UndergroundBelt && c.undergroundType === 'input') {
-    // 같은 방향·같은 이름의 최근접 출구. 사이에 또 다른 입구가 나오면 페어가 끊긴 것.
-    for (let k = 1; k <= MAX_UNDERGROUND_FALLBACK; k++) {
-      const nx = x + v.x * k;
-      const ny = y + v.y * k;
-      const nc = getCell(grid, nx, ny);
-      if (!nc || nc.entityType !== EntityType.UndergroundBelt) continue;
-      if (nc.entityName !== c.entityName || nc.direction !== c.direction) continue;
-      if (nc.undergroundType === 'input') return null;
-      return { x: nx, y: ny };
-    }
-    return null;
-  }
   return { x: x + v.x, y: y + v.y };
 }
 
 /**
  * v 로 유입하는 상류 벨트 칸. 4-이웃 중 next(u) == v 이고 정면 마주보기가 아닌 것 + 지하 출구면
  * 그 페어 입구. `tunnel` 은 지하 페어 입구다(뒤 유입과 같이 다룬다).
+ * 화면의 벨트 망 색(`analysis/beltNetwork`)도 이것으로 칸을 잇는다.
  */
-function upstreamOf(
-  grid: LayoutGrid, x: number, y: number, c: GridCell,
+export function upstreamOf(
+  grid: Readonly<LayoutGrid>, x: number, y: number, c: GridCell,
 ): Array<{ x: number; y: number; tunnel: boolean }> {
   const res: Array<{ x: number; y: number; tunnel: boolean }> = [];
   const opp = ((c.direction + 8) % 16) as Direction;

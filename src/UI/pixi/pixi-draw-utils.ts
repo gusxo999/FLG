@@ -161,6 +161,20 @@ export function drawSingleArrow(
   drawArrowhead(target, toX, toY, ux, uy, headSize, color, alpha);
 }
 
+/** 속이 빈 고리. 인서터 집는 칸 등에 사용. 어두운 테두리를 밑에 깔아 같은 색 칸 위에서도 보이게 한다. */
+export function drawRing(
+  target: PIXI.Graphics,
+  px: number, py: number,
+  radius: number,
+  scaledTile: number,
+  color: number,
+  alpha: number,
+) {
+  const width = Math.max(1.5, scaledTile * 0.08);
+  target.circle(px, py, radius).stroke({ width: width + 2, color: 0x000000, alpha: alpha * 0.5 });
+  target.circle(px, py, radius).stroke({ width, color, alpha });
+}
+
 export function drawPoint(
   target: PIXI.Graphics,
   px: number, py: number,

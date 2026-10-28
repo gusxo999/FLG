@@ -1,0 +1,417 @@
+{
+ "title": "옆 입구와 레인 — 자식 쪽 방향과 부모 쪽 방향(가 · 다 는 선다 · 나 는 멈춘다)",
+ "prototypes": "kit.json",
+ "recipes": [
+  {
+   "id": 301,
+   "name": "fl-gear",
+   "localised_name": "fl-gear",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "plate",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "gear",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  },
+  {
+   "id": 302,
+   "name": "fl-widget",
+   "localised_name": "fl-widget",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "gear",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "widget",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  }
+ ],
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 12,
+   "y": 0,
+   "name": "plant",
+   "recipe": "fl-gear"
+  },
+  {
+   "x": 16,
+   "y": 1,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 15,
+   "y": 1,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 11,
+   "y": 1,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 10,
+   "y": 1,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 10,
+   "y": 2,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 10,
+   "y": 3,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 3,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 3,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 7,
+   "y": 3,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 6,
+   "y": 3,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 5,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 6,
+   "y": 6,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 4,
+   "name": "plant",
+   "recipe": "fl-widget"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 1,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 0,
+   "y": 5,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 12,
+   "y": 12,
+   "name": "plant",
+   "recipe": "fl-gear"
+  },
+  {
+   "x": 16,
+   "y": 13,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 15,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 11,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 10,
+   "y": 13,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 10,
+   "y": 12,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 10,
+   "y": 11,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 11,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 7,
+   "y": 11,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 13,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 6,
+   "y": 14,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 12,
+   "name": "plant",
+   "recipe": "fl-widget"
+  },
+  {
+   "x": 5,
+   "y": 14,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 1,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 0,
+   "y": 13,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 12,
+   "y": 22,
+   "name": "plant",
+   "recipe": "fl-gear"
+  },
+  {
+   "x": 16,
+   "y": 23,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 15,
+   "y": 23,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 11,
+   "y": 23,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 10,
+   "y": 23,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 10,
+   "y": 22,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 10,
+   "y": 21,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 21,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 21,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 7,
+   "y": 21,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 6,
+   "y": 21,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 19,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 6,
+   "y": 18,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 2,
+   "y": 18,
+   "name": "plant",
+   "recipe": "fl-widget"
+  },
+  {
+   "x": 5,
+   "y": 18,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 1,
+   "y": 19,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 0,
+   "y": 19,
+   "name": "infinity-chest",
+   "sink": true
+  }
+ ],
+ "labels": [
+  {
+   "x": 12,
+   "y": 0,
+   "text": "가 — 자식 줄이 남쪽(↓)으로 흐른다. 인서터는 머신 쪽(동쪽)에서 놓으므로 물건은 서쪽 레인 = 진행 방향 오른쪽 레인"
+  },
+  {
+   "x": 10,
+   "y": 3,
+   "text": "가 — 꺾여도 오른쪽 레인은 오른쪽. 서쪽으로 갈 때 오른쪽 = 북쪽 레인"
+  },
+  {
+   "x": 6,
+   "y": 3,
+   "text": "가 — 부모의 옆 입구(남쪽을 향함). 입구 칸의 뒤쪽 반(북쪽)에 닿는 레인만 들인다 → 북쪽 레인의 물건이 들어간다"
+  },
+  {
+   "x": 12,
+   "y": 12,
+   "text": "나 — 자식 줄이 북쪽(↑)으로 흐른다. 물건은 서쪽 레인 = 진행 방향 왼쪽 레인"
+  },
+  {
+   "x": 10,
+   "y": 11,
+   "text": "나 — 서쪽으로 갈 때 왼쪽 = 남쪽 레인"
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "text": "나 — 같은 옆 입구(남쪽을 향함)는 북쪽 레인만 들인다 → 남쪽 레인의 물건은 입구 앞에서 멈춘다(U1 · 게임에서 확인할 판). 앱의 가동률 검사는 이 입구를 두 레인으로 보아 100% 로 셀 수 있다(결함 #4)"
+  },
+  {
+   "x": 12,
+   "y": 22,
+   "text": "다 — 자식 줄은 나와 같이 북쪽(↑) · 물건은 남쪽 레인으로 온다"
+  },
+  {
+   "x": 6,
+   "y": 21,
+   "text": "다 — 부모의 옆 입구가 북쪽을 향하면 뒤쪽 반은 남쪽 → 남쪽 레인이 들어간다. 부모 쪽 방향 = 자식 쪽 방향이면 선다(C8)"
+  }
+ ]
+}

@@ -35,6 +35,24 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 다만 **커스텀 레시피·머신은 콘솔로 넣는다**(`flg.custom.add` · `flg.custom.map`) — 게임에 없는
 레시피나 유체 상자 배치를 실데이터 없이 시험하는 길이다([custom-recipe](docs/factorio/custom-recipe.md)).
 
+**배치 모양(형태)을 사람에게 보일 때는 앱으로 한다 — 대화 · 문서에 2차원 글 그림을 쓰지 않는다**(2026-10-16 사용자 방향).
+길은 CLI `factoriolayoutgen` 의 **배치 링크**다(2026-10-18 — 지금은 형태 토론에 필요한 만큼만 있다):
+
+```powershell
+node factoriolayoutgen.mjs place <놓기 파일> --as <이름>   # 손으로 만든 배치 · 쓰는 프로토타입을 함께 — 파일 모양은 cli/commands/place.ts 머리
+node factoriolayoutgen.mjs flow <이름> [at x y | breaks]   # 가동률 — 앱 캔버스와 같은 함수
+node factoriolayoutgen.mjs link <이름> --open              # 사람에게 보인다 — 이 컴퓨터의 브라우저에 바로(앱은 npm run dev 의 localhost:5173)
+node factoriolayoutgen.mjs link --clipboard --as <이름>     # 사람이 화면에서 손보고 「링크 복사」 한 것을 클립보드에서 받는다
+```
+
+**링크 문자열을 손으로 옮겨 적지 않는다** — 천 자가 넘어 옮기면 틀린다(2026-10-19 실측: 1544자 중 한 글자가 바뀌어 안 풀렸다).
+사람에게는 `--open`(또는 클립보드에 넣는 `--copy`), 받을 때는 `--clipboard`.
+
+링크는 배치와 거기 쓰인 프로토타입 · 인서터 운반량을 담는다 — 브라우저의 게임데이터와 상관없이 같은 화면 · 같은 가동률이다.
+링크로 연 탭은 저장하지 않는다(사용자의 배치를 안 덮는다). **칸 설명**(`labels`)으로 줄 이름을 붙이고 칸을 가리킨다 —
+캔버스는 칸 안의 번호와 자리가 나는 글만 그리고, 전문은 왼쪽 아래 목록 · 정보 모달 아래 창에 있다. 사람도 고치고 새로 쓴다(「링크 복사」에 실린다).
+정한 것과 남은 일은 [tempPlanDocs/CLI-앱/CLAUDE.md](tempPlanDocs/CLI-앱/CLAUDE.md) 의 결정 기록.
+
 **실패는 삼키지 않는다.** 콘솔 `[autoLayout] 모듈 경로 포기 [<kind>]: <detail>` 이 사유의 단일 출처다.
 사유 카탈로그는 `src/autoLayout/shared/issue.ts` 의 `LayoutIssue` (2026-08-04 `moduleWizard.RejectReason` 을 흡수 —
 *어디가* 막혔는지와 *무엇을 고쳐야* 하는지가 문장에서 필드로 갈렸다),
@@ -42,5 +60,6 @@ await flg.run()   →   copy(flg.report())   →   flg.face(모듈,'W') · flg.c
 
 ```powershell
 npx tsc -p tsconfig.app.json --noEmit   # 반드시 -p. 인자 없는 tsc 는 0개 검사하고 조용히 성공한다
+npx tsc -p tsconfig.cli.json --noEmit   # CLI(cli/) — Node 타입을 켠 설정. 앱 빌드는 이것을 검사하지 않는다
 npx vitest run                          # 기준선: 타입 0 · 82파일 1052테스트 (**2건은 기존 실패** — trunkPipe 유체 면)
 ```

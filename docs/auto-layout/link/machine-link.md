@@ -276,7 +276,7 @@ fan-out 과 fan-in 을 **따로 다루는 코드가 없다.** [`allocateFlows`](
 
 > 푸는 문제는 [[용어사전#split belt 할당량 문제|split belt 할당량 문제]]다. 코드는 [`link/policy/direction`](../../../src/autoLayout/link/policy/direction.ts) ·
 > [`module/arith/lineOrder`](../../../src/autoLayout/module/arith/lineOrder.ts) · [`module/arith/cut`](../../../src/autoLayout/module/arith/cut.ts).
-> 남은 일(받는 면을 다른 재료와 나눠 쓰는 간선 — 문제 정의 중)은 `tempPlanDocs/재료-둘-이상-부모/`, 방향의 문제 정의는 `tempPlanDocs/방향/`.
+> 남은 일(받는 면을 다른 재료와 나눠 쓰는 간선 — 문제 정의 중)은 `tempPlanDocs/split-belt-문제와-도달-가능-영역-배열-문제-정리/`, 방향의 문제 정의는 `tempPlanDocs/방향/`.
 >
 > **2026-10-08 고침.** 처음에는 *그 줄들 **모두**에서 맨 끝* 을 지키려 했다. 깔아서 재 보니 그 조건은 양쪽으로 어긋났다 —
 > 멀쩡한 줄을 어겼다고 보고, 주는 쪽과 받는 쪽의 작은 몫이 한 줄에서 만나는 것은 못 봤다. 지킬 것은 *몫이 작은 줄에서 맨 끝* 이고,

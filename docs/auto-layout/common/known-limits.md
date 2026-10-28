@@ -93,19 +93,31 @@ tags: [auto-layout, placement, routing]
 
 ---
 
-## 4. 카테고리당 첫 매칭 머신만 사용
+## 4. 머신을 레시피마다 고를 수 없다 · 레시피의 추가 분류를 안 읽는다
 
 **우선순위: P3**
 
+> **2026-10-18 범위 축소.** 예전 증상은 *"고른 목록에서 분류가 맞는 첫 머신"* 이었다 — 위저드에서 클릭한 순서가
+> 결과를 정하는 숨은 조건이었다. 지금은 **고른 머신 중 그 레시피를 처리하는 것 가운데 제작 속도가 가장 빠른 것**,
+> 같으면 목록에서 먼저 적힌 것이다(사용자 — *"가장 빠른 머신만 사용하는 게 방향"*, 속도는 제작 속도로 본다).
+> 세는 쪽과 놓는 쪽이 한 함수(`machineForRecipe`)를 함께 부른다. 남은 것이 아래 둘이다.
+
 **증상:**
-- 조립기 1·2·3 을 모두 체크해도 카테고리에 맞는 **선택 목록상 첫 머신** 만 모든 노드에 사용. "후반만 조립기3" 같은 의도 표현 불가.
+- **레시피마다 다른 머신을 정할 수 없다.** 한 규칙(가장 빠른 것)이 모든 레시피에 걸린다 — *"후반만 조립기3"* 같은 의도 표현 불가.
+- **추가 분류로만 처리할 수 있는 머신을 놓친다.** 그 머신을 골라도 *"처리할 머신 없음"* 이 되거나 더 느린 머신이 골라진다.
 
 **원인:**
-- [gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `makeMachinePicker` / `makeMachineParamsLookup` 가 `selectedMachines` 를 순회하며 `crafting_categories.includes(category)` 첫 일치 반환. 우선순위·레시피별 매핑·속도 정렬 없음.
+- [gamedata/picker.ts](../../../src/autoLayout/run/gamedata/picker.ts) `machineForRecipe` 가 레시피 하나에 규칙 하나만 쓴다 — 레시피별 지정을 받는 입력이 없다.
+- 게임의 레시피는 `category` 와 함께 `additional_categories`(추가 분류 목록)를 가진다(게임 API `LuaRecipePrototype`).
+  내보내기가 `category` 하나만 담는다([export-gamedata.lua](../../../scripts/export-gamedata.lua) 의 `category = r.category`) —
+  그래서 `machineForRecipe` 의 `crafting_categories.includes(recipe.category)` 도 첫 분류만 본다.
+- 덧붙여 — "가장 빠르다" 는 **보통 품질의 제작 속도**다. 머신의 기본 효과(생산성 등, 게임 API `effect_receiver`)와
+  품질별 속도(`get_crafting_speed(quality)`)는 담지 않는다(생산성은 §5).
 
 **해결 방향:**
-1. 머신 선택 UI 에 우선순위(drag-reorder) 또는 레시피별 매핑.
-2. 기본 정렬 `crafting_speed` 내림차순.
+1. 레시피별 지정 — 입력에 *"레시피 → 머신"* 을 받는 칸을 두고 `machineForRecipe` 가 그것을 먼저 본다(시작 조건 포맷 논의 —
+   `tempPlanDocs/CLI-앱/CLAUDE.md`).
+2. 내보내기 · `parseGameData` · `Recipe` 타입에 추가 분류를 더하고, 머신 매칭이 분류 **목록** 중 하나라도 맞으면 처리할 수 있다고 본다.
 
 ---
 
@@ -362,7 +374,7 @@ tags: [auto-layout, placement, routing]
 |----------|------|
 | **P1** | §1 클러스터 형태 기둥 고정 |
 | **P2** | §2 belt/pipe mixing · §3 아이템 머신 회전 미지원 · §9 Deprecated Dijkstra Guard(드래그) · §11 벨트 합류 판정 분산 · §12 반출 상자 갇힘(잠정) |
-| **P3** | §4 첫매칭 머신 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 · §10 탭 깊이 수(치명성 해소) · §13 반출 포트 인서터 하나(실측 1대) |
+| **P3** | §4 레시피별 머신 지정 없음 · 추가 분류 미반영 · §5 모듈 미반영 · §6 단일 후보 · §7 공유 자식 · §8 결정성 테스트 · §10 탭 깊이 수(치명성 해소) · §13 반출 포트 인서터 하나(실측 1대) |
 
 > **해소되어 삭제된 항목 (2026-07-25 감사):**
 > - ~~ROW_GAP 고정(3)~~ — 세로 간격이 링크 면 계획에서 유도된다(`gapRowsFromPlans`, 기본 0).
@@ -371,5 +383,5 @@ tags: [auto-layout, placement, routing]
 > - ~~collect 트렁크 코너 방향 반전 버그~~ — 처방대로 고쳐졌고, 그 뒤 씨앗 그리디
 >   트렁크(`trunkEmit`) 자체가 삭제됐다(2026-07-26).
 >
-> 부분 해소되어 **범위를 좁힌** 항목: §3(유체는 회전한다) · §5(인서터 병목은 반영됐다) ·
+> 부분 해소되어 **범위를 좁힌** 항목: §3(유체는 회전한다) · §4(가장 빠른 머신을 고른다 — 2026-10-18) · §5(인서터 병목은 반영됐다) ·
 > §9(옛 경로가 사라져 드래그 재라우팅만 남았다) · §13(공급 쪽은 가정으로 닫혔다 — 2026-09-28).

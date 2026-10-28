@@ -60,7 +60,8 @@ export interface PipeNetworkResult {
   cellConnections: Map<string, Set<Direction>>;
 }
 
-const NETWORK_PALETTE: number[] = [
+/** 망 색 — 파이프 관망과 벨트 망(`beltNetwork.ts`)이 같이 쓴다. */
+export const NETWORK_PALETTE: readonly number[] = [
   0x4ec9b0, 0xff7e5f, 0xffd166, 0xc792ea, 0x82aaff,
   0xa7e22e, 0xf07178, 0x89ddff, 0xff79c6, 0xbd93f9,
   0x00bfa5, 0xff5722, 0x7c4dff, 0x40c4ff, 0xb2ff59,

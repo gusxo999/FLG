@@ -1,0 +1,206 @@
+{
+ "title": "지나는 차례 — 틈의 가로 벨트에서 위 · 아래 머신",
+ "prototypes": "kit.json",
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  },
+  "long-handed-inserter": {
+   "throughput": 100
+  },
+  "fast-inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 2,
+   "name": "plant",
+   "recipe": "l1"
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "l1"
+  },
+  {
+   "x": 1,
+   "y": 6,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 4,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 6,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 4,
+   "y": 5,
+   "name": "inserter",
+   "dir": "S"
+  },
+  {
+   "x": 6,
+   "y": 7,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 5,
+   "y": 1,
+   "name": "fast-inserter",
+   "dir": "S"
+  },
+  {
+   "x": 5,
+   "y": 0,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 5,
+   "y": 11,
+   "name": "fast-inserter",
+   "dir": "N"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 16,
+   "y": 2,
+   "name": "plant",
+   "recipe": "l1"
+  },
+  {
+   "x": 16,
+   "y": 8,
+   "name": "plant",
+   "recipe": "l1"
+  },
+  {
+   "x": 13,
+   "y": 6,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 14,
+   "y": 6,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 15,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 16,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 17,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 18,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 17,
+   "y": 5,
+   "name": "inserter",
+   "dir": "S"
+  },
+  {
+   "x": 17,
+   "y": 7,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 17,
+   "y": 1,
+   "name": "fast-inserter",
+   "dir": "S"
+  },
+  {
+   "x": 17,
+   "y": 0,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 17,
+   "y": 11,
+   "name": "fast-inserter",
+   "dir": "N"
+  },
+  {
+   "x": 17,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  }
+ ],
+ "labels": [
+  {
+   "x": 4,
+   "y": 6,
+   "text": "위 머신이 집는 칸 — 차례 1"
+  },
+  {
+   "x": 6,
+   "y": 6,
+   "text": "아래 머신이 집는 칸 — 차례 2"
+  },
+  {
+   "x": 17,
+   "y": 6,
+   "text": "두 머신이 같은 칸에서 집는다 — 누가 먼저인지 모른다"
+  }
+ ]
+}

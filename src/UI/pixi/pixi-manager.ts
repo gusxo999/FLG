@@ -16,6 +16,7 @@ import { useLayoutStore, canvasToGrid } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useGameDataStore } from '../store/gameDataStore';
 import { useInspectStore } from '../store/inspectStore';
+import { noteAt, useCellNoteStore } from '../store/cellNoteStore';
 import { EntityType, getCell } from '../../types/layout';
 import { getEntitySizeRotated } from '../../factorio/entitySize';
 import { isOverwriteAllowed, centerAnchorOrigin } from './pixi-draw-utils';
@@ -280,6 +281,10 @@ function handlePointerUp() {
       useInspectStore.getState().inspect(hitCell.entityName, hitCell.entityId);
       store.clearMultiSelection();
     } else {
+      // 빈칸 단일 클릭 — 그 칸에 설명이 있으면 설명 창을 연다(엔티티 칸의 설명은 정보 모달 아래에 뜬다).
+      if (isClick && noteAt(useCellNoteStore.getState().notes, startCell.x, startCell.y)) {
+        useCellNoteStore.getState().open({ x: startCell.x, y: startCell.y });
+      }
       store.selectEntitiesInRect(
         startCell.x, startCell.y,
         store.selection.endX, store.selection.endY,
@@ -373,6 +378,8 @@ export async function initPixi(
   unsubFns.push(useGameDataStore.subscribe(() => renderAll()));
   // 가동률 테두리 — 표시 토글과, 분석의 입력인 인서터 보정(위저드 3단계)이 바뀌면 다시 그린다.
   unsubFns.push(useFlowStore.subscribe(() => renderAll()));
+  // 칸 설명 — 쓰고 지우고 짚는 칸이 바뀌면 다시 그린다.
+  unsubFns.push(useCellNoteStore.subscribe(() => renderAll()));
   unsubFns.push(useWizardStore.subscribe((s, prev) => {
     if (s.inserterOverrides !== prev.inserterOverrides) renderAll();
   }));

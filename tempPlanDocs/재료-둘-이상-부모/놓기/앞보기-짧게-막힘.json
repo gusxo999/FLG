@@ -1,0 +1,396 @@
+{
+ "title": "앞보기 거리 — 짧게 보면 머신 3 에서 막힌다(줄마다 온 레인)",
+ "prototypes": "kit.json",
+ "recipes": [
+  {
+   "id": 300,
+   "name": "col-recipe",
+   "localised_name": "col-recipe",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "iron-gear-wheel",
+     "amount": 1,
+     "type": "item"
+    },
+    {
+     "name": "copper-cable",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "col-out",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  }
+ ],
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 5,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 11,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 12,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 8,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 10,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 7,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 9,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 9,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 9,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 9,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 9,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 9,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 6,
+   "text": "머신 1"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 2"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "text": "머신 3"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "text": "출입구 X1-1↓"
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "text": "출입구 X1-2↑ — 작은 몫 머신 1"
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "text": "출입구 Y1-2↓"
+  },
+  {
+   "x": 9,
+   "y": 9,
+   "text": "출입구 Y2-3↑ — 작은 몫 머신 2"
+  },
+  {
+   "x": 9,
+   "y": 2,
+   "text": "짓는 법은 위에서부터 정한다 — 맨 먼저 기둥 위 끝 너머 세 행. 여기서는 아무 줄도 미리 세우지 않았다(앞을 짧게 봐서 문제가 안 보였다)"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "text": "Y1-2↓ 의 첫 덩어리는 두 칸이어야 한다(양이 반 레인을 넘어 옆에서 붙인 입구를 못 쓴다). 머신 1 의 세 행은 다른 줄도 써야 해서, 머신 1·2 경계의 두 행을 썼다"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "text": "머신 3 에서 막혔다 — X3-3↑ · Y3-3↑ · Y2-3↑ 가 세 행을 다 써야 하는데, 어떤 차례든 한 줄의 첫 덩어리가 한 칸이 되거나 물건이 섞인다. 원인은 맨 위에서 Y1-2↓ 를 위 끝 너머에서 세우지 않은 것"
+  }
+ ]
+}

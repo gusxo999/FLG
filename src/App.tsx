@@ -11,6 +11,9 @@ import CustomRecipeList from './UI/components/CustomRecipeList';
 import AutoLayoutSidebar from './UI/components/AutoLayoutModal';
 import ModuleInfoPanel from './UI/components/ModuleInfoPanel';
 import FlowSummary from './UI/components/flow/FlowSummary';
+import LayoutLinkBar from './UI/components/LayoutLinkBar';
+import CellNoteList from './UI/components/CellNoteList';
+import { CellNoteModal } from './UI/components/CellNotePanel';
 import { useInspectStore } from './UI/store/inspectStore';
 import { EntityType, ENTITY_SIZES } from './types/layout';
 import { useLayoutStore } from './UI/store/layoutStore';
@@ -125,11 +128,13 @@ export default function App() {
         open={!!selectedRoutingId}
         onClose={() => setSelectedRouting(null)}
       />
+      <CellNoteModal />
       <CustomRecipeModal />
       <CustomRecipeList />
 
       {/* Top toolbar */}
       <Toolbar />
+      <LayoutLinkBar />
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
@@ -140,6 +145,7 @@ export default function App() {
         <main className="flex-1 relative overflow-hidden bg-[#1a1a2e]">
           <GridCanvas />
           <FlowSummary />
+          <CellNoteList />
           <ModuleInfoPanel />
           <Tutorial />
 

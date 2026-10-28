@@ -1,0 +1,251 @@
+{
+ "title": "한 줄 = 처음 · 끝 + 지나야 할 칸들 + 그 사이의 두점 경로",
+ "prototypes": "kit.json",
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 2,
+   "name": "plant",
+   "recipe": "thing"
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "thing"
+  },
+  {
+   "x": 2,
+   "y": 0,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 2,
+   "y": 1,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 2,
+   "y": 2,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 4,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 2,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 2,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 3,
+   "y": 3,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 0,
+   "y": 6,
+   "name": "infinity-chest",
+   "supply": [
+    "gear"
+   ]
+  },
+  {
+   "x": 1,
+   "y": 6,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 4,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 5,
+   "y": 5,
+   "name": "inserter",
+   "dir": "S"
+  },
+  {
+   "x": 5,
+   "y": 7,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 3,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 3,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 4,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "inserter",
+   "dir": "N"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 3,
+   "text": "머신 0"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 1"
+  },
+  {
+   "x": 2,
+   "y": 2,
+   "text": "X 의 처음"
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "text": "X 가 지나야 할 칸 1 — 머신 0 이 집는다 · 땅 위여야 한다"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "text": "칸 1 → 칸 2 사이 — 두점 경로 · 여기서는 땅속"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "text": "X 가 지나야 할 칸 2 — 머신 1 이 집는다"
+  },
+  {
+   "x": 2,
+   "y": 10,
+   "text": "X 의 끝"
+  },
+  {
+   "x": 5,
+   "y": 6,
+   "text": "A — 지나야 할 칸 하나를 두 머신이 함께 집는다"
+  }
+ ]
+}

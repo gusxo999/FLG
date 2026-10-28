@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import type { Entity } from '../store/gameDataStore';
+import { useInspectStore } from '../store/inspectStore';
+import { useLayoutStore } from '../store/layoutStore';
 import { useT } from '../i18n/index';
+import { noteTargetOf } from '../store/cellNoteStore';
+import CellNotePanel from './CellNotePanel';
 import EntityDetails from './EntityDetails';
 
 interface Props {
@@ -13,6 +17,8 @@ interface Props {
 
 export default function EntityInfoModal({ entity, instanceId, open, onClose }: Props) {
   const t = useT();
+  const clicked = useInspectStore((s) => s.cell);
+  const grid = useLayoutStore((s) => s.grid);
 
   useEffect(() => {
     if (!open) return;
@@ -30,9 +36,11 @@ export default function EntityInfoModal({ entity, instanceId, open, onClose }: P
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
     >
+      {/* 정보 창 + 그 바로 아래 칸 설명 창(배치된 인스턴스일 때). 둘이 한 기둥이라 함께 가운데에 선다. */}
+      <div className="w-full max-w-md mx-4 max-h-[90vh] flex flex-col gap-2">
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col overflow-hidden"
+        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl min-h-0 max-h-[70vh] flex flex-col overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700 bg-gray-950">
           <h2 className="text-white font-bold text-sm flex items-center gap-2">
@@ -50,6 +58,8 @@ export default function EntityInfoModal({ entity, instanceId, open, onClose }: P
         <div className="flex-1 overflow-y-auto">
           <EntityDetails entity={entity} instanceId={instanceId ?? null} />
         </div>
+      </div>
+      {(instanceId || clicked) && <CellNotePanel {...noteTargetOf(grid, instanceId ?? null, clicked)} />}
       </div>
     </div>
   );

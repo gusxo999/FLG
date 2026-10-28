@@ -52,3 +52,6 @@ coverage/
 .obsidian/workspace.json
 # 플러그인 번들 + data.json(REST API 키·비밀키 보관). 저장소에 들어가면 안 됨
 .obsidian/plugins/
+
+# ---- factoriolayoutgen CLI 작업 폴더 (배치 파일) ----
+.factoriolayoutgen/

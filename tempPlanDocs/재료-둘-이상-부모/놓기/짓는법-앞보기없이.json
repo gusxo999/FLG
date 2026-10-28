@@ -1,0 +1,353 @@
+{
+ "title": "짓는 법 — 앞을 안 보면 머신 3 에서 막힌다",
+ "prototypes": "kit.json",
+ "recipes": [
+  {
+   "id": 300,
+   "name": "col-recipe",
+   "localised_name": "col-recipe",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "copper-cable",
+     "amount": 1,
+     "type": "item"
+    },
+    {
+     "name": "iron-gear-wheel",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "col-out",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  }
+ ],
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 5,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 11,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 12,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 14,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 15,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 8,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 10,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 10,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 7,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 6,
+   "text": "머신 1"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 2"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "text": "머신 3"
+  },
+  {
+   "x": 5,
+   "y": 15,
+   "text": "머신 4"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "text": "출입구 Y1-1↓"
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "text": "출입구 Y1-3↑ — 작은 몫 머신 1"
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "text": "출입구 X1-4↓"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "text": "머신 2 — 서는 배열 넷 가운데 값이 가장 작은 것(X / 빈칸 / Y1-3↑, 값 0)을 골랐다. X 가 바로 위 행에서 이어 와 덩어리가 두 칸이 된다"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "text": "머신 3 에서 막힌다 — X · Y1-3↑ · Y3-4↑ 가 세 행을 다 써야 하는데, 어떤 차례든 Y3-4↑ 의 끝이 Y1-3↑ 의 시작을 밀거나 X 의 덩어리가 한 칸이 된다"
+  }
+ ]
+}

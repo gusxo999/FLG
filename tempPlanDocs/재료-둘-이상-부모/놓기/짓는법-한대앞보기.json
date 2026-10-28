@@ -1,0 +1,494 @@
+{
+ "title": "짓는 법 — 다음 머신을 보고 고르면 선다",
+ "prototypes": "kit.json",
+ "recipes": [
+  {
+   "id": 300,
+   "name": "col-recipe",
+   "localised_name": "col-recipe",
+   "category": "test",
+   "energy_required": 1,
+   "enabled": true,
+   "ingredients": [
+    {
+     "name": "copper-cable",
+     "amount": 1,
+     "type": "item"
+    },
+    {
+     "name": "iron-gear-wheel",
+     "amount": 1,
+     "type": "item"
+    }
+   ],
+   "products": [
+    {
+     "name": "col-out",
+     "amount": 1,
+     "type": "item"
+    }
+   ]
+  }
+ ],
+ "inserterOverrides": {
+  "inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 4,
+   "y": 5,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 6,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 8,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 9,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 11,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 12,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 12,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 4,
+   "y": 14,
+   "name": "plant",
+   "recipe": "col-recipe"
+  },
+  {
+   "x": 3,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 2,
+   "y": 15,
+   "name": "infinity-chest",
+   "sink": true
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 13,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 8,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 6,
+   "name": "underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 6,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 15,
+   "name": "belt",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "name": "fast-underground-belt",
+   "dir": "N",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 14,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "name": "fast-underground-belt",
+   "dir": "N",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 12,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 11,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 8,
+   "y": 16,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 16,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 5,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 5,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 13,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 13,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 13,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 13,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 13,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 13,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 13,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 15,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 15,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 15,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 15,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 15,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 15,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 15,
+   "name": "infinity-chest",
+   "supply": [
+    "copper-cable"
+   ]
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 10,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 11,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 12,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 7,
+   "name": "belt",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 7,
+   "name": "inserter",
+   "dir": "E"
+  },
+  {
+   "x": 15,
+   "y": 7,
+   "name": "infinity-chest",
+   "supply": [
+    "iron-gear-wheel"
+   ]
+  }
+ ],
+ "labels": [
+  {
+   "x": 5,
+   "y": 6,
+   "text": "머신 1"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "text": "머신 2"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "text": "머신 3"
+  },
+  {
+   "x": 5,
+   "y": 15,
+   "text": "머신 4"
+  },
+  {
+   "x": 9,
+   "y": 5,
+   "text": "출입구 Y1-1↓"
+  },
+  {
+   "x": 9,
+   "y": 13,
+   "text": "출입구 Y1-3↑ — 작은 몫 머신 1"
+  },
+  {
+   "x": 9,
+   "y": 15,
+   "text": "출입구 Y3-4↑ — 작은 몫 머신 3"
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "text": "출입구 X1-4↓"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "text": "머신 2 — 값 0 배열(X / 빈칸 / Y1-3↑)은 머신 3 에 설 배열을 하나도 안 남겨 건너뛰었다. 고른 것: Y1-3↑ 두 칸 + X(값 3 — 칸 하나 더 씀)"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "text": "머신 3 — 서는 배열 둘 가운데 값이 작은 것. Y3-4↑ 의 끝이 Y1-3↑ 의 시작보다 위라, 끝이 미는 쪽(위)에 Y1-3↑ 가 없다"
+  }
+ ]
+}

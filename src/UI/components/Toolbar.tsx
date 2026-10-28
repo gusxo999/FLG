@@ -12,6 +12,7 @@ import { EntityType } from '../../types/layout';
 import type { GridCell, Direction } from '../../types/layout';
 import { modulesToInsertPlans, insertPlansToModules } from '../../blueprint/blueprintItemsCodec';
 import { entityTypeFromFactorioType } from '../../factorio/entityCategory';
+import { currentLayoutLink } from '../../layoutLink/openInApp';
 // 빌드타임에 lua export 스크립트를 문자열로 번들 (단일 source-of-truth)
 import luaExportScript from '../../../scripts/export-gamedata.min.lua?raw';
 
@@ -33,6 +34,25 @@ export default function Toolbar() {
   const [gameDataStatus, setGameDataStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [gameDataError, setGameDataError] = useState('');
   const [gameDataErrorModalOpen, setGameDataErrorModalOpen] = useState(false);
+
+  // 지금 배치를 배치 링크로 — AI 와 형태를 주고받는 길(`layoutLink/`). 쓰인 프로토타입이 함께 실린다.
+  const handleCopyLayoutLink = useCallback(async () => {
+    const toast = useToastStore.getState();
+    const link = currentLayoutLink();
+    if (link.cells === 0) {
+      toast.show(t('layoutLink.empty'), 'warning');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(link.url);
+      toast.show(t('layoutLink.copied', { cells: link.cells, chars: link.chars }), 'success');
+      if (link.missing.length > 0) {
+        toast.show(t('layoutLink.missing', { names: link.missing.join(', ') }), 'warning', 6000);
+      }
+    } catch {
+      toast.show(t('layoutLink.copyFailed'), 'error');
+    }
+  }, [t]);
 
   const handleExport = useCallback(() => {
     const entities: BlueprintEntity[] = [];
@@ -431,6 +451,13 @@ export default function Toolbar() {
           className="toolbar-btn"
         >
           {t('toolbar.export')}
+        </button>
+        <button
+          onClick={handleCopyLayoutLink}
+          title={t('layoutLink.copyTooltip')}
+          className="toolbar-btn"
+        >
+          {t('layoutLink.copy')}
         </button>
         <input
           ref={fileInputRef}

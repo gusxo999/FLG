@@ -1,0 +1,497 @@
+{
+ "title": "긴팔 · 한 줄이 한 행에서 칸 둘 — 한 대 줄로는 선다",
+ "prototypes": "kit.json",
+ "inserterOverrides": {
+  "long-handed-inserter": {
+   "throughput": 1.2
+  },
+  "fast-inserter": {
+   "throughput": 100
+  }
+ },
+ "place": [
+  {
+   "x": 10,
+   "y": 7,
+   "name": "plant",
+   "recipe": "abc"
+  },
+  {
+   "x": 10,
+   "y": 10,
+   "name": "plant",
+   "recipe": "abc"
+  },
+  {
+   "x": 10,
+   "y": 13,
+   "name": "plant",
+   "recipe": "abc"
+  },
+  {
+   "x": 7,
+   "y": 3,
+   "name": "infinity-chest",
+   "supply": [
+    "plate"
+   ]
+  },
+  {
+   "x": 7,
+   "y": 4,
+   "name": "fast-inserter",
+   "dir": "N"
+  },
+  {
+   "x": 7,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 6,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 7,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 11,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 7,
+   "y": 13,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 7,
+   "y": 14,
+   "name": "express-underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 3,
+   "name": "infinity-chest",
+   "supply": [
+    "gear"
+   ]
+  },
+  {
+   "x": 6,
+   "y": 4,
+   "name": "fast-inserter",
+   "dir": "N"
+  },
+  {
+   "x": 6,
+   "y": 5,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 6,
+   "y": 6,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 6,
+   "y": 7,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 6,
+   "y": 8,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 10,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 6,
+   "y": 13,
+   "name": "underground-belt",
+   "dir": "S",
+   "ug": "output"
+  },
+  {
+   "x": 6,
+   "y": 14,
+   "name": "express-underground-belt",
+   "dir": "S",
+   "ug": "input"
+  },
+  {
+   "x": 9,
+   "y": 7,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 7,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 8,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 8,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 9,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 9,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 10,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 10,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 11,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 11,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 12,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 12,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 13,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 13,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 14,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 9,
+   "y": 15,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 8,
+   "y": 15,
+   "name": "long-handed-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "name": "infinity-chest",
+   "supply": [
+    "cable"
+   ]
+  },
+  {
+   "x": 4,
+   "y": 9,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 5,
+   "y": 9,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 6,
+   "y": 9,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 3,
+   "y": 12,
+   "name": "infinity-chest",
+   "supply": [
+    "cable"
+   ]
+  },
+  {
+   "x": 4,
+   "y": 12,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 5,
+   "y": 12,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 6,
+   "y": 12,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 7,
+   "y": 12,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 3,
+   "y": 15,
+   "name": "infinity-chest",
+   "supply": [
+    "cable"
+   ]
+  },
+  {
+   "x": 4,
+   "y": 15,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 5,
+   "y": 15,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 6,
+   "y": 15,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 7,
+   "y": 15,
+   "name": "belt",
+   "dir": "E"
+  },
+  {
+   "x": 13,
+   "y": 8,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 11,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 13,
+   "y": 14,
+   "name": "fast-inserter",
+   "dir": "W"
+  },
+  {
+   "x": 14,
+   "y": 8,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 9,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 10,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 11,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 12,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 13,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 14,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 15,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 16,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 17,
+   "name": "belt",
+   "dir": "S"
+  },
+  {
+   "x": 14,
+   "y": 18,
+   "name": "fast-inserter",
+   "dir": "N"
+  },
+  {
+   "x": 14,
+   "y": 19,
+   "name": "infinity-chest",
+   "sink": true
+  }
+ ],
+ "labels": [
+  {
+   "x": 11,
+   "y": 8,
+   "text": "머신 0"
+  },
+  {
+   "x": 11,
+   "y": 11,
+   "text": "머신 1"
+  },
+  {
+   "x": 11,
+   "y": 14,
+   "text": "머신 2"
+  },
+  {
+   "x": 7,
+   "y": 7,
+   "text": "A — 거리 3 · 머신마다 칸 둘"
+  },
+  {
+   "x": 6,
+   "y": 7,
+   "text": "B — 거리 4 · 머신마다 칸 둘"
+  },
+  {
+   "x": 7,
+   "y": 9,
+   "text": "C — 한 행에서 두 세로줄을 다 지난다 → 옆에서 들어오는 한 대 줄"
+  },
+  {
+   "x": 7,
+   "y": 10,
+   "text": "A · B 는 C 의 행을 땅속으로"
+  }
+ ]
+}

@@ -10,7 +10,7 @@ import * as PIXI from 'pixi.js';
 import { EntityType, type Direction } from '../../types/layout';
 import { getEntitySizeRotated } from '../../factorio/entitySize';
 import { useGameDataStore } from '../store/gameDataStore';
-import { isValidVec, rotateVector, directionToVec, drawSingleArrow, drawPoint } from './pixi-draw-utils';
+import { isValidVec, rotateVector, directionToVec, drawSingleArrow, drawPoint, drawRing } from './pixi-draw-utils';
 import { COLOR_FLUID_IN, COLOR_FLUID_OUT, COLOR_FLUID_IO, drawConnectionArrow } from './pixi-draw-pipe';
 import { BELT_TYPES, COLOR_BELT_FLOW, COLOR_PICKUP, COLOR_DROP, COLOR_MINING } from './pixi-draw-belt';
 
@@ -57,17 +57,34 @@ export function drawInteractionPoints(
     );
   }
 
-  // === 인서터 pickup / drop ===
+  // === 인서터 — 집는 칸에 고리(O), 고리에서 놓는 칸까지 화살표(->). 합쳐서 "O->" ===
   // Factorio 규약: direction = 픽업 방향.
-  if (isValidVec(entity?.inserter_pickup_position)) {
-    const rot       = rotateVector(entity!.inserter_pickup_position!, direction);
-    const { px, py } = tileToPx(centerTileX + rot.x, centerTileY + rot.y);
-    drawSingleArrow(target, centerPx, centerPy, px, py, scaledTile, COLOR_PICKUP, alpha);
-  }
-  if (isValidVec(entity?.inserter_drop_position)) {
-    const rot       = rotateVector(entity!.inserter_drop_position!, direction);
-    const { px, py } = tileToPx(centerTileX + rot.x, centerTileY + rot.y);
-    drawSingleArrow(target, centerPx, centerPy, px, py, scaledTile, COLOR_DROP, alpha);
+  const pickup = isValidVec(entity?.inserter_pickup_position)
+    ? (() => {
+        const rot = rotateVector(entity!.inserter_pickup_position!, direction);
+        return tileToPx(centerTileX + rot.x, centerTileY + rot.y);
+      })()
+    : null;
+  const drop = isValidVec(entity?.inserter_drop_position)
+    ? (() => {
+        const rot = rotateVector(entity!.inserter_drop_position!, direction);
+        return tileToPx(centerTileX + rot.x, centerTileY + rot.y);
+      })()
+    : null;
+  const ringR = Math.max(3, scaledTile * 0.2);
+  if (pickup) drawRing(target, pickup.px, pickup.py, ringR, scaledTile, COLOR_PICKUP, alpha);
+  if (drop) {
+    // 화살표는 고리 가장자리에서 시작한다 — 고리 안을 비워 둔다.
+    let fromX = centerPx, fromY = centerPy;
+    if (pickup) {
+      const dx = drop.px - pickup.px, dy = drop.py - pickup.py;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0.001) {
+        fromX = pickup.px + (dx / len) * ringR;
+        fromY = pickup.py + (dy / len) * ringR;
+      }
+    }
+    drawSingleArrow(target, fromX, fromY, drop.px, drop.py, scaledTile, COLOR_DROP, alpha);
   }
 
   // === MiningDrill 드롭 위치 ===
